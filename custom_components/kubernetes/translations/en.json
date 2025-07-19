@@ -1,0 +1,106 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Kubernetes Configuration",
+        "description": "Enter your Kubernetes cluster connection details.",
+        "data": {
+          "name": "Integration Name",
+          "host": "Kubernetes API Host",
+          "port": "Port",
+          "cluster_name": "Cluster Name",
+          "namespace": "Namespace",
+          "api_token": "API Token",
+          "ca_cert": "CA Certificate (optional)",
+          "verify_ssl": "Verify SSL"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Kubernetes cluster"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "kubernetes_pods_count": {
+        "name": "Pods Count"
+      },
+      "kubernetes_nodes_count": {
+        "name": "Nodes Count"
+      },
+      "kubernetes_services_count": {
+        "name": "Services Count"
+      },
+      "kubernetes_deployments_count": {
+        "name": "Deployments Count"
+      }
+    },
+    "binary_sensor": {
+      "kubernetes_cluster_health": {
+        "name": "Cluster Health"
+      }
+    },
+    "switch": {
+      "kubernetes_deployment": {
+        "name": "Deployment"
+      }
+    }
+  },
+  "services": {
+    "kubernetes": {
+      "scale_deployment": {
+        "name": "Scale Deployment",
+        "description": "Scale a Kubernetes deployment to the specified number of replicas.",
+        "fields": {
+          "deployment_name": {
+            "name": "Deployment Name",
+            "description": "The name of the deployment to scale"
+          },
+          "replicas": {
+            "name": "Replicas",
+            "description": "The number of replicas to scale to (0 or more)"
+          },
+          "namespace": {
+            "name": "Namespace",
+            "description": "The namespace containing the deployment (optional)"
+          }
+        }
+      },
+      "start_deployment": {
+        "name": "Start Deployment",
+        "description": "Start a Kubernetes deployment by scaling it to the specified number of replicas.",
+        "fields": {
+          "deployment_name": {
+            "name": "Deployment Name",
+            "description": "The name of the deployment to start"
+          },
+          "replicas": {
+            "name": "Replicas",
+            "description": "The number of replicas to start with (default: 1)"
+          },
+          "namespace": {
+            "name": "Namespace",
+            "description": "The namespace containing the deployment (optional)"
+          }
+        }
+      },
+      "stop_deployment": {
+        "name": "Stop Deployment",
+        "description": "Stop a Kubernetes deployment by scaling it to 0 replicas.",
+        "fields": {
+          "deployment_name": {
+            "name": "Deployment Name",
+            "description": "The name of the deployment to stop"
+          },
+          "namespace": {
+            "name": "Namespace",
+            "description": "The namespace containing the deployment (optional)"
+          }
+        }
+      }
+    }
+  }
+}

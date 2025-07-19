@@ -1,0 +1,292 @@
+# Example Home Assistant configuration with Kubernetes integration
+# Copy this to your configuration.yaml and customize as needed
+
+# Home Assistant configuration
+homeassistant:
+  name: My Home
+  latitude: 37.7749
+  longitude: -122.4194
+  elevation: 0
+  unit_system: metric
+  time_zone: America/Los_Angeles
+
+# Enable logging for debugging
+logger:
+  default: info
+  logs:
+    custom_components.kubernetes: debug
+
+# HTTP configuration
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - ::1
+
+# Frontend configuration
+frontend:
+
+# API configuration
+api:
+
+# Configuration for the Kubernetes integration
+# This will be configured through the UI, but here's an example of what it looks like:
+# kubernetes:
+#   - name: "Production Cluster"
+#     host: "k8s-prod.example.com"
+#     port: 6443
+#     cluster_name: "production"
+#     namespace: "default"
+#     api_token: "your-api-token-here"
+#     verify_ssl: true
+
+# Example automations using Kubernetes sensors and control features
+automation:
+  # Monitoring automations
+  - alias: "Alert on Kubernetes Cluster Down"
+    trigger:
+      platform: state
+      entity_id: binary_sensor.kubernetes_cluster_health
+      to: "off"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Kubernetes Alert"
+          message: "Production cluster is down!"
+
+  - alias: "Alert on High Pod Count"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.kubernetes_pods_count
+      above: 100
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Kubernetes Alert"
+          message: "High pod count detected: {{ states('sensor.kubernetes_pods_count') }}"
+
+  # Control automations - Time-based scaling
+  - alias: "Scale Down Non-Critical Deployments at Night"
+    trigger:
+      platform: time
+      at: "22:00:00"
+    action:
+      - service: kubernetes.scale_deployment
+        data:
+          deployment_name: development-api
+          replicas: 0
+          namespace: development
+      - service: kubernetes.scale_deployment
+        data:
+          deployment_name: staging-api
+          replicas: 0
+          namespace: staging
+
+  - alias: "Scale Up Deployments in Morning"
+    trigger:
+      platform: time
+      at: "08:00:00"
+    action:
+      - service: kubernetes.start_deployment
+        data:
+          deployment_name: production-api
+          replicas: 3
+          namespace: production
+      - service: kubernetes.start_deployment
+        data:
+          deployment_name: development-api
+          replicas: 1
+          namespace: development
+
+  # Control automations - Load-based scaling
+  - alias: "Scale API Based on High CPU Usage"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.api_cpu_usage
+      above: 80
+    action:
+      - service: kubernetes.scale_deployment
+        data:
+          deployment_name: api-gateway
+          replicas: 5
+          namespace: production
+
+  - alias: "Scale Down API When Load is Low"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.api_cpu_usage
+      below: 30
+      for: "00:10:00"  # Wait 10 minutes to avoid rapid scaling
+    action:
+      - service: kubernetes.scale_deployment
+        data:
+          deployment_name: api-gateway
+          replicas: 2
+          namespace: production
+
+  # Control automations - Event-based
+  - alias: "Stop Development Environment on Weekends"
+    trigger:
+      platform: time
+      at: "18:00:00"
+    condition:
+      condition: time
+      weekday:
+        - sat
+        - sun
+    action:
+      - service: kubernetes.stop_deployment
+        data:
+          deployment_name: development-api
+          namespace: development
+      - service: kubernetes.stop_deployment
+        data:
+          deployment_name: development-database
+          namespace: development
+
+# Example scripts for manual control
+script:
+  kubernetes_status_check:
+    alias: "Check Kubernetes Status"
+    sequence:
+      - service: homeassistant.update_entity
+        target:
+          entity_id:
+            - sensor.kubernetes_pods_count
+            - sensor.kubernetes_nodes_count
+            - sensor.kubernetes_services_count
+            - sensor.kubernetes_deployments_count
+            - binary_sensor.kubernetes_cluster_health
+
+  scale_production_api:
+    alias: "Scale Production API"
+    sequence:
+      - service: kubernetes.scale_deployment
+        data:
+          deployment_name: production-api
+          replicas: 3
+          namespace: production
+
+  stop_development:
+    alias: "Stop Development Environment"
+    sequence:
+      - service: kubernetes.stop_deployment
+        data:
+          deployment_name: development-api
+          namespace: development
+      - service: kubernetes.stop_deployment
+        data:
+          deployment_name: development-database
+          namespace: development
+      - service: notify.mobile_app
+        data:
+          title: "Development Environment"
+          message: "Development environment has been stopped"
+
+  start_development:
+    alias: "Start Development Environment"
+    sequence:
+      - service: kubernetes.start_deployment
+        data:
+          deployment_name: development-api
+          replicas: 1
+          namespace: development
+      - service: kubernetes.start_deployment
+        data:
+          deployment_name: development-database
+          replicas: 1
+          namespace: development
+      - service: notify.mobile_app
+        data:
+          title: "Development Environment"
+          message: "Development environment has been started"
+
+# Example scenes
+scene:
+  kubernetes_dashboard:
+    name: "Kubernetes Dashboard"
+    entities:
+      sensor.kubernetes_pods_count:
+        state: "0"
+      sensor.kubernetes_nodes_count:
+        state: "0"
+      sensor.kubernetes_services_count:
+        state: "0"
+      sensor.kubernetes_deployments_count:
+        state: "0"
+      binary_sensor.kubernetes_cluster_health:
+        state: "off"
+
+  production_mode:
+    name: "Production Mode"
+    entities:
+      sensor.kubernetes_pods_count:
+        state: "50"
+      sensor.kubernetes_deployments_count:
+        state: "10"
+
+  development_mode:
+    name: "Development Mode"
+    entities:
+      sensor.kubernetes_pods_count:
+        state: "5"
+      sensor.kubernetes_deployments_count:
+        state: "3"
+
+# Lovelace dashboard configuration (optional)
+# This creates a dedicated dashboard for Kubernetes monitoring and control
+lovelace:
+  mode: yaml
+  dashboards:
+    kubernetes:
+      title: "Kubernetes Monitoring & Control"
+      icon: mdi:kubernetes
+      show_in_sidebar: true
+      path: kubernetes
+      badges: []
+      cards:
+        - type: vertical-stack
+          title: "Kubernetes Cluster Status"
+          cards:
+            - type: entities
+              title: "Cluster Health"
+              entities:
+                - entity: binary_sensor.kubernetes_cluster_health
+            - type: entities
+              title: "Resource Counts"
+              entities:
+                - entity: sensor.kubernetes_pods_count
+                - entity: sensor.kubernetes_nodes_count
+                - entity: sensor.kubernetes_services_count
+                - entity: sensor.kubernetes_deployments_count
+        - type: vertical-stack
+          title: "Deployment Control"
+          cards:
+            - type: entities
+              title: "Production Deployments"
+              entities:
+                - entity: switch.production_api_deployment
+                - entity: switch.api_gateway_deployment
+            - type: entities
+              title: "Development Deployments"
+              entities:
+                - entity: switch.development_api_deployment
+                - entity: switch.development_database_deployment
+        - type: vertical-stack
+          title: "Quick Actions"
+          cards:
+            - type: button
+              name: "Scale Production API"
+              tap_action:
+                action: call-service
+                service: script.scale_production_api
+            - type: button
+              name: "Stop Development"
+              tap_action:
+                action: call-service
+                service: script.stop_development
+            - type: button
+              name: "Start Development"
+              tap_action:
+                action: call-service
+                service: script.start_development
