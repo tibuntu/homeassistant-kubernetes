@@ -377,6 +377,16 @@ class KubernetesClient:
                 return await self._get_deployments_all_namespaces()
             else:
                 return await self._get_deployments_single_namespace()
+        except ApiException as ex:
+            _LOGGER.error("API Exception during get deployments: %s", ex)
+            _LOGGER.error("Status: %s, Reason: %s", ex.status, ex.reason)
+            if ex.body:
+                _LOGGER.error("Response body: %s", ex.body)
+            # Fallback to aiohttp
+            if self.monitor_all_namespaces:
+                return await self._get_deployments_all_namespaces_aiohttp()
+            else:
+                return await self._get_deployments_aiohttp()
         except Exception as ex:
             _LOGGER.error("Failed to get deployments: %s", ex)
             # Fallback to aiohttp
@@ -502,13 +512,24 @@ class KubernetesClient:
         try:
             target_namespace = namespace or self.namespace
             loop = asyncio.get_event_loop()
+
+            # Use the correct API call for scaling
+            scale_body = {"spec": {"replicas": replicas}}
             await loop.run_in_executor(
                 None, self.apps_v1.patch_namespaced_deployment_scale,
-                deployment_name, target_namespace, {"spec": {"replicas": replicas}}
+                deployment_name, target_namespace, scale_body
             )
+            _LOGGER.info("Successfully scaled deployment %s to %d replicas", deployment_name, replicas)
             return True
+        except ApiException as ex:
+            _LOGGER.error("API Exception during deployment scaling: %s", ex)
+            _LOGGER.error("Status: %s, Reason: %s", ex.status, ex.reason)
+            if ex.body:
+                _LOGGER.error("Response body: %s", ex.body)
+            # Fallback to aiohttp
+            return await self._scale_deployment_aiohttp(deployment_name, replicas, namespace)
         except Exception as ex:
-            _LOGGER.error("Failed to scale deployment: %s", ex)
+            _LOGGER.error("Failed to scale deployment %s: %s", deployment_name, ex)
             # Fallback to aiohttp
             return await self._scale_deployment_aiohttp(deployment_name, replicas, namespace)
 
@@ -532,9 +553,15 @@ class KubernetesClient:
                     ssl=False,
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
-                    return response.status in [200, 201]
+                    if response.status in [200, 201]:
+                        _LOGGER.info("Successfully scaled deployment %s to %d replicas using aiohttp", deployment_name, replicas)
+                        return True
+                    else:
+                        response_text = await response.text()
+                        _LOGGER.error("aiohttp scale deployment failed with status %s: %s", response.status, response_text)
+                        return False
         except Exception as ex:
-            _LOGGER.error("aiohttp scale deployment failed: %s", ex)
+            _LOGGER.error("aiohttp scale deployment failed for %s: %s", deployment_name, ex)
             return False
 
     async def stop_deployment(self, deployment_name: str, namespace: str = None) -> bool:

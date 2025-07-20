@@ -77,65 +77,98 @@ The integration provides the following services:
 
 ## Service Account Setup
 
-To use this integration, you need to create a Kubernetes service account with appropriate permissions:
+### Quick Setup (Recommended)
 
-```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: homeassistant-monitor
-  namespace: default
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: homeassistant-monitor
-rules:
-- apiGroups: [""]
-  resources: ["pods", "services", "nodes"]
-  verbs: ["get", "list"]
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["get", "list", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: homeassistant-monitor
-subjects:
-- kind: ServiceAccount
-  name: homeassistant-monitor
-  namespace: default
-roleRef:
-  kind: ClusterRole
-  name: homeassistant-monitor
-  apiGroup: rbac.authorization.k8s.io
-```
-
-After creating the service account, get the token:
+Use the provided setup script to automatically create the service account and extract the token:
 
 ```bash
-kubectl create token homeassistant-monitor -n default
+# Make the script executable
+chmod +x scripts/extract_token.sh
+
+# Run the setup script
+./scripts/extract_token.sh
+```
+
+This script will:
+- Create the necessary service account and RBAC resources
+- Extract the correct API token
+- Provide you with the configuration details for Home Assistant
+
+### Manual Setup
+
+If you prefer to set up RBAC manually, use the provided manifests:
+
+#### Option 1: Quick Setup (Recommended)
+Apply all resources at once:
+```bash
+kubectl apply -f manifests/all-in-one.yaml
+```
+
+#### Option 2: Individual Resources
+Apply resources individually:
+```bash
+kubectl apply -f manifests/serviceaccount.yaml
+kubectl apply -f manifests/clusterrole.yaml
+kubectl apply -f manifests/clusterrolebinding.yaml
+kubectl apply -f manifests/serviceaccount-token-secret.yaml
+```
+
+3. Extract the token:
+```bash
+kubectl get secret homeassistant-monitor-token -n default -o jsonpath='{.data.token}' | base64 -d
+```
+
+### Required Permissions
+
+The service account needs these permissions for full functionality:
+
+```yaml
+# Read permissions for monitoring
+- apiGroups: [""]
+  resources: ["pods", "services", "nodes", "namespaces"]
+  verbs: ["get", "list", "watch"]
+
+# Deployment permissions (including scaling)
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["get", "list", "watch", "patch", "update"]
 ```
 
 ## Troubleshooting
 
 ### 401 Unauthorized Errors
 
-If you encounter 401 Unauthorized errors, the integration will automatically fall back to using aiohttp for API communication. This is normal behavior and indicates that the kubernetes Python client has compatibility issues with your cluster's authentication method.
+If you encounter 401 Unauthorized errors, this typically indicates an authentication or permission issue.
 
 **Common causes:**
 - Token has expired (tokens typically expire after 1 hour)
 - Incorrect token format
 - Insufficient permissions for the service account
+- Missing RBAC permissions for deployment scaling
 
 **Solutions:**
-1. Generate a fresh token: `kubectl create token homeassistant-monitor -n default`
-2. Verify the token works with curl:
+1. **Re-run the setup script** to get a fresh token:
    ```bash
-   curl -k -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_HOST:6443/api/v1/
+   ./scripts/extract_token.sh
    ```
-3. Check service account permissions
+
+2. **Verify the token works** with curl:
+   ```bash
+   curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_HOST:6443/api/v1/
+   ```
+
+3. **Test deployment scaling permissions**:
+   ```bash
+   curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_HOST:6443/apis/apps/v1/namespaces/default/deployments
+   ```
+
+4. **Check service account permissions**:
+   ```bash
+   kubectl auth can-i patch deployments --as=system:serviceaccount:default:homeassistant-monitor
+   kubectl auth can-i patch deployments/scale --as=system:serviceaccount:default:homeassistant-monitor
+   ```
+
+For detailed troubleshooting steps, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 ### Connection Issues
 

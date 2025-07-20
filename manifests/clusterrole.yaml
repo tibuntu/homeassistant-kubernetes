@@ -1,0 +1,26 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homeassistant-kubernetes-integration
+rules:
+# Read permissions for monitoring
+- apiGroups: [""]
+  resources: ["pods", "services", "nodes", "namespaces"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["extensions"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+# Write permissions for control - including scaling
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["patch", "update", "get"]
+- apiGroups: ["extensions"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["patch", "update", "get"]
+# Additional permissions that might be needed
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list", "watch"]
