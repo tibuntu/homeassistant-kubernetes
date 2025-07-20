@@ -1,12 +1,13 @@
 """Tests for the Kubernetes integration."""
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.components.kubernetes.const import DOMAIN
-from homeassistant.components.kubernetes.kubernetes_client import KubernetesClient
-from homeassistant.components.kubernetes.sensor import KubernetesPodsSensor
-from homeassistant.components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
-from homeassistant.components.kubernetes.switch import KubernetesDeploymentSwitch
+# Import from the custom component directly
+from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.kubernetes_client import KubernetesClient
+from custom_components.kubernetes.sensor import KubernetesPodsSensor
+from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
+from custom_components.kubernetes.switch import KubernetesDeploymentSwitch
 
 
 @pytest.fixture
@@ -217,7 +218,7 @@ async def test_kubernetes_client_deployment_control(mock_config):
 
 def test_integration_constants():
     """Test integration constants."""
-    from homeassistant.components.kubernetes.const import (
+    from custom_components.kubernetes.const import (
         DOMAIN,
         CONF_HOST,
         CONF_PORT,
