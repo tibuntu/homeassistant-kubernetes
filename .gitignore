@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.cursor/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Home Assistant specific
+secrets.yaml
+*.log
+
+# Kubernetes config (may contain sensitive data)
+kubeconfig
+*.kubeconfig
