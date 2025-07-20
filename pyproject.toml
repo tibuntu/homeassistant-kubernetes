@@ -7,7 +7,7 @@ name = "homeassistant-kubernetes"
 version = "0.0.1"
 description = "Home Assistant integration for Kubernetes monitoring"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = "==3.13.5"
 license = {text = "MIT"}
 authors = [
     {name = "Timo Hankamer", email = "huts-belay7o@icloud.com"}
@@ -38,7 +38,7 @@ dev = [
     "flake8==7.0.0",
     "importlib-metadata<6.0.0",
     "mypy==0.991",
-    "homeassistant>=2024.12.0",
+    "homeassistant==2025.7.2",
 ]
 
 [tool.setuptools.packages.find]
