@@ -1,2 +1,1 @@
 kubernetes==33.1.0
-aiohttp==3.12.14

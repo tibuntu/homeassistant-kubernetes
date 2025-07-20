@@ -148,6 +148,9 @@ async def test_deployment_switch_turn_on(mock_kubernetes_client):
         "default"
     )
 
+    # Mock the async_write_ha_state method to avoid the hass error
+    switch.async_write_ha_state = AsyncMock()
+
     # Initially off
     switch._is_on = False
     switch._replicas = 0
@@ -175,6 +178,9 @@ async def test_deployment_switch_turn_off(mock_kubernetes_client):
         "nginx-deployment",
         "default"
     )
+
+    # Mock the async_write_ha_state method to avoid the hass error
+    switch.async_write_ha_state = AsyncMock()
 
     # Initially on
     switch._is_on = True

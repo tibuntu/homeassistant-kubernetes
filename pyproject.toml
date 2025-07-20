@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools==61.0", "wheel"]
+requires = ["setuptools>=64.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -16,17 +16,17 @@ keywords = ["homeassistant", "kubernetes", "monitoring"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Home Automation",
 ]
 
 dependencies = [
     "kubernetes==28.1.0",
-    "aiohttp==3.8.0",
 ]
 
 [project.optional-dependencies]
@@ -35,10 +35,14 @@ dev = [
     "pytest-asyncio==0.21.0",
     "black==22.12.0",
     "isort==5.10.0",
-    "flake8==4.0.1",
+    "flake8==7.0.0",
+    "importlib-metadata<6.0.0",
     "mypy==0.991",
-    "homeassistant==2024.1.0",
+    "homeassistant>=2024.12.0",
 ]
+
+[tool.setuptools.packages.find]
+include = ["custom_components*"]
 
 [tool.black]
 line-length = 88
