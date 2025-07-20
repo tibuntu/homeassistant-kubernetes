@@ -1,0 +1,67 @@
+scale_deployment:
+  name: Scale Deployment
+  description: Scale a Kubernetes deployment to the specified number of replicas.
+  fields:
+    deployment_name:
+      name: Deployment Name
+      description: The name of the deployment to scale.
+      required: true
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    replicas:
+      name: Replicas
+      description: The number of replicas to scale to (0 or more).
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100
+    namespace:
+      name: Namespace
+      description: The namespace containing the deployment (optional, defaults to configured namespace).
+      required: false
+
+start_deployment:
+  name: Start Deployment
+  description: Start a Kubernetes deployment by scaling it to the specified number of replicas.
+  fields:
+    deployment_name:
+      name: Deployment Name
+      description: The name of the deployment to start.
+      required: true
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    replicas:
+      name: Replicas
+      description: The number of replicas to scale to (1 or more, defaults to 1).
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 100
+    namespace:
+      name: Namespace
+      description: The namespace containing the deployment (optional, defaults to configured namespace).
+      required: false
+
+stop_deployment:
+  name: Stop Deployment
+  description: Stop a Kubernetes deployment by scaling it to 0 replicas.
+  fields:
+    deployment_name:
+      name: Deployment Name
+      description: The name of the deployment to stop.
+      required: true
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    namespace:
+      name: Namespace
+      description: The namespace containing the deployment (optional, defaults to configured namespace).
+      required: false
