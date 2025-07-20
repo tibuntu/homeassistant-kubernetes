@@ -1,11 +1,11 @@
 {
   "domain": "kubernetes",
   "name": "Kubernetes",
-  "documentation": "https://github.com/your-username/homeassistant-kubernetes",
-  "dependencies": [],
-  "codeowners": ["@your-username"],
-  "requirements": ["kubernetes>=28.1.0"],
-  "version": "1.0.0",
+  "codeowners": ["@tibuntu"],
   "config_flow": true,
-  "iot_class": "local_polling"
+  "dependencies": [],
+  "documentation": "https://github.com/tibuntu/homeassistant-kubernetes",
+  "iot_class": "local_polling",
+  "requirements": ["kubernetes>=28.1.0"],
+  "version": "1.0.0"
 }
