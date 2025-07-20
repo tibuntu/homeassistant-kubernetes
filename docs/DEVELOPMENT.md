@@ -14,7 +14,7 @@ This document provides detailed instructions for developing and contributing to 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/homeassistant-kubernetes.git
+git clone https://github.com/tibuntu/homeassistant-kubernetes.git
 cd homeassistant-kubernetes
 ```
 
