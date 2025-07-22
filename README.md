@@ -77,34 +77,7 @@ The integration provides the following services:
 
 ## Service Account Setup
 
-### Quick Setup (Recommended)
-
-Use the provided setup script to automatically create the service account and extract the token:
-
-```bash
-# Make the script executable
-chmod +x scripts/extract_token.sh
-
-# Run the setup script
-./scripts/extract_token.sh
-```
-
-This script will:
-- Create the necessary service account and RBAC resources
-- Extract the correct API token
-- Provide you with the configuration details for Home Assistant
-
-### Manual Setup
-
-If you prefer to set up RBAC manually, use the provided manifests:
-
-#### Option 1: Quick Setup (Recommended)
-Apply all resources at once:
-```bash
-kubectl apply -f manifests/all-in-one.yaml
-```
-
-#### Option 2: Individual Resources
+### Option 2: Individual Resources
 Apply resources individually:
 ```bash
 kubectl apply -f manifests/serviceaccount.yaml
@@ -147,22 +120,17 @@ If you encounter 401 Unauthorized errors, this typically indicates an authentica
 - Missing RBAC permissions for deployment scaling
 
 **Solutions:**
-1. **Re-run the setup script** to get a fresh token:
-   ```bash
-   ./scripts/extract_token.sh
-   ```
-
-2. **Verify the token works** with curl:
+1. **Verify the token works** with curl:
    ```bash
    curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_HOST:6443/api/v1/
    ```
 
-3. **Test deployment scaling permissions**:
+2. **Test deployment scaling permissions**:
    ```bash
    curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_HOST:6443/apis/apps/v1/namespaces/default/deployments
    ```
 
-4. **Check service account permissions**:
+3. **Check service account permissions**:
    ```bash
    kubectl auth can-i patch deployments --as=system:serviceaccount:default:homeassistant-monitor
    kubectl auth can-i patch deployments/scale --as=system:serviceaccount:default:homeassistant-monitor
