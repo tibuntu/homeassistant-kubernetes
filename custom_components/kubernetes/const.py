@@ -34,6 +34,12 @@ BINARY_SENSOR_TYPE_CLUSTER_HEALTH = "cluster_health"
 # Switch types
 SWITCH_TYPE_DEPLOYMENT = "deployment"
 
+# Workload types
+WORKLOAD_TYPE_DEPLOYMENT = "Deployment"
+WORKLOAD_TYPE_STATEFULSET = "StatefulSet"
+WORKLOAD_TYPE_DAEMONSET = "DaemonSet"
+WORKLOAD_TYPE_CRONJOB = "CronJob"
+
 # Service names
 SERVICE_SCALE_DEPLOYMENT = "scale_deployment"
 SERVICE_STOP_DEPLOYMENT = "stop_deployment"
@@ -43,3 +49,4 @@ SERVICE_START_DEPLOYMENT = "start_deployment"
 ATTR_DEPLOYMENT_NAME = "deployment_name"
 ATTR_NAMESPACE = "namespace"
 ATTR_REPLICAS = "replicas"
+ATTR_WORKLOAD_TYPE = "workload_type"

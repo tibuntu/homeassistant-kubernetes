@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from .const import DOMAIN, SWITCH_TYPE_DEPLOYMENT
+from .const import DOMAIN, SWITCH_TYPE_DEPLOYMENT, ATTR_WORKLOAD_TYPE, WORKLOAD_TYPE_DEPLOYMENT
 from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class KubernetesDeploymentSwitch(SwitchEntity):
         self.deployment_name = deployment_name
         self.namespace = namespace
         self._attr_has_entity_name = True
-        self._attr_name = f"{deployment_name} Deployment"
+        self._attr_name = deployment_name
         self._attr_unique_id = f"{config_entry.entry_id}_{deployment_name}_deployment"
         self._attr_icon = "mdi:kubernetes"
         self._is_on = False
@@ -79,6 +79,7 @@ class KubernetesDeploymentSwitch(SwitchEntity):
             "deployment_name": self.deployment_name,
             "namespace": self.namespace,
             "replicas": self._replicas,
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
         }
 
     async def async_turn_on(self, **kwargs: Any) -> None:

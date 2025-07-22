@@ -110,8 +110,14 @@ async def test_deployment_switch_initialization(mock_kubernetes_client):
     # Test basic properties
     assert switch.deployment_name == "nginx-deployment"
     assert switch.namespace == "default"
-    assert switch.name == "nginx-deployment Deployment"
+    assert switch.name == "nginx-deployment"
     assert switch.unique_id == "test_entry_id_nginx-deployment_deployment"
+
+    # Test attributes
+    attributes = switch.extra_state_attributes
+    assert attributes["deployment_name"] == "nginx-deployment"
+    assert attributes["namespace"] == "default"
+    assert attributes["workload_type"] == "Deployment"
 
 
 async def test_deployment_switch_update(mock_kubernetes_client):
