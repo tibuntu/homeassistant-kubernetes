@@ -15,7 +15,7 @@ rules:
   verbs: ["get", "list", "watch"]
 # Write permissions for control - including scaling
 - apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale"]
+  resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale"]
   verbs: ["patch", "update", "get"]
 - apiGroups: ["extensions"]
   resources: ["deployments", "deployments/scale"]

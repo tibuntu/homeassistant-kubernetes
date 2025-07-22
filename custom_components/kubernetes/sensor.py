@@ -19,6 +19,7 @@ from .const import (
     SENSOR_TYPE_NODES,
     SENSOR_TYPE_PODS,
     SENSOR_TYPE_SERVICES,
+    SENSOR_TYPE_STATEFULSETS,
 )
 from .kubernetes_client import KubernetesClient
 
@@ -39,6 +40,7 @@ async def async_setup_entry(
         KubernetesNodesSensor(client, config_entry),
         KubernetesServicesSensor(client, config_entry),
         KubernetesDeploymentsSensor(client, config_entry),
+        KubernetesStatefulSetsSensor(client, config_entry),
     ]
 
     async_add_entities(sensors)
@@ -132,4 +134,24 @@ class KubernetesDeploymentsSensor(KubernetesBaseSensor):
             self._attr_native_value = count
         except Exception as ex:
             _LOGGER.error("Failed to update deployments sensor: %s", ex)
+            self._attr_native_value = None
+
+
+class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
+    """Sensor for Kubernetes StatefulSets count."""
+
+    def __init__(self, client: KubernetesClient, config_entry: ConfigEntry) -> None:
+        """Initialize the StatefulSets sensor."""
+        super().__init__(client, config_entry)
+        self._attr_name = "StatefulSets Count"
+        self._attr_unique_id = f"{config_entry.entry_id}_statefulsets_count"
+        self._attr_native_unit_of_measurement = "statefulsets"
+
+    async def async_update(self) -> None:
+        """Update the sensor state."""
+        try:
+            count = await self.client.get_statefulsets_count()
+            self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update StatefulSets sensor: %s", ex)
             self._attr_native_value = None

@@ -27,12 +27,14 @@ SENSOR_TYPE_PODS = "pods"
 SENSOR_TYPE_NODES = "nodes"
 SENSOR_TYPE_SERVICES = "services"
 SENSOR_TYPE_DEPLOYMENTS = "deployments"
+SENSOR_TYPE_STATEFULSETS = "statefulsets"
 
 # Binary sensor types
 BINARY_SENSOR_TYPE_CLUSTER_HEALTH = "cluster_health"
 
 # Switch types
 SWITCH_TYPE_DEPLOYMENT = "deployment"
+SWITCH_TYPE_STATEFULSET = "statefulset"
 
 # Workload types
 WORKLOAD_TYPE_DEPLOYMENT = "Deployment"
@@ -44,9 +46,13 @@ WORKLOAD_TYPE_CRONJOB = "CronJob"
 SERVICE_SCALE_DEPLOYMENT = "scale_deployment"
 SERVICE_STOP_DEPLOYMENT = "stop_deployment"
 SERVICE_START_DEPLOYMENT = "start_deployment"
+SERVICE_SCALE_STATEFULSET = "scale_statefulset"
+SERVICE_STOP_STATEFULSET = "stop_statefulset"
+SERVICE_START_STATEFULSET = "start_statefulset"
 
 # Service attributes
 ATTR_DEPLOYMENT_NAME = "deployment_name"
+ATTR_STATEFULSET_NAME = "statefulset_name"
 ATTR_NAMESPACE = "namespace"
 ATTR_REPLICAS = "replicas"
 ATTR_WORKLOAD_TYPE = "workload_type"

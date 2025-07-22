@@ -98,6 +98,39 @@ automation:
           replicas: 1
           namespace: development
 
+  # StatefulSet control automations
+  - alias: "Scale Down StatefulSets at Night"
+    trigger:
+      platform: time
+      at: "22:00:00"
+    action:
+      - service: kubernetes.scale_statefulset
+        data:
+          statefulset_name: redis-cache
+          replicas: 0
+          namespace: production
+      - service: kubernetes.scale_statefulset
+        data:
+          statefulset_name: postgres-db
+          replicas: 0
+          namespace: production
+
+  - alias: "Scale Up StatefulSets in Morning"
+    trigger:
+      platform: time
+      at: "08:00:00"
+    action:
+      - service: kubernetes.start_statefulset
+        data:
+          statefulset_name: redis-cache
+          replicas: 3
+          namespace: production
+      - service: kubernetes.start_statefulset
+        data:
+          statefulset_name: postgres-db
+          replicas: 1
+          namespace: production
+
   # Control automations - Load-based scaling
   - alias: "Scale API Based on High CPU Usage"
     trigger:
@@ -201,6 +234,36 @@ script:
           title: "Development Environment"
           message: "Development environment has been started"
 
+  scale_production_databases:
+    alias: "Scale Production Databases"
+    sequence:
+      - service: kubernetes.scale_statefulset
+        data:
+          statefulset_name: redis-cache
+          replicas: 3
+          namespace: production
+      - service: kubernetes.scale_statefulset
+        data:
+          statefulset_name: postgres-db
+          replicas: 2
+          namespace: production
+
+  stop_production_databases:
+    alias: "Stop Production Databases"
+    sequence:
+      - service: kubernetes.stop_statefulset
+        data:
+          statefulset_name: redis-cache
+          namespace: production
+      - service: kubernetes.stop_statefulset
+        data:
+          statefulset_name: postgres-db
+          namespace: production
+      - service: notify.mobile_app
+        data:
+          title: "Production Databases"
+          message: "Production databases have been stopped"
+
 # Example scenes
 scene:
   kubernetes_dashboard:
@@ -214,6 +277,8 @@ scene:
         state: "0"
       sensor.kubernetes_deployments_count:
         state: "0"
+      sensor.kubernetes_statefulsets_count:
+        state: "0"
       binary_sensor.kubernetes_cluster_health:
         state: "off"
 
@@ -224,6 +289,8 @@ scene:
         state: "50"
       sensor.kubernetes_deployments_count:
         state: "10"
+      sensor.kubernetes_statefulsets_count:
+        state: "3"
 
   development_mode:
     name: "Development Mode"
@@ -232,6 +299,8 @@ scene:
         state: "5"
       sensor.kubernetes_deployments_count:
         state: "3"
+      sensor.kubernetes_statefulsets_count:
+        state: "1"
 
 # Lovelace dashboard configuration (optional)
 # This creates a dedicated dashboard for Kubernetes monitoring and control
@@ -259,6 +328,7 @@ lovelace:
                 - entity: sensor.kubernetes_nodes_count
                 - entity: sensor.kubernetes_services_count
                 - entity: sensor.kubernetes_deployments_count
+                - entity: sensor.kubernetes_statefulsets_count
         - type: vertical-stack
           title: "Deployment Control"
           cards:
@@ -272,6 +342,18 @@ lovelace:
               entities:
                 - entity: switch.development_api_deployment
                 - entity: switch.development_database_deployment
+        - type: vertical-stack
+          title: "StatefulSet Control"
+          cards:
+            - type: entities
+              title: "Production StatefulSets"
+              entities:
+                - entity: switch.redis_cache_statefulset
+                - entity: switch.postgres_db_statefulset
+            - type: entities
+              title: "Development StatefulSets"
+              entities:
+                - entity: switch.development_redis_statefulset
         - type: vertical-stack
           title: "Quick Actions"
           cards:
@@ -290,3 +372,13 @@ lovelace:
               tap_action:
                 action: call-service
                 service: script.start_development
+            - type: button
+              name: "Scale Production Databases"
+              tap_action:
+                action: call-service
+                service: script.scale_production_databases
+            - type: button
+              name: "Stop Production Databases"
+              tap_action:
+                action: call-service
+                service: script.stop_production_databases

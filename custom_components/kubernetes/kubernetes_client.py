@@ -635,6 +635,265 @@ class KubernetesClient:
         """Start a deployment by scaling it to the specified number of replicas."""
         return await self.scale_deployment(deployment_name, replicas, namespace)
 
+    # StatefulSet methods
+    async def get_statefulsets_count(self) -> int:
+        """Get the count of StatefulSets in the namespace(s)."""
+        try:
+            if self.monitor_all_namespaces:
+                result = await self._get_statefulsets_count_all_namespaces_aiohttp()
+            else:
+                result = await self._get_statefulsets_count_aiohttp()
+
+            if result is not None:
+                self._log_success("get statefulsets count", f"count: {result}")
+            return result or 0
+        except Exception as ex:
+            self._log_error("get statefulsets count", ex)
+            return 0
+
+    async def _get_statefulsets_count_single_namespace(self) -> int:
+        """Get StatefulSets count for a single namespace."""
+        loop = asyncio.get_event_loop()
+        statefulsets = await loop.run_in_executor(
+            None, self.apps_v1.list_namespaced_stateful_set, self.namespace
+        )
+        return len(statefulsets.items)
+
+    async def _get_statefulsets_count_all_namespaces(self) -> int:
+        """Get StatefulSets count across all namespaces."""
+        loop = asyncio.get_event_loop()
+        statefulsets = await loop.run_in_executor(None, self.apps_v1.list_stateful_set_for_all_namespaces)
+        return len(statefulsets.items)
+
+    async def _get_statefulsets_count_aiohttp(self) -> int:
+        """Get StatefulSets count using aiohttp as fallback for single namespace."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/statefulsets",
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return len(data.get("items", []))
+                    else:
+                        _LOGGER.error("aiohttp statefulsets count request failed with status: %s", response.status)
+                        return 0
+        except Exception as ex:
+            self._log_error("aiohttp get statefulsets count", ex)
+            return 0
+
+    async def _get_statefulsets_count_all_namespaces_aiohttp(self) -> int:
+        """Get StatefulSets count using aiohttp as fallback for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/statefulsets",
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return len(data.get("items", []))
+                    else:
+                        _LOGGER.error("aiohttp statefulsets count all namespaces request failed with status: %s", response.status)
+                        return 0
+        except Exception as ex:
+            self._log_error("aiohttp get statefulsets count all namespaces", ex)
+            return 0
+
+    async def get_statefulsets(self) -> list[dict[str, Any]]:
+        """Get all StatefulSets in the namespace(s) with their details."""
+        try:
+            # Use aiohttp as primary since it works better with SSL configuration
+            if self.monitor_all_namespaces:
+                result = await self._get_statefulsets_all_namespaces_aiohttp()
+            else:
+                result = await self._get_statefulsets_aiohttp()
+
+            if result:
+                self._log_success("get statefulsets", f"retrieved {len(result)} statefulsets")
+            return result
+        except Exception as ex:
+            self._log_error("get statefulsets", ex)
+            return []
+
+    async def _get_statefulsets_single_namespace(self) -> list[dict[str, Any]]:
+        """Get StatefulSets for a single namespace."""
+        loop = asyncio.get_event_loop()
+        statefulsets = await loop.run_in_executor(
+            None, self.apps_v1.list_namespaced_stateful_set, self.namespace
+        )
+
+        statefulset_list = []
+        for statefulset in statefulsets.items:
+            statefulset_info = {
+                "name": statefulset.metadata.name,
+                "namespace": statefulset.metadata.namespace,
+                "replicas": statefulset.spec.replicas if statefulset.spec.replicas else 0,
+                "available_replicas": statefulset.status.available_replicas if statefulset.status.available_replicas else 0,
+                "ready_replicas": statefulset.status.ready_replicas if statefulset.status.ready_replicas else 0,
+                "is_running": statefulset.status.available_replicas > 0 if statefulset.status.available_replicas else False,
+            }
+            statefulset_list.append(statefulset_info)
+
+        return statefulset_list
+
+    async def _get_statefulsets_all_namespaces(self) -> list[dict[str, Any]]:
+        """Get StatefulSets across all namespaces."""
+        loop = asyncio.get_event_loop()
+        statefulsets = await loop.run_in_executor(None, self.apps_v1.list_stateful_set_for_all_namespaces)
+
+        statefulset_list = []
+        for statefulset in statefulsets.items:
+            statefulset_info = {
+                "name": statefulset.metadata.name,
+                "namespace": statefulset.metadata.namespace,
+                "replicas": statefulset.spec.replicas if statefulset.spec.replicas else 0,
+                "available_replicas": statefulset.status.available_replicas if statefulset.status.available_replicas else 0,
+                "ready_replicas": statefulset.status.ready_replicas if statefulset.status.ready_replicas else 0,
+                "is_running": statefulset.status.available_replicas > 0 if statefulset.status.available_replicas else False,
+            }
+            statefulset_list.append(statefulset_info)
+
+        return statefulset_list
+
+    async def _get_statefulsets_aiohttp(self) -> list[dict[str, Any]]:
+        """Get StatefulSets using aiohttp as fallback for single namespace."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/statefulsets",
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        statefulset_list = []
+                        for statefulset in data.get("items", []):
+                            statefulset_info = {
+                                "name": statefulset["metadata"]["name"],
+                                "namespace": statefulset["metadata"]["namespace"],
+                                "replicas": statefulset["spec"].get("replicas", 0),
+                                "available_replicas": statefulset["status"].get("availableReplicas", 0),
+                                "ready_replicas": statefulset["status"].get("readyReplicas", 0),
+                                "is_running": statefulset["status"].get("availableReplicas", 0) > 0,
+                            }
+                            statefulset_list.append(statefulset_info)
+                        return statefulset_list
+                    else:
+                        _LOGGER.error("aiohttp statefulsets request failed with status: %s", response.status)
+                        return []
+        except Exception as ex:
+            self._log_error("aiohttp get statefulsets", ex)
+            return []
+
+    async def _get_statefulsets_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
+        """Get StatefulSets using aiohttp as fallback for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/statefulsets",
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        statefulset_list = []
+                        for statefulset in data.get("items", []):
+                            statefulset_info = {
+                                "name": statefulset["metadata"]["name"],
+                                "namespace": statefulset["metadata"]["namespace"],
+                                "replicas": statefulset["spec"].get("replicas", 0),
+                                "available_replicas": statefulset["status"].get("availableReplicas", 0),
+                                "ready_replicas": statefulset["status"].get("readyReplicas", 0),
+                                "is_running": statefulset["status"].get("availableReplicas", 0) > 0,
+                            }
+                            statefulset_list.append(statefulset_info)
+                        return statefulset_list
+                    else:
+                        _LOGGER.error("aiohttp statefulsets all namespaces request failed with status: %s", response.status)
+                        return []
+        except Exception as ex:
+            self._log_error("aiohttp get statefulsets all namespaces", ex)
+            return []
+
+    async def scale_statefulset(self, statefulset_name: str, replicas: int, namespace: str = None) -> bool:
+        """Scale a StatefulSet to the specified number of replicas."""
+        try:
+            # Use aiohttp as primary since it works better with SSL configuration
+            result = await self._scale_statefulset_aiohttp(statefulset_name, replicas, namespace)
+            if result:
+                _LOGGER.info("Successfully scaled statefulset %s to %d replicas", statefulset_name, replicas)
+            return result
+        except Exception as ex:
+            self._log_error(f"scale statefulset {statefulset_name}", ex, f"target_replicas={replicas}")
+            return False
+
+    async def _scale_statefulset_aiohttp(self, statefulset_name: str, replicas: int, namespace: str = None) -> bool:
+        """Scale StatefulSet using aiohttp as fallback."""
+        try:
+            target_namespace = namespace or self.namespace
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/strategic-merge-patch+json",
+            }
+
+            patch_data = {"spec": {"replicas": replicas}}
+
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{target_namespace}/statefulsets/{statefulset_name}/scale",
+                    headers=headers,
+                    json=patch_data,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status in [200, 201]:
+                        _LOGGER.info("Successfully scaled statefulset %s to %d replicas using aiohttp", statefulset_name, replicas)
+                        return True
+                    else:
+                        response_text = await response.text()
+                        _LOGGER.error("aiohttp scale statefulset failed with status %s: %s", response.status, response_text)
+                        return False
+        except Exception as ex:
+            self._log_error(f"aiohttp scale statefulset {statefulset_name}", ex, f"target_replicas={replicas}")
+            return False
+
+    async def stop_statefulset(self, statefulset_name: str, namespace: str = None) -> bool:
+        """Stop a StatefulSet by scaling it to 0 replicas."""
+        return await self.scale_statefulset(statefulset_name, 0, namespace)
+
+    async def start_statefulset(self, statefulset_name: str, replicas: int = 1, namespace: str = None) -> bool:
+        """Start a StatefulSet by scaling it to the specified number of replicas."""
+        return await self.scale_statefulset(statefulset_name, replicas, namespace)
+
     async def compare_authentication_methods(self) -> dict[str, Any]:
         """Compare authentication methods to help diagnose issues."""
         result = {

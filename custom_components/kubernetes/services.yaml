@@ -65,3 +65,72 @@ stop_deployment:
       name: Namespace
       description: The namespace containing the deployment (optional, defaults to configured namespace).
       required: false
+
+# StatefulSet services
+scale_statefulset:
+  name: Scale StatefulSet
+  description: Scale a Kubernetes StatefulSet to the specified number of replicas.
+  fields:
+    statefulset_name:
+      name: StatefulSet Name
+      description: The name of the StatefulSet to scale.
+      required: true
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    replicas:
+      name: Replicas
+      description: The number of replicas to scale to (0 or more).
+      required: true
+      selector:
+        number:
+          min: 0
+          max: 100
+    namespace:
+      name: Namespace
+      description: The namespace containing the StatefulSet (optional, defaults to configured namespace).
+      required: false
+
+start_statefulset:
+  name: Start StatefulSet
+  description: Start a Kubernetes StatefulSet by scaling it to the specified number of replicas.
+  fields:
+    statefulset_name:
+      name: StatefulSet Name
+      description: The name of the StatefulSet to start.
+      required: true
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    replicas:
+      name: Replicas
+      description: The number of replicas to scale to (1 or more, defaults to 1).
+      required: false
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 100
+    namespace:
+      name: Namespace
+      description: The namespace containing the StatefulSet (optional, defaults to configured namespace).
+      required: false
+
+stop_statefulset:
+  name: Stop StatefulSet
+  description: Stop a Kubernetes StatefulSet by scaling it to 0 replicas.
+  fields:
+    statefulset_name:
+      name: StatefulSet Name
+      description: The name of the StatefulSet to stop.
+      required: true
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    namespace:
+      name: Namespace
+      description: The namespace containing the StatefulSet (optional, defaults to configured namespace).
+      required: false

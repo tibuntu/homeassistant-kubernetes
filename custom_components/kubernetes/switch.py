@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from .const import DOMAIN, SWITCH_TYPE_DEPLOYMENT, ATTR_WORKLOAD_TYPE, WORKLOAD_TYPE_DEPLOYMENT
+from .const import DOMAIN, SWITCH_TYPE_DEPLOYMENT, ATTR_WORKLOAD_TYPE, WORKLOAD_TYPE_DEPLOYMENT, WORKLOAD_TYPE_STATEFULSET
 from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,10 +26,10 @@ async def async_setup_entry(
     """Set up Kubernetes switches based on a config entry."""
     client = KubernetesClient(config_entry.data)
 
+    switches = []
+
     # Get all deployments and create switches for them
     deployments = await client.get_deployments()
-
-    switches = []
     for deployment in deployments:
         switches.append(
             KubernetesDeploymentSwitch(
@@ -37,6 +37,18 @@ async def async_setup_entry(
                 config_entry,
                 deployment["name"],
                 deployment["namespace"]
+            )
+        )
+
+    # Get all StatefulSets and create switches for them
+    statefulsets = await client.get_statefulsets()
+    for statefulset in statefulsets:
+        switches.append(
+            KubernetesStatefulSetSwitch(
+                client,
+                config_entry,
+                statefulset["name"],
+                statefulset["namespace"]
             )
         )
 
@@ -182,3 +194,144 @@ class KubernetesDeploymentSwitch(SwitchEntity):
 
         _LOGGER.warning("Deployment %s scaling verification timed out after %d attempts",
                        self.deployment_name, max_attempts)
+
+
+class KubernetesStatefulSetSwitch(SwitchEntity):
+    """Switch for controlling a Kubernetes StatefulSet."""
+
+    def __init__(
+        self,
+        client: KubernetesClient,
+        config_entry: ConfigEntry,
+        statefulset_name: str,
+        namespace: str
+    ) -> None:
+        """Initialize the StatefulSet switch."""
+        self.client = client
+        self.config_entry = config_entry
+        self.statefulset_name = statefulset_name
+        self.namespace = namespace
+        self._attr_has_entity_name = True
+        self._attr_name = statefulset_name
+        self._attr_unique_id = f"{config_entry.entry_id}_{statefulset_name}_statefulset"
+        self._attr_icon = "mdi:kubernetes"
+        self._is_on = False
+        self._replicas = 0
+        self._last_scale_time = 0
+        self._scale_cooldown = 10  # Don't update state for 10 seconds after scaling
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if the StatefulSet is running (has replicas > 0)."""
+        return self._is_on
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return entity specific state attributes."""
+        return {
+            "statefulset_name": self.statefulset_name,
+            "namespace": self.namespace,
+            "replicas": self._replicas,
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
+        }
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the StatefulSet on by scaling to 1 replica."""
+        _LOGGER.info("Scaling StatefulSet %s to 1 replica", self.statefulset_name)
+        success = await self.client.start_statefulset(
+            self.statefulset_name,
+            replicas=1,
+            namespace=self.namespace
+        )
+        if success:
+            # Set optimistic state immediately
+            self._is_on = True
+            self._replicas = 1
+            self._last_scale_time = time.time()
+            self.async_write_ha_state()
+            _LOGGER.info("Successfully scaled StatefulSet %s to 1 replica", self.statefulset_name)
+
+            # Verify the scaling actually took effect
+            await self._verify_scaling(1)
+        else:
+            _LOGGER.error("Failed to start StatefulSet %s", self.statefulset_name)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the StatefulSet off by scaling to 0 replicas."""
+        _LOGGER.info("Scaling StatefulSet %s to 0 replicas", self.statefulset_name)
+        success = await self.client.stop_statefulset(
+            self.statefulset_name,
+            namespace=self.namespace
+        )
+        if success:
+            # Set optimistic state immediately
+            self._is_on = False
+            self._replicas = 0
+            self._last_scale_time = time.time()
+            self.async_write_ha_state()
+            _LOGGER.info("Successfully scaled StatefulSet %s to 0 replicas", self.statefulset_name)
+
+            # Verify the scaling actually took effect
+            await self._verify_scaling(0)
+        else:
+            _LOGGER.error("Failed to stop StatefulSet %s", self.statefulset_name)
+
+    async def async_update(self) -> None:
+        """Update the switch state."""
+        # Don't update state immediately after scaling to allow Kubernetes time to propagate changes
+        if time.time() - self._last_scale_time < self._scale_cooldown:
+            _LOGGER.debug("Skipping state update for %s (scaled recently, cooldown: %.1fs remaining)",
+                         self.statefulset_name, self._scale_cooldown - (time.time() - self._last_scale_time))
+            return
+
+        try:
+            statefulsets = await self.client.get_statefulsets()
+            for statefulset in statefulsets:
+                if statefulset["name"] == self.statefulset_name:
+                    old_replicas = self._replicas
+                    old_state = self._is_on
+
+                    self._replicas = statefulset["replicas"]
+                    self._is_on = statefulset["is_running"]
+
+                    # Log state changes for debugging
+                    if old_replicas != self._replicas:
+                        _LOGGER.info("StatefulSet %s replicas changed: %d -> %d",
+                                   self.statefulset_name, old_replicas, self._replicas)
+                    if old_state != self._is_on:
+                        _LOGGER.info("StatefulSet %s state changed: %s -> %s",
+                                   self.statefulset_name, old_state, self._is_on)
+                    else:
+                        _LOGGER.debug("StatefulSet %s state unchanged: replicas=%d, is_running=%s",
+                                    self.statefulset_name, self._replicas, self._is_on)
+                    break
+            else:
+                _LOGGER.warning("StatefulSet %s not found in API response", self.statefulset_name)
+        except Exception as ex:
+            _LOGGER.error("Failed to update StatefulSet switch %s: %s", self.statefulset_name, ex)
+
+    async def _verify_scaling(self, target_replicas: int) -> None:
+        """Verify that scaling actually took effect."""
+        max_attempts = 6  # Try for 30 seconds (6 * 5 second delays)
+        for attempt in range(max_attempts):
+            await asyncio.sleep(5)  # Wait 5 seconds between checks
+
+            try:
+                statefulsets = await self.client.get_statefulsets()
+                for statefulset in statefulsets:
+                    if statefulset["name"] == self.statefulset_name:
+                        current_replicas = statefulset["replicas"]
+                        if current_replicas == target_replicas:
+                            _LOGGER.info("StatefulSet %s scaling verified: %d replicas",
+                                       self.statefulset_name, current_replicas)
+                            return
+                        else:
+                            _LOGGER.debug("StatefulSet %s still scaling: %d replicas (target: %d)",
+                                        self.statefulset_name, current_replicas, target_replicas)
+                        break
+            except Exception as ex:
+                _LOGGER.warning("Failed to verify scaling for %s (attempt %d): %s",
+                              self.statefulset_name, attempt + 1, ex)
+
+        _LOGGER.warning("StatefulSet %s scaling verification timed out after %d attempts",
+                       self.statefulset_name, max_attempts)

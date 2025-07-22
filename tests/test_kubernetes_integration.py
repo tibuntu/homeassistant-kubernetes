@@ -3,7 +3,17 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Import from the custom component directly
-from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.const import (
+    DOMAIN,
+    SWITCH_TYPE_DEPLOYMENT,
+    SWITCH_TYPE_STATEFULSET,
+    SERVICE_SCALE_DEPLOYMENT,
+    SERVICE_START_DEPLOYMENT,
+    SERVICE_STOP_DEPLOYMENT,
+    SERVICE_SCALE_STATEFULSET,
+    SERVICE_START_STATEFULSET,
+    SERVICE_STOP_STATEFULSET,
+)
 from custom_components.kubernetes.kubernetes_client import KubernetesClient
 from custom_components.kubernetes.sensor import KubernetesPodsSensor
 from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
@@ -52,6 +62,21 @@ def mock_kubernetes_client(mock_config):
     client.scale_deployment = AsyncMock(return_value=True)
     client.start_deployment = AsyncMock(return_value=True)
     client.stop_deployment = AsyncMock(return_value=True)
+    # Add StatefulSet methods
+    client.get_statefulsets_count = AsyncMock(return_value=1)
+    client.get_statefulsets = AsyncMock(return_value=[
+        {
+            "name": "redis-statefulset",
+            "namespace": "default",
+            "replicas": 3,
+            "available_replicas": 3,
+            "ready_replicas": 3,
+            "is_running": True,
+        }
+    ])
+    client.scale_statefulset = AsyncMock(return_value=True)
+    client.start_statefulset = AsyncMock(return_value=True)
+    client.stop_statefulset = AsyncMock(return_value=True)
     return client
 
 
@@ -228,24 +253,170 @@ async def test_kubernetes_client_deployment_control(mock_config):
     client.stop_deployment.assert_called_once_with("test-deployment", "default")
 
 
-def test_integration_constants():
-    """Test integration constants."""
-    from custom_components.kubernetes.const import (
-        DOMAIN,
-        CONF_HOST,
-        CONF_PORT,
-        CONF_API_TOKEN,
-        SWITCH_TYPE_DEPLOYMENT,
-        SERVICE_SCALE_DEPLOYMENT,
-        SERVICE_START_DEPLOYMENT,
-        SERVICE_STOP_DEPLOYMENT,
+async def test_kubernetes_client_statefulset_control(mock_config):
+    """Test Kubernetes client StatefulSet control methods."""
+    client = KubernetesClient(mock_config)
+
+    # Mock the StatefulSet control methods
+    client.scale_statefulset = AsyncMock(return_value=True)
+    client.start_statefulset = AsyncMock(return_value=True)
+    client.stop_statefulset = AsyncMock(return_value=True)
+
+    # Test scale StatefulSet
+    result = await client.scale_statefulset("test-statefulset", 3, "default")
+    assert result is True
+    client.scale_statefulset.assert_called_once_with("test-statefulset", 3, "default")
+
+    # Test start StatefulSet
+    result = await client.start_statefulset("test-statefulset", 2, "default")
+    assert result is True
+    client.start_statefulset.assert_called_once_with("test-statefulset", 2, "default")
+
+    # Test stop StatefulSet
+    result = await client.stop_statefulset("test-statefulset", "default")
+    assert result is True
+    client.stop_statefulset.assert_called_once_with("test-statefulset", "default")
+
+
+async def test_statefulset_switch_initialization(mock_kubernetes_client):
+    """Test StatefulSet switch initialization."""
+    # Create a mock config entry
+    mock_config_entry = MagicMock()
+    mock_config_entry.entry_id = "test_entry_id"
+
+    from custom_components.kubernetes.switch import KubernetesStatefulSetSwitch
+
+    switch = KubernetesStatefulSetSwitch(
+        mock_kubernetes_client,
+        mock_config_entry,
+        "redis-statefulset",
+        "default"
     )
 
-    assert DOMAIN == "kubernetes"
-    assert CONF_HOST == "host"
-    assert CONF_PORT == "port"
-    assert CONF_API_TOKEN == "api_token"
+    # Test basic properties
+    assert switch.statefulset_name == "redis-statefulset"
+    assert switch.namespace == "default"
+    assert switch.name == "redis-statefulset"
+    assert switch.unique_id == "test_entry_id_redis-statefulset_statefulset"
+
+    # Test attributes
+    attributes = switch.extra_state_attributes
+    assert attributes["statefulset_name"] == "redis-statefulset"
+    assert attributes["namespace"] == "default"
+    assert attributes["workload_type"] == "StatefulSet"
+
+
+async def test_statefulset_switch_update(mock_kubernetes_client):
+    """Test StatefulSet switch update."""
+    # Create a mock config entry
+    mock_config_entry = MagicMock()
+    mock_config_entry.entry_id = "test_entry_id"
+
+    from custom_components.kubernetes.switch import KubernetesStatefulSetSwitch
+
+    switch = KubernetesStatefulSetSwitch(
+        mock_kubernetes_client,
+        mock_config_entry,
+        "redis-statefulset",
+        "default"
+    )
+
+    # Mock the get_statefulsets method
+    mock_kubernetes_client.get_statefulsets = AsyncMock(return_value=[
+        {
+            "name": "redis-statefulset",
+            "namespace": "default",
+            "replicas": 3,
+            "available_replicas": 3,
+            "ready_replicas": 3,
+            "is_running": True,
+        }
+    ])
+
+    # Test the update method
+    await switch.async_update()
+
+    # Verify the switch state was updated
+    assert switch.is_on is True
+    assert switch._replicas == 3
+
+
+async def test_statefulset_switch_turn_on(mock_kubernetes_client):
+    """Test StatefulSet switch turn on."""
+    # Create a mock config entry
+    mock_config_entry = MagicMock()
+    mock_config_entry.entry_id = "test_entry_id"
+
+    from custom_components.kubernetes.switch import KubernetesStatefulSetSwitch
+
+    switch = KubernetesStatefulSetSwitch(
+        mock_kubernetes_client,
+        mock_config_entry,
+        "redis-statefulset",
+        "default"
+    )
+
+    # Mock the async_write_ha_state method to avoid the hass error
+    switch.async_write_ha_state = AsyncMock()
+
+    # Initially off
+    switch._is_on = False
+    switch._replicas = 0
+
+    # Test turn on
+    await switch.async_turn_on()
+
+    # Verify the client was called and state was updated
+    mock_kubernetes_client.start_statefulset.assert_called_once_with(
+        "redis-statefulset", replicas=1, namespace="default"
+    )
+    assert switch._is_on is True
+    assert switch._replicas == 1
+
+
+async def test_statefulset_switch_turn_off(mock_kubernetes_client):
+    """Test StatefulSet switch turn off."""
+    # Create a mock config entry
+    mock_config_entry = MagicMock()
+    mock_config_entry.entry_id = "test_entry_id"
+
+    from custom_components.kubernetes.switch import KubernetesStatefulSetSwitch
+
+    switch = KubernetesStatefulSetSwitch(
+        mock_kubernetes_client,
+        mock_config_entry,
+        "redis-statefulset",
+        "default"
+    )
+
+    # Mock the async_write_ha_state method to avoid the hass error
+    switch.async_write_ha_state = AsyncMock()
+
+    # Initially on
+    switch._is_on = True
+    switch._replicas = 3
+
+    # Test turn off
+    await switch.async_turn_off()
+
+    # Verify the client was called and state was updated
+    mock_kubernetes_client.stop_statefulset.assert_called_once_with(
+        "redis-statefulset", namespace="default"
+    )
+    assert switch._is_on is False
+    assert switch._replicas == 0
+
+
+def test_constants():
+    """Test that all constants are properly defined."""
+    # Test switch types
     assert SWITCH_TYPE_DEPLOYMENT == "deployment"
+    assert SWITCH_TYPE_STATEFULSET == "statefulset"
+
+    # Test service names
     assert SERVICE_SCALE_DEPLOYMENT == "scale_deployment"
     assert SERVICE_START_DEPLOYMENT == "start_deployment"
     assert SERVICE_STOP_DEPLOYMENT == "stop_deployment"
+    assert SERVICE_SCALE_STATEFULSET == "scale_statefulset"
+    assert SERVICE_START_STATEFULSET == "start_statefulset"
+    assert SERVICE_STOP_STATEFULSET == "stop_statefulset"

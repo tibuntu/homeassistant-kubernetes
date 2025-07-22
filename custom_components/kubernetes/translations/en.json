@@ -36,6 +36,9 @@
       },
       "kubernetes_deployments_count": {
         "name": "Deployments Count"
+      },
+      "kubernetes_statefulsets_count": {
+        "name": "StatefulSets Count"
       }
     },
     "binary_sensor": {
@@ -46,6 +49,9 @@
     "switch": {
       "kubernetes_deployment": {
         "name": "Deployment"
+      },
+      "kubernetes_statefulset": {
+        "name": "StatefulSet"
       }
     }
   }
