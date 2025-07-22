@@ -136,7 +136,7 @@ If you encounter 401 Unauthorized errors, this typically indicates an authentica
    kubectl auth can-i patch deployments/scale --as=system:serviceaccount:default:homeassistant-monitor
    ```
 
-For detailed troubleshooting steps, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
+For detailed troubleshooting steps, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md) and [Logging Documentation](docs/LOGGING.md).
 
 ### Connection Issues
 

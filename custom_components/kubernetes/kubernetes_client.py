@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 import aiohttp
@@ -41,8 +42,82 @@ class KubernetesClient:
         self.ca_cert = config_data.get(CONF_CA_CERT)
         self.verify_ssl = config_data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
+        # Error deduplication tracking
+        self._last_auth_error_time = 0
+        self._auth_error_cooldown = 300  # 5 minutes between auth error logs
+
         # Initialize Kubernetes client
         self._setup_kubernetes_client()
+
+    def _log_error(self, operation: str, error: Exception, context: str = "") -> None:
+        """Log errors with structured context and actionable information."""
+        cluster_info = f"cluster={self.cluster_name}, host={self.host}:{self.port}"
+        namespace_info = f"namespace={self.namespace}" if not self.monitor_all_namespaces else "all_namespaces"
+
+        if isinstance(error, ApiException):
+            # Handle Kubernetes API exceptions
+            if error.status == 401:
+                # Deduplicate authentication errors to reduce log noise
+                current_time = time.time()
+                if current_time - self._last_auth_error_time > self._auth_error_cooldown:
+                    _LOGGER.error(
+                        "Authentication failed for %s (%s, %s). Check API token and RBAC permissions. "
+                        "This error will be suppressed for 5 minutes to reduce log noise.",
+                        operation, cluster_info, namespace_info
+                    )
+                    self._last_auth_error_time = current_time
+                else:
+                    _LOGGER.debug(
+                        "Authentication failed for %s (%s, %s) - using fallback method",
+                        operation, cluster_info, namespace_info
+                    )
+            elif error.status == 403:
+                _LOGGER.error(
+                    "Permission denied for %s (%s, %s). Check RBAC roles and namespace access.",
+                    operation, cluster_info, namespace_info
+                )
+            elif error.status == 404:
+                _LOGGER.error(
+                    "Resource not found for %s (%s, %s). Check namespace and resource names.",
+                    operation, cluster_info, namespace_info
+                )
+            elif error.status >= 500:
+                _LOGGER.error(
+                    "Kubernetes API server error during %s (%s, %s): %s (status: %s)",
+                    operation, cluster_info, namespace_info, error.reason, error.status
+                )
+            else:
+                _LOGGER.error(
+                    "API error during %s (%s, %s): %s (status: %s)",
+                    operation, cluster_info, namespace_info, error.reason, error.status
+                )
+        elif isinstance(error, aiohttp.ClientError):
+            # Handle network/HTTP errors
+            _LOGGER.error(
+                "Network error during %s (%s, %s): %s",
+                operation, cluster_info, namespace_info, str(error)
+            )
+        elif isinstance(error, asyncio.TimeoutError):
+            _LOGGER.error(
+                "Timeout during %s (%s, %s). Check network connectivity and API server response time.",
+                operation, cluster_info, namespace_info
+            )
+        else:
+            # Handle other exceptions
+            _LOGGER.error(
+                "Unexpected error during %s (%s, %s): %s",
+                operation, cluster_info, namespace_info, str(error)
+            )
+
+    def _log_success(self, operation: str, details: str = "") -> None:
+        """Log successful operations with context."""
+        cluster_info = f"cluster={self.cluster_name}, host={self.host}:{self.port}"
+        namespace_info = f"namespace={self.namespace}" if not self.monitor_all_namespaces else "all_namespaces"
+
+        if details:
+            _LOGGER.debug("Successfully completed %s (%s, %s): %s", operation, cluster_info, namespace_info, details)
+        else:
+            _LOGGER.debug("Successfully completed %s (%s, %s)", operation, cluster_info, namespace_info)
 
     def _setup_kubernetes_client(self) -> None:
         """Set up the Kubernetes client configuration."""
@@ -60,25 +135,23 @@ class KubernetesClient:
         self.core_v1 = client.CoreV1Api(api_client)
         self.apps_v1 = client.AppsV1Api(api_client)
 
+        _LOGGER.debug("Kubernetes client configured: host=%s, verify_ssl=%s, ca_cert=%s",
+                     configuration.host, self.verify_ssl, "provided" if self.ca_cert else "none")
+
     async def _test_connection(self) -> bool:
         """Test the connection to Kubernetes."""
-        try:
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self.core_v1.get_api_resources)
-            return True
-        except Exception as ex:
-            _LOGGER.error("Failed to test connection: %s", ex)
-            # Fallback to aiohttp
-            return await self._test_connection_aiohttp()
+        # Use aiohttp as primary since it works better with SSL configuration
+        return await self._test_connection_aiohttp()
 
     async def _test_connection_aiohttp(self) -> bool:
-        """Test the connection using aiohttp as fallback."""
+        """Test the connection using aiohttp as primary method."""
         try:
             headers = {
                 "Authorization": f"Bearer {self.api_token}",
                 "Accept": "application/json",
             }
 
+            _LOGGER.debug("Testing connection with aiohttp...")
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/",
@@ -86,9 +159,14 @@ class KubernetesClient:
                     ssl=False,
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
-                    return response.status == 200
+                    if response.status == 200:
+                        self._log_success("connection test", "using aiohttp")
+                        return True
+                    else:
+                        _LOGGER.error("aiohttp connection test failed with status: %s", response.status)
+                        return False
         except Exception as ex:
-            _LOGGER.error("aiohttp connection test failed: %s", ex)
+            self._log_error("aiohttp connection test", ex)
             return False
 
     async def get_pods_count(self) -> int:
@@ -99,18 +177,19 @@ class KubernetesClient:
                 _LOGGER.error("Cannot connect to Kubernetes API")
                 return 0
 
+            # Use aiohttp as primary since it works better with SSL configuration
             if self.monitor_all_namespaces:
-                return await self._get_pods_count_all_namespaces()
+                result = await self._get_pods_count_all_namespaces_aiohttp()
             else:
-                return await self._get_pods_count_single_namespace()
+                result = await self._get_pods_count_aiohttp()
+
+            if result is not None:
+                self._log_success("get pods count", f"retrieved {result} pods")
+            return result
 
         except Exception as ex:
-            _LOGGER.error("Failed to get pods count: %s", ex)
-            # Fallback to aiohttp
-            if self.monitor_all_namespaces:
-                return await self._get_pods_count_all_namespaces_aiohttp()
-            else:
-                return await self._get_pods_count_aiohttp()
+            self._log_error("get pods count", ex)
+            return 0
 
     async def _get_pods_count_single_namespace(self) -> int:
         """Get pods count for a single namespace."""
@@ -118,13 +197,17 @@ class KubernetesClient:
         pods = await loop.run_in_executor(
             None, self.core_v1.list_namespaced_pod, self.namespace
         )
-        return len(pods.items)
+        count = len(pods.items)
+        self._log_success("get pods count", f"found {count} pods")
+        return count
 
     async def _get_pods_count_all_namespaces(self) -> int:
         """Get pods count across all namespaces."""
         loop = asyncio.get_event_loop()
         pods = await loop.run_in_executor(None, self.core_v1.list_pod_for_all_namespaces)
-        return len(pods.items)
+        count = len(pods.items)
+        self._log_success("get pods count", f"found {count} pods across all namespaces")
+        return count
 
     async def _get_pods_count_aiohttp(self) -> int:
         """Get pods count using aiohttp as fallback for single namespace."""
@@ -148,7 +231,7 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp pods request failed with status: %s", response.status)
                         return 0
         except Exception as ex:
-            _LOGGER.error("aiohttp pods request failed: %s", ex)
+            self._log_error("aiohttp get pods count", ex)
             return 0
 
     async def _get_pods_count_all_namespaces_aiohttp(self) -> int:
@@ -173,19 +256,20 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp all pods request failed with status: %s", response.status)
                         return 0
         except Exception as ex:
-            _LOGGER.error("aiohttp all pods request failed: %s", ex)
+            self._log_error("aiohttp get all pods count", ex)
             return 0
 
     async def get_nodes_count(self) -> int:
         """Get the count of nodes in the cluster."""
         try:
-            loop = asyncio.get_event_loop()
-            nodes = await loop.run_in_executor(None, self.core_v1.list_node)
-            return len(nodes.items)
+            # Use aiohttp as primary since it works better with SSL configuration
+            result = await self._get_nodes_count_aiohttp()
+            if result is not None:
+                self._log_success("get nodes count", f"retrieved {result} nodes")
+            return result
         except Exception as ex:
-            _LOGGER.error("Failed to get nodes count: %s", ex)
-            # Fallback to aiohttp
-            return await self._get_nodes_count_aiohttp()
+            self._log_error("get nodes count", ex)
+            return 0
 
     async def _get_nodes_count_aiohttp(self) -> int:
         """Get nodes count using aiohttp as fallback."""
@@ -209,23 +293,24 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp nodes request failed with status: %s", response.status)
                         return 0
         except Exception as ex:
-            _LOGGER.error("aiohttp nodes request failed: %s", ex)
+            self._log_error("aiohttp get nodes count", ex)
             return 0
 
     async def get_services_count(self) -> int:
         """Get the count of services in the namespace(s)."""
         try:
+            # Use aiohttp as primary since it works better with SSL configuration
             if self.monitor_all_namespaces:
-                return await self._get_services_count_all_namespaces()
+                result = await self._get_services_count_all_namespaces_aiohttp()
             else:
-                return await self._get_services_count_single_namespace()
+                result = await self._get_services_count_aiohttp()
+
+            if result is not None:
+                self._log_success("get services count", f"retrieved {result} services")
+            return result
         except Exception as ex:
-            _LOGGER.error("Failed to get services count: %s", ex)
-            # Fallback to aiohttp
-            if self.monitor_all_namespaces:
-                return await self._get_services_count_all_namespaces_aiohttp()
-            else:
-                return await self._get_services_count_aiohttp()
+            self._log_error("get services count", ex)
+            return 0
 
     async def _get_services_count_single_namespace(self) -> int:
         """Get services count for a single namespace."""
@@ -263,7 +348,7 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp services request failed with status: %s", response.status)
                         return 0
         except Exception as ex:
-            _LOGGER.error("aiohttp services request failed: %s", ex)
+            self._log_error("aiohttp get services count", ex)
             return 0
 
     async def _get_services_count_all_namespaces_aiohttp(self) -> int:
@@ -288,23 +373,24 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp all services request failed with status: %s", response.status)
                         return 0
         except Exception as ex:
-            _LOGGER.error("aiohttp all services request failed: %s", ex)
+            self._log_error("aiohttp get all services count", ex)
             return 0
 
     async def get_deployments_count(self) -> int:
         """Get the count of deployments in the namespace(s)."""
         try:
+            # Use aiohttp as primary since it works better with SSL configuration
             if self.monitor_all_namespaces:
-                return await self._get_deployments_count_all_namespaces()
+                result = await self._get_deployments_count_all_namespaces_aiohttp()
             else:
-                return await self._get_deployments_count_single_namespace()
+                result = await self._get_deployments_count_aiohttp()
+
+            if result is not None:
+                self._log_success("get deployments count", f"retrieved {result} deployments")
+            return result
         except Exception as ex:
-            _LOGGER.error("Failed to get deployments count: %s", ex)
-            # Fallback to aiohttp
-            if self.monitor_all_namespaces:
-                return await self._get_deployments_count_all_namespaces_aiohttp()
-            else:
-                return await self._get_deployments_count_aiohttp()
+            self._log_error("get deployments count", ex)
+            return 0
 
     async def _get_deployments_count_single_namespace(self) -> int:
         """Get deployments count for a single namespace."""
@@ -342,7 +428,7 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp deployments request failed with status: %s", response.status)
                         return 0
         except Exception as ex:
-            _LOGGER.error("aiohttp deployments request failed: %s", ex)
+            self._log_error("aiohttp get deployments count", ex)
             return 0
 
     async def _get_deployments_count_all_namespaces_aiohttp(self) -> int:
@@ -367,33 +453,24 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp all deployments request failed with status: %s", response.status)
                         return 0
         except Exception as ex:
-            _LOGGER.error("aiohttp all deployments request failed: %s", ex)
+            self._log_error("aiohttp get all deployments count", ex)
             return 0
 
     async def get_deployments(self) -> list[dict[str, Any]]:
         """Get all deployments in the namespace(s) with their details."""
         try:
+            # Use aiohttp as primary since it works better with SSL configuration
             if self.monitor_all_namespaces:
-                return await self._get_deployments_all_namespaces()
+                result = await self._get_deployments_all_namespaces_aiohttp()
             else:
-                return await self._get_deployments_single_namespace()
-        except ApiException as ex:
-            _LOGGER.error("API Exception during get deployments: %s", ex)
-            _LOGGER.error("Status: %s, Reason: %s", ex.status, ex.reason)
-            if ex.body:
-                _LOGGER.error("Response body: %s", ex.body)
-            # Fallback to aiohttp
-            if self.monitor_all_namespaces:
-                return await self._get_deployments_all_namespaces_aiohttp()
-            else:
-                return await self._get_deployments_aiohttp()
+                result = await self._get_deployments_aiohttp()
+
+            if result:
+                self._log_success("get deployments", f"retrieved {len(result)} deployments")
+            return result
         except Exception as ex:
-            _LOGGER.error("Failed to get deployments: %s", ex)
-            # Fallback to aiohttp
-            if self.monitor_all_namespaces:
-                return await self._get_deployments_all_namespaces_aiohttp()
-            else:
-                return await self._get_deployments_aiohttp()
+            self._log_error("get deployments", ex)
+            return []
 
     async def _get_deployments_single_namespace(self) -> list[dict[str, Any]]:
         """Get deployments for a single namespace."""
@@ -468,7 +545,7 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp deployments request failed with status: %s", response.status)
                         return []
         except Exception as ex:
-            _LOGGER.error("aiohttp deployments request failed: %s", ex)
+            self._log_error("aiohttp get deployments", ex)
             return []
 
     async def _get_deployments_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
@@ -504,34 +581,20 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp all deployments request failed with status: %s", response.status)
                         return []
         except Exception as ex:
-            _LOGGER.error("aiohttp all deployments request failed: %s", ex)
+            self._log_error("aiohttp get all deployments", ex)
             return []
 
     async def scale_deployment(self, deployment_name: str, replicas: int, namespace: str = None) -> bool:
         """Scale a deployment to the specified number of replicas."""
         try:
-            target_namespace = namespace or self.namespace
-            loop = asyncio.get_event_loop()
-
-            # Use the correct API call for scaling
-            scale_body = {"spec": {"replicas": replicas}}
-            await loop.run_in_executor(
-                None, self.apps_v1.patch_namespaced_deployment_scale,
-                deployment_name, target_namespace, scale_body
-            )
-            _LOGGER.info("Successfully scaled deployment %s to %d replicas", deployment_name, replicas)
-            return True
-        except ApiException as ex:
-            _LOGGER.error("API Exception during deployment scaling: %s", ex)
-            _LOGGER.error("Status: %s, Reason: %s", ex.status, ex.reason)
-            if ex.body:
-                _LOGGER.error("Response body: %s", ex.body)
-            # Fallback to aiohttp
-            return await self._scale_deployment_aiohttp(deployment_name, replicas, namespace)
+            # Use aiohttp as primary since it works better with SSL configuration
+            result = await self._scale_deployment_aiohttp(deployment_name, replicas, namespace)
+            if result:
+                _LOGGER.info("Successfully scaled deployment %s to %d replicas", deployment_name, replicas)
+            return result
         except Exception as ex:
-            _LOGGER.error("Failed to scale deployment %s: %s", deployment_name, ex)
-            # Fallback to aiohttp
-            return await self._scale_deployment_aiohttp(deployment_name, replicas, namespace)
+            self._log_error(f"scale deployment {deployment_name}", ex, f"target_replicas={replicas}")
+            return False
 
     async def _scale_deployment_aiohttp(self, deployment_name: str, replicas: int, namespace: str = None) -> bool:
         """Scale deployment using aiohttp as fallback."""
@@ -561,7 +624,7 @@ class KubernetesClient:
                         _LOGGER.error("aiohttp scale deployment failed with status %s: %s", response.status, response_text)
                         return False
         except Exception as ex:
-            _LOGGER.error("aiohttp scale deployment failed for %s: %s", deployment_name, ex)
+            self._log_error(f"aiohttp scale deployment {deployment_name}", ex, f"target_replicas={replicas}")
             return False
 
     async def stop_deployment(self, deployment_name: str, namespace: str = None) -> bool:
@@ -571,6 +634,112 @@ class KubernetesClient:
     async def start_deployment(self, deployment_name: str, replicas: int = 1, namespace: str = None) -> bool:
         """Start a deployment by scaling it to the specified number of replicas."""
         return await self.scale_deployment(deployment_name, replicas, namespace)
+
+    async def compare_authentication_methods(self) -> dict[str, Any]:
+        """Compare authentication methods to help diagnose issues."""
+        result = {
+            "kubernetes_client": {
+                "host": f"https://{self.host}:{self.port}",
+                "headers": {"authorization": f"Bearer {self.api_token[:10]}..." if len(self.api_token) > 10 else "Bearer [token]"},
+                "verify_ssl": self.verify_ssl,
+                "ca_cert": "provided" if self.ca_cert else "none"
+            },
+            "aiohttp_fallback": {
+                "url": f"https://{self.host}:{self.port}/api/v1/",
+                "headers": {"Authorization": f"Bearer {self.api_token[:10]}..." if len(self.api_token) > 10 else "Bearer [token]"},
+                "ssl": False
+            },
+            "token_info": {
+                "length": len(self.api_token),
+                "starts_with_ey": self.api_token.startswith("ey"),
+                "contains_dots": self.api_token.count(".") == 2
+            }
+        }
+
+        # Test both methods
+        try:
+            # Test kubernetes client
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.core_v1.get_api_resources)
+            result["kubernetes_client"]["success"] = True
+            result["kubernetes_client"]["error"] = None
+        except Exception as ex:
+            result["kubernetes_client"]["success"] = False
+            result["kubernetes_client"]["error"] = str(ex)
+
+        try:
+            # Test aiohttp
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/api/v1/",
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    result["aiohttp_fallback"]["success"] = response.status == 200
+                    result["aiohttp_fallback"]["status_code"] = response.status
+                    result["aiohttp_fallback"]["error"] = None if response.status == 200 else f"HTTP {response.status}"
+        except Exception as ex:
+            result["aiohttp_fallback"]["success"] = False
+            result["aiohttp_fallback"]["error"] = str(ex)
+
+        return result
+
+    async def test_authentication(self) -> dict[str, Any]:
+        """Test authentication and return detailed status information."""
+        result = {
+            "authenticated": False,
+            "method": "unknown",
+            "error": None,
+            "details": {}
+        }
+
+        # Test with kubernetes client first
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self.core_v1.get_api_resources)
+            result["authenticated"] = True
+            result["method"] = "kubernetes_client"
+            result["details"]["api_resources"] = "success"
+            return result
+        except ApiException as ex:
+            result["error"] = f"API Exception: {ex.status} - {ex.reason}"
+            result["details"]["api_status"] = ex.status
+            result["details"]["api_reason"] = ex.reason
+        except Exception as ex:
+            result["error"] = f"Kubernetes client error: {str(ex)}"
+
+        # Test with aiohttp fallback
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/api/v1/",
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        result["authenticated"] = True
+                        result["method"] = "aiohttp_fallback"
+                        result["details"]["http_status"] = response.status
+                        result["error"] = None
+                    else:
+                        result["error"] = f"HTTP error: {response.status}"
+                        result["details"]["http_status"] = response.status
+        except Exception as ex:
+            if not result["error"]:
+                result["error"] = f"aiohttp error: {str(ex)}"
+
+        return result
 
     async def is_cluster_healthy(self) -> bool:
         """Check if the cluster is healthy."""
