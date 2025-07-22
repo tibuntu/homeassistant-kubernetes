@@ -1,7 +1,9 @@
 """Switch platform for Kubernetes integration."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -62,6 +64,8 @@ class KubernetesDeploymentSwitch(SwitchEntity):
         self._attr_icon = "mdi:kubernetes"
         self._is_on = False
         self._replicas = 0
+        self._last_scale_time = 0
+        self._scale_cooldown = 10  # Don't update state for 10 seconds after scaling
 
     @property
     def is_on(self) -> bool:
@@ -79,39 +83,101 @@ class KubernetesDeploymentSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the deployment on by scaling to 1 replica."""
+        _LOGGER.info("Scaling deployment %s to 1 replica", self.deployment_name)
         success = await self.client.start_deployment(
             self.deployment_name,
             replicas=1,
             namespace=self.namespace
         )
         if success:
+            # Set optimistic state immediately
             self._is_on = True
             self._replicas = 1
+            self._last_scale_time = time.time()
             self.async_write_ha_state()
+            _LOGGER.info("Successfully scaled deployment %s to 1 replica", self.deployment_name)
+
+            # Verify the scaling actually took effect
+            await self._verify_scaling(1)
         else:
             _LOGGER.error("Failed to start deployment %s", self.deployment_name)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the deployment off by scaling to 0 replicas."""
+        _LOGGER.info("Scaling deployment %s to 0 replicas", self.deployment_name)
         success = await self.client.stop_deployment(
             self.deployment_name,
             namespace=self.namespace
         )
         if success:
+            # Set optimistic state immediately
             self._is_on = False
             self._replicas = 0
+            self._last_scale_time = time.time()
             self.async_write_ha_state()
+            _LOGGER.info("Successfully scaled deployment %s to 0 replicas", self.deployment_name)
+
+            # Verify the scaling actually took effect
+            await self._verify_scaling(0)
         else:
             _LOGGER.error("Failed to stop deployment %s", self.deployment_name)
 
     async def async_update(self) -> None:
         """Update the switch state."""
+        # Don't update state immediately after scaling to allow Kubernetes time to propagate changes
+        if time.time() - self._last_scale_time < self._scale_cooldown:
+            _LOGGER.debug("Skipping state update for %s (scaled recently, cooldown: %.1fs remaining)",
+                         self.deployment_name, self._scale_cooldown - (time.time() - self._last_scale_time))
+            return
+
         try:
             deployments = await self.client.get_deployments()
             for deployment in deployments:
                 if deployment["name"] == self.deployment_name:
+                    old_replicas = self._replicas
+                    old_state = self._is_on
+
                     self._replicas = deployment["replicas"]
                     self._is_on = deployment["is_running"]
+
+                    # Log state changes for debugging
+                    if old_replicas != self._replicas:
+                        _LOGGER.info("Deployment %s replicas changed: %d -> %d",
+                                   self.deployment_name, old_replicas, self._replicas)
+                    if old_state != self._is_on:
+                        _LOGGER.info("Deployment %s state changed: %s -> %s",
+                                   self.deployment_name, old_state, self._is_on)
+                    else:
+                        _LOGGER.debug("Deployment %s state unchanged: replicas=%d, is_running=%s",
+                                    self.deployment_name, self._replicas, self._is_on)
                     break
+            else:
+                _LOGGER.warning("Deployment %s not found in API response", self.deployment_name)
         except Exception as ex:
             _LOGGER.error("Failed to update deployment switch %s: %s", self.deployment_name, ex)
+
+    async def _verify_scaling(self, target_replicas: int) -> None:
+        """Verify that scaling actually took effect."""
+        max_attempts = 6  # Try for 30 seconds (6 * 5 second delays)
+        for attempt in range(max_attempts):
+            await asyncio.sleep(5)  # Wait 5 seconds between checks
+
+            try:
+                deployments = await self.client.get_deployments()
+                for deployment in deployments:
+                    if deployment["name"] == self.deployment_name:
+                        current_replicas = deployment["replicas"]
+                        if current_replicas == target_replicas:
+                            _LOGGER.info("Deployment %s scaling verified: %d replicas",
+                                       self.deployment_name, current_replicas)
+                            return
+                        else:
+                            _LOGGER.debug("Deployment %s still scaling: %d replicas (target: %d)",
+                                        self.deployment_name, current_replicas, target_replicas)
+                        break
+            except Exception as ex:
+                _LOGGER.warning("Failed to verify scaling for %s (attempt %d): %s",
+                              self.deployment_name, attempt + 1, ex)
+
+        _LOGGER.warning("Deployment %s scaling verification timed out after %d attempts",
+                       self.deployment_name, max_attempts)
