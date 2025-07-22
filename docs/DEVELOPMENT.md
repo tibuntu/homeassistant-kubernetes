@@ -4,8 +4,8 @@ This document provides detailed instructions for developing and contributing to 
 
 ## Prerequisites
 
-- Python 3.9 or higher
-- Home Assistant 2023.8 or higher
+- Python 3.12 or higher
+- Home Assistant 2025.7 or higher
 - A Kubernetes cluster for testing (minikube, kind, or cloud-based)
 - Git
 
@@ -18,20 +18,7 @@ git clone https://github.com/tibuntu/homeassistant-kubernetes.git
 cd homeassistant-kubernetes
 ```
 
-### 2. Run the Setup Script
-
-```bash
-./scripts/setup_dev_environment.sh
-```
-
-This script will:
-- Check Python version requirements
-- Create a virtual environment
-- Install dependencies
-- Set up the development environment
-- Create necessary symlinks
-
-### 3. Manual Setup (Alternative)
+### 2. Manual Setup (Alternative)
 
 If you prefer to set up manually:
 
