@@ -38,7 +38,7 @@ dev = [
     "flake8==7.0.0",
     "importlib-metadata<6.0.0",
     "mypy==0.991",
-    "homeassistant==2025.7.2",
+    "homeassistant==2025.7.3",
 ]
 
 [tool.setuptools.packages.find]
