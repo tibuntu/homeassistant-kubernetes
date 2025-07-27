@@ -5,7 +5,7 @@ metadata:
 rules:
 # Read permissions for monitoring
 - apiGroups: [""]
-  resources: ["pods", "services", "nodes", "namespaces"]
+  resources: ["pods", "nodes", "namespaces"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets", "statefulsets"]

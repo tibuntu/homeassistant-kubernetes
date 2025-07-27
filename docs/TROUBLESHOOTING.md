@@ -74,7 +74,7 @@ The service account needs these permissions:
 ```yaml
 # Read permissions
 - apiGroups: [""]
-  resources: ["pods", "services", "nodes", "namespaces"]
+  resources: ["pods", "nodes", "namespaces"]
   verbs: ["get", "list", "watch"]
 
 # Deployment permissions (including scaling)

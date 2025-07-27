@@ -31,9 +31,7 @@
       "kubernetes_nodes_count": {
         "name": "Nodes Count"
       },
-      "kubernetes_services_count": {
-        "name": "Services Count"
-      },
+
       "kubernetes_deployments_count": {
         "name": "Deployments Count"
       },

@@ -187,7 +187,7 @@ script:
           entity_id:
             - sensor.kubernetes_pods_count
             - sensor.kubernetes_nodes_count
-            - sensor.kubernetes_services_count
+
             - sensor.kubernetes_deployments_count
             - binary_sensor.kubernetes_cluster_health
 
@@ -273,8 +273,7 @@ scene:
         state: "0"
       sensor.kubernetes_nodes_count:
         state: "0"
-      sensor.kubernetes_services_count:
-        state: "0"
+
       sensor.kubernetes_deployments_count:
         state: "0"
       sensor.kubernetes_statefulsets_count:
@@ -326,7 +325,7 @@ lovelace:
               entities:
                 - entity: sensor.kubernetes_pods_count
                 - entity: sensor.kubernetes_nodes_count
-                - entity: sensor.kubernetes_services_count
+
                 - entity: sensor.kubernetes_deployments_count
                 - entity: sensor.kubernetes_statefulsets_count
         - type: vertical-stack

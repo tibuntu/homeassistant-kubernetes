@@ -25,7 +25,6 @@ DEFAULT_SCAN_INTERVAL = 30
 # Sensor types
 SENSOR_TYPE_PODS = "pods"
 SENSOR_TYPE_NODES = "nodes"
-SENSOR_TYPE_SERVICES = "services"
 SENSOR_TYPE_DEPLOYMENTS = "deployments"
 SENSOR_TYPE_STATEFULSETS = "statefulsets"
 
@@ -55,4 +54,6 @@ ATTR_DEPLOYMENT_NAME = "deployment_name"
 ATTR_STATEFULSET_NAME = "statefulset_name"
 ATTR_NAMESPACE = "namespace"
 ATTR_REPLICAS = "replicas"
+
+# Workload attributes
 ATTR_WORKLOAD_TYPE = "workload_type"

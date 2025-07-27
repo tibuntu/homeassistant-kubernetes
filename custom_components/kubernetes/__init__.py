@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 
 from .services import async_setup_services, async_unload_services
 
+
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SWITCH]
 
 DOMAIN = "kubernetes"

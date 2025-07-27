@@ -38,7 +38,7 @@ def mock_kubernetes_client(mock_config):
     client = KubernetesClient(mock_config)
     client.get_pods_count = AsyncMock(return_value=5)
     client.get_nodes_count = AsyncMock(return_value=3)
-    client.get_services_count = AsyncMock(return_value=10)
+
     client.get_deployments_count = AsyncMock(return_value=2)
     client.get_deployments = AsyncMock(return_value=[
         {

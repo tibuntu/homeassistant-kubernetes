@@ -6,7 +6,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 ## Features
 
-- **Cluster Monitoring**: Monitor pods, nodes, services, and deployments across your Kubernetes cluster
+- **Cluster Monitoring**: Monitor pods, nodes, and deployments across your Kubernetes cluster
 - **Multi-Namespace Support**: Monitor a single namespace or all namespaces in your cluster
 - **Deployment Control**: Scale, start, and stop deployments directly from Home Assistant
 - **Robust Connectivity**: Automatic fallback from kubernetes Python client to aiohttp for reliable API communication
@@ -59,7 +59,7 @@ The integration provides the following sensors:
 
 - **Pods Count**: Number of pods in the monitored namespace(s)
 - **Nodes Count**: Number of nodes in the cluster
-- **Services Count**: Number of services in the monitored namespace(s)
+
 - **Deployments Count**: Number of deployments in the monitored namespace(s)
 - **Cluster Health**: Binary sensor indicating if the cluster is reachable
 
@@ -100,7 +100,7 @@ The service account needs these permissions for full functionality:
 ```yaml
 # Read permissions for monitoring
 - apiGroups: [""]
-  resources: ["pods", "services", "nodes", "namespaces"]
+  resources: ["pods", "nodes", "namespaces"]
   verbs: ["get", "list", "watch"]
 
 # Deployment permissions (including scaling)
