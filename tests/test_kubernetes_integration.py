@@ -13,11 +13,14 @@ from custom_components.kubernetes.const import (
     SERVICE_SCALE_STATEFULSET,
     SERVICE_START_STATEFULSET,
     SERVICE_STOP_STATEFULSET,
+    DEFAULT_SCALE_COOLDOWN,
+    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
 )
 from custom_components.kubernetes.kubernetes_client import KubernetesClient
+from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
 from custom_components.kubernetes.sensor import KubernetesPodsSensor
 from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
-from custom_components.kubernetes.switch import KubernetesDeploymentSwitch
+from custom_components.kubernetes.switch import KubernetesDeploymentSwitch, KubernetesStatefulSetSwitch
 
 
 @pytest.fixture
@@ -29,6 +32,8 @@ def mock_config():
         "api_token": "test-token",
         "namespace": "default",
         "verify_ssl": True,
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     }
 
 
@@ -80,6 +85,58 @@ def mock_kubernetes_client(mock_config):
     return client
 
 
+@pytest.fixture
+def mock_coordinator(mock_kubernetes_client):
+    """Mock coordinator with proper data structure."""
+    coordinator = MagicMock(spec=KubernetesDataCoordinator)
+    coordinator.client = mock_kubernetes_client
+    coordinator.last_update_success = True
+    coordinator.data = {
+        "deployments": {
+            "nginx-deployment": {
+                "name": "nginx-deployment",
+                "namespace": "default",
+                "replicas": 3,
+                "available_replicas": 3,
+                "ready_replicas": 3,
+                "is_running": True,
+            },
+            "api-deployment": {
+                "name": "api-deployment",
+                "namespace": "default",
+                "replicas": 0,
+                "available_replicas": 0,
+                "ready_replicas": 0,
+                "is_running": False,
+            }
+        },
+        "statefulsets": {
+            "redis-statefulset": {
+                "name": "redis-statefulset",
+                "namespace": "default",
+                "replicas": 3,
+                "available_replicas": 3,
+                "ready_replicas": 3,
+                "is_running": True,
+            }
+        },
+        "last_update": 1234567890.0,
+    }
+
+    # Mock the get_deployment_data method
+    def get_deployment_data(name):
+        return coordinator.data["deployments"].get(name)
+
+    def get_statefulset_data(name):
+        return coordinator.data["statefulsets"].get(name)
+
+    coordinator.get_deployment_data = get_deployment_data
+    coordinator.get_statefulset_data = get_statefulset_data
+    coordinator.async_request_refresh = AsyncMock()
+
+    return coordinator
+
+
 async def test_kubernetes_client_initialization(mock_config):
     """Test Kubernetes client initialization."""
     # This test would require a real Kubernetes cluster or mocking
@@ -100,7 +157,7 @@ async def test_pods_sensor_update(mock_kubernetes_client):
     # Test the update method
     await sensor.async_update()
 
-    # Verify the sensor value was updated
+    # Verify the sensor state was updated
     assert sensor.native_value == 5
 
 
@@ -115,18 +172,22 @@ async def test_cluster_health_sensor_update(mock_kubernetes_client):
     # Test the update method
     await sensor.async_update()
 
-    # Verify the sensor value was updated
+    # Verify the sensor state was updated
     assert sensor.is_on is True
 
 
-async def test_deployment_switch_initialization(mock_kubernetes_client):
+async def test_deployment_switch_initialization(mock_coordinator):
     """Test deployment switch initialization."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
+    mock_config_entry.data = {
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    }
 
     switch = KubernetesDeploymentSwitch(
-        mock_kubernetes_client,
+        mock_coordinator,
         mock_config_entry,
         "nginx-deployment",
         "default"
@@ -145,14 +206,18 @@ async def test_deployment_switch_initialization(mock_kubernetes_client):
     assert attributes["workload_type"] == "Deployment"
 
 
-async def test_deployment_switch_update(mock_kubernetes_client):
+async def test_deployment_switch_update(mock_coordinator):
     """Test deployment switch update."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
+    mock_config_entry.data = {
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    }
 
     switch = KubernetesDeploymentSwitch(
-        mock_kubernetes_client,
+        mock_coordinator,
         mock_config_entry,
         "nginx-deployment",
         "default"
@@ -166,14 +231,18 @@ async def test_deployment_switch_update(mock_kubernetes_client):
     assert switch._replicas == 3
 
 
-async def test_deployment_switch_turn_on(mock_kubernetes_client):
+async def test_deployment_switch_turn_on(mock_coordinator):
     """Test deployment switch turn on."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
+    mock_config_entry.data = {
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    }
 
     switch = KubernetesDeploymentSwitch(
-        mock_kubernetes_client,
+        mock_coordinator,
         mock_config_entry,
         "api-deployment",
         "default"
@@ -190,21 +259,25 @@ async def test_deployment_switch_turn_on(mock_kubernetes_client):
     await switch.async_turn_on()
 
     # Verify the client was called and state was updated
-    mock_kubernetes_client.start_deployment.assert_called_once_with(
+    mock_coordinator.client.start_deployment.assert_called_once_with(
         "api-deployment", replicas=1, namespace="default"
     )
     assert switch._is_on is True
     assert switch._replicas == 1
 
 
-async def test_deployment_switch_turn_off(mock_kubernetes_client):
+async def test_deployment_switch_turn_off(mock_coordinator):
     """Test deployment switch turn off."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
+    mock_config_entry.data = {
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    }
 
     switch = KubernetesDeploymentSwitch(
-        mock_kubernetes_client,
+        mock_coordinator,
         mock_config_entry,
         "nginx-deployment",
         "default"
@@ -221,7 +294,7 @@ async def test_deployment_switch_turn_off(mock_kubernetes_client):
     await switch.async_turn_off()
 
     # Verify the client was called and state was updated
-    mock_kubernetes_client.stop_deployment.assert_called_once_with(
+    mock_coordinator.client.stop_deployment.assert_called_once_with(
         "nginx-deployment", namespace="default"
     )
     assert switch._is_on is False
@@ -254,40 +327,42 @@ async def test_kubernetes_client_deployment_control(mock_config):
 
 
 async def test_kubernetes_client_statefulset_control(mock_config):
-    """Test Kubernetes client StatefulSet control methods."""
+    """Test Kubernetes client statefulset control methods."""
     client = KubernetesClient(mock_config)
 
-    # Mock the StatefulSet control methods
+    # Mock the async methods
     client.scale_statefulset = AsyncMock(return_value=True)
     client.start_statefulset = AsyncMock(return_value=True)
     client.stop_statefulset = AsyncMock(return_value=True)
 
-    # Test scale StatefulSet
+    # Test scale statefulset
     result = await client.scale_statefulset("test-statefulset", 3, "default")
     assert result is True
     client.scale_statefulset.assert_called_once_with("test-statefulset", 3, "default")
 
-    # Test start StatefulSet
+    # Test start statefulset
     result = await client.start_statefulset("test-statefulset", 2, "default")
     assert result is True
     client.start_statefulset.assert_called_once_with("test-statefulset", 2, "default")
 
-    # Test stop StatefulSet
+    # Test stop statefulset
     result = await client.stop_statefulset("test-statefulset", "default")
     assert result is True
     client.stop_statefulset.assert_called_once_with("test-statefulset", "default")
 
 
-async def test_statefulset_switch_initialization(mock_kubernetes_client):
-    """Test StatefulSet switch initialization."""
+async def test_statefulset_switch_initialization(mock_coordinator):
+    """Test statefulset switch initialization."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
-
-    from custom_components.kubernetes.switch import KubernetesStatefulSetSwitch
+    mock_config_entry.data = {
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    }
 
     switch = KubernetesStatefulSetSwitch(
-        mock_kubernetes_client,
+        mock_coordinator,
         mock_config_entry,
         "redis-statefulset",
         "default"
@@ -306,32 +381,22 @@ async def test_statefulset_switch_initialization(mock_kubernetes_client):
     assert attributes["workload_type"] == "StatefulSet"
 
 
-async def test_statefulset_switch_update(mock_kubernetes_client):
-    """Test StatefulSet switch update."""
+async def test_statefulset_switch_update(mock_coordinator):
+    """Test statefulset switch update."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
-
-    from custom_components.kubernetes.switch import KubernetesStatefulSetSwitch
+    mock_config_entry.data = {
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    }
 
     switch = KubernetesStatefulSetSwitch(
-        mock_kubernetes_client,
+        mock_coordinator,
         mock_config_entry,
         "redis-statefulset",
         "default"
     )
-
-    # Mock the get_statefulsets method
-    mock_kubernetes_client.get_statefulsets = AsyncMock(return_value=[
-        {
-            "name": "redis-statefulset",
-            "namespace": "default",
-            "replicas": 3,
-            "available_replicas": 3,
-            "ready_replicas": 3,
-            "is_running": True,
-        }
-    ])
 
     # Test the update method
     await switch.async_update()
@@ -341,16 +406,18 @@ async def test_statefulset_switch_update(mock_kubernetes_client):
     assert switch._replicas == 3
 
 
-async def test_statefulset_switch_turn_on(mock_kubernetes_client):
-    """Test StatefulSet switch turn on."""
+async def test_statefulset_switch_turn_on(mock_coordinator):
+    """Test statefulset switch turn on."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
-
-    from custom_components.kubernetes.switch import KubernetesStatefulSetSwitch
+    mock_config_entry.data = {
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    }
 
     switch = KubernetesStatefulSetSwitch(
-        mock_kubernetes_client,
+        mock_coordinator,
         mock_config_entry,
         "redis-statefulset",
         "default"
@@ -367,23 +434,25 @@ async def test_statefulset_switch_turn_on(mock_kubernetes_client):
     await switch.async_turn_on()
 
     # Verify the client was called and state was updated
-    mock_kubernetes_client.start_statefulset.assert_called_once_with(
+    mock_coordinator.client.start_statefulset.assert_called_once_with(
         "redis-statefulset", replicas=1, namespace="default"
     )
     assert switch._is_on is True
     assert switch._replicas == 1
 
 
-async def test_statefulset_switch_turn_off(mock_kubernetes_client):
-    """Test StatefulSet switch turn off."""
+async def test_statefulset_switch_turn_off(mock_coordinator):
+    """Test statefulset switch turn off."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
-
-    from custom_components.kubernetes.switch import KubernetesStatefulSetSwitch
+    mock_config_entry.data = {
+        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    }
 
     switch = KubernetesStatefulSetSwitch(
-        mock_kubernetes_client,
+        mock_coordinator,
         mock_config_entry,
         "redis-statefulset",
         "default"
@@ -400,7 +469,7 @@ async def test_statefulset_switch_turn_off(mock_kubernetes_client):
     await switch.async_turn_off()
 
     # Verify the client was called and state was updated
-    mock_kubernetes_client.stop_statefulset.assert_called_once_with(
+    mock_coordinator.client.stop_statefulset.assert_called_once_with(
         "redis-statefulset", namespace="default"
     )
     assert switch._is_on is False
@@ -408,12 +477,10 @@ async def test_statefulset_switch_turn_off(mock_kubernetes_client):
 
 
 def test_constants():
-    """Test that all constants are properly defined."""
-    # Test switch types
+    """Test that constants are properly defined."""
+    assert DOMAIN == "kubernetes"
     assert SWITCH_TYPE_DEPLOYMENT == "deployment"
     assert SWITCH_TYPE_STATEFULSET == "statefulset"
-
-    # Test service names
     assert SERVICE_SCALE_DEPLOYMENT == "scale_deployment"
     assert SERVICE_START_DEPLOYMENT == "start_deployment"
     assert SERVICE_STOP_DEPLOYMENT == "stop_deployment"
