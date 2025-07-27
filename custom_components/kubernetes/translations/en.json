@@ -12,7 +12,11 @@
           "namespace": "Namespace",
           "api_token": "API Token",
           "ca_cert": "CA Certificate (optional)",
-          "verify_ssl": "Verify SSL"
+          "verify_ssl": "Verify SSL",
+          "monitor_all_namespaces": "Monitor All Namespaces",
+          "switch_update_interval": "Switch Update Interval (seconds)",
+          "scale_verification_timeout": "Scale Verification Timeout (seconds)",
+          "scale_cooldown": "Scale Cooldown (seconds)"
         }
       }
     },

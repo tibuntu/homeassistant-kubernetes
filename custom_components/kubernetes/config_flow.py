@@ -20,11 +20,17 @@ from .const import (
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_VERIFY_SSL,
+    CONF_SWITCH_UPDATE_INTERVAL,
+    CONF_SCALE_VERIFICATION_TIMEOUT,
+    CONF_SCALE_COOLDOWN,
     DEFAULT_CLUSTER_NAME,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
     DEFAULT_VERIFY_SSL,
+    DEFAULT_SWITCH_UPDATE_INTERVAL,
+    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    DEFAULT_SCALE_COOLDOWN,
     DOMAIN,
 )
 
@@ -69,6 +75,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_API_TOKEN): str,
             vol.Optional(CONF_CA_CERT): str,
             vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
+            vol.Optional(CONF_SWITCH_UPDATE_INTERVAL, default=DEFAULT_SWITCH_UPDATE_INTERVAL): int,
+            vol.Optional(CONF_SCALE_VERIFICATION_TIMEOUT, default=DEFAULT_SCALE_VERIFICATION_TIMEOUT): int,
+            vol.Optional(CONF_SCALE_COOLDOWN, default=DEFAULT_SCALE_COOLDOWN): int,
         }
 
         # Add namespace field only if not monitoring all namespaces

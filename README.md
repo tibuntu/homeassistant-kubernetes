@@ -37,6 +37,19 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **Namespace**: The namespace to monitor (only shown when "Monitor All Namespaces" is disabled)
 - **CA Certificate**: Path to your cluster's CA certificate (if using self-signed certificates)
 - **Verify SSL**: Whether to verify SSL certificates (default: true)
+- **Switch Update Interval**: How often to poll for switch state updates in seconds (default: 60)
+- **Scale Verification Timeout**: Maximum time to wait for scaling operations to complete in seconds (default: 30)
+- **Scale Cooldown**: Cooldown period after scaling operations before allowing state updates in seconds (default: 10)
+
+#### Polling and State Management
+
+The integration includes advanced polling and state management features to ensure switches accurately reflect the actual Kubernetes state:
+
+- **Centralized Polling**: Uses a DataUpdateCoordinator to efficiently poll Kubernetes API
+- **Configurable Update Intervals**: Adjust polling frequency based on your needs
+- **Automatic State Recovery**: If scaling operations fail (e.g., due to RBAC errors), switches automatically recover the correct state
+- **Scale Verification**: Verifies that scaling operations actually took effect in Kubernetes
+- **Cooldown Protection**: Prevents rapid state changes during scaling operations
 
 #### Namespace Monitoring Options
 
@@ -59,9 +72,24 @@ The integration provides the following sensors:
 
 - **Pods Count**: Number of pods in the monitored namespace(s)
 - **Nodes Count**: Number of nodes in the cluster
-
 - **Deployments Count**: Number of deployments in the monitored namespace(s)
+- **StatefulSets Count**: Number of statefulsets in the monitored namespace(s)
 - **Cluster Health**: Binary sensor indicating if the cluster is reachable
+
+## Switches
+
+The integration provides switches for controlling Kubernetes workloads:
+
+- **Deployment Switches**: Control individual deployments (scale to 0/1 replicas)
+- **StatefulSet Switches**: Control individual statefulsets (scale to 0/1 replicas)
+
+### Switch Features
+
+- **Real-time State**: Switches automatically reflect the actual Kubernetes state through polling
+- **Error Recovery**: If scaling operations fail, switches automatically recover the correct state
+- **State Verification**: Verifies that scaling operations actually took effect
+- **Configurable Polling**: Adjust update intervals to balance responsiveness and API load
+- **Failure Indication**: Shows when the last scaling attempt failed via entity attributes
 
 ## Services
 

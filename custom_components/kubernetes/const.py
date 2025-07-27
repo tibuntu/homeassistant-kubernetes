@@ -21,6 +21,14 @@ DEFAULT_VERIFY_SSL = True
 
 # Update intervals
 DEFAULT_SCAN_INTERVAL = 30
+DEFAULT_SWITCH_UPDATE_INTERVAL = 60  # Default polling interval for switches
+DEFAULT_SCALE_VERIFICATION_TIMEOUT = 30  # Timeout for verifying scaling operations
+DEFAULT_SCALE_COOLDOWN = 10  # Cooldown period after scaling operations
+
+# Polling configuration keys
+CONF_SWITCH_UPDATE_INTERVAL = "switch_update_interval"
+CONF_SCALE_VERIFICATION_TIMEOUT = "scale_verification_timeout"
+CONF_SCALE_COOLDOWN = "scale_cooldown"
 
 # Sensor types
 SENSOR_TYPE_PODS = "pods"
