@@ -587,10 +587,17 @@ class KubernetesClient:
     async def scale_deployment(self, deployment_name: str, replicas: int, namespace: str = None) -> bool:
         """Scale a deployment to the specified number of replicas."""
         try:
-            # Use aiohttp as primary since it works better with SSL configuration
+            # Try aiohttp first since it works better with SSL configuration
             result = await self._scale_deployment_aiohttp(deployment_name, replicas, namespace)
             if result:
                 _LOGGER.info("Successfully scaled deployment %s to %d replicas", deployment_name, replicas)
+                return result
+
+            # Fallback to official Kubernetes client
+            _LOGGER.debug("aiohttp failed, trying official Kubernetes client for deployment scaling")
+            result = await self._scale_deployment_kubernetes(deployment_name, replicas, namespace)
+            if result:
+                _LOGGER.info("Successfully scaled deployment %s to %d replicas using official client", deployment_name, replicas)
             return result
         except Exception as ex:
             self._log_error(f"scale deployment {deployment_name}", ex, f"target_replicas={replicas}")
@@ -625,6 +632,32 @@ class KubernetesClient:
                         return False
         except Exception as ex:
             self._log_error(f"aiohttp scale deployment {deployment_name}", ex, f"target_replicas={replicas}")
+            return False
+
+    async def _scale_deployment_kubernetes(self, deployment_name: str, replicas: int, namespace: str = None) -> bool:
+        """Scale deployment using the official Kubernetes client."""
+        try:
+            target_namespace = namespace or self.namespace
+
+            # Get the current deployment
+            loop = asyncio.get_event_loop()
+            deployment = await loop.run_in_executor(
+                None, self.apps_v1.read_namespaced_deployment, deployment_name, target_namespace
+            )
+
+            # Update the replicas
+            deployment.spec.replicas = replicas
+
+            # Apply the update
+            await loop.run_in_executor(
+                None, self.apps_v1.replace_namespaced_deployment,
+                deployment_name, target_namespace, deployment
+            )
+
+            _LOGGER.info("Successfully scaled deployment %s to %d replicas using official client", deployment_name, replicas)
+            return True
+        except Exception as ex:
+            self._log_error(f"official client scale deployment {deployment_name}", ex, f"target_replicas={replicas}")
             return False
 
     async def stop_deployment(self, deployment_name: str, namespace: str = None) -> bool:
@@ -846,17 +879,24 @@ class KubernetesClient:
     async def scale_statefulset(self, statefulset_name: str, replicas: int, namespace: str = None) -> bool:
         """Scale a StatefulSet to the specified number of replicas."""
         try:
-            # Use aiohttp as primary since it works better with SSL configuration
+            # Try aiohttp first since it works better with SSL configuration
             result = await self._scale_statefulset_aiohttp(statefulset_name, replicas, namespace)
             if result:
                 _LOGGER.info("Successfully scaled statefulset %s to %d replicas", statefulset_name, replicas)
+                return result
+
+            # Fallback to official Kubernetes client
+            _LOGGER.debug("aiohttp failed, trying official Kubernetes client for StatefulSet scaling")
+            result = await self._scale_statefulset_kubernetes(statefulset_name, replicas, namespace)
+            if result:
+                _LOGGER.info("Successfully scaled statefulset %s to %d replicas using official client", statefulset_name, replicas)
             return result
         except Exception as ex:
             self._log_error(f"scale statefulset {statefulset_name}", ex, f"target_replicas={replicas}")
             return False
 
     async def _scale_statefulset_aiohttp(self, statefulset_name: str, replicas: int, namespace: str = None) -> bool:
-        """Scale StatefulSet using aiohttp as fallback."""
+        """Scale StatefulSet using aiohttp."""
         try:
             target_namespace = namespace or self.namespace
             headers = {
@@ -884,6 +924,32 @@ class KubernetesClient:
                         return False
         except Exception as ex:
             self._log_error(f"aiohttp scale statefulset {statefulset_name}", ex, f"target_replicas={replicas}")
+            return False
+
+    async def _scale_statefulset_kubernetes(self, statefulset_name: str, replicas: int, namespace: str = None) -> bool:
+        """Scale StatefulSet using the official Kubernetes client."""
+        try:
+            target_namespace = namespace or self.namespace
+
+            # Get the current StatefulSet
+            loop = asyncio.get_event_loop()
+            statefulset = await loop.run_in_executor(
+                None, self.apps_v1.read_namespaced_stateful_set, statefulset_name, target_namespace
+            )
+
+            # Update the replicas
+            statefulset.spec.replicas = replicas
+
+            # Apply the update
+            await loop.run_in_executor(
+                None, self.apps_v1.replace_namespaced_stateful_set,
+                statefulset_name, target_namespace, statefulset
+            )
+
+            _LOGGER.info("Successfully scaled statefulset %s to %d replicas using official client", statefulset_name, replicas)
+            return True
+        except Exception as ex:
+            self._log_error(f"official client scale statefulset {statefulset_name}", ex, f"target_replicas={replicas}")
             return False
 
     async def stop_statefulset(self, statefulset_name: str, namespace: str = None) -> bool:

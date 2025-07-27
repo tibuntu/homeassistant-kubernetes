@@ -275,3 +275,6 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, SERVICE_SCALE_DEPLOYMENT)
     hass.services.async_remove(DOMAIN, SERVICE_START_DEPLOYMENT)
     hass.services.async_remove(DOMAIN, SERVICE_STOP_DEPLOYMENT)
+    hass.services.async_remove(DOMAIN, SERVICE_SCALE_STATEFULSET)
+    hass.services.async_remove(DOMAIN, SERVICE_START_STATEFULSET)
+    hass.services.async_remove(DOMAIN, SERVICE_STOP_STATEFULSET)
