@@ -249,7 +249,7 @@ async def test_deployment_switch_turn_on(mock_coordinator):
     )
 
     # Mock the async_write_ha_state method to avoid the hass error
-    switch.async_write_ha_state = AsyncMock()
+    switch.async_write_ha_state = MagicMock()
 
     # Initially off
     switch._is_on = False
@@ -284,7 +284,7 @@ async def test_deployment_switch_turn_off(mock_coordinator):
     )
 
     # Mock the async_write_ha_state method to avoid the hass error
-    switch.async_write_ha_state = AsyncMock()
+    switch.async_write_ha_state = MagicMock()
 
     # Initially on
     switch._is_on = True
@@ -424,7 +424,7 @@ async def test_statefulset_switch_turn_on(mock_coordinator):
     )
 
     # Mock the async_write_ha_state method to avoid the hass error
-    switch.async_write_ha_state = AsyncMock()
+    switch.async_write_ha_state = MagicMock()
 
     # Initially off
     switch._is_on = False
@@ -459,7 +459,7 @@ async def test_statefulset_switch_turn_off(mock_coordinator):
     )
 
     # Mock the async_write_ha_state method to avoid the hass error
-    switch.async_write_ha_state = AsyncMock()
+    switch.async_write_ha_state = MagicMock()
 
     # Initially on
     switch._is_on = True
