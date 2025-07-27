@@ -16,11 +16,19 @@ rules:
 # Write permissions for control - including scaling
 - apiGroups: ["apps"]
   resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale"]
-  verbs: ["patch", "update", "get"]
+  verbs: ["patch", "update", "get", "create", "delete"]
 - apiGroups: ["extensions"]
   resources: ["deployments", "deployments/scale"]
-  verbs: ["patch", "update", "get"]
+  verbs: ["patch", "update", "get", "create", "delete"]
 # Additional permissions that might be needed
 - apiGroups: [""]
   resources: ["events"]
   verbs: ["get", "list", "watch"]
+# Ensure we can access resources across all namespaces
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list"]
+# Additional StatefulSet permissions for better compatibility
+- apiGroups: ["apps"]
+  resources: ["statefulsets/status"]
+  verbs: ["get", "patch", "update"]
