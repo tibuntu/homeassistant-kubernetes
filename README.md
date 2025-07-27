@@ -2,6 +2,8 @@
 
 A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Tibuntu&repository=homeassistant-kubernetes)
+
 ## Features
 
 - **Cluster Monitoring**: Monitor pods, nodes, services, and deployments across your Kubernetes cluster
