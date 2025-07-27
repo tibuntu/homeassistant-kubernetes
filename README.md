@@ -1,18 +1,42 @@
 # Home Assistant Kubernetes Integration
 
-A Home Assistant integration for monitoring and controlling Kubernetes clusters.
-
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Tibuntu&repository=homeassistant-kubernetes)
 
-## Features
+A comprehensive Home Assistant integration for monitoring and controlling Kubernetes clusters. Monitor your cluster's health, resource usage, and control deployments directly from Home Assistant.
 
-- **Cluster Monitoring**: Monitor pods, nodes, and deployments across your Kubernetes cluster
-- **Multi-Namespace Support**: Monitor a single namespace or all namespaces in your cluster
-- **Deployment Control**: Scale, start, and stop deployments directly from Home Assistant
-- **Robust Connectivity**: Automatic fallback from kubernetes Python client to aiohttp for reliable API communication
-- **Real-time Updates**: Get live updates on your cluster's health and resource usage
+## 📋 Table of Contents
 
-## Installation
+- [Features](#-features)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Sensors](#-sensors)
+- [Switches](#-switches)
+- [Services](#-services)
+- [Service Account Setup](#-service-account-setup)
+- [Examples](#-examples)
+- [Documentation](#-documentation)
+- [Contributing](#-contributing)
+- [License](#-license)
+
+## ✨ Features
+
+- **🔍 Cluster Monitoring**: Monitor pods, nodes, and deployments across your Kubernetes cluster
+- **📁 Multi-Namespace Support**: Monitor a single namespace or all namespaces in your cluster
+- **🎛️ Deployment Control**: Scale, start, and stop deployments directly from Home Assistant
+- **🔄 Robust Connectivity**: Automatic fallback from kubernetes Python client to aiohttp for reliable API communication
+- **⚡ Real-time Updates**: Get live updates on your cluster's health and resource usage
+- **🛡️ Advanced State Management**: Intelligent polling and state recovery for reliable operation
+
+## 📦 Installation
+
+### HACS Installation (Recommended)
+
+1. Make sure you have [HACS](https://hacs.xyz/) installed
+2. Add this repository as a custom repository in HACS
+3. Search for "Kubernetes" in the integrations section
+4. Click "Download" and restart Home Assistant
+5. Go to **Settings → Devices & Services** and add the Kubernetes integration
 
 ### Manual Installation
 
@@ -21,62 +45,43 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 3. Restart Home Assistant
 4. Go to **Settings → Devices & Services** and add the Kubernetes integration
 
-### Configuration
+## ⚙️ Configuration
 
-#### Required Settings
+### Required Settings
 
-- **Name**: A friendly name for your cluster
-- **Host**: Your Kubernetes API server host (IP address or hostname)
-- **API Token**: A valid Kubernetes service account token
-- **Port**: Kubernetes API port (default: 6443)
+| Setting | Description | Example |
+|---------|-------------|---------|
+| **Name** | A friendly name for your cluster | `Production Cluster` |
+| **Host** | Your Kubernetes API server host (IP address or hostname) | `192.168.1.100` |
+| **API Token** | A valid Kubernetes service account token | `eyJhbGciOiJSUzI1NiIs...` |
+| **Port** | Kubernetes API port | `6443` |
 
-#### Optional Settings
+### Optional Settings
 
-- **Cluster Name**: A name for your cluster (default: "default")
-- **Monitor All Namespaces**: Enable to monitor all namespaces instead of a single namespace
-- **Namespace**: The namespace to monitor (only shown when "Monitor All Namespaces" is disabled)
-- **CA Certificate**: Path to your cluster's CA certificate (if using self-signed certificates)
-- **Verify SSL**: Whether to verify SSL certificates (default: true)
-- **Switch Update Interval**: How often to poll for switch state updates in seconds (default: 60)
-- **Scale Verification Timeout**: Maximum time to wait for scaling operations to complete in seconds (default: 30)
-- **Scale Cooldown**: Cooldown period after scaling operations before allowing state updates in seconds (default: 10)
+| Setting | Description | Default |
+|---------|-------------|---------|
+| **Cluster Name** | A name for your cluster | `default` |
+| **Monitor All Namespaces** | Enable to monitor all namespaces | `false` |
+| **Namespace** | The namespace to monitor | `default` |
+| **CA Certificate** | Path to your cluster's CA certificate | `null` |
+| **Verify SSL** | Whether to verify SSL certificates | `true` |
+| **Switch Update Interval** | How often to poll for switch state updates (seconds) | `60` |
+| **Scale Verification Timeout** | Maximum time to wait for scaling operations (seconds) | `30` |
+| **Scale Cooldown** | Cooldown period after scaling operations (seconds) | `10` |
 
-#### Polling and State Management
-
-The integration includes advanced polling and state management features to ensure switches accurately reflect the actual Kubernetes state:
-
-- **Centralized Polling**: Uses a DataUpdateCoordinator to efficiently poll Kubernetes API
-- **Configurable Update Intervals**: Adjust polling frequency based on your needs
-- **Automatic State Recovery**: If scaling operations fail (e.g., due to RBAC errors), switches automatically recover the correct state
-- **Scale Verification**: Verifies that scaling operations actually took effect in Kubernetes
-- **Cooldown Protection**: Prevents rapid state changes during scaling operations
-
-#### Namespace Monitoring Options
-
-The integration supports two namespace monitoring modes:
-
-1. **Single Namespace Mode** (default):
-   - Monitor only the specified namespace
-   - Good for focused monitoring of specific applications
-   - Faster API calls and less resource usage
-
-2. **All Namespaces Mode**:
-   - Monitor all namespaces in your cluster
-   - Provides a complete cluster-wide view
-   - Shows total counts across all namespaces
-   - Useful for cluster administrators
-
-## Sensors
+## 📊 Sensors
 
 The integration provides the following sensors:
 
-- **Pods Count**: Number of pods in the monitored namespace(s)
-- **Nodes Count**: Number of nodes in the cluster
-- **Deployments Count**: Number of deployments in the monitored namespace(s)
-- **StatefulSets Count**: Number of statefulsets in the monitored namespace(s)
-- **Cluster Health**: Binary sensor indicating if the cluster is reachable
+| Sensor | Description | Example Value |
+|--------|-------------|---------------|
+| **Pods Count** | Number of pods in the monitored namespace(s) | `15` |
+| **Nodes Count** | Number of nodes in the cluster | `3` |
+| **Deployments Count** | Number of deployments in the monitored namespace(s) | `8` |
+| **StatefulSets Count** | Number of statefulsets in the monitored namespace(s) | `2` |
+| **Cluster Health** | Binary sensor indicating if the cluster is reachable | `on`/`off` |
 
-## Switches
+## 🎛️ Switches
 
 The integration provides switches for controlling Kubernetes workloads:
 
@@ -91,23 +96,32 @@ The integration provides switches for controlling Kubernetes workloads:
 - **Configurable Polling**: Adjust update intervals to balance responsiveness and API load
 - **Failure Indication**: Shows when the last scaling attempt failed via entity attributes
 
-## Services
+## 🔧 Services
 
 The integration provides the following services:
 
-- **Scale Deployment**: Scale a deployment to a specific number of replicas
-- **Stop Deployment**: Scale a deployment to 0 replicas (stop it)
-- **Start Deployment**: Scale a deployment to 1 or more replicas (start it)
+| Service | Description | Parameters |
+|---------|-------------|------------|
+| **Scale Deployment** | Scale a deployment to a specific number of replicas | `deployment_name`, `namespace`, `replicas` |
+| **Stop Deployment** | Scale a deployment to 0 replicas (stop it) | `deployment_name`, `namespace` |
+| **Start Deployment** | Scale a deployment to 1 or more replicas (start it) | `deployment_name`, `namespace`, `replicas` |
 
-### Service Parameters
+## 🔐 Service Account Setup
 
-- **deployment_name**: Name of the deployment to control
-- **namespace**: Namespace containing the deployment (optional, uses configured namespace if not specified)
-- **replicas**: Number of replicas for scaling operations
+### Quick Setup
 
-## Service Account Setup
+1. Apply the all-in-one manifest:
+```bash
+kubectl apply -f manifests/all-in-one.yaml
+```
 
-### Option 2: Individual Resources
+2. Extract the token:
+```bash
+kubectl get secret homeassistant-monitor-token -n default -o jsonpath='{.data.token}' | base64 -d
+```
+
+### Individual Resources Setup
+
 Apply resources individually:
 ```bash
 kubectl apply -f manifests/serviceaccount.yaml
@@ -116,76 +130,9 @@ kubectl apply -f manifests/clusterrolebinding.yaml
 kubectl apply -f manifests/serviceaccount-token-secret.yaml
 ```
 
-3. Extract the token:
-```bash
-kubectl get secret homeassistant-monitor-token -n default -o jsonpath='{.data.token}' | base64 -d
-```
+For detailed RBAC permissions and troubleshooting, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
-### Required Permissions
-
-The service account needs these permissions for full functionality:
-
-```yaml
-# Read permissions for monitoring
-- apiGroups: [""]
-  resources: ["pods", "nodes", "namespaces"]
-  verbs: ["get", "list", "watch"]
-
-# Deployment permissions (including scaling)
-- apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale"]
-  verbs: ["get", "list", "watch", "patch", "update"]
-```
-
-## Troubleshooting
-
-### 401 Unauthorized Errors
-
-If you encounter 401 Unauthorized errors, this typically indicates an authentication or permission issue.
-
-**Common causes:**
-- Token has expired (tokens typically expire after 1 hour)
-- Incorrect token format
-- Insufficient permissions for the service account
-- Missing RBAC permissions for deployment scaling
-
-**Solutions:**
-1. **Verify the token works** with curl:
-   ```bash
-   curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_HOST:6443/api/v1/
-   ```
-
-2. **Test deployment scaling permissions**:
-   ```bash
-   curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_HOST:6443/apis/apps/v1/namespaces/default/deployments
-   ```
-
-3. **Check service account permissions**:
-   ```bash
-   kubectl auth can-i patch deployments --as=system:serviceaccount:default:homeassistant-monitor
-   kubectl auth can-i patch deployments/scale --as=system:serviceaccount:default:homeassistant-monitor
-   ```
-
-For detailed troubleshooting steps, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md) and [Logging Documentation](docs/LOGGING.md).
-
-### Connection Issues
-
-**Host Format**: Make sure to use only the hostname or IP address (without protocol):
-- ✅ Correct: `192.168.1.49` or `k8s.example.com`
-- ❌ Incorrect: `https://192.168.1.49` or `http://k8s.example.com`
-
-**SSL Verification**: For self-signed certificates, you may need to:
-1. Provide the CA certificate path
-2. Or disable SSL verification (not recommended for production)
-
-### Performance Considerations
-
-When using "Monitor All Namespaces" mode:
-- API calls may take longer due to larger data sets
-- Consider increasing the scan interval if you have many namespaces
-- Monitor resource usage on your Home Assistant instance
-
-## Examples
+## 📝 Examples
 
 ### Automation: Scale Down Non-Critical Deployments at Night
 
@@ -235,11 +182,26 @@ views:
           - entity: sensor.kubernetes_deployments_count
           - entity: binary_sensor.kubernetes_cluster_health
 ```
-## Contributing
+
+## 📚 Documentation
+
+For detailed information, see the following documentation:
+
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Logging Documentation](docs/LOGGING.md)** - Understanding logs and debugging
+- **[Development Guide](docs/DEVELOPMENT.md)** - Contributing and development setup
+
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## License
+For development information, see the [Development Guide](docs/DEVELOPMENT.md).
+
+## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+**Note**: This integration requires a Kubernetes cluster with proper RBAC permissions configured. Make sure your service account has the necessary permissions for monitoring and controlling deployments.
 
