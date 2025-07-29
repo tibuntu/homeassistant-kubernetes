@@ -40,142 +40,91 @@ api:
 #     api_token: "your-api-token-here"
 #     verify_ssl: true
 
-# Example automations using Kubernetes sensors and control features
+# Example configuration.yaml entry for Kubernetes integration
+kubernetes:
+  host: "https://your-k8s-cluster:6443"
+  api_token: "your-api-token"
+  ca_cert: "your-ca-cert"
+  cluster_name: "production"
+  namespace: "default"
+  monitor_all_namespaces: false
+
+# Example automations using the new multi-selection services
+
+# Stop multiple deployments at once
 automation:
-  # Monitoring automations
-  - alias: "Alert on Kubernetes Cluster Down"
-    trigger:
-      platform: state
-      entity_id: binary_sensor.kubernetes_cluster_health
-      to: "off"
-    action:
-      - service: notify.mobile_app
-        data:
-          title: "Kubernetes Alert"
-          message: "Production cluster is down!"
-
-  - alias: "Alert on High Pod Count"
-    trigger:
-      platform: numeric_state
-      entity_id: sensor.kubernetes_pods_count
-      above: 100
-    action:
-      - service: notify.mobile_app
-        data:
-          title: "Kubernetes Alert"
-          message: "High pod count detected: {{ states('sensor.kubernetes_pods_count') }}"
-
-  # Control automations - Time-based scaling
-  - alias: "Scale Down Non-Critical Deployments at Night"
+  - alias: "Stop Multiple Deployments"
     trigger:
       platform: time
       at: "22:00:00"
     action:
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.stop_deployment
         data:
-          deployment_name: development-api
-          replicas: 0
-          namespace: development
-      - service: kubernetes.scale_deployment
-        data:
-          deployment_name: staging-api
-          replicas: 0
-          namespace: staging
+          deployment_names:
+            - "web-app"
+            - "api-server"
+            - "cache-service"
+          namespace: "production"
 
-  - alias: "Scale Up Deployments in Morning"
+# Start multiple deployments with specific replica counts
+  - alias: "Start Multiple Deployments"
+    trigger:
+      platform: time
+      at: "06:00:00"
+    action:
+      - service: kubernetes.start_deployment
+        data:
+          deployment_names:
+            - "web-app"
+            - "api-server"
+          replicas: 3
+          namespace: "production"
+
+# Scale multiple StatefulSets
+  - alias: "Scale Multiple StatefulSets"
     trigger:
       platform: time
       at: "08:00:00"
     action:
-      - service: kubernetes.start_deployment
-        data:
-          deployment_name: production-api
-          replicas: 3
-          namespace: production
-      - service: kubernetes.start_deployment
-        data:
-          deployment_name: development-api
-          replicas: 1
-          namespace: development
-
-  # StatefulSet control automations
-  - alias: "Scale Down StatefulSets at Night"
-    trigger:
-      platform: time
-      at: "22:00:00"
-    action:
       - service: kubernetes.scale_statefulset
         data:
-          statefulset_name: redis-cache
-          replicas: 0
-          namespace: production
-      - service: kubernetes.scale_statefulset
-        data:
-          statefulset_name: postgres-db
-          replicas: 0
-          namespace: production
-
-  - alias: "Scale Up StatefulSets in Morning"
-    trigger:
-      platform: time
-      at: "08:00:00"
-    action:
-      - service: kubernetes.start_statefulset
-        data:
-          statefulset_name: redis-cache
-          replicas: 3
-          namespace: production
-      - service: kubernetes.start_statefulset
-        data:
-          statefulset_name: postgres-db
-          replicas: 1
-          namespace: production
-
-  # Control automations - Load-based scaling
-  - alias: "Scale API Based on High CPU Usage"
-    trigger:
-      platform: numeric_state
-      entity_id: sensor.api_cpu_usage
-      above: 80
-    action:
-      - service: kubernetes.scale_deployment
-        data:
-          deployment_name: api-gateway
-          replicas: 5
-          namespace: production
-
-  - alias: "Scale Down API When Load is Low"
-    trigger:
-      platform: numeric_state
-      entity_id: sensor.api_cpu_usage
-      below: 30
-      for: "00:10:00"  # Wait 10 minutes to avoid rapid scaling
-    action:
-      - service: kubernetes.scale_deployment
-        data:
-          deployment_name: api-gateway
+          statefulset_names:
+            - "database-primary"
+            - "database-replica"
           replicas: 2
-          namespace: production
+          namespace: "database"
 
-  # Control automations - Event-based
-  - alias: "Stop Development Environment on Weekends"
+# Single deployment operations (backward compatible)
+  - alias: "Stop Single Deployment"
     trigger:
       platform: time
-      at: "18:00:00"
-    condition:
-      condition: time
-      weekday:
-        - sat
-        - sun
+      at: "23:00:00"
     action:
       - service: kubernetes.stop_deployment
         data:
-          deployment_name: development-api
-          namespace: development
-      - service: kubernetes.stop_deployment
+          deployment_name: "monitoring"
+          namespace: "monitoring"
+
+# Multiple StatefulSets with different replica counts (requires multiple calls)
+  - alias: "Scale Different StatefulSets"
+    trigger:
+      platform: time
+      at: "09:00:00"
+    action:
+      - service: kubernetes.scale_statefulset
         data:
-          deployment_name: development-database
-          namespace: development
+          statefulset_names:
+            - "redis-cache"
+            - "redis-session"
+          replicas: 3
+          namespace: "cache"
+      - service: kubernetes.scale_statefulset
+        data:
+          statefulset_names:
+            - "elasticsearch-data"
+            - "elasticsearch-master"
+          replicas: 1
+          namespace: "logging"
 
 # Example scripts for manual control
 script:

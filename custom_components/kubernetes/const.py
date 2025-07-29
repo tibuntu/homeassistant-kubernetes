@@ -63,5 +63,9 @@ ATTR_STATEFULSET_NAME = "statefulset_name"
 ATTR_NAMESPACE = "namespace"
 ATTR_REPLICAS = "replicas"
 
+# Multi-selection service attributes
+ATTR_DEPLOYMENT_NAMES = "deployment_names"
+ATTR_STATEFULSET_NAMES = "statefulset_names"
+
 # Workload attributes
 ATTR_WORKLOAD_TYPE = "workload_type"

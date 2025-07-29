@@ -134,36 +134,59 @@ For detailed RBAC permissions and troubleshooting, see the [Troubleshooting Guid
 
 ## 📝 Examples
 
-### Automation: Scale Down Non-Critical Deployments at Night
+### Automation: Stop Multiple Deployments at Night
 
 ```yaml
 automation:
-  - alias: "Scale down non-critical deployments at night"
+  - alias: "Stop multiple deployments at night"
     trigger:
       platform: time
       at: "22:00:00"
     action:
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.stop_deployment
         data:
-          deployment_name: "non-critical-app"
+          deployment_names:
+            - "development-api"
+            - "staging-api"
+            - "monitoring"
           namespace: "production"
-          replicas: 0
 ```
 
-### Automation: Scale Up Deployments in the Morning
+### Automation: Start Multiple Deployments in the Morning
 
 ```yaml
 automation:
-  - alias: "Scale up deployments in the morning"
+  - alias: "Start multiple deployments in the morning"
     trigger:
       platform: time
       at: "07:00:00"
     action:
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.start_deployment
         data:
-          deployment_name: "web-app"
-          namespace: "production"
+          deployment_names:
+            - "web-app"
+            - "api-server"
+            - "cache-service"
           replicas: 3
+          namespace: "production"
+```
+
+### Automation: Scale Multiple StatefulSets
+
+```yaml
+automation:
+  - alias: "Scale database StatefulSets"
+    trigger:
+      platform: time
+      at: "08:00:00"
+    action:
+      - service: kubernetes.scale_statefulset
+        data:
+          statefulset_names:
+            - "database-primary"
+            - "database-replica"
+          replicas: 2
+          namespace: "database"
 ```
 
 ### Dashboard: Cluster Overview

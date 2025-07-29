@@ -1,15 +1,24 @@
 scale_deployment:
   name: Scale Deployment
-  description: Scale a Kubernetes deployment to the specified number of replicas.
+  description: Scale one or more Kubernetes deployments to the specified number of replicas.
   fields:
     deployment_name:
       name: Deployment Name
-      description: The name of the deployment to scale.
-      required: true
+      description: The name of a single deployment to scale (use deployment_names for multiple).
+      required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
+    deployment_names:
+      name: Deployment Names
+      description: A list of deployment names to scale (use deployment_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
     replicas:
       name: Replicas
       description: The number of replicas to scale to (0 or more).
@@ -20,21 +29,30 @@ scale_deployment:
           max: 100
     namespace:
       name: Namespace
-      description: The namespace containing the deployment (optional, defaults to configured namespace).
+      description: The namespace containing the deployment(s) (optional, defaults to configured namespace).
       required: false
 
 start_deployment:
   name: Start Deployment
-  description: Start a Kubernetes deployment by scaling it to the specified number of replicas.
+  description: Start one or more Kubernetes deployments by scaling them to the specified number of replicas.
   fields:
     deployment_name:
       name: Deployment Name
-      description: The name of the deployment to start.
-      required: true
+      description: The name of a single deployment to start (use deployment_names for multiple).
+      required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
+    deployment_names:
+      name: Deployment Names
+      description: A list of deployment names to start (use deployment_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
     replicas:
       name: Replicas
       description: The number of replicas to scale to (1 or more, defaults to 1).
@@ -46,39 +64,57 @@ start_deployment:
           max: 100
     namespace:
       name: Namespace
-      description: The namespace containing the deployment (optional, defaults to configured namespace).
+      description: The namespace containing the deployment(s) (optional, defaults to configured namespace).
       required: false
 
 stop_deployment:
   name: Stop Deployment
-  description: Stop a Kubernetes deployment by scaling it to 0 replicas.
+  description: Stop one or more Kubernetes deployments by scaling them to 0 replicas.
   fields:
     deployment_name:
       name: Deployment Name
-      description: The name of the deployment to stop.
-      required: true
+      description: The name of a single deployment to stop (use deployment_names for multiple).
+      required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
+    deployment_names:
+      name: Deployment Names
+      description: A list of deployment names to stop (use deployment_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
     namespace:
       name: Namespace
-      description: The namespace containing the deployment (optional, defaults to configured namespace).
+      description: The namespace containing the deployment(s) (optional, defaults to configured namespace).
       required: false
 
 # StatefulSet services
 scale_statefulset:
   name: Scale StatefulSet
-  description: Scale a Kubernetes StatefulSet to the specified number of replicas.
+  description: Scale one or more Kubernetes StatefulSets to the specified number of replicas.
   fields:
     statefulset_name:
       name: StatefulSet Name
-      description: The name of the StatefulSet to scale.
-      required: true
+      description: The name of a single StatefulSet to scale (use statefulset_names for multiple).
+      required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
+    statefulset_names:
+      name: StatefulSet Names
+      description: A list of StatefulSet names to scale (use statefulset_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
     replicas:
       name: Replicas
       description: The number of replicas to scale to (0 or more).
@@ -89,21 +125,30 @@ scale_statefulset:
           max: 100
     namespace:
       name: Namespace
-      description: The namespace containing the StatefulSet (optional, defaults to configured namespace).
+      description: The namespace containing the StatefulSet(s) (optional, defaults to configured namespace).
       required: false
 
 start_statefulset:
   name: Start StatefulSet
-  description: Start a Kubernetes StatefulSet by scaling it to the specified number of replicas.
+  description: Start one or more Kubernetes StatefulSets by scaling them to the specified number of replicas.
   fields:
     statefulset_name:
       name: StatefulSet Name
-      description: The name of the StatefulSet to start.
-      required: true
+      description: The name of a single StatefulSet to start (use statefulset_names for multiple).
+      required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
+    statefulset_names:
+      name: StatefulSet Names
+      description: A list of StatefulSet names to start (use statefulset_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
     replicas:
       name: Replicas
       description: The number of replicas to scale to (1 or more, defaults to 1).
@@ -115,22 +160,31 @@ start_statefulset:
           max: 100
     namespace:
       name: Namespace
-      description: The namespace containing the StatefulSet (optional, defaults to configured namespace).
+      description: The namespace containing the StatefulSet(s) (optional, defaults to configured namespace).
       required: false
 
 stop_statefulset:
   name: Stop StatefulSet
-  description: Stop a Kubernetes StatefulSet by scaling it to 0 replicas.
+  description: Stop one or more Kubernetes StatefulSets by scaling them to 0 replicas.
   fields:
     statefulset_name:
       name: StatefulSet Name
-      description: The name of the StatefulSet to stop.
-      required: true
+      description: The name of a single StatefulSet to stop (use statefulset_names for multiple).
+      required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
+    statefulset_names:
+      name: StatefulSet Names
+      description: A list of StatefulSet names to stop (use statefulset_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
     namespace:
       name: Namespace
-      description: The namespace containing the StatefulSet (optional, defaults to configured namespace).
+      description: The namespace containing the StatefulSet(s) (optional, defaults to configured namespace).
       required: false
