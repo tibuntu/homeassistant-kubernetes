@@ -37,7 +37,7 @@ dev = [
     "isort==6.0.1",
     "flake8==7.3.0",
     "importlib-metadata<8.7.1",
-    "mypy==1.17.0",
+    "mypy==1.17.1",
     "homeassistant==2025.7.3",
 ]
 
