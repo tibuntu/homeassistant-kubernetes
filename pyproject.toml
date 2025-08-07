@@ -7,7 +7,7 @@ name = "homeassistant-kubernetes"
 version = "0.0.1"
 description = "Home Assistant integration for Kubernetes monitoring"
 readme = "README.md"
-requires-python = "==3.13.5"
+requires-python = "==3.13.6"
 license = {text = "MIT"}
 authors = [
     {name = "Timo Hankamer", email = "huts-belay7o@icloud.com"}
