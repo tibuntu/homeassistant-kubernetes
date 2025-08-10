@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "homeassistant-kubernetes"
-version = "0.0.1"
+version = "0.1.0"
 description = "Home Assistant integration for Kubernetes monitoring"
 readme = "README.md"
-requires-python = "==3.13.5"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Timo Hankamer", email = "huts-belay7o@icloud.com"}
@@ -26,19 +26,19 @@ classifiers = [
 ]
 
 dependencies = [
-    "kubernetes==33.1.0",
+    "kubernetes>=33.1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==8.4.1",
-    "pytest-asyncio==1.1.0",
-    "black==25.1.0",
-    "isort==6.0.1",
-    "flake8==7.3.0",
-    "importlib-metadata<8.7.1",
-    "mypy==1.17.1",
-    "homeassistant==2025.7.3",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "black>=25.1.0",
+    "isort>=6.0.1",
+    "flake8>=7.3.0",
+    "importlib-metadata>=8.0.0",
+    "mypy>=1.17.1",
+    "homeassistant>=2025.7.3",
 ]
 
 [tool.setuptools.packages.find]
