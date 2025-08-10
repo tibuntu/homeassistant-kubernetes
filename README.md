@@ -130,7 +130,7 @@ kubectl apply -f manifests/clusterrolebinding.yaml
 kubectl apply -f manifests/serviceaccount-token-secret.yaml
 ```
 
-For detailed RBAC permissions and troubleshooting, see the [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
+For detailed RBAC permissions and troubleshooting, see the [Troubleshooting Guide](https://tibuntu.github.io/homeassistant-kubernetes/TROUBLESHOOTING/).
 
 ## 📝 Examples
 
@@ -210,15 +210,15 @@ views:
 
 For detailed information, see the following documentation:
 
-- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-- **[Logging Documentation](docs/LOGGING.md)** - Understanding logs and debugging
-- **[Development Guide](docs/DEVELOPMENT.md)** - Contributing and development setup
+- **[Troubleshooting Guide](https://tibuntu.github.io/homeassistant-kubernetes/TROUBLESHOOTING/)** - Common issues and solutions
+- **[Logging Documentation](https://tibuntu.github.io/homeassistant-kubernetes/LOGGING/)** - Understanding logs and debugging
+- **[Development Guide](https://tibuntu.github.io/homeassistant-kubernetes/DEVELOPMENT/)** - Contributing and development setup
 
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-For development information, see the [Development Guide](docs/DEVELOPMENT.md).
+For development information, see the [Development Guide](https://tibuntu.github.io/homeassistant-kubernetes/DEVELOPMENT/).
 
 ## 📄 License
 
