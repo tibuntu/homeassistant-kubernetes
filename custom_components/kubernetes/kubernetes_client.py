@@ -7,8 +7,14 @@ import time
 from typing import Any
 
 import aiohttp
-from kubernetes import client, config
-from kubernetes.client.rest import ApiException
+
+# Use absolute import to avoid circular import with our custom component named 'kubernetes'
+try:
+    import kubernetes.client as k8s_client
+    import kubernetes.config as k8s_config
+    from kubernetes.client.rest import ApiException
+except ImportError as e:
+    raise ImportError(f"kubernetes package not installed: {e}") from e
 
 from .const import (
     CONF_API_TOKEN,
@@ -121,7 +127,7 @@ class KubernetesClient:
 
     def _setup_kubernetes_client(self) -> None:
         """Set up the Kubernetes client configuration."""
-        configuration = client.Configuration()
+        configuration = k8s_client.Configuration()
         configuration.host = f"https://{self.host}:{self.port}"
         configuration.api_key = {"authorization": f"Bearer {self.api_token}"}
         configuration.api_key_prefix = {"authorization": "Bearer"}
@@ -131,9 +137,9 @@ class KubernetesClient:
             configuration.ssl_ca_cert = self.ca_cert
 
         # Create API clients
-        api_client = client.ApiClient(configuration)
-        self.core_v1 = client.CoreV1Api(api_client)
-        self.apps_v1 = client.AppsV1Api(api_client)
+        api_client = k8s_client.ApiClient(configuration)
+        self.core_v1 = k8s_client.CoreV1Api(api_client)
+        self.apps_v1 = k8s_client.AppsV1Api(api_client)
 
         _LOGGER.debug("Kubernetes client configured: host=%s, verify_ssl=%s, ca_cert=%s",
                      configuration.host, self.verify_ssl, "provided" if self.ca_cert else "none")

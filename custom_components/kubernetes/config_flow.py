@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Any
 
 import aiohttp
 import voluptuous as vol
-from kubernetes import client, config
-from kubernetes.client.rest import ApiException
+
+# Global variables for lazy import
+KUBERNETES_AVAILABLE = None
+client = None
+ApiException = Exception
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
@@ -37,6 +41,35 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _ensure_kubernetes_imported():
+    """Ensure kubernetes package is imported."""
+    global KUBERNETES_AVAILABLE, client, ApiException
+
+    if KUBERNETES_AVAILABLE is None:
+        try:
+            # Try to import the same way as kubernetes_client.py
+            import kubernetes.client as k8s_client
+            import kubernetes.config as k8s_config  # Also import config like kubernetes_client.py
+            from kubernetes.client.rest import ApiException as K8sApiException
+
+            # Set global variables
+            client = k8s_client
+            ApiException = K8sApiException
+            KUBERNETES_AVAILABLE = True
+            _LOGGER.info("Kubernetes package imported successfully")
+
+        except ImportError as e:
+            KUBERNETES_AVAILABLE = False
+            _LOGGER.error("Kubernetes package not available: %s", e)
+            _LOGGER.debug("Python path (first 5 entries): %s", sys.path[:5])
+
+        except Exception as e:
+            KUBERNETES_AVAILABLE = False
+            _LOGGER.error("Unexpected error importing kubernetes package: %s", e)
+
+    return KUBERNETES_AVAILABLE
+
+
 class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Kubernetes."""
 
@@ -48,7 +81,12 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Handle the initial step."""
         errors = {}
 
-        if user_input is not None:
+        # Check if kubernetes package is available
+        if not _ensure_kubernetes_imported():
+            errors["base"] = "kubernetes_not_installed"
+            _LOGGER.error("Kubernetes package is not installed")
+
+        if user_input is not None and KUBERNETES_AVAILABLE:
             try:
                 # Validate the connection
                 await self._test_connection(user_input)
@@ -93,6 +131,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def _test_connection(self, user_input: dict[str, Any]) -> None:
         """Test the connection to Kubernetes."""
         import asyncio
+
+        # Check if kubernetes package is available
+        if not _ensure_kubernetes_imported():
+            raise ValueError("Kubernetes package is not installed")
 
         # Validate required fields
         if not user_input[CONF_HOST]:

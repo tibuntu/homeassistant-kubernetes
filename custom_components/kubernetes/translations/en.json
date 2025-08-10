@@ -21,7 +21,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to Kubernetes cluster"
+      "cannot_connect": "Failed to connect to Kubernetes cluster",
+      "kubernetes_not_installed": "Kubernetes Python package is not installed. Please install it using: pip install kubernetes==33.1.0"
     },
     "abort": {
       "already_configured": "Device is already configured"

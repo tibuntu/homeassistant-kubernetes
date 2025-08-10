@@ -1,6 +1,8 @@
 """The Kubernetes integration."""
 from __future__ import annotations
 
+import logging
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -14,10 +16,20 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.S
 
 DOMAIN = "kubernetes"
 
+_LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Kubernetes from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+
+    # Check if kubernetes package is available before creating client
+    try:
+        import kubernetes.client
+        _LOGGER.debug("Kubernetes package is available")
+    except ImportError as e:
+        _LOGGER.error("Kubernetes package not available: %s", e)
+        return False
 
     # Create Kubernetes client
     client = KubernetesClient(entry.data)
