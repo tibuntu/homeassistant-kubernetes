@@ -1,0 +1,10 @@
+site_name: Kubernetes Home Assistant Integration
+site_description: 'A Home Assistant integration for Kubernetes'
+site_author: 'Timo Hankamer'
+docs_dir: docs/
+repo_name: 'tibuntu/homeassistant-kubernetes'
+repo_url: 'https://github.com/tibuntu/homeassistant-kubernetes'
+nav:
+  - Home: index.md
+theme:
+  name: 'material'
