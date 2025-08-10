@@ -1,0 +1,14 @@
+# Development scripts for testing the Kubernetes integration
+
+test_kubernetes_integration:
+  alias: "Test Kubernetes Integration"
+  sequence:
+    - service: system_log.write
+      data:
+        message: "Testing Kubernetes integration..."
+        level: info
+    - delay: "00:00:02"
+    - service: system_log.write
+      data:
+        message: "Kubernetes integration test completed"
+        level: info

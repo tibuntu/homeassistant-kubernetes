@@ -1,0 +1,60 @@
+# Home Assistant Development Configuration for Kubernetes Integration
+
+# Enable selective default configuration (excluding media components that need ffmpeg)
+# Comment out default_config and use specific components instead
+default_config:
+
+# Disable components that require additional system dependencies
+# stream:  # Requires ffmpeg
+# camera:  # Often requires ffmpeg for recordings
+
+# Enhanced logging for development
+logger:
+  default: info
+  logs:
+    custom_components.kubernetes: debug
+    homeassistant.components.kubernetes: debug
+    kubernetes: debug
+
+# Frontend (no special development options needed)
+# frontend: # Already included above
+
+# HTTP configuration for development
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - ::1
+
+# File editor for easy configuration changes
+file_editor:
+
+# System health already included above
+# system_health:
+
+# Configuration for the Kubernetes integration
+# Note: Use the UI to configure the integration instead of YAML
+# kubernetes:
+  # Add your specific configuration here
+  # Examples:
+  # host: "https://kubernetes.default.svc"
+  # token: "your-token-here"
+  # verify_ssl: false
+
+# Automation for testing
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+# Development helpers
+# Uncomment the line below for Python debugging support
+# debugpy:
+#   start: true
+#   wait: false
+#   port: 5678
+
+# Uncomment for advanced debugging
+# template:
+#   - sensor:
+#       - name: "Debug Info"
+#         state: "{{ states | count }}"

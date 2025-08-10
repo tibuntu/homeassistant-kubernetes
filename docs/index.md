@@ -19,3 +19,4 @@ For installation and configuration instructions, please refer to the main [READM
 ## Support
 
 If you encounter issues, please check the [Troubleshooting](TROUBLESHOOTING.md) guide first, then feel free to open an issue on the GitHub repository.
+

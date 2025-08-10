@@ -18,7 +18,86 @@ git clone https://github.com/tibuntu/homeassistant-kubernetes.git
 cd homeassistant-kubernetes
 ```
 
-### 2. Manual Setup (Alternative)
+### 2. Development Container (Recommended)
+
+The easiest way to get started is using the provided devcontainer which provides a complete Home Assistant development environment.
+
+#### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) or [Podman](https://podman.io/getting-started/installation)
+- [Visual Studio Code](https://code.visualstudio.com/)
+- [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+
+#### Quick Start
+
+1. **Open the project in VS Code**:
+   ```bash
+   code .
+   ```
+
+2. **Start the devcontainer**:
+   - Press `F1` and select "Dev Containers: Reopen in Container"
+   - Or click the green "Reopen in Container" button when prompted
+
+3. **Wait for setup to complete** (first run takes a few minutes)
+   - Home Assistant will start automatically after setup
+
+4. **Access Home Assistant** at [http://localhost:8123](http://localhost:8123)
+   - Wait about a minute for Home Assistant to fully start up
+
+#### What's Included
+
+The devcontainer automatically provides:
+- ✅ Complete Home Assistant installation
+- ✅ Your integration automatically mounted and available
+- ✅ All development dependencies (black, isort, flake8, pytest)
+- ✅ Debug logging pre-configured
+- ✅ VS Code extensions for Python development
+- ✅ Quick test scripts and development helpers
+
+#### Development Workflow
+
+1. **Edit your integration code** directly in VS Code
+2. **Restart Home Assistant** to apply changes:
+   - Use the restart script: `/config/restart_ha.sh`
+   - Or in HA: Settings → System → Restart
+3. **Check logs**:
+   - Settings → System → Logs in HA UI
+   - Or view log file: `tail -f /config/logs/home-assistant.log`
+
+#### Testing Your Integration
+
+Configure the integration by editing `.devcontainer/configuration.yaml`:
+
+```yaml
+kubernetes:
+  host: "https://your-cluster-endpoint"
+  token: "your-service-account-token"
+  verify_ssl: false  # for development clusters
+```
+
+Or use the Home Assistant UI: Settings → Integrations → Add Integration
+
+#### Debugging
+
+**Enable Python debugging**:
+1. Uncomment in `.devcontainer/configuration.yaml`:
+   ```yaml
+   debugpy:
+     start: true
+     wait: false
+     port: 5678
+   ```
+2. Restart Home Assistant
+3. In VS Code: Run and Debug → "Python: Remote Attach" → localhost:5678
+
+**Code quality tools** (run automatically on save):
+- `black custom_components/` - code formatting
+- `isort custom_components/` - import sorting
+- `flake8 custom_components/` - linting
+- `pytest tests/` - run tests
+
+### 3. Manual Setup (Alternative)
 
 If you prefer to set up manually:
 
@@ -248,10 +327,51 @@ logger:
 
 ### Common Issues
 
+#### General Issues
+
 1. **Connection refused**: Check if the Kubernetes API server is accessible
 2. **Authentication failed**: Verify the API token is correct
 3. **SSL certificate errors**: Check CA certificate configuration
 4. **Permission denied**: Ensure the ServiceAccount has proper RBAC permissions
+
+#### Devcontainer Issues
+
+1. **Integration not loading**:
+   - Check `/config/custom_components/kubernetes/` exists in the container
+   - Verify `manifest.json` is valid
+   - Check Home Assistant logs: `ha logs --filter kubernetes`
+
+2. **Permission issues**:
+   - Ensure Docker has permission to mount volumes
+   - On Linux, you may need to adjust file ownership
+
+3. **Port conflicts**:
+   - If port 8123 is in use, update `forwardPorts` in `.devcontainer/devcontainer.json`
+
+4. **Container won't start**:
+   - Try rebuilding: F1 → "Dev Containers: Rebuild Container"
+   - Check Docker is running and has sufficient resources
+
+**Useful devcontainer commands**:
+```bash
+# Start Home Assistant
+/config/start_ha.sh &
+
+# Restart Home Assistant
+/config/restart_ha.sh
+
+# Check setup
+/config/check_setup.sh
+
+# Test integration
+python /config/test_integration.py
+
+# View logs
+tail -f /config/logs/home-assistant.log
+
+# Check running processes
+ps aux | grep hass
+```
 
 ## Contributing
 
