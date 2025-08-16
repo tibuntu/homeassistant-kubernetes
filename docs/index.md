@@ -5,6 +5,7 @@ Welcome to the documentation for the Kubernetes Home Assistant Integration. This
 ## Quick Navigation
 
 - [Development Guide](DEVELOPMENT.md) - Information for developers and contributors
+- [Entity Management](ENTITY_MANAGEMENT.md) - Automatic entity cleanup and dynamic discovery
 - [Logging Configuration](LOGGING.md) - How to configure and troubleshoot logging
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
 

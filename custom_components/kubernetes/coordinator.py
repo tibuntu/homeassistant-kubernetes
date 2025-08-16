@@ -8,6 +8,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -64,6 +65,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Successfully updated Kubernetes data: %d deployments, %d statefulsets",
                          len(deployments), len(statefulsets))
 
+            # Clean up entities for resources that no longer exist
+            await self._cleanup_orphaned_entities(data)
+
+            # Trigger discovery of new entities (listeners will handle this)
+            self.async_update_listeners()
+
             return data
 
         except Exception as ex:
@@ -87,3 +94,69 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "last_update" not in self.data:
             return 0.0
         return self.data["last_update"]
+
+    async def _cleanup_orphaned_entities(self, current_data: dict[str, Any]) -> None:
+        """Remove entities for Kubernetes resources that no longer exist."""
+        try:
+            entity_registry = async_get_entity_registry(self.hass)
+
+            # Get all entities for this integration
+            entities = entity_registry.entities.get_entries_for_config_entry_id(
+                self.config_entry.entry_id
+            )
+
+            # Track which entities should be removed
+            entities_to_remove = []
+
+            for entity in entities:
+                if not entity.unique_id:
+                    continue
+
+                # Parse the unique_id to determine resource type and name
+                # Format: {config_entry.entry_id}_{resource_name}_{resource_type}
+                if not entity.unique_id.startswith(f"{self.config_entry.entry_id}_"):
+                    continue
+
+                # Remove the config entry ID prefix
+                suffix = entity.unique_id[len(f"{self.config_entry.entry_id}_"):]
+                parts = suffix.split('_')
+                if len(parts) < 2:
+                    continue
+
+                resource_type = parts[-1]  # 'deployment' or 'statefulset'
+                resource_name = '_'.join(parts[:-1])  # Handle names with underscores
+
+                should_remove = False
+
+                if resource_type in ("deployment", "deployments"):
+                    if resource_name not in current_data.get("deployments", {}):
+                        should_remove = True
+                        _LOGGER.info("Deployment %s no longer exists, marking entity for removal", resource_name)
+                elif resource_type in ("statefulset", "statefulsets"):
+                    if resource_name not in current_data.get("statefulsets", {}):
+                        should_remove = True
+                        _LOGGER.info("StatefulSet %s no longer exists, marking entity for removal", resource_name)
+                else:
+                    # Handle other entity types like sensors that might track deployments/statefulsets
+                    # Check if this entity is tracking a deployment or statefulset that no longer exists
+                    if (resource_name not in current_data.get("deployments", {}) and
+                        resource_name not in current_data.get("statefulsets", {})):
+                        should_remove = True
+                        _LOGGER.info("Resource %s (type: %s) no longer exists, marking entity for removal",
+                                   resource_name, resource_type)
+
+                if should_remove:
+                    entities_to_remove.append(entity.entity_id)
+
+            # Remove the orphaned entities
+            for entity_id in entities_to_remove:
+                _LOGGER.info("Removing orphaned entity: %s", entity_id)
+                entity_registry.async_remove(entity_id)
+
+            if entities_to_remove:
+                _LOGGER.info("Removed %d orphaned entities", len(entities_to_remove))
+            else:
+                _LOGGER.debug("No orphaned entities found")
+
+        except Exception as ex:
+            _LOGGER.error("Failed to cleanup orphaned entities: %s", ex)

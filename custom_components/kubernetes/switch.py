@@ -8,8 +8,9 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
 from .const import (
@@ -38,6 +39,9 @@ async def async_setup_entry(
     coordinator: KubernetesDataCoordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
     client = hass.data[DOMAIN][config_entry.entry_id]["client"]
 
+    # Store the add_entities callback for dynamic entity management
+    hass.data[DOMAIN][config_entry.entry_id]["switch_add_entities"] = async_add_entities
+
     switches = []
 
     # Get all deployments and create switches for them
@@ -65,6 +69,80 @@ async def async_setup_entry(
         )
 
     async_add_entities(switches)
+
+    # Set up listener for adding new entities dynamically
+    @callback
+    def _async_add_new_entities():
+        """Add new entities when new resources are discovered."""
+        hass.async_create_task(_async_discover_and_add_new_entities(hass, config_entry, coordinator, client))
+
+    # Register the callback with the coordinator
+    coordinator.async_add_listener(_async_add_new_entities)
+
+
+async def _async_discover_and_add_new_entities(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    coordinator: KubernetesDataCoordinator,
+    client
+) -> None:
+    """Discover and add new entities for newly created Kubernetes resources."""
+    try:
+        entity_registry = async_get_entity_registry(hass)
+
+        # Get the stored add_entities callback
+        add_entities_callback = hass.data[DOMAIN][config_entry.entry_id].get("switch_add_entities")
+        if not add_entities_callback:
+            _LOGGER.warning("No add_entities callback found for dynamic entity management")
+            return
+
+        # Get existing entities for this config entry
+        existing_entities = entity_registry.entities.get_entries_for_config_entry_id(
+            config_entry.entry_id
+        )
+        existing_unique_ids = {entity.unique_id for entity in existing_entities if entity.unique_id}
+
+        new_entities = []
+
+        # Check for new deployments
+        if coordinator.data and "deployments" in coordinator.data:
+            for deployment_name, deployment_data in coordinator.data["deployments"].items():
+                unique_id = f"{config_entry.entry_id}_{deployment_name}_deployment"
+                if unique_id not in existing_unique_ids:
+                    _LOGGER.info("Adding new entity for deployment: %s", deployment_name)
+                    new_entities.append(
+                        KubernetesDeploymentSwitch(
+                            coordinator,
+                            config_entry,
+                            deployment_name,
+                            deployment_data.get("namespace", "default")
+                        )
+                    )
+
+        # Check for new StatefulSets
+        if coordinator.data and "statefulsets" in coordinator.data:
+            for statefulset_name, statefulset_data in coordinator.data["statefulsets"].items():
+                unique_id = f"{config_entry.entry_id}_{statefulset_name}_statefulset"
+                if unique_id not in existing_unique_ids:
+                    _LOGGER.info("Adding new entity for StatefulSet: %s", statefulset_name)
+                    new_entities.append(
+                        KubernetesStatefulSetSwitch(
+                            coordinator,
+                            config_entry,
+                            statefulset_name,
+                            statefulset_data.get("namespace", "default")
+                        )
+                    )
+
+        # Add new entities if any were found
+        if new_entities:
+            _LOGGER.info("Adding %d new entities", len(new_entities))
+            add_entities_callback(new_entities)
+        else:
+            _LOGGER.debug("No new entities to add")
+
+    except Exception as ex:
+        _LOGGER.error("Failed to discover and add new entities: %s", ex)
 
 
 class KubernetesDeploymentSwitch(SwitchEntity):
