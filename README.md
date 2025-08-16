@@ -8,13 +8,7 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 ## 📋 Table of Contents
 
 - [Features](#-features)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Sensors](#-sensors)
-- [Switches](#-switches)
-- [Services](#-services)
-- [Service Account Setup](#-service-account-setup)
-- [Examples](#-examples)
+- [Quick Start](#-quick-start)
 - [Documentation](#-documentation)
 - [Contributing](#-contributing)
 - [License](#-license)
@@ -28,191 +22,58 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 - **⚡ Real-time Updates**: Get live updates on your cluster's health and resource usage
 - **🛡️ Advanced State Management**: Intelligent polling and state recovery for reliable operation
 
-## 📦 Installation
+## 🚀 Quick Start
 
-### HACS Installation (Recommended)
+### Installation
 
-1. Make sure you have [HACS](https://hacs.xyz/) installed
+#### HACS (Recommended)
+1. Ensure [HACS](https://hacs.xyz/) is installed
 2. Add this repository as a custom repository in HACS
-3. Search for "Kubernetes" in the integrations section
-4. Click "Download" and restart Home Assistant
-5. Go to **Settings → Devices & Services** and add the Kubernetes integration
+3. Search for "Kubernetes" and install
+4. Restart Home Assistant
 
-### Manual Installation
+#### Manual Installation
+1. Copy `custom_components/kubernetes` to your `config/custom_components/` directory
+2. Restart Home Assistant
 
-1. Download this repository
-2. Copy the `custom_components/kubernetes` folder to your Home Assistant `config/custom_components/` directory
-3. Restart Home Assistant
-4. Go to **Settings → Devices & Services** and add the Kubernetes integration
+### Setup
 
-## ⚙️ Configuration
+1. **Configure Kubernetes Service Account**:
+   ```bash
+   # Apply the required manifests
+   kubectl apply -f manifests/serviceaccount.yaml
+   kubectl apply -f manifests/clusterrole.yaml
+   kubectl apply -f manifests/clusterrolebinding.yaml
+   kubectl apply -f manifests/serviceaccount-token-secret.yaml
 
-### Required Settings
+   # Extract the token
+   kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -o jsonpath='{.data.token}' | base64 -d
+   ```
 
-| Setting | Description | Example |
-|---------|-------------|---------|
-| **Name** | A friendly name for your cluster | `Production Cluster` |
-| **Host** | Your Kubernetes API server host (IP address or hostname) | `192.168.1.100` |
-| **API Token** | A valid Kubernetes service account token | `eyJhbGciOiJSUzI1NiIs...` |
-| **Port** | Kubernetes API port | `6443` |
+2. **Add Integration**:
+   - Go to **Settings → Devices & Services**
+   - Add "Kubernetes" integration
+   - Enter your cluster details and the token from step 1
 
-### Optional Settings
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| **Cluster Name** | A name for your cluster | `default` |
-| **Monitor All Namespaces** | Enable to monitor all namespaces | `false` |
-| **Namespace** | The namespace to monitor | `default` |
-| **CA Certificate** | Path to your cluster's CA certificate | `null` |
-| **Verify SSL** | Whether to verify SSL certificates | `true` |
-| **Switch Update Interval** | How often to poll for switch state updates (seconds) | `60` |
-| **Scale Verification Timeout** | Maximum time to wait for scaling operations (seconds) | `30` |
-| **Scale Cooldown** | Cooldown period after scaling operations (seconds) | `10` |
-
-## 📊 Sensors
-
-The integration provides the following sensors:
-
-| Sensor | Description | Example Value |
-|--------|-------------|---------------|
-| **Pods Count** | Number of pods in the monitored namespace(s) | `15` |
-| **Nodes Count** | Number of nodes in the cluster | `3` |
-| **Deployments Count** | Number of deployments in the monitored namespace(s) | `8` |
-| **StatefulSets Count** | Number of statefulsets in the monitored namespace(s) | `2` |
-| **Cluster Health** | Binary sensor indicating if the cluster is reachable | `on`/`off` |
-
-## 🎛️ Switches
-
-The integration provides switches for controlling Kubernetes workloads:
-
-- **Deployment Switches**: Control individual deployments (scale to 0/1 replicas)
-- **StatefulSet Switches**: Control individual statefulsets (scale to 0/1 replicas)
-
-### Switch Features
-
-- **Real-time State**: Switches automatically reflect the actual Kubernetes state through polling
-- **Error Recovery**: If scaling operations fail, switches automatically recover the correct state
-- **State Verification**: Verifies that scaling operations actually took effect
-- **Configurable Polling**: Adjust update intervals to balance responsiveness and API load
-- **Failure Indication**: Shows when the last scaling attempt failed via entity attributes
-
-## 🔧 Services
-
-The integration provides the following services:
-
-| Service | Description | Parameters |
-|---------|-------------|------------|
-| **Scale Deployment** | Scale a deployment to a specific number of replicas | `deployment_name`, `namespace`, `replicas` |
-| **Stop Deployment** | Scale a deployment to 0 replicas (stop it) | `deployment_name`, `namespace` |
-| **Start Deployment** | Scale a deployment to 1 or more replicas (start it) | `deployment_name`, `namespace`, `replicas` |
-
-## 🔐 Service Account Setup
-
-### Quick Setup
-
-1. Apply the all-in-one manifest:
-```bash
-kubectl apply -f manifests/all-in-one.yaml
-```
-
-2. Extract the token:
-```bash
-kubectl get secret homeassistant-monitor-token -n default -o jsonpath='{.data.token}' | base64 -d
-```
-
-### Individual Resources Setup
-
-Apply resources individually:
-```bash
-kubectl apply -f manifests/serviceaccount.yaml
-kubectl apply -f manifests/clusterrole.yaml
-kubectl apply -f manifests/clusterrolebinding.yaml
-kubectl apply -f manifests/serviceaccount-token-secret.yaml
-```
-
-For detailed RBAC permissions and troubleshooting, see the [Troubleshooting Guide](https://tibuntu.github.io/homeassistant-kubernetes/TROUBLESHOOTING/).
-
-## 📝 Examples
-
-### Automation: Stop Multiple Deployments at Night
-
-```yaml
-automation:
-  - alias: "Stop multiple deployments at night"
-    trigger:
-      platform: time
-      at: "22:00:00"
-    action:
-      - service: kubernetes.stop_deployment
-        data:
-          deployment_names:
-            - "development-api"
-            - "staging-api"
-            - "monitoring"
-          namespace: "production"
-```
-
-### Automation: Start Multiple Deployments in the Morning
-
-```yaml
-automation:
-  - alias: "Start multiple deployments in the morning"
-    trigger:
-      platform: time
-      at: "07:00:00"
-    action:
-      - service: kubernetes.start_deployment
-        data:
-          deployment_names:
-            - "web-app"
-            - "api-server"
-            - "cache-service"
-          replicas: 3
-          namespace: "production"
-```
-
-### Automation: Scale Multiple StatefulSets
-
-```yaml
-automation:
-  - alias: "Scale database StatefulSets"
-    trigger:
-      platform: time
-      at: "08:00:00"
-    action:
-      - service: kubernetes.scale_statefulset
-        data:
-          statefulset_names:
-            - "database-primary"
-            - "database-replica"
-          replicas: 2
-          namespace: "database"
-```
-
-### Dashboard: Cluster Overview
-
-```yaml
-views:
-  - title: "Kubernetes Cluster"
-    path: kubernetes
-    cards:
-      - type: entities
-        title: "Cluster Status"
-        entities:
-          - entity: sensor.kubernetes_pods_count
-          - entity: sensor.kubernetes_nodes_count
-          - entity: sensor.kubernetes_services_count
-          - entity: sensor.kubernetes_deployments_count
-          - entity: binary_sensor.kubernetes_cluster_health
-```
+3. **Start Monitoring**: The integration will automatically discover and create entities for your deployments, statefulsets, and cluster metrics.
 
 ## 📚 Documentation
 
-For detailed information, see the following documentation:
+For comprehensive documentation, visit the [docs directory](docs/):
 
-- **[Troubleshooting Guide](https://tibuntu.github.io/homeassistant-kubernetes/TROUBLESHOOTING/)** - Common issues and solutions
-- **[Logging Documentation](https://tibuntu.github.io/homeassistant-kubernetes/LOGGING/)** - Understanding logs and debugging
-- **[Development Guide](https://tibuntu.github.io/homeassistant-kubernetes/DEVELOPMENT/)** - Contributing and development setup
+### Getting Started
+- **[Configuration Guide](docs/CONFIGURATION.md)** - Detailed configuration options and settings
+- **[Service Account Setup](docs/SETUP.md)** - Kubernetes RBAC and security configuration
+- **[Examples & Automations](docs/EXAMPLES.md)** - Practical examples and automation ideas
+
+### Reference
+- **[Entities Documentation](docs/ENTITIES.md)** - Complete sensors, switches, and binary sensors reference
+- **[Services Documentation](docs/SERVICES.md)** - Available services for programmatic control
+
+### Advanced
+- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Development Guide](docs/DEVELOPMENT.md)** - Contributing and development setup
+- **[Logging Configuration](docs/LOGGING.md)** - Understanding logs and debugging
 
 ## 🤝 Contributing
 

@@ -33,12 +33,7 @@ This script will:
 #### Step 2: Manual RBAC Setup (Alternative)
 If you prefer to set up RBAC manually:
 
-1. Apply the service account manifest:
-```bash
-kubectl apply -f manifests/all-in-one.yaml
-```
-
-Or apply individual resources:
+1. Apply the required manifests:
 ```bash
 kubectl apply -f manifests/serviceaccount.yaml
 kubectl apply -f manifests/clusterrole.yaml
