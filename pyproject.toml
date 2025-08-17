@@ -55,7 +55,7 @@ dev = [
 
     # Security
     "bandit[toml]>=1.7.10",
-    "safety>=4.0.1",
+    "safety>=3.6.0",
 
     # Development tools
     "pre-commit>=4.0.1",
