@@ -1,0 +1,27 @@
+# Flake8 configuration for Home Assistant Kubernetes integration
+
+[flake8]
+max-line-length = 127
+max-complexity = 15
+ignore = E203,W503,E501,I100,I201,I202,E402
+
+per-file-ignores =
+    __init__.py:F401
+    custom_components/kubernetes/services.py:C901
+    custom_components/kubernetes/config_flow.py:C901,E402
+    custom_components/kubernetes/coordinator.py:C901
+    custom_components/kubernetes/switch.py:C901
+    tests/*:S101,F401,E402
+
+exclude =
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .mypy_cache,
+    build,
+    dist,
+    *.egg-info,
+    node_modules
+
+# Include useful plugins
+select = E,W,F,C
