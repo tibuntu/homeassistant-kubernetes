@@ -37,3 +37,6 @@ secrets.yaml
 # Kubernetes config (may contain sensitive data)
 kubeconfig
 *.kubeconfig
+
+# Node.js
+.node_modules/
