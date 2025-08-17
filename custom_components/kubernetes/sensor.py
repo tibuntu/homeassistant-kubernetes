@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,17 +21,23 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Kubernetes sensors based on a config entry."""
-    client = KubernetesClient(config_entry.data)
+    try:
+        # Get the client from hass.data (shared with other platforms)
+        client = hass.data[DOMAIN][config_entry.entry_id]["client"]
 
-    # Create sensors for different Kubernetes resources
-    sensors = [
-        KubernetesPodsSensor(client, config_entry),
-        KubernetesNodesSensor(client, config_entry),
-        KubernetesDeploymentsSensor(client, config_entry),
-        KubernetesStatefulSetsSensor(client, config_entry),
-    ]
+        # Create sensors for different Kubernetes resources
+        sensors = [
+            KubernetesPodsSensor(client, config_entry),
+            KubernetesNodesSensor(client, config_entry),
+            KubernetesDeploymentsSensor(client, config_entry),
+            KubernetesStatefulSetsSensor(client, config_entry),
+        ]
 
-    async_add_entities(sensors)
+        async_add_entities(sensors)
+        _LOGGER.debug("Successfully set up %d Kubernetes sensors", len(sensors))
+    except Exception as ex:
+        _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
+        raise
 
 
 class KubernetesBaseSensor(SensorEntity):

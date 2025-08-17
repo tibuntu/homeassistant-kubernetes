@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,7 +21,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Kubernetes binary sensors based on a config entry."""
-    client = KubernetesClient(config_entry.data)
+    # Get the client from hass.data (shared with other platforms)
+    client = hass.data[DOMAIN][config_entry.entry_id]["client"]
 
     # Create binary sensors for cluster health
     binary_sensors = [
