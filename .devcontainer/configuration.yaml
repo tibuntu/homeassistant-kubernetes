@@ -35,17 +35,16 @@ file_editor:
 # Configuration for the Kubernetes integration
 # Note: Use the UI to configure the integration instead of YAML
 # kubernetes:
-  # Add your specific configuration here
-  # Examples:
-  # host: "https://kubernetes.default.svc"
-  # token: "your-token-here"
-  # verify_ssl: false
+# Add your specific configuration here
+# Examples:
+# host: "https://kubernetes.default.svc"
+# token: "your-token-here"
+# verify_ssl: false
 
 # Automation for testing
 automation: !include automations.yaml
 script: !include scripts.yaml
 scene: !include scenes.yaml
-
 # Development helpers
 # Uncomment the line below for Python debugging support
 # debugpy:

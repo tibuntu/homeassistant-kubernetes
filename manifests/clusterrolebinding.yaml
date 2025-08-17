@@ -3,9 +3,9 @@ kind: ClusterRoleBinding
 metadata:
   name: homeassistant-kubernetes-integration
 subjects:
-- kind: ServiceAccount
-  name: homeassistant-kubernetes-integration
-  namespace: homeassistant
+  - kind: ServiceAccount
+    name: homeassistant-kubernetes-integration
+    namespace: homeassistant
 roleRef:
   kind: ClusterRole
   name: homeassistant-kubernetes-integration

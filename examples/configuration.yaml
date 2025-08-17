@@ -66,7 +66,7 @@ automation:
             - "cache-service"
           namespace: "production"
 
-# Start multiple deployments with specific replica counts
+  # Start multiple deployments with specific replica counts
   - alias: "Start Multiple Deployments"
     trigger:
       platform: time
@@ -80,7 +80,7 @@ automation:
           replicas: 3
           namespace: "production"
 
-# Scale multiple StatefulSets
+  # Scale multiple StatefulSets
   - alias: "Scale Multiple StatefulSets"
     trigger:
       platform: time
@@ -94,7 +94,7 @@ automation:
           replicas: 2
           namespace: "database"
 
-# Single deployment operations (backward compatible)
+  # Single deployment operations (backward compatible)
   - alias: "Stop Single Deployment"
     trigger:
       platform: time
@@ -105,7 +105,7 @@ automation:
           deployment_name: "monitoring"
           namespace: "monitoring"
 
-# Multiple StatefulSets with different replica counts (requires multiple calls)
+  # Multiple StatefulSets with different replica counts (requires multiple calls)
   - alias: "Scale Different StatefulSets"
     trigger:
       platform: time
