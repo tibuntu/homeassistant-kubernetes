@@ -1,4 +1,5 @@
 """The Kubernetes integration."""
+
 from __future__ import annotations
 
 import logging
@@ -10,7 +11,6 @@ from homeassistant.core import HomeAssistant
 from .coordinator import KubernetesDataCoordinator
 from .kubernetes_client import KubernetesClient
 from .services import async_setup_services, async_unload_services
-
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SWITCH]
 
@@ -25,7 +25,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Check if kubernetes package is available before creating client
     try:
-        import kubernetes.client
+        import kubernetes.client  # noqa: F401
+
         _LOGGER.debug("Kubernetes package is available")
     except ImportError as e:
         _LOGGER.error("Kubernetes package not available: %s", e)

@@ -5,7 +5,7 @@ DOMAIN = "kubernetes"
 # Configuration keys
 CONF_HOST = "host"
 CONF_PORT = "port"
-CONF_API_TOKEN = "api_token"
+CONF_API_TOKEN = "api_token"  # nosec B105
 CONF_CA_CERT = "ca_cert"
 CONF_CLUSTER_NAME = "cluster_name"
 CONF_NAMESPACE = "namespace"

@@ -1,15 +1,14 @@
 """Binary sensor platform for Kubernetes integration."""
+
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
 from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)

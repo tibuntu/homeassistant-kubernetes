@@ -1,25 +1,14 @@
 """Sensor platform for Kubernetes integration."""
+
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME, UnitOfInformation
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import StateType
 
-from .const import (
-    CONF_CLUSTER_NAME,
-    CONF_NAMESPACE,
-    DOMAIN,
-    SENSOR_TYPE_DEPLOYMENTS,
-    SENSOR_TYPE_NODES,
-    SENSOR_TYPE_PODS,
-    SENSOR_TYPE_STATEFULSETS,
-)
 from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -72,7 +61,7 @@ class KubernetesPodsSensor(KubernetesBaseSensor):
             self._attr_native_value = count
         except Exception as ex:
             _LOGGER.error("Failed to update pods sensor: %s", ex)
-            self._attr_native_value = None
+            self._attr_native_value = 0
 
 
 class KubernetesNodesSensor(KubernetesBaseSensor):
@@ -92,8 +81,7 @@ class KubernetesNodesSensor(KubernetesBaseSensor):
             self._attr_native_value = count
         except Exception as ex:
             _LOGGER.error("Failed to update nodes sensor: %s", ex)
-            self._attr_native_value = None
-
+            self._attr_native_value = 0
 
 
 class KubernetesDeploymentsSensor(KubernetesBaseSensor):
@@ -113,7 +101,7 @@ class KubernetesDeploymentsSensor(KubernetesBaseSensor):
             self._attr_native_value = count
         except Exception as ex:
             _LOGGER.error("Failed to update deployments sensor: %s", ex)
-            self._attr_native_value = None
+            self._attr_native_value = 0
 
 
 class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
@@ -133,4 +121,4 @@ class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
             self._attr_native_value = count
         except Exception as ex:
             _LOGGER.error("Failed to update StatefulSets sensor: %s", ex)
-            self._attr_native_value = None
+            self._attr_native_value = 0

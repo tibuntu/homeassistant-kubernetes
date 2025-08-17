@@ -1,4 +1,5 @@
 """Services for the Kubernetes integration."""
+
 from __future__ import annotations
 
 import logging
@@ -10,29 +11,33 @@ import voluptuous as vol
 
 from .const import (
     ATTR_DEPLOYMENT_NAME,
-    ATTR_STATEFULSET_NAME,
+    ATTR_DEPLOYMENT_NAMES,
     ATTR_NAMESPACE,
     ATTR_REPLICAS,
-    ATTR_DEPLOYMENT_NAMES,
+    ATTR_STATEFULSET_NAME,
     ATTR_STATEFULSET_NAMES,
     DOMAIN,
     SERVICE_SCALE_DEPLOYMENT,
-    SERVICE_START_DEPLOYMENT,
-    SERVICE_STOP_DEPLOYMENT,
     SERVICE_SCALE_STATEFULSET,
+    SERVICE_START_DEPLOYMENT,
     SERVICE_START_STATEFULSET,
+    SERVICE_STOP_DEPLOYMENT,
     SERVICE_STOP_STATEFULSET,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _extract_deployment_names_and_namespaces(call_data: dict[str, Any], hass: HomeAssistant) -> tuple[list[str], list[str]]:
+def _extract_deployment_names_and_namespaces(  # noqa: C901
+    call_data: dict[str, Any], hass: HomeAssistant
+) -> tuple[list[str], list[str | None]]:
     """Extract deployment names and namespaces from service call data, supporting both single and multiple selections."""
     deployment_names = []
     namespaces = []
 
-    _LOGGER.debug("Extracting deployment names and namespaces from call data: %s", call_data)
+    _LOGGER.debug(
+        "Extracting deployment names and namespaces from call data: %s", call_data
+    )
 
     if ATTR_DEPLOYMENT_NAMES in call_data:
         names = call_data[ATTR_DEPLOYMENT_NAMES]
@@ -43,30 +48,52 @@ def _extract_deployment_names_and_namespaces(call_data: dict[str, Any], hass: Ho
             # Try to get namespace from entity attributes
             namespace, deployment_name = _get_namespace_from_entity(hass, names)
             namespaces.append(namespace)
-            _LOGGER.debug("Extracted namespace: %s for deployment name: %s", namespace, names)
-        elif isinstance(names, dict) and 'entity_id' in names:
+            _LOGGER.debug(
+                "Extracted namespace: %s for deployment name: %s", namespace, names
+            )
+        elif isinstance(names, dict) and "entity_id" in names:
             # Handle Home Assistant UI format: {'entity_id': ['switch.break_time', 'switch.cert_manager']}
-            entity_ids = names['entity_id']
+            entity_ids = names["entity_id"]
             if isinstance(entity_ids, list):
                 for entity_id in entity_ids:
-                    if isinstance(entity_id, str) and entity_id.startswith('switch.'):
+                    if isinstance(entity_id, str) and entity_id.startswith("switch."):
                         # Get namespace and deployment name from entity attributes
-                        namespace, deployment_name = _get_namespace_from_entity(hass, entity_id)
+                        namespace, deployment_name = _get_namespace_from_entity(
+                            hass, entity_id
+                        )
                         if deployment_name:
                             deployment_names.append(deployment_name)
                             namespaces.append(namespace)
-                            _LOGGER.debug("Extracted deployment name: %s from entity: %s", deployment_name, entity_id)
-                            _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                            _LOGGER.debug(
+                                "Extracted deployment name: %s from entity: %s",
+                                deployment_name,
+                                entity_id,
+                            )
+                            _LOGGER.debug(
+                                "Extracted namespace: %s for entity: %s",
+                                namespace,
+                                entity_id,
+                            )
                         else:
                             # Fallback: extract from entity ID (for backward compatibility)
-                            deployment_name = entity_id.replace('switch.', '')
+                            deployment_name = entity_id.replace("switch.", "")
                             # Remove _deployment suffix if present
-                            if deployment_name.endswith('_deployment'):
-                                deployment_name = deployment_name[:-11]  # Remove '_deployment'
+                            if deployment_name.endswith("_deployment"):
+                                deployment_name = deployment_name[
+                                    :-11
+                                ]  # Remove '_deployment'
                             deployment_names.append(deployment_name)
                             namespaces.append(namespace)
-                            _LOGGER.debug("Fallback: extracted deployment name: %s from entity ID: %s", deployment_name, entity_id)
-                            _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                            _LOGGER.debug(
+                                "Fallback: extracted deployment name: %s from entity ID: %s",
+                                deployment_name,
+                                entity_id,
+                            )
+                            _LOGGER.debug(
+                                "Extracted namespace: %s for entity: %s",
+                                namespace,
+                                entity_id,
+                            )
         elif isinstance(names, list):
             # Handle list of dictionaries or strings
             for item in names:
@@ -75,29 +102,51 @@ def _extract_deployment_names_and_namespaces(call_data: dict[str, Any], hass: Ho
                     # Try to get namespace from entity attributes
                     namespace, _ = _get_namespace_from_entity(hass, item)
                     namespaces.append(namespace)
-                elif isinstance(item, dict) and 'entity_id' in item:
+                elif isinstance(item, dict) and "entity_id" in item:
                     # Handle Home Assistant UI format: [{'entity_id': ['switch.break_time', 'switch.cert_manager']}]
-                    entity_ids = item['entity_id']
+                    entity_ids = item["entity_id"]
                     if isinstance(entity_ids, list):
                         for entity_id in entity_ids:
-                            if isinstance(entity_id, str) and entity_id.startswith('switch.'):
+                            if isinstance(entity_id, str) and entity_id.startswith(
+                                "switch."
+                            ):
                                 # Get namespace and deployment name from entity attributes
-                                namespace, deployment_name = _get_namespace_from_entity(hass, entity_id)
+                                namespace, deployment_name = _get_namespace_from_entity(
+                                    hass, entity_id
+                                )
                                 if deployment_name:
                                     deployment_names.append(deployment_name)
                                     namespaces.append(namespace)
-                                    _LOGGER.debug("Extracted deployment name: %s from entity: %s", deployment_name, entity_id)
-                                    _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                                    _LOGGER.debug(
+                                        "Extracted deployment name: %s from entity: %s",
+                                        deployment_name,
+                                        entity_id,
+                                    )
+                                    _LOGGER.debug(
+                                        "Extracted namespace: %s for entity: %s",
+                                        namespace,
+                                        entity_id,
+                                    )
                                 else:
                                     # Fallback: extract from entity ID (for backward compatibility)
-                                    deployment_name = entity_id.replace('switch.', '')
+                                    deployment_name = entity_id.replace("switch.", "")
                                     # Remove _deployment suffix if present
-                                    if deployment_name.endswith('_deployment'):
-                                        deployment_name = deployment_name[:-11]  # Remove '_deployment'
+                                    if deployment_name.endswith("_deployment"):
+                                        deployment_name = deployment_name[
+                                            :-11
+                                        ]  # Remove '_deployment'
                                     deployment_names.append(deployment_name)
                                     namespaces.append(namespace)
-                                    _LOGGER.debug("Fallback: extracted deployment name: %s from entity ID: %s", deployment_name, entity_id)
-                                    _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                                    _LOGGER.debug(
+                                        "Fallback: extracted deployment name: %s from entity ID: %s",
+                                        deployment_name,
+                                        entity_id,
+                                    )
+                                    _LOGGER.debug(
+                                        "Extracted namespace: %s for entity: %s",
+                                        namespace,
+                                        entity_id,
+                                    )
 
     elif ATTR_DEPLOYMENT_NAME in call_data:
         name = call_data[ATTR_DEPLOYMENT_NAME]
@@ -107,40 +156,58 @@ def _extract_deployment_names_and_namespaces(call_data: dict[str, Any], hass: Ho
             # Try to get namespace from entity attributes
             namespace, _ = _get_namespace_from_entity(hass, name)
             namespaces.append(namespace)
-            _LOGGER.debug("Extracted namespace: %s for deployment name: %s", namespace, name)
-        elif isinstance(name, dict) and 'entity_id' in name:
+            _LOGGER.debug(
+                "Extracted namespace: %s for deployment name: %s", namespace, name
+            )
+        elif isinstance(name, dict) and "entity_id" in name:
             # Handle single entity selection
-            entity_id = name['entity_id']
-            if isinstance(entity_id, str) and entity_id.startswith('switch.'):
+            entity_id = name["entity_id"]
+            if isinstance(entity_id, str) and entity_id.startswith("switch."):
                 # Get namespace and deployment name from entity attributes
                 namespace, deployment_name = _get_namespace_from_entity(hass, entity_id)
                 if deployment_name:
                     deployment_names.append(deployment_name)
                     namespaces.append(namespace)
-                    _LOGGER.debug("Extracted deployment name: %s from entity: %s", deployment_name, entity_id)
-                    _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                    _LOGGER.debug(
+                        "Extracted deployment name: %s from entity: %s",
+                        deployment_name,
+                        entity_id,
+                    )
+                    _LOGGER.debug(
+                        "Extracted namespace: %s for entity: %s", namespace, entity_id
+                    )
                 else:
                     # Fallback: extract from entity ID (for backward compatibility)
-                    deployment_name = entity_id.replace('switch.', '')
+                    deployment_name = entity_id.replace("switch.", "")
                     # Remove _deployment suffix if present
-                    if deployment_name.endswith('_deployment'):
+                    if deployment_name.endswith("_deployment"):
                         deployment_name = deployment_name[:-11]  # Remove '_deployment'
                     deployment_names.append(deployment_name)
                     namespaces.append(namespace)
-                    _LOGGER.debug("Fallback: extracted deployment name: %s from entity ID: %s", deployment_name, entity_id)
-                    _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                    _LOGGER.debug(
+                        "Fallback: extracted deployment name: %s from entity ID: %s",
+                        deployment_name,
+                        entity_id,
+                    )
+                    _LOGGER.debug(
+                        "Extracted namespace: %s for entity: %s", namespace, entity_id
+                    )
 
     _LOGGER.debug("Final deployment names: %s", deployment_names)
     _LOGGER.debug("Final namespaces: %s", namespaces)
     return deployment_names, namespaces
 
 
-def _extract_statefulset_names_and_namespaces(call_data: dict[str, Any], hass: HomeAssistant) -> tuple[list[str], list[str]]:
+def _extract_statefulset_names_and_namespaces(  # noqa: C901
+    call_data: dict[str, Any], hass: HomeAssistant
+) -> tuple[list[str], list[str | None]]:
     """Extract StatefulSet names and namespaces from service call data, supporting both single and multiple selections."""
     statefulset_names = []
     namespaces = []
 
-    _LOGGER.debug("Extracting statefulset names and namespaces from call data: %s", call_data)
+    _LOGGER.debug(
+        "Extracting statefulset names and namespaces from call data: %s", call_data
+    )
 
     if ATTR_STATEFULSET_NAMES in call_data:
         names = call_data[ATTR_STATEFULSET_NAMES]
@@ -151,30 +218,52 @@ def _extract_statefulset_names_and_namespaces(call_data: dict[str, Any], hass: H
             # Try to get namespace from entity attributes
             namespace, _ = _get_namespace_from_entity(hass, names)
             namespaces.append(namespace)
-            _LOGGER.debug("Extracted namespace: %s for statefulset name: %s", namespace, names)
-        elif isinstance(names, dict) and 'entity_id' in names:
+            _LOGGER.debug(
+                "Extracted namespace: %s for statefulset name: %s", namespace, names
+            )
+        elif isinstance(names, dict) and "entity_id" in names:
             # Handle Home Assistant UI format: {'entity_id': ['switch.redis_statefulset', 'switch.postgres_statefulset']}
-            entity_ids = names['entity_id']
+            entity_ids = names["entity_id"]
             if isinstance(entity_ids, list):
                 for entity_id in entity_ids:
-                    if isinstance(entity_id, str) and entity_id.startswith('switch.'):
+                    if isinstance(entity_id, str) and entity_id.startswith("switch."):
                         # Get namespace and statefulset name from entity attributes
-                        namespace, statefulset_name = _get_namespace_from_entity(hass, entity_id)
+                        namespace, statefulset_name = _get_namespace_from_entity(
+                            hass, entity_id
+                        )
                         if statefulset_name:
                             statefulset_names.append(statefulset_name)
                             namespaces.append(namespace)
-                            _LOGGER.debug("Extracted statefulset name: %s from entity: %s", statefulset_name, entity_id)
-                            _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                            _LOGGER.debug(
+                                "Extracted statefulset name: %s from entity: %s",
+                                statefulset_name,
+                                entity_id,
+                            )
+                            _LOGGER.debug(
+                                "Extracted namespace: %s for entity: %s",
+                                namespace,
+                                entity_id,
+                            )
                         else:
                             # Fallback: extract from entity ID (for backward compatibility)
-                            statefulset_name = entity_id.replace('switch.', '')
+                            statefulset_name = entity_id.replace("switch.", "")
                             # Remove _statefulset suffix if present
-                            if statefulset_name.endswith('_statefulset'):
-                                statefulset_name = statefulset_name[:-12]  # Remove '_statefulset'
+                            if statefulset_name.endswith("_statefulset"):
+                                statefulset_name = statefulset_name[
+                                    :-12
+                                ]  # Remove '_statefulset'
                             statefulset_names.append(statefulset_name)
                             namespaces.append(namespace)
-                            _LOGGER.debug("Fallback: extracted statefulset name: %s from entity ID: %s", statefulset_name, entity_id)
-                            _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                            _LOGGER.debug(
+                                "Fallback: extracted statefulset name: %s from entity ID: %s",
+                                statefulset_name,
+                                entity_id,
+                            )
+                            _LOGGER.debug(
+                                "Extracted namespace: %s for entity: %s",
+                                namespace,
+                                entity_id,
+                            )
         elif isinstance(names, list):
             # Handle list of dictionaries or strings
             for item in names:
@@ -183,29 +272,51 @@ def _extract_statefulset_names_and_namespaces(call_data: dict[str, Any], hass: H
                     # Try to get namespace from entity attributes
                     namespace, _ = _get_namespace_from_entity(hass, item)
                     namespaces.append(namespace)
-                elif isinstance(item, dict) and 'entity_id' in item:
+                elif isinstance(item, dict) and "entity_id" in item:
                     # Handle Home Assistant UI format: [{'entity_id': ['switch.redis_statefulset', 'switch.postgres_statefulset']}]
-                    entity_ids = item['entity_id']
+                    entity_ids = item["entity_id"]
                     if isinstance(entity_ids, list):
                         for entity_id in entity_ids:
-                            if isinstance(entity_id, str) and entity_id.startswith('switch.'):
+                            if isinstance(entity_id, str) and entity_id.startswith(
+                                "switch."
+                            ):
                                 # Get namespace and statefulset name from entity attributes
-                                namespace, statefulset_name = _get_namespace_from_entity(hass, entity_id)
+                                namespace, statefulset_name = (
+                                    _get_namespace_from_entity(hass, entity_id)
+                                )
                                 if statefulset_name:
                                     statefulset_names.append(statefulset_name)
                                     namespaces.append(namespace)
-                                    _LOGGER.debug("Extracted statefulset name: %s from entity: %s", statefulset_name, entity_id)
-                                    _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                                    _LOGGER.debug(
+                                        "Extracted statefulset name: %s from entity: %s",
+                                        statefulset_name,
+                                        entity_id,
+                                    )
+                                    _LOGGER.debug(
+                                        "Extracted namespace: %s for entity: %s",
+                                        namespace,
+                                        entity_id,
+                                    )
                                 else:
                                     # Fallback: extract from entity ID (for backward compatibility)
-                                    statefulset_name = entity_id.replace('switch.', '')
+                                    statefulset_name = entity_id.replace("switch.", "")
                                     # Remove _statefulset suffix if present
-                                    if statefulset_name.endswith('_statefulset'):
-                                        statefulset_name = statefulset_name[:-12]  # Remove '_statefulset'
+                                    if statefulset_name.endswith("_statefulset"):
+                                        statefulset_name = statefulset_name[
+                                            :-12
+                                        ]  # Remove '_statefulset'
                                     statefulset_names.append(statefulset_name)
                                     namespaces.append(namespace)
-                                    _LOGGER.debug("Fallback: extracted statefulset name: %s from entity ID: %s", statefulset_name, entity_id)
-                                    _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                                    _LOGGER.debug(
+                                        "Fallback: extracted statefulset name: %s from entity ID: %s",
+                                        statefulset_name,
+                                        entity_id,
+                                    )
+                                    _LOGGER.debug(
+                                        "Extracted namespace: %s for entity: %s",
+                                        namespace,
+                                        entity_id,
+                                    )
 
     elif ATTR_STATEFULSET_NAME in call_data:
         name = call_data[ATTR_STATEFULSET_NAME]
@@ -215,39 +326,59 @@ def _extract_statefulset_names_and_namespaces(call_data: dict[str, Any], hass: H
             # Try to get namespace from entity attributes
             namespace, _ = _get_namespace_from_entity(hass, name)
             namespaces.append(namespace)
-            _LOGGER.debug("Extracted namespace: %s for statefulset name: %s", namespace, name)
-        elif isinstance(name, dict) and 'entity_id' in name:
+            _LOGGER.debug(
+                "Extracted namespace: %s for statefulset name: %s", namespace, name
+            )
+        elif isinstance(name, dict) and "entity_id" in name:
             # Handle single entity selection
-            entity_id = name['entity_id']
-            if isinstance(entity_id, str) and entity_id.startswith('switch.'):
+            entity_id = name["entity_id"]
+            if isinstance(entity_id, str) and entity_id.startswith("switch."):
                 # Get namespace and statefulset name from entity attributes
-                namespace, statefulset_name = _get_namespace_from_entity(hass, entity_id)
+                namespace, statefulset_name = _get_namespace_from_entity(
+                    hass, entity_id
+                )
                 if statefulset_name:
                     statefulset_names.append(statefulset_name)
                     namespaces.append(namespace)
-                    _LOGGER.debug("Extracted statefulset name: %s from entity: %s", statefulset_name, entity_id)
-                    _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                    _LOGGER.debug(
+                        "Extracted statefulset name: %s from entity: %s",
+                        statefulset_name,
+                        entity_id,
+                    )
+                    _LOGGER.debug(
+                        "Extracted namespace: %s for entity: %s", namespace, entity_id
+                    )
                 else:
                     # Fallback: extract from entity ID (for backward compatibility)
-                    statefulset_name = entity_id.replace('switch.', '')
+                    statefulset_name = entity_id.replace("switch.", "")
                     # Remove _statefulset suffix if present
-                    if statefulset_name.endswith('_statefulset'):
-                        statefulset_name = statefulset_name[:-12]  # Remove '_statefulset'
+                    if statefulset_name.endswith("_statefulset"):
+                        statefulset_name = statefulset_name[
+                            :-12
+                        ]  # Remove '_statefulset'
                     statefulset_names.append(statefulset_name)
                     namespaces.append(namespace)
-                    _LOGGER.debug("Fallback: extracted statefulset name: %s from entity ID: %s", statefulset_name, entity_id)
-                    _LOGGER.debug("Extracted namespace: %s for entity: %s", namespace, entity_id)
+                    _LOGGER.debug(
+                        "Fallback: extracted statefulset name: %s from entity ID: %s",
+                        statefulset_name,
+                        entity_id,
+                    )
+                    _LOGGER.debug(
+                        "Extracted namespace: %s for entity: %s", namespace, entity_id
+                    )
 
     _LOGGER.debug("Final statefulset names: %s", statefulset_names)
     _LOGGER.debug("Final namespaces: %s", namespaces)
     return statefulset_names, namespaces
 
 
-def _get_namespace_from_entity(hass: HomeAssistant, entity_id_or_name: str) -> tuple[str | None, str | None]:
+def _get_namespace_from_entity(
+    hass: HomeAssistant, entity_id_or_name: str
+) -> tuple[str | None, str | None]:
     """Get namespace and deployment name from entity attributes."""
     try:
         # If it's already an entity ID, use it directly
-        if entity_id_or_name.startswith('switch.'):
+        if entity_id_or_name.startswith("switch."):
             entity_id = entity_id_or_name
         else:
             # Try to find the entity by name
@@ -255,11 +386,16 @@ def _get_namespace_from_entity(hass: HomeAssistant, entity_id_or_name: str) -> t
 
         entity = hass.states.get(entity_id)
         if entity and entity.attributes:
-            namespace = entity.attributes.get('namespace')
-            deployment_name = entity.attributes.get('deployment_name')
-            statefulset_name = entity.attributes.get('statefulset_name')
-            _LOGGER.debug("Found namespace %s, deployment_name %s, statefulset_name %s for entity %s",
-                         namespace, deployment_name, statefulset_name, entity_id)
+            namespace = entity.attributes.get("namespace")
+            deployment_name = entity.attributes.get("deployment_name")
+            statefulset_name = entity.attributes.get("statefulset_name")
+            _LOGGER.debug(
+                "Found namespace %s, deployment_name %s, statefulset_name %s for entity %s",
+                namespace,
+                deployment_name,
+                statefulset_name,
+                entity_id,
+            )
             return namespace, deployment_name or statefulset_name
         else:
             _LOGGER.debug("Entity %s not found or has no attributes", entity_id)
@@ -279,7 +415,9 @@ def _validate_deployment_schema(data: dict) -> dict:
 def _validate_statefulset_schema(data: dict) -> dict:
     """Validate that at least one StatefulSet field is provided."""
     if ATTR_STATEFULSET_NAME not in data and ATTR_STATEFULSET_NAMES not in data:
-        raise vol.Invalid("Either statefulset_name or statefulset_names must be provided")
+        raise vol.Invalid(
+            "Either statefulset_name or statefulset_names must be provided"
+        )
     return data
 
 
@@ -292,12 +430,12 @@ SCALE_DEPLOYMENT_SCHEMA = vol.Schema(
                 cv.string,
                 vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
                 vol.All(cv.ensure_list, [cv.string]),
-                dict
+                dict,
             ),
             vol.Required(ATTR_REPLICAS): vol.All(vol.Coerce(int), vol.Range(min=0)),
             vol.Optional(ATTR_NAMESPACE): cv.string,
         },
-        _validate_deployment_schema
+        _validate_deployment_schema,
     )
 )
 
@@ -309,12 +447,14 @@ START_DEPLOYMENT_SCHEMA = vol.Schema(
                 cv.string,
                 vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
                 vol.All(cv.ensure_list, [cv.string]),
-                dict
+                dict,
             ),
-            vol.Optional(ATTR_REPLICAS, default=1): vol.All(vol.Coerce(int), vol.Range(min=1)),
+            vol.Optional(ATTR_REPLICAS, default=1): vol.All(
+                vol.Coerce(int), vol.Range(min=1)
+            ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
         },
-        _validate_deployment_schema
+        _validate_deployment_schema,
     )
 )
 
@@ -326,11 +466,11 @@ STOP_DEPLOYMENT_SCHEMA = vol.Schema(
                 cv.string,
                 vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
                 vol.All(cv.ensure_list, [cv.string]),
-                dict
+                dict,
             ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
         },
-        _validate_deployment_schema
+        _validate_deployment_schema,
     )
 )
 
@@ -343,12 +483,12 @@ SCALE_STATEFULSET_SCHEMA = vol.Schema(
                 cv.string,
                 vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
                 vol.All(cv.ensure_list, [cv.string]),
-                dict
+                dict,
             ),
             vol.Required(ATTR_REPLICAS): vol.All(vol.Coerce(int), vol.Range(min=0)),
             vol.Optional(ATTR_NAMESPACE): cv.string,
         },
-        _validate_statefulset_schema
+        _validate_statefulset_schema,
     )
 )
 
@@ -360,12 +500,14 @@ START_STATEFULSET_SCHEMA = vol.Schema(
                 cv.string,
                 vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
                 vol.All(cv.ensure_list, [cv.string]),
-                dict
+                dict,
             ),
-            vol.Optional(ATTR_REPLICAS, default=1): vol.All(vol.Coerce(int), vol.Range(min=1)),
+            vol.Optional(ATTR_REPLICAS, default=1): vol.All(
+                vol.Coerce(int), vol.Range(min=1)
+            ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
         },
-        _validate_statefulset_schema
+        _validate_statefulset_schema,
     )
 )
 
@@ -377,21 +519,23 @@ STOP_STATEFULSET_SCHEMA = vol.Schema(
                 cv.string,
                 vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
                 vol.All(cv.ensure_list, [cv.string]),
-                dict
+                dict,
             ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
         },
-        _validate_statefulset_schema
+        _validate_statefulset_schema,
     )
 )
 
 
-async def async_setup_services(hass: HomeAssistant) -> None:
+async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
     """Set up the Kubernetes services."""
 
     async def scale_deployment(call: ServiceCall) -> None:
         """Scale a deployment to the specified number of replicas."""
-        deployment_names, namespaces = _extract_deployment_names_and_namespaces(call.data, hass)
+        deployment_names, namespaces = _extract_deployment_names_and_namespaces(
+            call.data, hass
+        )
         # _validate_deployment_names(deployment_names) # Removed old validation
 
         if not deployment_names:
@@ -403,7 +547,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Use provided namespace if available, otherwise use extracted namespaces
         provided_namespace = call.data.get(ATTR_NAMESPACE)
         if provided_namespace:
-            _LOGGER.info("Using provided namespace: %s for all deployments", provided_namespace)
+            _LOGGER.info(
+                "Using provided namespace: %s for all deployments", provided_namespace
+            )
             namespaces = [provided_namespace] * len(deployment_names)
         else:
             _LOGGER.info("Using extracted namespaces: %s", namespaces)
@@ -419,21 +565,37 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         config_data = kubernetes_data[config_entry_id]["config"]
 
         from .kubernetes_client import KubernetesClient
+
         client = KubernetesClient(config_data)
 
         for deployment_name, namespace in zip(deployment_names, namespaces):
-            success = await client.scale_deployment(deployment_name, replicas, namespace)
+            success = await client.scale_deployment(
+                deployment_name, replicas, namespace
+            )
             if success:
-                _LOGGER.info("Successfully scaled deployment %s to %d replicas in namespace %s", deployment_name, replicas, namespace)
+                _LOGGER.info(
+                    "Successfully scaled deployment %s to %d replicas in namespace %s",
+                    deployment_name,
+                    replicas,
+                    namespace,
+                )
             else:
-                _LOGGER.error("Failed to scale deployment %s in namespace %s", deployment_name, namespace)
+                _LOGGER.error(
+                    "Failed to scale deployment %s in namespace %s",
+                    deployment_name,
+                    namespace,
+                )
 
         if len(deployment_names) > 1:
-            _LOGGER.info("Completed scaling operation for %d deployments", len(deployment_names))
+            _LOGGER.info(
+                "Completed scaling operation for %d deployments", len(deployment_names)
+            )
 
     async def start_deployment(call: ServiceCall) -> None:
         """Start a deployment by scaling it to the specified number of replicas."""
-        deployment_names, namespaces = _extract_deployment_names_and_namespaces(call.data, hass)
+        deployment_names, namespaces = _extract_deployment_names_and_namespaces(
+            call.data, hass
+        )
         # _validate_deployment_names(deployment_names) # Removed old validation
 
         if not deployment_names:
@@ -445,7 +607,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Use provided namespace if available, otherwise use extracted namespaces
         provided_namespace = call.data.get(ATTR_NAMESPACE)
         if provided_namespace:
-            _LOGGER.info("Using provided namespace: %s for all deployments", provided_namespace)
+            _LOGGER.info(
+                "Using provided namespace: %s for all deployments", provided_namespace
+            )
             namespaces = [provided_namespace] * len(deployment_names)
         else:
             _LOGGER.info("Using extracted namespaces: %s", namespaces)
@@ -461,25 +625,44 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         config_data = kubernetes_data[config_entry_id]["config"]
 
         from .kubernetes_client import KubernetesClient
+
         client = KubernetesClient(config_data)
 
         for deployment_name, namespace in zip(deployment_names, namespaces):
-            success = await client.start_deployment(deployment_name, replicas, namespace)
+            success = await client.start_deployment(
+                deployment_name, replicas, namespace
+            )
             if success:
-                _LOGGER.info("Successfully started deployment %s with %d replicas in namespace %s", deployment_name, replicas, namespace)
+                _LOGGER.info(
+                    "Successfully started deployment %s with %d replicas in namespace %s",
+                    deployment_name,
+                    replicas,
+                    namespace,
+                )
             else:
-                _LOGGER.error("Failed to start deployment %s in namespace %s", deployment_name, namespace)
+                _LOGGER.error(
+                    "Failed to start deployment %s in namespace %s",
+                    deployment_name,
+                    namespace,
+                )
 
         if len(deployment_names) > 1:
-            _LOGGER.info("Completed start operation for %d deployments", len(deployment_names))
+            _LOGGER.info(
+                "Completed start operation for %d deployments", len(deployment_names)
+            )
 
     async def stop_deployment(call: ServiceCall) -> None:
         """Stop a deployment by scaling it to 0 replicas."""
         _LOGGER.info("stop_deployment called with data: %s", call.data)
         _LOGGER.info("stop_deployment call.data type: %s", type(call.data))
-        _LOGGER.info("stop_deployment call.data keys: %s", list(call.data.keys()) if isinstance(call.data, dict) else "Not a dict")
+        _LOGGER.info(
+            "stop_deployment call.data keys: %s",
+            list(call.data.keys()) if isinstance(call.data, dict) else "Not a dict",
+        )
 
-        deployment_names, namespaces = _extract_deployment_names_and_namespaces(call.data, hass)
+        deployment_names, namespaces = _extract_deployment_names_and_namespaces(
+            call.data, hass
+        )
         _LOGGER.info("Extracted deployment names: %s", deployment_names)
         _LOGGER.info("Extracted namespaces: %s", namespaces)
 
@@ -492,7 +675,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Use provided namespace if available, otherwise use extracted namespaces
         provided_namespace = call.data.get(ATTR_NAMESPACE)
         if provided_namespace:
-            _LOGGER.info("Using provided namespace: %s for all deployments", provided_namespace)
+            _LOGGER.info(
+                "Using provided namespace: %s for all deployments", provided_namespace
+            )
             namespaces = [provided_namespace] * len(deployment_names)
         else:
             _LOGGER.info("Using extracted namespaces: %s", namespaces)
@@ -509,22 +694,35 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         _LOGGER.debug("Using config data: %s", config_data)
 
         from .kubernetes_client import KubernetesClient
+
         client = KubernetesClient(config_data)
 
         for deployment_name, namespace in zip(deployment_names, namespaces):
             success = await client.stop_deployment(deployment_name, namespace)
             if success:
-                _LOGGER.info("Successfully stopped deployment %s in namespace %s", deployment_name, namespace)
+                _LOGGER.info(
+                    "Successfully stopped deployment %s in namespace %s",
+                    deployment_name,
+                    namespace,
+                )
             else:
-                _LOGGER.error("Failed to stop deployment %s in namespace %s", deployment_name, namespace)
+                _LOGGER.error(
+                    "Failed to stop deployment %s in namespace %s",
+                    deployment_name,
+                    namespace,
+                )
 
         if len(deployment_names) > 1:
-            _LOGGER.info("Completed stop operation for %d deployments", len(deployment_names))
+            _LOGGER.info(
+                "Completed stop operation for %d deployments", len(deployment_names)
+            )
 
     # StatefulSet services
     async def scale_statefulset(call: ServiceCall) -> None:
         """Scale a StatefulSet to the specified number of replicas."""
-        statefulset_names, namespaces = _extract_statefulset_names_and_namespaces(call.data, hass)
+        statefulset_names, namespaces = _extract_statefulset_names_and_namespaces(
+            call.data, hass
+        )
         # _validate_statefulset_names(statefulset_names) # Removed old validation
 
         if not statefulset_names:
@@ -536,7 +734,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Use provided namespace if available, otherwise use extracted namespaces
         provided_namespace = call.data.get(ATTR_NAMESPACE)
         if provided_namespace:
-            _LOGGER.info("Using provided namespace: %s for all StatefulSets", provided_namespace)
+            _LOGGER.info(
+                "Using provided namespace: %s for all StatefulSets", provided_namespace
+            )
             namespaces = [provided_namespace] * len(statefulset_names)
         else:
             _LOGGER.info("Using extracted namespaces: %s", namespaces)
@@ -552,21 +752,38 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         config_data = kubernetes_data[config_entry_id]["config"]
 
         from .kubernetes_client import KubernetesClient
+
         client = KubernetesClient(config_data)
 
         for statefulset_name, namespace in zip(statefulset_names, namespaces):
-            success = await client.scale_statefulset(statefulset_name, replicas, namespace)
+            success = await client.scale_statefulset(
+                statefulset_name, replicas, namespace
+            )
             if success:
-                _LOGGER.info("Successfully scaled StatefulSet %s to %d replicas in namespace %s", statefulset_name, replicas, namespace)
+                _LOGGER.info(
+                    "Successfully scaled StatefulSet %s to %d replicas in namespace %s",
+                    statefulset_name,
+                    replicas,
+                    namespace,
+                )
             else:
-                _LOGGER.error("Failed to scale StatefulSet %s in namespace %s", statefulset_name, namespace)
+                _LOGGER.error(
+                    "Failed to scale StatefulSet %s in namespace %s",
+                    statefulset_name,
+                    namespace,
+                )
 
         if len(statefulset_names) > 1:
-            _LOGGER.info("Completed scaling operation for %d StatefulSets", len(statefulset_names))
+            _LOGGER.info(
+                "Completed scaling operation for %d StatefulSets",
+                len(statefulset_names),
+            )
 
     async def start_statefulset(call: ServiceCall) -> None:
         """Start a StatefulSet by scaling it to the specified number of replicas."""
-        statefulset_names, namespaces = _extract_statefulset_names_and_namespaces(call.data, hass)
+        statefulset_names, namespaces = _extract_statefulset_names_and_namespaces(
+            call.data, hass
+        )
         # _validate_statefulset_names(statefulset_names) # Removed old validation
 
         if not statefulset_names:
@@ -578,7 +795,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Use provided namespace if available, otherwise use extracted namespaces
         provided_namespace = call.data.get(ATTR_NAMESPACE)
         if provided_namespace:
-            _LOGGER.info("Using provided namespace: %s for all StatefulSets", provided_namespace)
+            _LOGGER.info(
+                "Using provided namespace: %s for all StatefulSets", provided_namespace
+            )
             namespaces = [provided_namespace] * len(statefulset_names)
         else:
             _LOGGER.info("Using extracted namespaces: %s", namespaces)
@@ -594,21 +813,37 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         config_data = kubernetes_data[config_entry_id]["config"]
 
         from .kubernetes_client import KubernetesClient
+
         client = KubernetesClient(config_data)
 
         for statefulset_name, namespace in zip(statefulset_names, namespaces):
-            success = await client.start_statefulset(statefulset_name, replicas, namespace)
+            success = await client.start_statefulset(
+                statefulset_name, replicas, namespace
+            )
             if success:
-                _LOGGER.info("Successfully started StatefulSet %s with %d replicas in namespace %s", statefulset_name, replicas, namespace)
+                _LOGGER.info(
+                    "Successfully started StatefulSet %s with %d replicas in namespace %s",
+                    statefulset_name,
+                    replicas,
+                    namespace,
+                )
             else:
-                _LOGGER.error("Failed to start StatefulSet %s in namespace %s", statefulset_name, namespace)
+                _LOGGER.error(
+                    "Failed to start StatefulSet %s in namespace %s",
+                    statefulset_name,
+                    namespace,
+                )
 
         if len(statefulset_names) > 1:
-            _LOGGER.info("Completed start operation for %d StatefulSets", len(statefulset_names))
+            _LOGGER.info(
+                "Completed start operation for %d StatefulSets", len(statefulset_names)
+            )
 
     async def stop_statefulset(call: ServiceCall) -> None:
         """Stop a StatefulSet by scaling it to 0 replicas."""
-        statefulset_names, namespaces = _extract_statefulset_names_and_namespaces(call.data, hass)
+        statefulset_names, namespaces = _extract_statefulset_names_and_namespaces(
+            call.data, hass
+        )
         # _validate_statefulset_names(statefulset_names) # Removed old validation
 
         if not statefulset_names:
@@ -618,7 +853,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         # Use provided namespace if available, otherwise use extracted namespaces
         provided_namespace = call.data.get(ATTR_NAMESPACE)
         if provided_namespace:
-            _LOGGER.info("Using provided namespace: %s for all StatefulSets", provided_namespace)
+            _LOGGER.info(
+                "Using provided namespace: %s for all StatefulSets", provided_namespace
+            )
             namespaces = [provided_namespace] * len(statefulset_names)
         else:
             _LOGGER.info("Using extracted namespaces: %s", namespaces)
@@ -634,17 +871,28 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         config_data = kubernetes_data[config_entry_id]["config"]
 
         from .kubernetes_client import KubernetesClient
+
         client = KubernetesClient(config_data)
 
         for statefulset_name, namespace in zip(statefulset_names, namespaces):
             success = await client.stop_statefulset(statefulset_name, namespace)
             if success:
-                _LOGGER.info("Successfully stopped StatefulSet %s in namespace %s", statefulset_name, namespace)
+                _LOGGER.info(
+                    "Successfully stopped StatefulSet %s in namespace %s",
+                    statefulset_name,
+                    namespace,
+                )
             else:
-                _LOGGER.error("Failed to stop StatefulSet %s in namespace %s", statefulset_name, namespace)
+                _LOGGER.error(
+                    "Failed to stop StatefulSet %s in namespace %s",
+                    statefulset_name,
+                    namespace,
+                )
 
         if len(statefulset_names) > 1:
-            _LOGGER.info("Completed stop operation for %d StatefulSets", len(statefulset_names))
+            _LOGGER.info(
+                "Completed stop operation for %d StatefulSets", len(statefulset_names)
+            )
 
     # Register the services
     hass.services.async_register(

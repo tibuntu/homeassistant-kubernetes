@@ -1,4 +1,5 @@
 """Config flow for Kubernetes integration."""
+
 from __future__ import annotations
 
 import logging
@@ -6,16 +7,15 @@ import sys
 from typing import Any
 
 import aiohttp
-import voluptuous as vol
-
-# Global variables for lazy import
-KUBERNETES_AVAILABLE = None
-client = None
-ApiException = Exception
-
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.data_entry_flow import FlowResult
+import voluptuous as vol
+
+# Global variables for lazy import
+KUBERNETES_AVAILABLE: bool | None = None
+client: Any | None = None
+ApiException: type = Exception
 
 from .const import (
     CONF_API_TOKEN,
@@ -23,25 +23,25 @@ from .const import (
     CONF_CLUSTER_NAME,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
-    CONF_VERIFY_SSL,
-    CONF_SWITCH_UPDATE_INTERVAL,
-    CONF_SCALE_VERIFICATION_TIMEOUT,
     CONF_SCALE_COOLDOWN,
+    CONF_SCALE_VERIFICATION_TIMEOUT,
+    CONF_SWITCH_UPDATE_INTERVAL,
+    CONF_VERIFY_SSL,
     DEFAULT_CLUSTER_NAME,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
-    DEFAULT_VERIFY_SSL,
-    DEFAULT_SWITCH_UPDATE_INTERVAL,
-    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SCALE_COOLDOWN,
+    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    DEFAULT_SWITCH_UPDATE_INTERVAL,
+    DEFAULT_VERIFY_SSL,
     DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def _ensure_kubernetes_imported():
+def _ensure_kubernetes_imported() -> bool:
     """Ensure kubernetes package is imported."""
     global KUBERNETES_AVAILABLE, client, ApiException
 
@@ -49,7 +49,6 @@ def _ensure_kubernetes_imported():
         try:
             # Try to import the same way as kubernetes_client.py
             import kubernetes.client as k8s_client
-            import kubernetes.config as k8s_config  # Also import config like kubernetes_client.py
             from kubernetes.client.rest import ApiException as K8sApiException
 
             # Set global variables
@@ -70,10 +69,11 @@ def _ensure_kubernetes_imported():
     return KUBERNETES_AVAILABLE
 
 
-class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class KubernetesConfigFlow(config_entries.ConfigFlow):
     """Handle a config flow for Kubernetes."""
 
     VERSION = 1
+    domain = DOMAIN
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -109,17 +109,26 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_HOST): str,
             vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
             vol.Optional(CONF_CLUSTER_NAME, default=DEFAULT_CLUSTER_NAME): str,
-            vol.Optional(CONF_MONITOR_ALL_NAMESPACES, default=DEFAULT_MONITOR_ALL_NAMESPACES): bool,
+            vol.Optional(
+                CONF_MONITOR_ALL_NAMESPACES, default=DEFAULT_MONITOR_ALL_NAMESPACES
+            ): bool,
             vol.Required(CONF_API_TOKEN): str,
             vol.Optional(CONF_CA_CERT): str,
             vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
-            vol.Optional(CONF_SWITCH_UPDATE_INTERVAL, default=DEFAULT_SWITCH_UPDATE_INTERVAL): int,
-            vol.Optional(CONF_SCALE_VERIFICATION_TIMEOUT, default=DEFAULT_SCALE_VERIFICATION_TIMEOUT): int,
+            vol.Optional(
+                CONF_SWITCH_UPDATE_INTERVAL, default=DEFAULT_SWITCH_UPDATE_INTERVAL
+            ): int,
+            vol.Optional(
+                CONF_SCALE_VERIFICATION_TIMEOUT,
+                default=DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+            ): int,
             vol.Optional(CONF_SCALE_COOLDOWN, default=DEFAULT_SCALE_COOLDOWN): int,
         }
 
         # Add namespace field only if not monitoring all namespaces
-        if user_input is None or not user_input.get(CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES):
+        if user_input is None or not user_input.get(
+            CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
+        ):
             schema[vol.Optional(CONF_NAMESPACE, default=DEFAULT_NAMESPACE)] = str
 
         return self.async_show_form(
@@ -128,7 +137,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-    async def _test_connection(self, user_input: dict[str, Any]) -> None:
+    async def _test_connection(self, user_input: dict[str, Any]) -> None:  # noqa: C901
         """Test the connection to Kubernetes."""
         import asyncio
 
@@ -144,12 +153,14 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             raise ValueError("API token is required")
 
         # Create a test configuration
+        if client is None:
+            raise ValueError("Kubernetes client not available")
         configuration = client.Configuration()
 
         # Clean the host input - remove any protocol prefix
         host = user_input[CONF_HOST].strip()
-        if host.startswith(('http://', 'https://')):
-            host = host.split('://', 1)[1]
+        if host.startswith(("http://", "https://")):
+            host = host.split("://", 1)[1]
 
         # Validate the cleaned host
         if not host:
@@ -159,7 +170,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         user_input[CONF_HOST] = host
 
         configuration.host = f"https://{host}:{user_input.get(CONF_PORT, DEFAULT_PORT)}"
-        configuration.api_key = {"authorization": f"Bearer {user_input[CONF_API_TOKEN]}"}
+        configuration.api_key = {
+            "authorization": f"Bearer {user_input[CONF_API_TOKEN]}"
+        }
         configuration.api_key_prefix = {"authorization": "Bearer"}
         configuration.verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
@@ -174,8 +187,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         loop = asyncio.get_event_loop()
         try:
             await loop.run_in_executor(None, core_v1.get_api_resources)
-            _LOGGER.info("Successfully connected to Kubernetes API at %s", configuration.host)
-        except ApiException as ex:
+            _LOGGER.info(
+                "Successfully connected to Kubernetes API at %s", configuration.host
+            )
+        except ApiException as ex:  # type: ignore[misc]
             _LOGGER.error("API Exception during connection test: %s", ex)
             _LOGGER.error("Status: %s", ex.status)
             _LOGGER.error("Reason: %s", ex.reason)
@@ -185,7 +200,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Fallback to aiohttp if kubernetes client fails
             _LOGGER.info("Trying fallback connection with aiohttp...")
             if await self._test_connection_aiohttp(user_input):
-                _LOGGER.info("Successfully connected to Kubernetes API using aiohttp fallback")
+                _LOGGER.info(
+                    "Successfully connected to Kubernetes API using aiohttp fallback"
+                )
                 return
             else:
                 raise ValueError(f"Failed to connect to Kubernetes API: {ex.reason}")
@@ -194,7 +211,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # Fallback to aiohttp if kubernetes client fails
             _LOGGER.info("Trying fallback connection with aiohttp...")
             if await self._test_connection_aiohttp(user_input):
-                _LOGGER.info("Successfully connected to Kubernetes API using aiohttp fallback")
+                _LOGGER.info(
+                    "Successfully connected to Kubernetes API using aiohttp fallback"
+                )
                 return
             else:
                 raise ValueError(f"Connection test failed: {str(ex)}")
@@ -215,13 +234,17 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     f"https://{host}:{port}/api/v1/",
                     headers=headers,
                     ssl=False,
-                    timeout=aiohttp.ClientTimeout(total=10)
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
-                        _LOGGER.info("Successfully connected to Kubernetes API using aiohttp")
+                        _LOGGER.info(
+                            "Successfully connected to Kubernetes API using aiohttp"
+                        )
                         return True
                     else:
-                        _LOGGER.error("aiohttp connection failed with status: %s", response.status)
+                        _LOGGER.error(
+                            "aiohttp connection failed with status: %s", response.status
+                        )
                         return False
         except Exception as ex:
             _LOGGER.error("aiohttp connection test failed: %s", ex)
