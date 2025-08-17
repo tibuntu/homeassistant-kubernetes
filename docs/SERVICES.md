@@ -24,12 +24,14 @@ The integration provides the following services:
 Scale one or more deployments to a specific number of replicas.
 
 **Parameters**:
+
 - `deployment_name` (string, optional): Single deployment name
 - `deployment_names` (list, optional): Multiple deployment names
 - `namespace` (string, required): Kubernetes namespace
 - `replicas` (integer, required): Target number of replicas
 
 **Example**:
+
 ```yaml
 service: kubernetes.scale_deployment
 data:
@@ -39,6 +41,7 @@ data:
 ```
 
 **Multiple deployments**:
+
 ```yaml
 service: kubernetes.scale_deployment
 data:
@@ -56,11 +59,13 @@ data:
 Scale one or more deployments to 0 replicas (effectively stopping them).
 
 **Parameters**:
+
 - `deployment_name` (string, optional): Single deployment name
 - `deployment_names` (list, optional): Multiple deployment names
 - `namespace` (string, required): Kubernetes namespace
 
 **Example**:
+
 ```yaml
 service: kubernetes.stop_deployment
 data:
@@ -77,12 +82,14 @@ data:
 Scale one or more deployments to 1 or more replicas (starting them).
 
 **Parameters**:
+
 - `deployment_name` (string, optional): Single deployment name
 - `deployment_names` (list, optional): Multiple deployment names
 - `namespace` (string, required): Kubernetes namespace
 - `replicas` (integer, optional): Number of replicas (default: 1)
 
 **Example**:
+
 ```yaml
 service: kubernetes.start_deployment
 data:
@@ -98,12 +105,14 @@ data:
 Scale one or more statefulsets to a specific number of replicas.
 
 **Parameters**:
+
 - `statefulset_name` (string, optional): Single statefulset name
 - `statefulset_names` (list, optional): Multiple statefulset names
 - `namespace` (string, required): Kubernetes namespace
 - `replicas` (integer, required): Target number of replicas
 
 **Example**:
+
 ```yaml
 service: kubernetes.scale_statefulset
 data:
@@ -121,6 +130,7 @@ data:
 Scale one or more statefulsets to 0 replicas.
 
 **Parameters**:
+
 - `statefulset_name` (string, optional): Single statefulset name
 - `statefulset_names` (list, optional): Multiple statefulset names
 - `namespace` (string, required): Kubernetes namespace
@@ -132,6 +142,7 @@ Scale one or more statefulsets to 0 replicas.
 Scale one or more statefulsets to 1 or more replicas.
 
 **Parameters**:
+
 - `statefulset_name` (string, optional): Single statefulset name
 - `statefulset_names` (list, optional): Multiple statefulset names
 - `namespace` (string, required): Kubernetes namespace

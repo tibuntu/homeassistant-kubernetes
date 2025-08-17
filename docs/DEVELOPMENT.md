@@ -31,6 +31,7 @@ The easiest way to get started is using the provided devcontainer which provides
 #### Quick Start
 
 1. **Open the project in VS Code**:
+
    ```bash
    code .
    ```
@@ -48,6 +49,7 @@ The easiest way to get started is using the provided devcontainer which provides
 #### What's Included
 
 The devcontainer automatically provides:
+
 - ✅ Complete Home Assistant installation
 - ✅ Your integration automatically mounted and available
 - ✅ All development dependencies (black, isort, flake8, pytest)
@@ -81,17 +83,21 @@ Or use the Home Assistant UI: Settings → Integrations → Add Integration
 #### Debugging
 
 **Enable Python debugging**:
+
 1. Uncomment in `.devcontainer/configuration.yaml`:
+
    ```yaml
    debugpy:
      start: true
      wait: false
      port: 5678
    ```
+
 2. Restart Home Assistant
 3. In VS Code: Run and Debug → "Python: Remote Attach" → localhost:5678
 
 **Code quality tools** (run automatically on save):
+
 - `black custom_components/` - code formatting
 - `isort custom_components/` - import sorting
 - `flake8 custom_components/` - linting
@@ -270,7 +276,7 @@ pre-commit install
 hass --config config
 ```
 
-2. Open Home Assistant in your browser (usually http://localhost:8123)
+2. Open Home Assistant in your browser (usually <http://localhost:8123>)
 
 3. Go to **Settings** → **Devices & Services** → **Add Integration**
 
@@ -353,6 +359,7 @@ logger:
    - Check Docker is running and has sufficient resources
 
 **Useful devcontainer commands**:
+
 ```bash
 # Start Home Assistant
 /config/start_ha.sh &

@@ -27,18 +27,21 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 ### Installation
 
 #### HACS (Recommended)
+
 1. Ensure [HACS](https://hacs.xyz/) is installed
 2. Add this repository as a custom repository in HACS
 3. Search for "Kubernetes" and install
 4. Restart Home Assistant
 
 #### Manual Installation
+
 1. Copy `custom_components/kubernetes` to your `config/custom_components/` directory
 2. Restart Home Assistant
 
 ### Setup
 
 1. **Configure Kubernetes Service Account**:
+
    ```bash
    # Apply the required manifests
    kubectl apply -f manifests/serviceaccount.yaml
@@ -62,15 +65,18 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 For comprehensive documentation, visit the [docs directory](docs/):
 
 ### Getting Started
+
 - **[Configuration Guide](docs/CONFIGURATION.md)** - Detailed configuration options and settings
 - **[Service Account Setup](docs/SETUP.md)** - Kubernetes RBAC and security configuration
 - **[Examples & Automations](docs/EXAMPLES.md)** - Practical examples and automation ideas
 
 ### Reference
+
 - **[Entities Documentation](docs/ENTITIES.md)** - Complete sensors, switches, and binary sensors reference
 - **[Services Documentation](docs/SERVICES.md)** - Available services for programmatic control
 
 ### Advanced
+
 - **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 - **[Development Guide](docs/DEVELOPMENT.md)** - Contributing and development setup
 - **[Logging Configuration](docs/LOGGING.md)** - Understanding logs and debugging
@@ -88,4 +94,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ---
 
 **Note**: This integration requires a Kubernetes cluster with proper RBAC permissions configured. Make sure your service account has the necessary permissions for monitoring and controlling deployments.
-

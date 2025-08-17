@@ -37,6 +37,7 @@ The integration requires specific Kubernetes RBAC permissions to monitor cluster
 | **replicasets** | `get`, `list`, `watch` | ⚠️ | Legacy API compatibility | May not work on older clusters |
 
 **Legend:**
+
 - ✅ **Required**: Essential for core functionality
 - ⚠️ **Recommended**: Enhances functionality or compatibility
 - ❌ **Not Used**: Not required by the integration
@@ -94,6 +95,7 @@ rules:
 ```
 
 **Limitations:**
+
 - No switches will be created
 - No scaling services available
 - Sensors and binary sensors only
@@ -122,6 +124,7 @@ rules:
 ```
 
 **Additional Requirements:**
+
 ```yaml
 # Minimal cluster permissions for basic functionality
 apiVersion: rbac.authorization.k8s.io/v1
@@ -155,6 +158,7 @@ rules:
 ```
 
 **Severe Limitations:**
+
 - No real-time updates (no `watch`)
 - No control capabilities
 - No event access for troubleshooting
@@ -190,6 +194,7 @@ rules:
 ### Common Permission Errors
 
 #### 1. "Forbidden: User cannot list pods"
+
 ```bash
 # Verify pod permissions
 kubectl auth can-i list pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
@@ -198,6 +203,7 @@ kubectl auth can-i list pods --as=system:serviceaccount:homeassistant:homeassist
 ```
 
 #### 2. "Forbidden: User cannot patch deployments/scale"
+
 ```bash
 # Verify scaling permissions
 kubectl auth can-i patch deployments/scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
@@ -206,6 +212,7 @@ kubectl auth can-i patch deployments/scale --as=system:serviceaccount:homeassist
 ```
 
 #### 3. "Real-time updates not working"
+
 ```bash
 # Verify watch permissions
 kubectl auth can-i watch pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration

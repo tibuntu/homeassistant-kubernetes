@@ -5,7 +5,9 @@ This guide helps you resolve common issues with the Kubernetes integration for H
 ## Authentication Issues (401 Unauthorized)
 
 ### Problem
+
 You see errors like:
+
 ```
 Failed to stop deployment longhorn-ui
 Failed to get deployments: (401)
@@ -15,6 +17,7 @@ Reason: Unauthorized
 ### Solution
 
 #### Step 1: Verify RBAC Setup
+
 The integration requires specific RBAC permissions. Run the setup script:
 
 ```bash
@@ -26,14 +29,17 @@ chmod +x scripts/extract_token.sh
 ```
 
 This script will:
+
 - Create the necessary service account and RBAC resources
 - Extract the correct API token
 - Provide you with the configuration details
 
 #### Step 2: Manual RBAC Setup (Alternative)
+
 If you prefer to set up RBAC manually:
 
 1. Apply the required manifests:
+
 ```bash
 kubectl apply -f manifests/serviceaccount.yaml
 kubectl apply -f manifests/clusterrole.yaml
@@ -42,11 +48,13 @@ kubectl apply -f manifests/serviceaccount-token-secret.yaml
 ```
 
 2. Extract the token:
+
 ```bash
 kubectl get secret homeassistant-monitor-token -n default -o jsonpath='{.data.token}' | base64 -d
 ```
 
 #### Step 3: Verify Token Permissions
+
 Test if your token has the correct permissions:
 
 ```bash
@@ -58,12 +66,14 @@ curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_CLUSTER_HOST:6443/apis/a
 ```
 
 #### Step 4: Update Home Assistant Configuration
+
 1. Go to **Settings** → **Devices & Services**
 2. Find your Kubernetes integration and click **Configure**
 3. Update the API token with the new token from Step 1 or 2
 4. Save the configuration
 
 ### Required RBAC Permissions
+
 The service account needs these permissions:
 
 ```yaml
@@ -81,16 +91,19 @@ The service account needs these permissions:
 ## Connection Issues
 
 ### Problem
+
 Cannot connect to Kubernetes API server.
 
 ### Solution
 
 1. **Verify Cluster Accessibility**
+
    ```bash
    kubectl cluster-info
    ```
 
 2. **Check Network Connectivity**
+
    ```bash
    # Test if the API server is reachable
    curl -k https://YOUR_CLUSTER_HOST:6443/api/v1/
@@ -103,11 +116,13 @@ Cannot connect to Kubernetes API server.
 ## Deployment Scaling Issues
 
 ### Problem
+
 Deployment scaling operations fail.
 
 ### Solution
 
 1. **Check Deployment Exists**
+
    ```bash
    kubectl get deployments -n NAMESPACE
    ```
@@ -117,6 +132,7 @@ Deployment scaling operations fail.
    - Check if you're monitoring all namespaces or a specific one
 
 3. **Check Resource Quotas**
+
    ```bash
    kubectl describe resourcequota -n NAMESPACE
    ```
@@ -124,6 +140,7 @@ Deployment scaling operations fail.
 ## Common Configuration Issues
 
 ### Problem
+
 Integration shows incorrect data or no data.
 
 ### Solution
@@ -144,6 +161,7 @@ Integration shows incorrect data or no data.
 ## Debugging
 
 ### Enable Debug Logging
+
 Add this to your `configuration.yaml`:
 
 ```yaml
@@ -154,6 +172,7 @@ logger:
 ```
 
 ### Check Home Assistant Logs
+
 Look for detailed error messages in the Home Assistant logs:
 
 ```bash
@@ -165,6 +184,7 @@ kubectl logs -n homeassistant deployment/homeassistant
 ```
 
 ### Test API Endpoints Manually
+
 Use curl to test API endpoints directly:
 
 ```bash

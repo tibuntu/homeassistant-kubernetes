@@ -42,6 +42,7 @@ This guide covers all configuration options for the Kubernetes Home Assistant In
 ### SSL Configuration
 
 For self-signed certificates or custom CA:
+
 - Set "Verify SSL" to false for self-signed certificates (not recommended for production)
 - Provide the CA certificate path for custom Certificate Authorities
 

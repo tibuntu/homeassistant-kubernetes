@@ -124,16 +124,19 @@ rules:
 ### Why These Permissions Are Required
 
 #### Monitoring Permissions (`get`, `list`, `watch`)
+
 - **Essential for sensor data**: Pod counts, node counts, deployment status
 - **Real-time updates**: `watch` enables efficient real-time monitoring
 - **Cross-namespace visibility**: Required when monitoring all namespaces
 
 #### Control Permissions (`patch`, `update`, `create`, `delete`)
+
 - **Scaling operations**: Required to scale deployments and statefulsets
 - **State management**: Update resource scales and status
 - **Switch functionality**: Enable on/off control of workloads
 
 #### Legacy API Groups
+
 - **extensions**: Provides compatibility with older Kubernetes clusters
 - **Dual API coverage**: Ensures the integration works across different cluster versions
 
@@ -257,6 +260,7 @@ Then combine with namespace-specific roles for actual workload control.
 ### Common Issues
 
 1. **Token Extraction Fails**
+
    ```bash
    # Check if the secret exists
    kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant
@@ -266,6 +270,7 @@ Then combine with namespace-specific roles for actual workload control.
    ```
 
 2. **Permission Denied Errors**
+
    ```bash
    # Check the cluster role binding
    kubectl get clusterrolebinding homeassistant-kubernetes-integration
@@ -275,6 +280,7 @@ Then combine with namespace-specific roles for actual workload control.
    ```
 
 3. **Namespace Access Issues**
+
    ```bash
    # Test API access with the token
    kubectl auth can-i get pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
