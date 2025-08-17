@@ -1,0 +1,98 @@
+---
+name: Stale Issues and PRs
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    name: Mark stale issues and PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark stale issues and PRs
+        uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Days before marking as stale
+          days-before-stale: 60
+          days-before-close: 14
+
+          # Stale issue configuration
+          stale-issue-message: |
+            This issue has been automatically marked as stale because it has not had recent activity.
+
+            **What happens next?**
+            - If this issue is still relevant, please add a comment to keep it open
+            - If no activity occurs within 14 days, this issue will be automatically closed
+            - You can always reopen the issue if needed
+
+            Thank you for your contribution! 🚀
+
+          close-issue-message: |
+            This issue has been automatically closed due to inactivity.
+
+            **Need to reopen?**
+            If this issue is still relevant, please:
+            1. Reopen the issue
+            2. Add a comment with current status
+            3. Consider if this is still valid with the latest version
+
+            Thank you for understanding! 🙏
+
+          stale-issue-label: "stale"
+          exempt-issue-labels: "pinned,security,enhancement,good first issue,help wanted"
+
+          # Stale PR configuration
+          stale-pr-message: |
+            This pull request has been automatically marked as stale because it has not had recent activity.
+
+            **What happens next?**
+            - If this PR is still relevant, please rebase and add a comment
+            - If no activity occurs within 14 days, this PR will be automatically closed
+            - You can always reopen the PR if needed
+
+            Thank you for your contribution! 🚀
+
+          close-pr-message: |
+            This pull request has been automatically closed due to inactivity.
+
+            **Need to reopen?**
+            If this PR is still relevant, please:
+            1. Rebase against the current main branch
+            2. Reopen the PR
+            3. Add a comment with current status
+
+            Thank you for your contribution! 🙏
+
+          stale-pr-label: "stale"
+          exempt-pr-labels: "pinned,security,enhancement"
+
+          # Additional configuration
+          exempt-assignees: "tibuntu"
+          exempt-milestones: true
+          remove-stale-when-updated: true
+          debug-only: false
+
+          # Operation limits
+          operations-per-run: 50
+
+  # Clean up old workflow runs
+  cleanup-runs:
+    name: Cleanup old workflow runs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 30
+          keep_minimum_runs: 5
