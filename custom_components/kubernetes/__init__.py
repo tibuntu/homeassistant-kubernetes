@@ -8,6 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
+from .config_flow import KubernetesConfigFlow  # noqa: F401
 from .coordinator import KubernetesDataCoordinator
 from .kubernetes_client import KubernetesClient
 from .services import async_setup_services, async_unload_services
