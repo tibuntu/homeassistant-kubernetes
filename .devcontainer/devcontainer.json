@@ -1,63 +1,61 @@
 {
-	"name": "Home Assistant Kubernetes Integration Development",
-	"image": "mcr.microsoft.com/devcontainers/python:3.13-bullseye",
-	"forwardPorts": [8123],
-	"portsAttributes": {
-		"8123": {
-			"label": "Home Assistant",
-			"onAutoForward": "notify"
-		}
-	},
-	"containerEnv": {
-		"TZ": "Europe/Berlin"
-	},
-	"mounts": [
-		"source=homeassistant-config,target=/config,type=volume"
-	],
-	"postCreateCommand": "bash .devcontainer/setup.sh",
-	"remoteUser": "vscode",
-	"features": {
-		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
-		"ghcr.io/devcontainers/features/git:1": {}
-	},
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"ms-python.python",
-				"ms-python.vscode-pylance",
-				"ms-python.black-formatter",
-				"ms-python.isort",
-				"ms-python.flake8",
-				"github.vscode-pull-request-github",
-				"ryanluker.vscode-coverage-gutters",
-				"ms-vscode.vscode-json",
-				"redhat.vscode-yaml"
-			],
-			"settings": {
-				"files.eol": "\n",
-				"editor.tabSize": 4,
-				"python.defaultInterpreterPath": "/usr/local/bin/python",
-				"terminal.integrated.defaultProfile.linux": "bash",
-				"python.analysis.autoSearchPaths": true,
-				"python.analysis.extraPaths": [
-					"/config/custom_components",
-					"/workspaces/${localWorkspaceFolderBasename}/custom_components"
-				],
-				"python.linting.enabled": true,
-				"python.linting.flake8Enabled": true,
-				"python.formatting.provider": "none",
-				"[python]": {
-					"editor.defaultFormatter": "ms-python.black-formatter",
-					"editor.codeActionsOnSave": {
-						"source.organizeImports": true
-					}
-				},
-				"editor.formatOnSave": true,
-				"files.trimTrailingWhitespace": true,
-				"yaml.schemas": {
-					"https://json.schemastore.org/github-workflow.json": "file:///workspaces/${localWorkspaceFolderBasename}/.github/workflows/*.{yml,yaml}"
-				}
-			}
-		}
-	}
+  "name": "Home Assistant Kubernetes Integration Development",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13-bullseye",
+  "forwardPorts": [8123],
+  "portsAttributes": {
+    "8123": {
+      "label": "Home Assistant",
+      "onAutoForward": "notify"
+    }
+  },
+  "containerEnv": {
+    "TZ": "Europe/Berlin"
+  },
+  "mounts": ["source=homeassistant-config,target=/config,type=volume"],
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.isort",
+        "ms-python.flake8",
+        "github.vscode-pull-request-github",
+        "ryanluker.vscode-coverage-gutters",
+        "ms-vscode.vscode-json",
+        "redhat.vscode-yaml"
+      ],
+      "settings": {
+        "files.eol": "\n",
+        "editor.tabSize": 4,
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "python.analysis.autoSearchPaths": true,
+        "python.analysis.extraPaths": [
+          "/config/custom_components",
+          "/workspaces/${localWorkspaceFolderBasename}/custom_components"
+        ],
+        "python.linting.enabled": true,
+        "python.linting.flake8Enabled": true,
+        "python.formatting.provider": "none",
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": true
+          }
+        },
+        "editor.formatOnSave": true,
+        "files.trimTrailingWhitespace": true,
+        "yaml.schemas": {
+          "https://json.schemastore.org/github-workflow.json": "file:///workspaces/${localWorkspaceFolderBasename}/.github/workflows/*.{yml,yaml}"
+        }
+      }
+    }
+  }
 }
