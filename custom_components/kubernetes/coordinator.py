@@ -48,9 +48,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("Updating Kubernetes data for coordinator")
 
-            # Fetch both deployments and statefulsets
+            # Fetch deployments, statefulsets, pods count, and nodes count
             deployments = await self.client.get_deployments()
             statefulsets = await self.client.get_statefulsets()
+            pods_count = await self.client.get_pods_count()
+            nodes_count = await self.client.get_nodes_count()
 
             # Create a lookup dictionary for quick access
             data = {
@@ -60,13 +62,17 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 "statefulsets": {
                     statefulset["name"]: statefulset for statefulset in statefulsets
                 },
+                "pods_count": pods_count,
+                "nodes_count": nodes_count,
                 "last_update": asyncio.get_event_loop().time(),
             }
 
             _LOGGER.debug(
-                "Successfully updated Kubernetes data: %d deployments, %d statefulsets",
+                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d pods, %d nodes",
                 len(deployments),
                 len(statefulsets),
+                pods_count,
+                nodes_count,
             )
 
             # Clean up entities for resources that no longer exist
