@@ -161,14 +161,14 @@ async def test_pods_sensor_update(mock_kubernetes_client, mock_coordinator):
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
 
+    # Set up coordinator data
+    mock_coordinator.data = {"pods_count": 5}
+
     sensor = KubernetesPodsSensor(
         mock_coordinator, mock_kubernetes_client, mock_config_entry
     )
 
-    # Test the update method
-    await sensor.async_update()
-
-    # Verify the sensor state was updated
+    # The sensor should read from coordinator data
     assert sensor.native_value == 5
 
 
