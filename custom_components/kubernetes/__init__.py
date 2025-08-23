@@ -20,6 +20,11 @@ DOMAIN = "kubernetes"
 _LOGGER = logging.getLogger(__name__)
 
 
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the Kubernetes integration."""
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Kubernetes from a config entry."""
     hass.data.setdefault(DOMAIN, {})
@@ -59,12 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        # Clean up coordinator
-        if entry.entry_id in hass.data[DOMAIN]:
-            coordinator = hass.data[DOMAIN][entry.entry_id].get("coordinator")
-            if coordinator:
-                await coordinator.async_shutdown()
-
+        # Clean up data
         hass.data[DOMAIN].pop(entry.entry_id)
 
         # Unload services if this was the last config entry

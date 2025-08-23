@@ -19,6 +19,7 @@ from .const import (
     CONF_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    DOMAIN,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
@@ -34,8 +35,8 @@ async def async_setup_entry(
 ) -> None:
     """Set up Kubernetes switches based on a config entry."""
     # Get the coordinator from hass.data
-    coordinator = hass.data["kubernetes"][config_entry.entry_id]["coordinator"]
-    client = hass.data["kubernetes"][config_entry.entry_id]["client"]
+    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
+    client = hass.data[DOMAIN][config_entry.entry_id]["client"]
 
     # Store the add_entities callback for dynamic entity management
     switches = []
@@ -85,7 +86,7 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
         entity_registry = async_get_entity_registry(hass)
 
         # Get the stored add_entities callback
-        add_entities_callback = hass.data["kubernetes"].get("switch_add_entities")
+        add_entities_callback = hass.data[DOMAIN].get("switch_add_entities")
         if not add_entities_callback:
             _LOGGER.warning(
                 "No add_entities callback found for dynamic entity management"

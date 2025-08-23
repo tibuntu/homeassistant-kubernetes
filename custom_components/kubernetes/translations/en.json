@@ -45,7 +45,7 @@
       }
     },
     "binary_sensor": {
-      "kubernetes_cluster_health": {
+      "kubernetes_health": {
         "name": "Cluster Health"
       }
     },

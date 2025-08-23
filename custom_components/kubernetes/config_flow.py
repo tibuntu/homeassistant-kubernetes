@@ -69,11 +69,10 @@ def _ensure_kubernetes_imported() -> bool:
     return KUBERNETES_AVAILABLE
 
 
-class KubernetesConfigFlow(config_entries.ConfigFlow):
+class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Handle a config flow for Kubernetes."""
 
     VERSION = 1
-    domain = DOMAIN
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
