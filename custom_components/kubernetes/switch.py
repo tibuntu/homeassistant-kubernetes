@@ -61,6 +61,11 @@ async def async_setup_entry(
 
     async_add_entities(switches)
 
+    # Store the add_entities callback for dynamic entity management
+    if DOMAIN not in hass.data:
+        hass.data[DOMAIN] = {}
+    hass.data[DOMAIN]["switch_add_entities"] = async_add_entities
+
     # Set up listener for adding new entities dynamically
     @callback
     def _async_add_new_entities() -> None:

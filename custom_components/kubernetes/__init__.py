@@ -67,8 +67,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Clean up data
         hass.data[DOMAIN].pop(entry.entry_id)
 
-        # Unload services if this was the last config entry
+        # Clean up stored callbacks if this was the last config entry
         if not hass.data[DOMAIN]:
             await async_unload_services(hass)
+            # Clean up any stored callbacks
+            if "switch_add_entities" in hass.data[DOMAIN]:
+                del hass.data[DOMAIN]["switch_add_entities"]
 
     return unload_ok
