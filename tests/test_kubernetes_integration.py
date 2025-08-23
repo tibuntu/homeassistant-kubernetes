@@ -155,13 +155,15 @@ async def test_kubernetes_client_initialization(mock_config):
     assert mock_config["api_token"] == "test-token"
 
 
-async def test_pods_sensor_update(mock_kubernetes_client):
+async def test_pods_sensor_update(mock_kubernetes_client, mock_coordinator):
     """Test pods sensor update."""
     # Create a mock config entry
     mock_config_entry = MagicMock()
     mock_config_entry.entry_id = "test_entry_id"
 
-    sensor = KubernetesPodsSensor(mock_kubernetes_client, mock_config_entry)
+    sensor = KubernetesPodsSensor(
+        mock_coordinator, mock_kubernetes_client, mock_config_entry
+    )
 
     # Test the update method
     await sensor.async_update()
