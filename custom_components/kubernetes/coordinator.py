@@ -28,9 +28,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         client: KubernetesClient,
     ) -> None:
         """Initialize the coordinator."""
-        self.config_entry = config_entry
-        self.client = client
-
         # Get update interval from config, with fallback to default
         update_interval = config_entry.data.get(
             CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
@@ -42,6 +39,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             name=f"{DOMAIN}_{config_entry.entry_id}",
             update_interval=timedelta(seconds=update_interval),
         )
+
+        # Set attributes after super().__init__() to ensure they're not overridden
+        self.config_entry = config_entry
+        self.client = client
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via Kubernetes client."""
@@ -110,6 +111,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
     ) -> None:  # noqa: C901
         """Remove entities for Kubernetes resources that no longer exist."""
         try:
+            # Skip cleanup if config_entry is not available (e.g., in tests)
+            if not self.config_entry or not hasattr(self.config_entry, "entry_id"):
+                _LOGGER.debug("Skipping entity cleanup: config_entry not available")
+                return
+
             entity_registry = async_get_entity_registry(self.hass)
 
             # Get all entities for this integration

@@ -9,7 +9,7 @@ from typing import Any
 import aiohttp
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.data_entry_flow import AbortFlow, FlowResult
 import voluptuous as vol
 
 # Global variables for lazy import
@@ -90,6 +90,27 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 # Validate the connection
                 await self._test_connection(user_input)
 
+                # Add default values for missing fields
+                user_input.setdefault(CONF_PORT, DEFAULT_PORT)
+                user_input.setdefault(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+                user_input.setdefault(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME)
+                user_input.setdefault(
+                    CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
+                )
+                user_input.setdefault(
+                    CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
+                )
+                user_input.setdefault(
+                    CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
+                )
+                user_input.setdefault(CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN)
+
+                # Add namespace if not monitoring all namespaces
+                if not user_input.get(
+                    CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
+                ):
+                    user_input.setdefault(CONF_NAMESPACE, DEFAULT_NAMESPACE)
+
                 # Create unique ID for the config entry
                 await self.async_set_unique_id(f"{user_input[CONF_CLUSTER_NAME]}")
                 self._abort_if_unique_id_configured()
@@ -98,6 +119,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                     title=user_input[CONF_NAME],
                     data=user_input,
                 )
+            except AbortFlow:
+                # Re-raise AbortFlow exceptions to let them propagate
+                raise
             except Exception as ex:  # pylint: disable=broad-except
                 _LOGGER.error("Failed to connect to Kubernetes: %s", ex)
                 errors["base"] = "cannot_connect"
