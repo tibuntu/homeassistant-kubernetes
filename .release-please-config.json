@@ -1,10 +1,47 @@
 {
   "packages": {
     ".": {
-      "release-type": "python",
+      "release-type": "simple",
       "include-component-in-tag": false,
       "changelog-path": "CHANGELOG.md",
       "version-file": "pyproject.toml",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features",
+          "hidden": false
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes",
+          "hidden": false
+        },
+        {
+          "type": "docs",
+          "section": "Documentation",
+          "hidden": false
+        },
+        {
+          "type": "refactor",
+          "section": "Other",
+          "hidden": false
+        },
+        {
+          "type": "test",
+          "section": "Other",
+          "hidden": false
+        },
+        {
+          "type": "build",
+          "section": "Other",
+          "hidden": false
+        },
+        {
+          "type": "chore",
+          "section": "Other",
+          "hidden": false
+        }
+      ],
       "extra-files": [
         {
           "type": "json",
