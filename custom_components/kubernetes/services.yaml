@@ -188,3 +188,108 @@ stop_statefulset:
       name: Namespace
       description: The namespace containing the StatefulSet(s) (optional, defaults to configured namespace).
       required: false
+
+# CronJob services
+trigger_cronjob:
+  name: Trigger CronJob
+  description: Trigger one or more Kubernetes CronJobs by creating jobs from them.
+  fields:
+    cronjob_name:
+      name: CronJob Name
+      description: The name of a single CronJob to trigger (use cronjob_names for multiple).
+      required: false
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    cronjob_names:
+      name: CronJob Names
+      description: A list of CronJob names to trigger (use cronjob_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
+    namespace:
+      name: Namespace
+      description: The namespace containing the CronJob(s) (optional, defaults to configured namespace).
+      required: false
+
+suspend_cronjob:
+  name: Suspend CronJob
+  description: Suspend one or more Kubernetes CronJobs by setting suspend=true.
+  fields:
+    cronjob_name:
+      name: CronJob Name
+      description: The name of a single CronJob to suspend (use cronjob_names for multiple).
+      required: false
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    cronjob_names:
+      name: CronJob Names
+      description: A list of CronJob names to suspend (use cronjob_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
+    namespace:
+      name: Namespace
+      description: The namespace containing the CronJob(s) (optional, defaults to configured namespace).
+      required: false
+
+resume_cronjob:
+  name: Resume CronJob
+  description: Resume one or more Kubernetes CronJobs by setting suspend=false.
+  fields:
+    cronjob_name:
+      name: CronJob Name
+      description: The name of a single CronJob to resume (use cronjob_names for multiple).
+      required: false
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    cronjob_names:
+      name: CronJob Names
+      description: A list of CronJob names to resume (use cronjob_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
+    namespace:
+      name: Namespace
+      description: The namespace containing the CronJob(s) (optional, defaults to configured namespace).
+      required: false
+
+create_cronjob_job:
+  name: Create CronJob Job
+  description: Create a job from one or more Kubernetes CronJobs (manual trigger).
+  fields:
+    cronjob_name:
+      name: CronJob Name
+      description: The name of a single CronJob to create a job from (use cronjob_names for multiple).
+      required: false
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    cronjob_names:
+      name: CronJob Names
+      description: A list of CronJob names to create jobs from (use cronjob_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
+    namespace:
+      name: Namespace
+      description: The namespace containing the CronJob(s) (optional, defaults to configured namespace).
+      required: false

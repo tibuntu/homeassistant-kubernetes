@@ -28,6 +28,14 @@ The integration requires specific Kubernetes RBAC permissions to monitor cluster
 | **statefulsets/scale** | `get`, `patch`, `update`, `create`, `delete` | ✅ | Scale statefulsets up/down | Cannot control statefulset switches |
 | **statefulsets/status** | `get`, `patch`, `update` | ⚠️ | Accurate statefulset state reporting | Potential state inconsistencies |
 
+### Batch API Group (`batch`)
+
+| Resource | Verbs | Required | Purpose | Impact if Missing |
+|----------|-------|----------|---------|-------------------|
+| **cronjobs** | `get`, `list`, `watch` | ✅ | Monitor CronJob status and count | No CronJob sensors or switches |
+| **cronjobs/status** | `get`, `patch`, `update` | ⚠️ | Accurate CronJob state reporting | Potential state inconsistencies |
+| **jobs** | `get`, `list`, `watch`, `create` | ✅ | Trigger CronJobs and monitor job status | Cannot trigger CronJobs or monitor job execution |
+
 ### Extensions API Group (`extensions`)
 
 | Resource | Verbs | Required | Purpose | Impact if Missing |
@@ -62,10 +70,16 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets", "statefulsets"]
   verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
+  verbs: ["get", "list", "watch"]
 # Control permissions
 - apiGroups: ["apps"]
   resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale", "statefulsets/status"]
   verbs: ["get", "patch", "update", "create", "delete"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "cronjobs/status", "jobs"]
+  verbs: ["get", "patch", "update", "create"]
 # Legacy compatibility
 - apiGroups: ["extensions"]
   resources: ["deployments", "deployments/scale", "replicasets"]
@@ -88,6 +102,9 @@ rules:
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets", "statefulsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["extensions"]
   resources: ["deployments", "replicasets"]
@@ -121,6 +138,12 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale", "statefulsets/status"]
   verbs: ["get", "patch", "update", "create", "delete"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "cronjobs/status", "jobs"]
+  verbs: ["get", "patch", "update", "create"]
 ```
 
 **Additional Requirements:**
@@ -154,6 +177,9 @@ rules:
   verbs: ["get", "list"]
 - apiGroups: ["apps"]
   resources: ["deployments", "statefulsets"]
+  verbs: ["get", "list"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs"]
   verbs: ["get", "list"]
 ```
 
@@ -218,6 +244,24 @@ kubectl auth can-i patch deployments/scale --as=system:serviceaccount:homeassist
 kubectl auth can-i watch pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Fix: Add 'watch' verb to relevant resources
+```
+
+#### 4. "Forbidden: User cannot list cronjobs"
+
+```bash
+# Verify CronJob permissions
+kubectl auth can-i list cronjobs --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+
+# Fix: Ensure cronjobs are included in the role with 'get', 'list' verbs
+```
+
+#### 5. "Forbidden: User cannot create jobs"
+
+```bash
+# Verify job creation permissions (needed for CronJob triggering)
+kubectl auth can-i create jobs --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+
+# Fix: Ensure jobs resource has 'create' verb in batch API group
 ```
 
 ### Diagnostic Commands

@@ -49,9 +49,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("Updating Kubernetes data for coordinator")
 
-            # Fetch deployments, statefulsets, pods count, and nodes count
+            # Fetch deployments, statefulsets, cronjobs, pods count, and nodes count
             deployments = await self.client.get_deployments()
             statefulsets = await self.client.get_statefulsets()
+            cronjobs = await self.client.get_cronjobs()
             pods_count = await self.client.get_pods_count()
             nodes_count = await self.client.get_nodes_count()
 
@@ -63,15 +64,17 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 "statefulsets": {
                     statefulset["name"]: statefulset for statefulset in statefulsets
                 },
+                "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
                 "pods_count": pods_count,
                 "nodes_count": nodes_count,
                 "last_update": asyncio.get_event_loop().time(),
             }
 
             _LOGGER.debug(
-                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d pods, %d nodes",
+                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d cronjobs, %d pods, %d nodes",
                 len(deployments),
                 len(statefulsets),
+                len(cronjobs),
                 pods_count,
                 nodes_count,
             )
@@ -99,6 +102,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "statefulsets" not in self.data:
             return None
         return self.data["statefulsets"].get(statefulset_name)
+
+    def get_cronjob_data(self, cronjob_name: str) -> dict[str, Any] | None:
+        """Get cronjob data by name."""
+        if not self.data or "cronjobs" not in self.data:
+            return None
+        return self.data["cronjobs"].get(cronjob_name)
 
     def get_last_update_time(self) -> float:
         """Get the timestamp of the last successful update."""
@@ -131,7 +140,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     continue
 
                 # Parse the unique_id to determine resource type and name
-                # Format: {config_entry.entry_id}_{resource_name}_{resource_type}
+                # Format: {config_entry.entry_id}_{resource_name}_{resource_type} or {config_entry.entry_id}_{namespace}_{resource_name}_{resource_type}
                 if not entity.unique_id.startswith(f"{self.config_entry.entry_id}_"):
                     continue
 
@@ -141,8 +150,21 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 if len(parts) < 2:
                     continue
 
-                resource_type = parts[-1]  # 'deployment' or 'statefulset'
-                resource_name = "_".join(parts[:-1])  # Handle names with underscores
+                resource_type = parts[-1]  # 'deployment', 'statefulset', or 'cronjob'
+
+                # Handle different formats:
+                # - Old format: {resource_name}_{resource_type}
+                # - New CronJob format: {namespace}_{resource_name}_{resource_type}
+                if resource_type == "cronjob" and len(parts) >= 3:
+                    # New CronJob format: {namespace}_{resource_name}_cronjob
+                    resource_name = "_".join(
+                        parts[1:-1]
+                    )  # Everything between namespace and 'cronjob'
+                else:
+                    # Old format: {resource_name}_{resource_type}
+                    resource_name = "_".join(
+                        parts[:-1]
+                    )  # Handle names with underscores
 
                 should_remove = False
 
@@ -160,12 +182,21 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             "StatefulSet %s no longer exists, marking entity for removal",
                             resource_name,
                         )
+                elif resource_type in ("cronjob", "cronjobs"):
+                    if resource_name not in current_data.get("cronjobs", {}):
+                        should_remove = True
+                        _LOGGER.info(
+                            "CronJob %s no longer exists, marking entity for removal",
+                            resource_name,
+                        )
                 else:
-                    # Handle other entity types like sensors that might track deployments/statefulsets
-                    # Check if this entity is tracking a deployment or statefulset that no longer exists
-                    if resource_name not in current_data.get(
-                        "deployments", {}
-                    ) and resource_name not in current_data.get("statefulsets", {}):
+                    # Handle other entity types like sensors that might track deployments/statefulsets/cronjobs
+                    # Check if this entity is tracking a resource that no longer exists
+                    if (
+                        resource_name not in current_data.get("deployments", {})
+                        and resource_name not in current_data.get("statefulsets", {})
+                        and resource_name not in current_data.get("cronjobs", {})
+                    ):
                         should_remove = True
                         _LOGGER.info(
                             "Resource %s (type: %s) no longer exists, marking entity for removal",

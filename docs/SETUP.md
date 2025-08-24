@@ -102,6 +102,13 @@ rules:
 - apiGroups: ["apps"]
   resources: ["statefulsets/status"]
   verbs: ["get", "patch", "update"]
+# Batch API permissions for CronJobs
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "cronjobs/status", "jobs"]
+  verbs: ["get", "patch", "update", "create"]
 ```
 
 ### Permission Breakdown
@@ -118,6 +125,9 @@ rules:
 | **apps** | **statefulsets** | `get`, `list`, `watch` | Monitor statefulset status and metadata |
 | **apps** | **statefulsets/scale** | `patch`, `update`, `get`, `create`, `delete` | Scale statefulsets up/down |
 | **apps** | **statefulsets/status** | `get`, `patch`, `update` | Update and monitor statefulset status |
+| **batch** | **cronjobs** | `get`, `list`, `watch` | Monitor CronJob status and metadata |
+| **batch** | **cronjobs/status** | `get`, `patch`, `update` | Update and monitor CronJob status |
+| **batch** | **jobs** | `get`, `list`, `watch`, `create` | Monitor and create jobs (for CronJob triggering) |
 | **extensions** | **deployments** | `get`, `list`, `watch` | Legacy API compatibility for older clusters |
 | **extensions** | **deployments/scale** | `patch`, `update`, `get`, `create`, `delete` | Legacy scaling API compatibility |
 
@@ -177,6 +187,13 @@ rules:
 - apiGroups: ["apps"]
   resources: ["statefulsets/status"]
   verbs: ["get", "patch", "update"]
+# Batch API permissions for CronJobs within namespace
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "jobs"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs", "cronjobs/status", "jobs"]
+  verbs: ["get", "patch", "update", "create"]
 ```
 
 ### 3. Create RoleBinding (instead of ClusterRoleBinding)
@@ -230,6 +247,9 @@ rules:
 # Minimal cluster-wide permissions for basic functionality
 - apiGroups: [""]
   resources: ["nodes", "namespaces"]
+  verbs: ["get", "list"]
+- apiGroups: ["batch"]
+  resources: ["cronjobs"]
   verbs: ["get", "list"]
 ```
 

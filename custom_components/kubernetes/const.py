@@ -35,6 +35,7 @@ SENSOR_TYPE_PODS = "pods"
 SENSOR_TYPE_NODES = "nodes"
 SENSOR_TYPE_DEPLOYMENTS = "deployments"
 SENSOR_TYPE_STATEFULSETS = "statefulsets"
+SENSOR_TYPE_CRONJOBS = "cronjobs"
 
 # Binary sensor types
 BINARY_SENSOR_TYPE_CLUSTER_HEALTH = "cluster_health"
@@ -42,6 +43,7 @@ BINARY_SENSOR_TYPE_CLUSTER_HEALTH = "cluster_health"
 # Switch types
 SWITCH_TYPE_DEPLOYMENT = "deployment"
 SWITCH_TYPE_STATEFULSET = "statefulset"
+SWITCH_TYPE_CRONJOB = "cronjob"
 
 # Workload types
 WORKLOAD_TYPE_DEPLOYMENT = "Deployment"
@@ -56,16 +58,25 @@ SERVICE_START_DEPLOYMENT = "start_deployment"
 SERVICE_SCALE_STATEFULSET = "scale_statefulset"
 SERVICE_STOP_STATEFULSET = "stop_statefulset"
 SERVICE_START_STATEFULSET = "start_statefulset"
+SERVICE_TRIGGER_CRONJOB = "trigger_cronjob"
+SERVICE_SUSPEND_CRONJOB = "suspend_cronjob"
+SERVICE_RESUME_CRONJOB = "resume_cronjob"
+SERVICE_CREATE_CRONJOB_JOB = "create_cronjob_job"
 
 # Service attributes
 ATTR_DEPLOYMENT_NAME = "deployment_name"
 ATTR_STATEFULSET_NAME = "statefulset_name"
+ATTR_CRONJOB_NAME = "cronjob_name"
 ATTR_NAMESPACE = "namespace"
 ATTR_REPLICAS = "replicas"
+ATTR_JOB_NAME = "job_name"
+ATTR_SUSPEND_TIME = "suspend_time"
+ATTR_RESUME_TIME = "resume_time"
 
 # Multi-selection service attributes
 ATTR_DEPLOYMENT_NAMES = "deployment_names"
 ATTR_STATEFULSET_NAMES = "statefulset_names"
+ATTR_CRONJOB_NAMES = "cronjob_names"
 
 # Workload attributes
 ATTR_WORKLOAD_TYPE = "workload_type"

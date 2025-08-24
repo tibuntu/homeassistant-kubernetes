@@ -78,10 +78,13 @@ class KubernetesClient:
                 ):
                     _LOGGER.error(
                         "Authentication failed for %s (%s, %s). Check API token and RBAC permissions. "
-                        "This error will be suppressed for 5 minutes to reduce log noise.",
+                        "This error will be suppressed for 5 minutes to reduce log noise. "
+                        "Error details: status=%s, reason='%s'",
                         operation,
                         cluster_info,
                         namespace_info,
+                        error.status,
+                        error.reason,
                     )
                     self._last_auth_error_time = current_time
                 else:
@@ -189,6 +192,7 @@ class KubernetesClient:
         api_client = k8s_client.ApiClient(configuration)
         self.core_v1 = k8s_client.CoreV1Api(api_client)
         self.apps_v1 = k8s_client.AppsV1Api(api_client)
+        self.batch_v1 = k8s_client.BatchV1Api(api_client)  # Added BatchV1Api
 
         _LOGGER.debug(
             "Kubernetes client configured: host=%s, verify_ssl=%s, ca_cert=%s",
@@ -215,7 +219,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/",
                     headers=headers,
-                    ssl=False,
+                    ssl=self.verify_ssl,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -255,23 +259,13 @@ class KubernetesClient:
 
     async def _get_pods_count_single_namespace(self) -> int:
         """Get pods count for a single namespace."""
-        loop = asyncio.get_event_loop()
-        pods = await loop.run_in_executor(
-            None, self.core_v1.list_namespaced_pod, self.namespace
-        )
-        count = len(pods.items)
-        self._log_success("get pods count", f"found {count} pods")
-        return count
+        # Use aiohttp directly since it's more reliable
+        return await self._get_pods_count_aiohttp()
 
     async def _get_pods_count_all_namespaces(self) -> int:
         """Get pods count across all namespaces."""
-        loop = asyncio.get_event_loop()
-        pods = await loop.run_in_executor(
-            None, self.core_v1.list_pod_for_all_namespaces
-        )
-        count = len(pods.items)
-        self._log_success("get pods count", f"found {count} pods across all namespaces")
-        return count
+        # Use aiohttp directly since it's more reliable
+        return await self._get_pods_count_all_namespaces_aiohttp()
 
     async def _get_pods_count_aiohttp(self) -> int:
         """Get pods count using aiohttp as fallback for single namespace."""
@@ -285,7 +279,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/namespaces/{self.namespace}/pods",
                     headers=headers,
-                    ssl=False,
+                    ssl=self.verify_ssl,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -313,7 +307,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/pods",
                     headers=headers,
-                    ssl=False,
+                    ssl=self.verify_ssl,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -389,19 +383,13 @@ class KubernetesClient:
 
     async def _get_deployments_count_single_namespace(self) -> int:
         """Get deployments count for a single namespace."""
-        loop = asyncio.get_event_loop()
-        deployments = await loop.run_in_executor(
-            None, self.apps_v1.list_namespaced_deployment, self.namespace
-        )
-        return len(deployments.items)
+        # Use aiohttp directly since it's more reliable
+        return await self._get_deployments_count_aiohttp()
 
     async def _get_deployments_count_all_namespaces(self) -> int:
         """Get deployments count across all namespaces."""
-        loop = asyncio.get_event_loop()
-        deployments = await loop.run_in_executor(
-            None, self.apps_v1.list_deployment_for_all_namespaces
-        )
-        return len(deployments.items)
+        # Use aiohttp directly since it's more reliable
+        return await self._get_deployments_count_all_namespaces_aiohttp()
 
     async def _get_deployments_count_aiohttp(self) -> int:
         """Get deployments count using aiohttp as fallback for single namespace."""
@@ -415,7 +403,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/deployments",
                     headers=headers,
-                    ssl=False,
+                    ssl=self.verify_ssl,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -443,7 +431,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/apis/apps/v1/deployments",
                     headers=headers,
-                    ssl=False,
+                    ssl=self.verify_ssl,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -479,36 +467,8 @@ class KubernetesClient:
 
     async def _get_deployments_single_namespace(self) -> list[dict[str, Any]]:
         """Get deployments for a single namespace."""
-        loop = asyncio.get_event_loop()
-        deployments = await loop.run_in_executor(
-            None, self.apps_v1.list_namespaced_deployment, self.namespace
-        )
-
-        deployment_list = []
-        for deployment in deployments.items:
-            deployment_info = {
-                "name": deployment.metadata.name,
-                "namespace": deployment.metadata.namespace,
-                "replicas": deployment.spec.replicas if deployment.spec.replicas else 0,
-                "available_replicas": (
-                    deployment.status.available_replicas
-                    if deployment.status.available_replicas
-                    else 0
-                ),
-                "ready_replicas": (
-                    deployment.status.ready_replicas
-                    if deployment.status.ready_replicas
-                    else 0
-                ),
-                "is_running": (
-                    deployment.status.available_replicas > 0
-                    if deployment.status.available_replicas
-                    else False
-                ),
-            }
-            deployment_list.append(deployment_info)
-
-        return deployment_list
+        # Use aiohttp directly since it's more reliable
+        return await self._get_deployments_aiohttp()
 
     async def _get_deployments_all_namespaces(self) -> list[dict[str, Any]]:
         """Get deployments across all namespaces."""
@@ -555,7 +515,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/deployments",
                     headers=headers,
-                    ssl=False,
+                    ssl=self.verify_ssl,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -601,7 +561,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/apis/apps/v1/deployments",
                     headers=headers,
-                    ssl=False,
+                    ssl=self.verify_ssl,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -1300,3 +1260,707 @@ class KubernetesClient:
     async def is_cluster_healthy(self) -> bool:
         """Check if the cluster is healthy."""
         return await self._test_connection()
+
+    # CronJob methods
+    async def get_cronjobs_count(self) -> int:
+        """Get the count of CronJobs in the cluster."""
+        try:
+            if self.monitor_all_namespaces:
+                return await self._get_cronjobs_count_all_namespaces()
+            else:
+                return await self._get_cronjobs_count_single_namespace()
+        except Exception as ex:
+            self._log_error("get_cronjobs_count", ex)
+            return 0
+
+    async def _get_cronjobs_count_single_namespace(self) -> int:
+        """Get CronJobs count for a single namespace."""
+        try:
+            loop = asyncio.get_event_loop()
+            cronjobs = await loop.run_in_executor(
+                None, self.batch_v1.list_namespaced_cron_job, self.namespace
+            )
+            return len(cronjobs.items)
+        except Exception as ex:
+            self._log_error("_get_cronjobs_count_single_namespace", ex)
+            return await self._get_cronjobs_count_aiohttp()
+
+    async def _get_cronjobs_count_all_namespaces(self) -> int:
+        """Get CronJobs count for all namespaces."""
+        # Use aiohttp directly since the kubernetes client method may not exist
+        # or may have authentication issues
+        return await self._get_cronjobs_count_all_namespaces_aiohttp()
+
+    async def _get_cronjobs_count_aiohttp(self) -> int:
+        """Get CronJobs count using aiohttp fallback for single namespace."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{self.namespace}/cronjobs"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return len(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "Failed to get CronJobs count via aiohttp: HTTP %d",
+                            response.status,
+                        )
+                        return 0
+        except Exception as ex:
+            self._log_error("_get_cronjobs_count_aiohttp", ex)
+            return 0
+
+    async def _get_cronjobs_count_all_namespaces_aiohttp(self) -> int:
+        """Get CronJobs count using aiohttp fallback for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/cronjobs"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return len(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "Failed to get CronJobs count via aiohttp: HTTP %d",
+                            response.status,
+                        )
+                        return 0
+        except Exception as ex:
+            self._log_error("_get_cronjobs_count_all_namespaces_aiohttp", ex)
+            return 0
+
+    async def get_cronjobs(self) -> list[dict[str, Any]]:
+        """Get detailed information about CronJobs in the cluster."""
+        try:
+            if self.monitor_all_namespaces:
+                return await self._get_cronjobs_all_namespaces()
+            else:
+                return await self._get_cronjobs_single_namespace()
+        except Exception as ex:
+            self._log_error("get_cronjobs", ex)
+            return []
+
+    async def _get_cronjobs_single_namespace(self) -> list[dict[str, Any]]:
+        """Get CronJobs for a single namespace."""
+        try:
+            loop = asyncio.get_event_loop()
+            cronjobs = await loop.run_in_executor(
+                None, self.batch_v1.list_namespaced_cron_job, self.namespace
+            )
+            return [self._format_cronjob(cronjob) for cronjob in cronjobs.items]
+        except Exception as ex:
+            self._log_error("_get_cronjobs_single_namespace", ex)
+            return await self._get_cronjobs_aiohttp()
+
+    async def _get_cronjobs_all_namespaces(self) -> list[dict[str, Any]]:
+        """Get CronJobs for all namespaces."""
+        # Use aiohttp directly since the kubernetes client method may not exist
+        # or may have authentication issues
+        _LOGGER.debug(
+            "Getting CronJobs for all namespaces using aiohttp from %s:%s",
+            self.host,
+            self.port,
+        )
+        return await self._get_cronjobs_all_namespaces_aiohttp()
+
+    async def _get_cronjobs_aiohttp(self) -> list[dict[str, Any]]:
+        """Get CronJobs using aiohttp fallback for single namespace."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{self.namespace}/cronjobs"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return [
+                            self._format_cronjob_from_dict(item)
+                            for item in data.get("items", [])
+                        ]
+                    else:
+                        _LOGGER.error(
+                            "Failed to get CronJobs via aiohttp: HTTP %d",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("_get_cronjobs_aiohttp", ex)
+            return []
+
+    async def _get_cronjobs_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
+        """Get CronJobs using aiohttp fallback for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/cronjobs"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return [
+                            self._format_cronjob_from_dict(item)
+                            for item in data.get("items", [])
+                        ]
+                    else:
+                        _LOGGER.error(
+                            "Failed to get CronJobs via aiohttp: HTTP %d",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("_get_cronjobs_all_namespaces_aiohttp", ex)
+            return []
+
+    async def _suspend_cronjob_aiohttp(
+        self, cronjob_name: str, namespace: str
+    ) -> dict[str, Any]:
+        """Suspend a CronJob using aiohttp."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/strategic-merge-patch+json",
+            }
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs/{cronjob_name}"
+            patch_body = {"spec": {"suspend": True}}
+
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(
+                    url,
+                    headers=headers,
+                    json=patch_body,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        _LOGGER.info(
+                            "Successfully suspended CronJob '%s' in namespace '%s' via aiohttp",
+                            cronjob_name,
+                            namespace,
+                        )
+                        return {
+                            "success": True,
+                            "cronjob_name": cronjob_name,
+                            "namespace": namespace,
+                        }
+                    else:
+                        error_msg = f"Failed to suspend CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
+                        _LOGGER.error(error_msg)
+                        return {
+                            "success": False,
+                            "error": error_msg,
+                            "cronjob_name": cronjob_name,
+                            "namespace": namespace,
+                        }
+        except Exception as ex:
+            error_msg = (
+                f"Failed to suspend CronJob '{cronjob_name}' via aiohttp: {str(ex)}"
+            )
+            self._log_error("_suspend_cronjob_aiohttp", ex)
+            return {
+                "success": False,
+                "error": error_msg,
+                "cronjob_name": cronjob_name,
+                "namespace": namespace,
+            }
+
+    async def _resume_cronjob_aiohttp(
+        self, cronjob_name: str, namespace: str
+    ) -> dict[str, Any]:
+        """Resume a CronJob using aiohttp."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/strategic-merge-patch+json",
+            }
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs/{cronjob_name}"
+            patch_body = {"spec": {"suspend": False}}
+
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(
+                    url,
+                    headers=headers,
+                    json=patch_body,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        _LOGGER.info(
+                            "Successfully resumed CronJob '%s' in namespace '%s' via aiohttp",
+                            cronjob_name,
+                            namespace,
+                        )
+                        return {
+                            "success": True,
+                            "cronjob_name": cronjob_name,
+                            "namespace": namespace,
+                        }
+                    else:
+                        error_msg = f"Failed to resume CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
+                        _LOGGER.error(error_msg)
+                        return {
+                            "success": False,
+                            "error": error_msg,
+                            "cronjob_name": cronjob_name,
+                            "namespace": namespace,
+                        }
+        except Exception as ex:
+            error_msg = (
+                f"Failed to resume CronJob '{cronjob_name}' via aiohttp: {str(ex)}"
+            )
+            self._log_error("_resume_cronjob_aiohttp", ex)
+            return {
+                "success": False,
+                "error": error_msg,
+                "cronjob_name": cronjob_name,
+                "namespace": namespace,
+            }
+
+    async def _trigger_cronjob_aiohttp(
+        self, cronjob_name: str, namespace: str
+    ) -> dict[str, Any]:
+        """Trigger a CronJob using aiohttp by creating a job from it."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+
+            # Step 1: Get the CronJob to extract the job template
+            cronjob_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs/{cronjob_name}"
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    cronjob_url,
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        error_msg = f"Failed to get CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
+                        _LOGGER.error(error_msg)
+                        return {
+                            "success": False,
+                            "error": error_msg,
+                            "cronjob_name": cronjob_name,
+                            "namespace": namespace,
+                        }
+
+                    cronjob_data = await response.json()
+
+                    # Step 2: Create a job from the CronJob template
+                    job_name = f"{cronjob_name}-manual-{int(time.time())}"
+
+                    # Extract the job template from the CronJob
+                    job_template = cronjob_data.get("spec", {}).get("jobTemplate", {})
+                    if not job_template:
+                        error_msg = f"CronJob '{cronjob_name}' has no job template"
+                        _LOGGER.error(error_msg)
+                        return {
+                            "success": False,
+                            "error": error_msg,
+                            "cronjob_name": cronjob_name,
+                            "namespace": namespace,
+                        }
+
+                    # Create the job object
+                    job_data = {
+                        "apiVersion": "batch/v1",
+                        "kind": "Job",
+                        "metadata": {
+                            "name": job_name,
+                            "namespace": namespace,
+                            "labels": {
+                                "cronjob.kubernetes.io/manual": "true",
+                                "cronjob.kubernetes.io/name": cronjob_name,
+                            },
+                        },
+                        "spec": job_template.get("spec", {}),
+                    }
+
+                    # Create the job
+                    jobs_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/jobs"
+
+                    async with session.post(
+                        jobs_url,
+                        headers=headers,
+                        json=job_data,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as job_response:
+                        if job_response.status == 201:  # Created
+                            job_result = await job_response.json()
+                            _LOGGER.info(
+                                "Successfully triggered CronJob '%s' in namespace '%s' via aiohttp, created job '%s'",
+                                cronjob_name,
+                                namespace,
+                                job_name,
+                            )
+                            return {
+                                "success": True,
+                                "job_name": job_name,
+                                "namespace": namespace,
+                                "cronjob_name": cronjob_name,
+                                "job_uid": job_result.get("metadata", {}).get(
+                                    "uid", ""
+                                ),
+                            }
+                        else:
+                            error_msg = f"Failed to create job for CronJob '{cronjob_name}' via aiohttp: HTTP {job_response.status}"
+                            _LOGGER.error(error_msg)
+                            return {
+                                "success": False,
+                                "error": error_msg,
+                                "cronjob_name": cronjob_name,
+                                "namespace": namespace,
+                            }
+
+        except Exception as ex:
+            error_msg = (
+                f"Failed to trigger CronJob '{cronjob_name}' via aiohttp: {str(ex)}"
+            )
+            self._log_error("_trigger_cronjob_aiohttp", ex)
+            return {
+                "success": False,
+                "error": error_msg,
+                "cronjob_name": cronjob_name,
+                "namespace": namespace,
+            }
+
+    def _format_cronjob(self, cronjob) -> dict[str, Any]:
+        """Format CronJob object to dictionary."""
+        return {
+            "name": cronjob.metadata.name,
+            "namespace": cronjob.metadata.namespace,
+            "schedule": cronjob.spec.schedule if cronjob.spec.schedule else "",
+            "suspend": cronjob.spec.suspend if cronjob.spec.suspend else False,
+            "last_schedule_time": (
+                cronjob.status.last_schedule_time.isoformat()
+                if cronjob.status.last_schedule_time
+                else None
+            ),
+            "next_schedule_time": (
+                cronjob.status.next_schedule_time.isoformat()
+                if cronjob.status.next_schedule_time
+                else None
+            ),
+            "active_jobs_count": (
+                len(cronjob.status.active) if cronjob.status.active else 0
+            ),
+            "successful_jobs_history_limit": (
+                cronjob.spec.successful_jobs_history_limit
+                if cronjob.spec.successful_jobs_history_limit
+                else 3
+            ),
+            "failed_jobs_history_limit": (
+                cronjob.spec.failed_jobs_history_limit
+                if cronjob.spec.failed_jobs_history_limit
+                else 1
+            ),
+            "concurrency_policy": (
+                cronjob.spec.concurrency_policy
+                if cronjob.spec.concurrency_policy
+                else "Allow"
+            ),
+            "uid": cronjob.metadata.uid,
+            "creation_timestamp": (
+                cronjob.metadata.creation_timestamp.isoformat()
+                if cronjob.metadata.creation_timestamp
+                else None
+            ),
+        }
+
+    def _format_cronjob_from_dict(self, cronjob_dict: dict[str, Any]) -> dict[str, Any]:
+        """Format CronJob dictionary from API response."""
+        metadata = cronjob_dict.get("metadata", {})
+        spec = cronjob_dict.get("spec", {})
+        status = cronjob_dict.get("status", {})
+
+        return {
+            "name": metadata.get("name", ""),
+            "namespace": metadata.get("namespace", ""),
+            "schedule": spec.get("schedule", ""),
+            "suspend": spec.get("suspend", False),
+            "last_schedule_time": status.get("lastScheduleTime"),
+            "next_schedule_time": status.get("nextScheduleTime"),
+            "active_jobs_count": len(status.get("active", [])),
+            "successful_jobs_history_limit": spec.get("successfulJobsHistoryLimit", 3),
+            "failed_jobs_history_limit": spec.get("failedJobsHistoryLimit", 1),
+            "concurrency_policy": spec.get("concurrencyPolicy", "Allow"),
+            "uid": metadata.get("uid", ""),
+            "creation_timestamp": metadata.get("creationTimestamp"),
+        }
+
+    async def trigger_cronjob(
+        self, cronjob_name: str, namespace: str | None = None
+    ) -> dict[str, Any]:
+        """Trigger a CronJob by creating a job from it."""
+        _LOGGER.debug(
+            "trigger_cronjob called with cronjob_name: %s, namespace: %s",
+            cronjob_name,
+            namespace,
+        )
+        target_namespace = namespace or self.namespace
+
+        # Check namespace permissions
+        if not self.monitor_all_namespaces and target_namespace != self.namespace:
+            error_msg = (
+                f"Cannot trigger CronJob '{cronjob_name}' in namespace '{target_namespace}': "
+                f"Integration is configured to monitor only namespace '{self.namespace}'. "
+                f"Enable 'monitor_all_namespaces' in configuration to access other namespaces."
+            )
+            _LOGGER.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg,
+                "cronjob_name": cronjob_name,
+                "namespace": target_namespace,
+            }
+
+        try:
+            # Try using aiohttp first since it's more reliable
+            return await self._trigger_cronjob_aiohttp(cronjob_name, target_namespace)
+        except Exception:
+            # Fallback to kubernetes client
+            try:
+                # First, get the CronJob to extract the job template
+                loop = asyncio.get_event_loop()
+                cronjob = await loop.run_in_executor(
+                    None,
+                    self.batch_v1.read_namespaced_cron_job,
+                    cronjob_name,
+                    target_namespace,
+                )
+
+                # Create a job from the CronJob template
+                job_name = f"{cronjob_name}-manual-{int(time.time())}"
+
+                # Create job object from CronJob template
+                job = k8s_client.V1Job(
+                    metadata=k8s_client.V1ObjectMeta(
+                        name=job_name,
+                        namespace=target_namespace,
+                        labels={
+                            "cronjob.kubernetes.io/manual": "true",
+                            "cronjob.kubernetes.io/name": cronjob_name,
+                        },
+                    ),
+                    spec=cronjob.spec.job_template.spec,
+                )
+
+                # Create the job
+                created_job = await loop.run_in_executor(
+                    None, self.batch_v1.create_namespaced_job, target_namespace, job
+                )
+
+                _LOGGER.info(
+                    "Successfully triggered CronJob '%s' in namespace '%s', created job '%s'",
+                    cronjob_name,
+                    target_namespace,
+                    job_name,
+                )
+
+                return {
+                    "success": True,
+                    "job_name": job_name,
+                    "namespace": target_namespace,
+                    "cronjob_name": cronjob_name,
+                    "job_uid": created_job.metadata.uid,
+                }
+
+            except ApiException as ex:
+                error_msg = f"Failed to trigger CronJob '{cronjob_name}': {ex.status} - {ex.reason}"
+                _LOGGER.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "cronjob_name": cronjob_name,
+                    "namespace": target_namespace,
+                }
+            except Exception as ex:
+                error_msg = f"Failed to trigger CronJob '{cronjob_name}': {str(ex)}"
+                self._log_error("trigger_cronjob", ex)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "cronjob_name": cronjob_name,
+                    "namespace": target_namespace,
+                }
+
+    async def suspend_cronjob(
+        self, cronjob_name: str, namespace: str | None = None
+    ) -> dict[str, Any]:
+        """Suspend a CronJob by setting suspend=true."""
+        target_namespace = namespace or self.namespace
+
+        # Check namespace permissions
+        if not self.monitor_all_namespaces and target_namespace != self.namespace:
+            error_msg = (
+                f"Cannot suspend CronJob '{cronjob_name}' in namespace '{target_namespace}': "
+                f"Integration is configured to monitor only namespace '{self.namespace}'. "
+                f"Enable 'monitor_all_namespaces' in configuration to access other namespaces."
+            )
+            _LOGGER.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg,
+                "cronjob_name": cronjob_name,
+                "namespace": target_namespace,
+            }
+
+        try:
+            # Try using aiohttp first since it's more reliable
+            return await self._suspend_cronjob_aiohttp(cronjob_name, target_namespace)
+        except Exception:
+            # Fallback to kubernetes client
+            try:
+                # Create a patch to set suspend=true
+                patch_body = {"spec": {"suspend": True}}
+
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None,
+                    self.batch_v1.patch_namespaced_cron_job,
+                    cronjob_name,
+                    target_namespace,
+                    patch_body,
+                )
+
+                _LOGGER.info(
+                    "Successfully suspended CronJob '%s' in namespace '%s'",
+                    cronjob_name,
+                    target_namespace,
+                )
+
+                return {
+                    "success": True,
+                    "cronjob_name": cronjob_name,
+                    "namespace": target_namespace,
+                }
+
+            except ApiException as ex:
+                error_msg = f"Failed to suspend CronJob '{cronjob_name}': {ex.status} - {ex.reason}"
+                _LOGGER.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "cronjob_name": cronjob_name,
+                    "namespace": target_namespace,
+                }
+            except Exception as ex:
+                error_msg = f"Failed to suspend CronJob '{cronjob_name}': {str(ex)}"
+                self._log_error("suspend_cronjob", ex)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "cronjob_name": cronjob_name,
+                    "namespace": target_namespace,
+                }
+
+    async def resume_cronjob(
+        self, cronjob_name: str, namespace: str | None = None
+    ) -> dict[str, Any]:
+        """Resume a CronJob by setting suspend=false."""
+        target_namespace = namespace or self.namespace
+
+        # Check namespace permissions
+        if not self.monitor_all_namespaces and target_namespace != self.namespace:
+            error_msg = (
+                f"Cannot resume CronJob '{cronjob_name}' in namespace '{target_namespace}': "
+                f"Integration is configured to monitor only namespace '{self.namespace}'. "
+                f"Enable 'monitor_all_namespaces' in configuration to access other namespaces."
+            )
+            _LOGGER.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg,
+                "cronjob_name": cronjob_name,
+                "namespace": target_namespace,
+            }
+
+        try:
+            # Try using aiohttp first since it's more reliable
+            return await self._resume_cronjob_aiohttp(cronjob_name, target_namespace)
+        except Exception:
+            # Fallback to kubernetes client
+            try:
+                # Create a patch to set suspend=false
+                patch_body = {"spec": {"suspend": False}}
+
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None,
+                    self.batch_v1.patch_namespaced_cron_job,
+                    cronjob_name,
+                    target_namespace,
+                    patch_body,
+                )
+
+                _LOGGER.info(
+                    "Successfully resumed CronJob '%s' in namespace '%s'",
+                    cronjob_name,
+                    target_namespace,
+                )
+
+                return {
+                    "success": True,
+                    "cronjob_name": cronjob_name,
+                    "namespace": target_namespace,
+                }
+
+            except ApiException as ex:
+                error_msg = f"Failed to resume CronJob '{cronjob_name}': {ex.status} - {ex.reason}"
+                _LOGGER.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "cronjob_name": cronjob_name,
+                    "namespace": target_namespace,
+                }
+            except Exception as ex:
+                error_msg = f"Failed to resume CronJob '{cronjob_name}': {str(ex)}"
+                self._log_error("resume_cronjob", ex)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "cronjob_name": cronjob_name,
+                    "namespace": target_namespace,
+                }

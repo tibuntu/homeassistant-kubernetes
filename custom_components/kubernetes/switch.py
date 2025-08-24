@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DOMAIN,
+    WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
@@ -56,6 +57,15 @@ async def async_setup_entry(
         switches.append(
             KubernetesStatefulSetSwitch(
                 coordinator, config_entry, statefulset["name"], statefulset["namespace"]
+            )
+        )
+
+    # Get all CronJobs and create switches for them
+    cronjobs = await client.get_cronjobs()
+    for cronjob in cronjobs:
+        switches.append(
+            KubernetesCronJobSwitch(
+                coordinator, config_entry, cronjob["name"], cronjob["namespace"]
             )
         )
 
@@ -143,6 +153,24 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
                             config_entry,
                             statefulset_name,
                             statefulset_data.get("namespace", "default"),
+                        )
+                    )
+
+        # Check for new CronJobs
+        if coordinator.data and "cronjobs" in coordinator.data:
+            for cronjob_name, cronjob_data in coordinator.data["cronjobs"].items():
+                namespace = cronjob_data.get("namespace", "default")
+                unique_id = (
+                    f"{config_entry.entry_id}_{namespace}_{cronjob_name}_cronjob"
+                )
+                if unique_id not in existing_unique_ids:
+                    _LOGGER.info("Adding new entity for CronJob: %s", cronjob_name)
+                    new_entities.append(
+                        KubernetesCronJobSwitch(
+                            coordinator,
+                            config_entry,
+                            cronjob_name,
+                            namespace,
                         )
                     )
 
@@ -584,3 +612,204 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
             self.statefulset_name,
             max_attempts,
         )
+
+
+class KubernetesCronJobSwitch(SwitchEntity):
+    """Switch for controlling a Kubernetes CronJob suspension state."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        config_entry: ConfigEntry,
+        cronjob_name: str,
+        namespace: str,
+    ) -> None:
+        """Initialize the CronJob switch."""
+        self.coordinator = coordinator
+        self.config_entry = config_entry
+        self.cronjob_name = cronjob_name
+        self.namespace = namespace
+        self._attr_has_entity_name = True
+        self._attr_name = cronjob_name
+        self._attr_unique_id = (
+            f"{config_entry.entry_id}_{namespace}_{cronjob_name}_cronjob"
+        )
+        self._attr_icon = "mdi:clock-outline"
+        self._is_on = False  # True = enabled (not suspended), False = suspended
+        self._active_jobs_count = 0
+        self._schedule = ""
+        self._suspend = False
+        self._last_schedule_time: str | None = None
+        self._next_schedule_time: str | None = None
+        self._last_suspend_time: float | None = None
+        self._last_resume_time: float | None = None
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.last_update_success
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if the CronJob is enabled (not suspended)."""
+        return self._is_on
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return entity specific state attributes."""
+        return {
+            "namespace": self.namespace,
+            "cronjob_name": self.cronjob_name,
+            "schedule": self._schedule,
+            "suspend": self._suspend,
+            "suspended": self._suspend,  # Alias for clarity
+            "active_jobs_count": self._active_jobs_count,
+            "last_schedule_time": self._last_schedule_time,
+            "next_schedule_time": self._next_schedule_time,
+            "last_suspend_time": self._last_suspend_time,
+            "last_resume_time": self._last_resume_time,
+            "workload_type": WORKLOAD_TYPE_CRONJOB,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Resume the CronJob by setting suspend=false."""
+        try:
+            _LOGGER.info("Resuming CronJob: %s", self.cronjob_name)
+
+            # Get the client from hass.data
+            client = self.hass.data[DOMAIN][self.config_entry.entry_id]["client"]
+
+            # Resume the CronJob
+            result = await client.resume_cronjob(self.cronjob_name, self.namespace)
+
+            if result["success"]:
+                self._last_resume_time = time.time()
+                self._is_on = True
+                self._suspend = False
+                _LOGGER.info(
+                    "Successfully resumed CronJob '%s'",
+                    self.cronjob_name,
+                )
+            else:
+                _LOGGER.error(
+                    "Failed to resume CronJob '%s': %s",
+                    self.cronjob_name,
+                    result["error"],
+                )
+                raise Exception(result["error"])
+
+        except Exception as ex:
+            _LOGGER.error("Failed to resume CronJob %s: %s", self.cronjob_name, ex)
+            raise
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Suspend the CronJob by setting suspend=true."""
+        try:
+            _LOGGER.info("Suspending CronJob: %s", self.cronjob_name)
+
+            # Get the client from hass.data
+            client = self.hass.data[DOMAIN][self.config_entry.entry_id]["client"]
+
+            # Suspend the CronJob
+            result = await client.suspend_cronjob(self.cronjob_name, self.namespace)
+
+            if result["success"]:
+                self._last_suspend_time = time.time()
+                self._is_on = False
+                self._suspend = True
+                _LOGGER.info(
+                    "Successfully suspended CronJob '%s'",
+                    self.cronjob_name,
+                )
+            else:
+                _LOGGER.error(
+                    "Failed to suspend CronJob '%s': %s",
+                    self.cronjob_name,
+                    result["error"],
+                )
+                raise Exception(result["error"])
+
+        except Exception as ex:
+            _LOGGER.error("Failed to suspend CronJob %s: %s", self.cronjob_name, ex)
+            raise
+
+    async def async_update(self) -> None:
+        """Update the switch state from coordinator data."""
+        # Get data from coordinator
+        cronjob_data = self.coordinator.get_cronjob_data(self.cronjob_name)
+
+        if cronjob_data is None:
+            _LOGGER.warning(
+                "CronJob %s not found in coordinator data", self.cronjob_name
+            )
+            return
+
+        old_state = self._is_on
+        old_active_jobs = self._active_jobs_count
+
+        # Update state based on CronJob data
+        self._active_jobs_count = cronjob_data["active_jobs_count"]
+        self._schedule = cronjob_data["schedule"]
+        # Ensure suspend is always a boolean
+        suspend_value = cronjob_data["suspend"]
+        if suspend_value is True:
+            self._suspend = True
+        elif suspend_value is False:
+            self._suspend = False
+        elif isinstance(suspend_value, str):
+            suspend_str = str(suspend_value).lower()
+            is_true = suspend_str in ("true", "1", "yes", "on")
+            self._suspend = is_true
+        else:
+            self._suspend = False
+
+        # Handle schedule time fields with proper type conversion
+        last_schedule_value = cronjob_data["last_schedule_time"]
+        self._last_schedule_time = (
+            str(last_schedule_value) if last_schedule_value is not None else None
+        )
+
+        next_schedule_value = cronjob_data["next_schedule_time"]
+        self._next_schedule_time = (
+            str(next_schedule_value) if next_schedule_value is not None else None
+        )
+
+        # Consider the CronJob "on" if it is not suspended (enabled)
+        self._is_on = not self._suspend
+
+        # Log state changes for debugging
+        if old_active_jobs != self._active_jobs_count:
+            _LOGGER.info(
+                "CronJob %s active jobs changed: %d -> %d",
+                self.cronjob_name,
+                old_active_jobs,
+                self._active_jobs_count,
+            )
+        if old_state != self._is_on:
+            _LOGGER.info(
+                "CronJob %s suspension state changed: %s -> %s (suspended=%s)",
+                self.cronjob_name,
+                old_state,
+                self._is_on,
+                self._suspend,
+            )
+        else:
+            _LOGGER.debug(
+                "CronJob %s state unchanged: suspended=%s, active_jobs=%d, schedule=%s",
+                self.cronjob_name,
+                self._suspend,
+                self._active_jobs_count,
+                self._schedule,
+            )

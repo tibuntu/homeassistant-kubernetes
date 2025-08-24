@@ -33,3 +33,7 @@ rules:
   - apiGroups: ["apps"]
     resources: ["statefulsets/status"]
     verbs: ["get", "patch", "update"]
+  # Batch API permissions for CronJobs
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "cronjobs/status", "jobs"]
+    verbs: ["get", "list", "watch", "patch", "update", "create"]

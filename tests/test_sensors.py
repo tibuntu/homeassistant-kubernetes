@@ -308,10 +308,10 @@ class TestSensorSetup:
         mock_add_entities = AsyncMock()
         await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
-        # Should add 4 sensors
+        # Should add 5 sensors (including CronJobs sensor)
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        assert len(sensors) == 4
+        assert len(sensors) == 5
 
     async def test_async_setup_entry_binary_sensor_success(
         self, mock_hass, mock_config_entry, mock_client, mock_coordinator
@@ -432,3 +432,148 @@ class TestSensorProperties:
         # IDs should contain the entry_id
         for sensor_id in ids:
             assert mock_config_entry.entry_id in sensor_id
+
+
+class TestCronJobsSensor:
+    """Test CronJobs sensor."""
+
+    def test_cronjobs_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobs sensor initialization."""
+        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
+
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        assert sensor.name == "CronJobs Count"
+        assert sensor.unique_id == f"{mock_config_entry.entry_id}_cronjobs_count"
+        assert sensor.native_unit_of_measurement == "cronjobs"
+        assert sensor.has_entity_name is True
+        assert sensor.state_class == SensorStateClass.MEASUREMENT
+
+    def test_cronjobs_sensor_native_value_with_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobs sensor native value when coordinator has data."""
+        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
+
+        # Mock coordinator data with CronJobs
+        mock_coordinator.data = {
+            "cronjobs": {
+                "backup-job": {"name": "backup-job", "namespace": "default"},
+                "cleanup-job": {"name": "cleanup-job", "namespace": "default"},
+                "monitoring-job": {"name": "monitoring-job", "namespace": "default"},
+            }
+        }
+
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        assert sensor.native_value == 3
+
+    def test_cronjobs_sensor_native_value_without_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobs sensor native value when coordinator has no data."""
+        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
+
+        # Mock coordinator with no data
+        mock_coordinator.data = None
+
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        assert sensor.native_value == 0
+
+    def test_cronjobs_sensor_native_value_empty_cronjobs(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobs sensor native value when no CronJobs exist."""
+        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
+
+        # Mock coordinator data with empty CronJobs
+        mock_coordinator.data = {"cronjobs": {}}
+
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        assert sensor.native_value == 0
+
+    def test_cronjobs_sensor_native_value_missing_cronjobs_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobs sensor native value when cronjobs key is missing."""
+        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
+
+        # Mock coordinator data without cronjobs key
+        mock_coordinator.data = {"deployments": {}, "statefulsets": {}}
+
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        assert sensor.native_value == 0
+
+    async def test_cronjobs_sensor_async_update_success(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobs sensor async update when client call succeeds."""
+        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
+
+        # Mock coordinator with no data
+        mock_coordinator.data = None
+
+        # Mock client method
+        mock_client.get_cronjobs_count = AsyncMock(return_value=5)
+
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        await sensor.async_update()
+
+        mock_client.get_cronjobs_count.assert_called_once()
+
+    async def test_cronjobs_sensor_async_update_exception(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobs sensor async update when client call fails."""
+        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
+
+        # Mock coordinator with no data
+        mock_coordinator.data = None
+
+        # Mock client method to raise exception
+        mock_client.get_cronjobs_count = AsyncMock(side_effect=Exception("API Error"))
+
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        await sensor.async_update()
+
+        # Should handle exception gracefully and set value to 0
+        assert sensor._attr_native_value == 0
+
+    def test_cronjobs_sensor_available(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobs sensor availability."""
+        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
+
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        # Test when coordinator is successful
+        mock_coordinator.last_update_success = True
+        assert sensor.available is True
+
+        # Test when coordinator fails
+        mock_coordinator.last_update_success = False
+        assert sensor.available is False
