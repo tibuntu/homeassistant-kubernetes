@@ -3,7 +3,7 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Tibuntu&repository=homeassistant-kubernetes)
 
-A comprehensive Home Assistant integration for monitoring and controlling Kubernetes clusters. Monitor your cluster's health, resource usage, and control deployments directly from Home Assistant.
+A comprehensive Home Assistant integration for monitoring and controlling Kubernetes clusters. Monitor your cluster's health and control workloads directly from Home Assistant.
 
 ## 📋 Table of Contents
 
@@ -15,11 +15,10 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 
 ## ✨ Features
 
-- **🔍 Cluster Monitoring**: Monitor pods, nodes, and deployments across your Kubernetes cluster
+- **🔍 Cluster Monitoring**: Monitor pods, nodes, deployments and statefulsets across your Kubernetes cluster
 - **📁 Multi-Namespace Support**: Monitor a single namespace or all namespaces in your cluster
-- **🎛️ Deployment Control**: Scale, start, and stop deployments directly from Home Assistant
+- **🎛️ Workload Control**: Scale, start, and stop deployments and statefulsets directly from Home Assistant
 - **🔄 Robust Connectivity**: Automatic fallback from kubernetes Python client to aiohttp for reliable API communication
-- **⚡ Real-time Updates**: Get live updates on your cluster's health and resource usage
 - **🛡️ Advanced State Management**: Intelligent polling and state recovery for reliable operation
 
 ## 🚀 Quick Start
@@ -62,24 +61,7 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 
 ## 📚 Documentation
 
-For comprehensive documentation, visit the [docs directory](docs/):
-
-### Getting Started
-
-- **[Configuration Guide](docs/CONFIGURATION.md)** - Detailed configuration options and settings
-- **[Service Account Setup](docs/SETUP.md)** - Kubernetes RBAC and security configuration
-- **[Examples & Automations](docs/EXAMPLES.md)** - Practical examples and automation ideas
-
-### Reference
-
-- **[Entities Documentation](docs/ENTITIES.md)** - Complete sensors, switches, and binary sensors reference
-- **[Services Documentation](docs/SERVICES.md)** - Available services for programmatic control
-
-### Advanced
-
-- **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-- **[Development Guide](docs/DEVELOPMENT.md)** - Contributing and development setup
-- **[Logging Configuration](docs/LOGGING.md)** - Understanding logs and debugging
+For comprehensive documentation, visit the [Mkdocs site](https://tibuntu.github.io/homeassistant-kubernetes/).
 
 ## 🤝 Contributing
 
@@ -90,7 +72,3 @@ For development information, see the [Development Guide](https://tibuntu.github.
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-**Note**: This integration requires a Kubernetes cluster with proper RBAC permissions configured. Make sure your service account has the necessary permissions for monitoring and controlling deployments.
