@@ -15,9 +15,10 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 
 ## ✨ Features
 
-- **🔍 Cluster Monitoring**: Monitor pods, nodes, deployments and statefulsets across your Kubernetes cluster
+- **🔍 Cluster Monitoring**: Monitor pods, nodes, deployments, statefulsets, and cronjobs across your Kubernetes cluster
 - **📁 Multi-Namespace Support**: Monitor a single namespace or all namespaces in your cluster
 - **🎛️ Workload Control**: Scale, start, and stop deployments and statefulsets directly from Home Assistant
+- **⏰ CronJob Management**: Control CronJob suspension state via switches and trigger jobs manually via service calls
 - **🔄 Robust Connectivity**: Automatic fallback from kubernetes Python client to aiohttp for reliable API communication
 - **🛡️ Advanced State Management**: Intelligent polling and state recovery for reliable operation
 
@@ -57,7 +58,7 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
    - Add "Kubernetes" integration
    - Enter your cluster details and the token from step 1
 
-3. **Start Monitoring**: The integration will automatically discover and create entities for your deployments, statefulsets, and cluster metrics.
+3. **Start Monitoring**: The integration will automatically discover and create entities for your deployments, statefulsets, cronjobs, and cluster metrics.
 
 ## 📚 Documentation
 

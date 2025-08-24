@@ -1,17 +1,15 @@
-"""Tests for the Kubernetes integration services."""
+"""Tests for the Kubernetes services."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
-from homeassistant.core import HomeAssistant
-
-try:
-    from homeassistant.core import ServiceCall
-except ImportError:
-    # Fallback for older HomeAssistant versions
-    ServiceCall = MagicMock
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv
 import pytest
+import voluptuous as vol
 
 from custom_components.kubernetes.const import (
+    ATTR_CRONJOB_NAME,
+    ATTR_CRONJOB_NAMES,
     ATTR_DEPLOYMENT_NAME,
     ATTR_DEPLOYMENT_NAMES,
     ATTR_NAMESPACE,
@@ -19,17 +17,18 @@ from custom_components.kubernetes.const import (
     ATTR_STATEFULSET_NAME,
     ATTR_STATEFULSET_NAMES,
     DOMAIN,
+    SERVICE_CREATE_CRONJOB_JOB,
+    SERVICE_RESUME_CRONJOB,
     SERVICE_SCALE_DEPLOYMENT,
     SERVICE_SCALE_STATEFULSET,
     SERVICE_START_DEPLOYMENT,
     SERVICE_START_STATEFULSET,
     SERVICE_STOP_DEPLOYMENT,
     SERVICE_STOP_STATEFULSET,
+    SERVICE_SUSPEND_CRONJOB,
+    SERVICE_TRIGGER_CRONJOB,
 )
 from custom_components.kubernetes.services import (
-    _extract_deployment_names_and_namespaces,
-    _extract_statefulset_names_and_namespaces,
-    _get_namespace_from_entity,
     async_setup_services,
     async_unload_services,
 )
@@ -39,180 +38,457 @@ from custom_components.kubernetes.services import (
 def mock_hass():
     """Mock Home Assistant instance."""
     hass = MagicMock(spec=HomeAssistant)
+    hass.services = MagicMock()
     hass.data = {
         DOMAIN: {
-            "entry1": {
+            "test-entry-id": {
                 "config": {
-                    "host": "https://kubernetes.example.com",
-                    "token": "test-token",
+                    "host": "test-cluster.example.com",
+                    "port": 6443,
+                    "api_token": "test-token",
+                    "namespace": "default",
                     "verify_ssl": True,
                 }
             }
         }
     }
-    # Add required attributes
-    hass.services = MagicMock()
-    hass.states = MagicMock()
     return hass
 
 
 @pytest.fixture
-def mock_service_call():
-    """Mock service call."""
-    call = MagicMock(spec=ServiceCall)
-    call.data = {}
-    return call
+def mock_client():
+    """Mock Kubernetes client."""
+    client = MagicMock()
+    client.scale_deployment = AsyncMock(return_value=True)
+    client.scale_statefulset = AsyncMock(return_value=True)
+    client.stop_deployment = AsyncMock(return_value=True)
+    client.stop_statefulset = AsyncMock(return_value=True)
+    client.trigger_cronjob = AsyncMock(
+        return_value={"success": True, "job_name": "test-job-123"}
+    )
+    client.suspend_cronjob = AsyncMock(return_value={"success": True})
+    client.resume_cronjob = AsyncMock(return_value={"success": True})
+    return client
 
 
-async def test_async_setup_services(mock_hass):
-    """Test setting up services."""
-    # The services module directly calls hass.services.async_register
-    # So we need to patch the mock_hass.services.async_register
-    await async_setup_services(mock_hass)
+class TestServiceRegistration:
+    """Test service registration and unregistration."""
 
-    # Verify all services were registered
-    assert mock_hass.services.async_register.call_count == 6
+    async def test_async_setup_services(self, mock_hass):
+        """Test that all services are registered."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = MagicMock()
+            await async_setup_services(mock_hass)
 
-    # Check that the correct services were registered
-    registered_services = [
-        call[0][1] for call in mock_hass.services.async_register.call_args_list
-    ]
-    assert SERVICE_SCALE_DEPLOYMENT in registered_services
-    assert SERVICE_START_DEPLOYMENT in registered_services
-    assert SERVICE_STOP_DEPLOYMENT in registered_services
-    assert SERVICE_SCALE_STATEFULSET in registered_services
-    assert SERVICE_START_STATEFULSET in registered_services
-    assert SERVICE_STOP_STATEFULSET in registered_services
+        # Verify all services are registered
+        registered_services = [
+            SERVICE_SCALE_DEPLOYMENT,
+            SERVICE_START_DEPLOYMENT,
+            SERVICE_STOP_DEPLOYMENT,
+            SERVICE_SCALE_STATEFULSET,
+            SERVICE_START_STATEFULSET,
+            SERVICE_STOP_STATEFULSET,
+            SERVICE_TRIGGER_CRONJOB,
+            SERVICE_SUSPEND_CRONJOB,
+            SERVICE_RESUME_CRONJOB,
+            SERVICE_CREATE_CRONJOB_JOB,
+        ]
 
+        for service in registered_services:
+            mock_hass.services.async_register.assert_any_call(
+                DOMAIN, service, ANY, schema=ANY
+            )
 
-async def test_async_unload_services(mock_hass):
-    """Test unloading services."""
-    # The services module directly calls hass.services.async_remove
-    # So we need to patch the mock_hass.services.async_remove
-    await async_unload_services(mock_hass)
+    async def test_async_unload_services(self, mock_hass):
+        """Test that all services are unregistered."""
+        await async_unload_services(mock_hass)
 
-    # Verify all services were unregistered
-    assert mock_hass.services.async_remove.call_count == 6
+        # Verify all services are unregistered
+        unregistered_services = [
+            SERVICE_SCALE_DEPLOYMENT,
+            SERVICE_START_DEPLOYMENT,
+            SERVICE_STOP_DEPLOYMENT,
+            SERVICE_SCALE_STATEFULSET,
+            SERVICE_START_STATEFULSET,
+            SERVICE_STOP_STATEFULSET,
+            SERVICE_TRIGGER_CRONJOB,
+            SERVICE_SUSPEND_CRONJOB,
+            SERVICE_RESUME_CRONJOB,
+            SERVICE_CREATE_CRONJOB_JOB,
+        ]
 
-    # Check that the correct services were unregistered
-    unregistered_services = [
-        call[0][1] for call in mock_hass.services.async_remove.call_args_list
-    ]
-    assert SERVICE_SCALE_DEPLOYMENT in unregistered_services
-    assert SERVICE_START_DEPLOYMENT in unregistered_services
-    assert SERVICE_STOP_DEPLOYMENT in unregistered_services
-    assert SERVICE_SCALE_STATEFULSET in unregistered_services
-    assert SERVICE_START_STATEFULSET in unregistered_services
-    assert SERVICE_STOP_STATEFULSET in unregistered_services
-
-
-def test_extract_deployment_names_and_namespaces_single_string(mock_hass):
-    """Test extracting deployment names and namespaces from single string."""
-    call_data = {ATTR_DEPLOYMENT_NAMES: "nginx-deployment"}
-
-    with patch(
-        "custom_components.kubernetes.services._get_namespace_from_entity",
-        return_value=("default", "nginx-deployment"),
-    ):
-        names, namespaces = _extract_deployment_names_and_namespaces(
-            call_data, mock_hass
-        )
-
-        assert names == ["nginx-deployment"]
-        assert namespaces == ["default"]
+        for service in unregistered_services:
+            mock_hass.services.async_remove.assert_any_call(DOMAIN, service)
 
 
-def test_extract_deployment_names_and_namespaces_entity_id_format(mock_hass):
-    """Test extracting deployment names and namespaces from entity_id format."""
-    call_data = {
-        ATTR_DEPLOYMENT_NAMES: {"entity_id": ["switch.nginx-deployment_deployment"]}
-    }
+class TestCronJobServices:
+    """Test CronJob service functions."""
 
-    with patch(
-        "custom_components.kubernetes.services._get_namespace_from_entity",
-        return_value=("default", "nginx-deployment"),
-    ):
-        names, namespaces = _extract_deployment_names_and_namespaces(
-            call_data, mock_hass
-        )
+    async def test_suspend_cronjob_success(self, mock_hass, mock_client):
+        """Test successful CronJob suspension."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
 
-        assert names == ["nginx-deployment"]
-        assert namespaces == ["default"]
+            # Get the service function
+            await async_setup_services(mock_hass)
 
+            # Find the suspend_cronjob service function
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_SUSPEND_CRONJOB:
+                    service_func = call_args[0][2]
+                    break
 
-def test_extract_deployment_names_and_namespaces_list_format(mock_hass):
-    """Test extracting deployment names and namespaces from list format."""
-    call_data = {ATTR_DEPLOYMENT_NAMES: ["nginx-deployment", "api-deployment"]}
+            assert service_func is not None, "Service function not found"
 
-    with patch(
-        "custom_components.kubernetes.services._get_namespace_from_entity",
-        return_value=("default", "nginx-deployment"),
-    ):
-        names, namespaces = _extract_deployment_names_and_namespaces(
-            call_data, mock_hass
-        )
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAME: "test-cronjob",
+                ATTR_NAMESPACE: "default",
+            }
 
-        assert names == ["nginx-deployment", "api-deployment"]
-        assert namespaces == ["default", "default"]
+            # Execute service
+            await service_func(mock_call)
 
+            # Verify
+            mock_client.suspend_cronjob.assert_called_once_with(
+                "test-cronjob", "default"
+            )
 
-def test_extract_statefulset_names_and_namespaces_single_string(mock_hass):
-    """Test extracting statefulset names and namespaces from single string."""
-    call_data = {ATTR_STATEFULSET_NAMES: "redis-statefulset"}
+    async def test_suspend_cronjob_failure(self, mock_hass, mock_client):
+        """Test failed CronJob suspension."""
+        mock_client.suspend_cronjob.return_value = {
+            "success": False,
+            "error": "CronJob not found",
+        }
 
-    with patch(
-        "custom_components.kubernetes.services._get_namespace_from_entity",
-        return_value=("default", "redis-statefulset"),
-    ):
-        names, namespaces = _extract_statefulset_names_and_namespaces(
-            call_data, mock_hass
-        )
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
 
-        assert names == ["redis-statefulset"]
-        assert namespaces == ["default"]
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_SUSPEND_CRONJOB:
+                    service_func = call_args[0][2]
+                    break
 
+            assert service_func is not None, "Service function not found"
 
-def test_extract_statefulset_names_and_namespaces_entity_id_format(mock_hass):
-    """Test extracting statefulset names and namespaces from entity_id format."""
-    call_data = {
-        ATTR_STATEFULSET_NAMES: {"entity_id": ["switch.redis-statefulset_statefulset"]}
-    }
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAME: "test-cronjob",
+                ATTR_NAMESPACE: "default",
+            }
 
-    with patch(
-        "custom_components.kubernetes.services._get_namespace_from_entity",
-        return_value=("default", "redis-statefulset"),
-    ):
-        names, namespaces = _extract_statefulset_names_and_namespaces(
-            call_data, mock_hass
-        )
+            # Execute service
+            await service_func(mock_call)
 
-        assert names == ["redis-statefulset"]
-        assert namespaces == ["default"]
+            # Verify
+            mock_client.suspend_cronjob.assert_called_once_with(
+                "test-cronjob", "default"
+            )
 
+    async def test_resume_cronjob_success(self, mock_hass, mock_client):
+        """Test successful CronJob resume."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
 
-def test_get_namespace_from_entity_found(mock_hass):
-    """Test getting namespace from entity when entity is found."""
-    mock_entity = MagicMock()
-    mock_entity.attributes = {
-        "namespace": "default",
-        "deployment_name": "nginx-deployment",
-    }
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_RESUME_CRONJOB:
+                    service_func = call_args[0][2]
+                    break
 
-    with patch.object(mock_hass.states, "get", return_value=mock_entity):
-        namespace, name = _get_namespace_from_entity(
-            mock_hass, "switch.nginx-deployment_deployment"
-        )
+            assert service_func is not None, "Service function not found"
 
-        assert namespace == "default"
-        assert name == "nginx-deployment"
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAME: "test-cronjob",
+                ATTR_NAMESPACE: "default",
+            }
 
+            # Execute service
+            await service_func(mock_call)
 
-def test_get_namespace_from_entity_not_found(mock_hass):
-    """Test getting namespace from entity when entity is not found."""
-    with patch.object(mock_hass.states, "get", return_value=None):
-        namespace, name = _get_namespace_from_entity(
-            mock_hass, "switch.nginx-deployment_deployment"
-        )
+            # Verify
+            mock_client.resume_cronjob.assert_called_once_with(
+                "test-cronjob", "default"
+            )
 
-        assert namespace is None
-        assert name is None
+    async def test_resume_cronjob_failure(self, mock_hass, mock_client):
+        """Test failed CronJob resume."""
+        mock_client.resume_cronjob.return_value = {
+            "success": False,
+            "error": "Permission denied",
+        }
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_RESUME_CRONJOB:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAME: "test-cronjob",
+                ATTR_NAMESPACE: "default",
+            }
+
+            # Execute service
+            await service_func(mock_call)
+
+            # Verify
+            mock_client.resume_cronjob.assert_called_once_with(
+                "test-cronjob", "default"
+            )
+
+    async def test_create_cronjob_job_success(self, mock_hass, mock_client):
+        """Test successful CronJob job creation."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_CREATE_CRONJOB_JOB:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAME: "test-cronjob",
+                ATTR_NAMESPACE: "default",
+            }
+
+            # Execute service
+            await service_func(mock_call)
+
+            # Verify
+            mock_client.trigger_cronjob.assert_called_once_with(
+                "test-cronjob", "default"
+            )
+
+    async def test_create_cronjob_job_failure(self, mock_hass, mock_client):
+        """Test failed CronJob job creation."""
+        mock_client.trigger_cronjob.return_value = {
+            "success": False,
+            "error": "CronJob not found",
+        }
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_CREATE_CRONJOB_JOB:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAME: "test-cronjob",
+                ATTR_NAMESPACE: "default",
+            }
+
+            # Execute service
+            await service_func(mock_call)
+
+            # Verify
+            mock_client.trigger_cronjob.assert_called_once_with(
+                "test-cronjob", "default"
+            )
+
+    async def test_suspend_cronjob_multiple(self, mock_hass, mock_client):
+        """Test suspending multiple CronJobs."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_SUSPEND_CRONJOB:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAMES: ["cronjob1", "cronjob2"],
+                ATTR_NAMESPACE: "default",
+            }
+
+            # Execute service
+            await service_func(mock_call)
+
+            # Verify both CronJobs were suspended
+            assert mock_client.suspend_cronjob.call_count == 2
+            mock_client.suspend_cronjob.assert_any_call("cronjob1", "default")
+            mock_client.suspend_cronjob.assert_any_call("cronjob2", "default")
+
+    async def test_resume_cronjob_multiple(self, mock_hass, mock_client):
+        """Test resuming multiple CronJobs."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_RESUME_CRONJOB:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAMES: ["cronjob1", "cronjob2"],
+                ATTR_NAMESPACE: "default",
+            }
+
+            # Execute service
+            await service_func(mock_call)
+
+            # Verify both CronJobs were resumed
+            assert mock_client.resume_cronjob.call_count == 2
+            mock_client.resume_cronjob.assert_any_call("cronjob1", "default")
+            mock_client.resume_cronjob.assert_any_call("cronjob2", "default")
+
+    async def test_create_cronjob_job_multiple(self, mock_hass, mock_client):
+        """Test creating jobs from multiple CronJobs."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_CREATE_CRONJOB_JOB:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAMES: ["cronjob1", "cronjob2"],
+                ATTR_NAMESPACE: "default",
+            }
+
+            # Execute service
+            await service_func(mock_call)
+
+            # Verify jobs were created from both CronJobs
+            assert mock_client.trigger_cronjob.call_count == 2
+            mock_client.trigger_cronjob.assert_any_call("cronjob1", "default")
+            mock_client.trigger_cronjob.assert_any_call("cronjob2", "default")
+
+    async def test_suspend_cronjob_no_kubernetes_data(self, mock_hass):
+        """Test CronJob suspension when no Kubernetes data is available."""
+        # Setup mock_hass without Kubernetes data
+        mock_hass.data = {}
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = MagicMock()
+
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_SUSPEND_CRONJOB:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_CRONJOB_NAME: "test-cronjob",
+                ATTR_NAMESPACE: "default",
+            }
+
+            # Execute service
+            await service_func(mock_call)
+
+            # Verify no client calls were made
+            mock_client_class.assert_not_called()
+
+    async def test_suspend_cronjob_no_cronjob_names(self, mock_hass, mock_client):
+        """Test CronJob suspension with no valid CronJob names."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            # Get the service function
+            await async_setup_services(mock_hass)
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_SUSPEND_CRONJOB:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Create a mock call object
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_NAMESPACE: "default",
+            }
+
+            # Execute service
+            await service_func(mock_call)
+
+            # Verify no client calls were made
+            mock_client.suspend_cronjob.assert_not_called()

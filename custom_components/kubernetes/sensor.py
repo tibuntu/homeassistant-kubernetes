@@ -32,6 +32,7 @@ async def async_setup_entry(
             KubernetesNodesSensor(coordinator, client, config_entry),
             KubernetesDeploymentsSensor(coordinator, client, config_entry),
             KubernetesStatefulSetsSensor(coordinator, client, config_entry),
+            KubernetesCronJobsSensor(coordinator, client, config_entry),
         ]
 
         async_add_entities(sensors)
@@ -217,4 +218,41 @@ class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
                 self._attr_native_value = count
         except Exception as ex:
             _LOGGER.error("Failed to update StatefulSets sensor: %s", ex)
+            self._attr_native_value = 0
+
+
+class KubernetesCronJobsSensor(KubernetesBaseSensor):
+    """Sensor for Kubernetes CronJobs count."""
+
+    def __init__(
+        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
+    ) -> None:
+        """Initialize the CronJobs sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self._attr_name = "CronJobs Count"
+        self._attr_unique_id = f"{config_entry.entry_id}_cronjobs_count"
+        self._attr_native_unit_of_measurement = "cronjobs"
+
+    @property
+    def native_value(self) -> int:
+        """Return the native value of the sensor."""
+        if not self.coordinator.data:
+            return 0
+
+        # Get cronjobs count from coordinator data
+        if "cronjobs" in self.coordinator.data:
+            return len(self.coordinator.data["cronjobs"])
+
+        # Fallback to calling client directly if not in coordinator data
+        return 0
+
+    async def async_update(self) -> None:
+        """Update the sensor state."""
+        try:
+            # If coordinator doesn't have cronjobs data, fetch it directly
+            if not self.coordinator.data or "cronjobs" not in self.coordinator.data:
+                count = await self.client.get_cronjobs_count()
+                self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update CronJobs sensor: %s", ex)
             self._attr_native_value = 0
