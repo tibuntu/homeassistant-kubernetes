@@ -5,6 +5,55 @@
       "include-component-in-tag": false,
       "changelog-path": "CHANGELOG.md",
       "version-file": "pyproject.toml",
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features",
+          "hidden": false
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes",
+          "hidden": false
+        },
+        {
+          "type": "perf",
+          "section": "Performance Improvements",
+          "hidden": false
+        },
+        {
+          "type": "docs",
+          "section": "Documentation",
+          "hidden": false
+        },
+        {
+          "type": "refactor",
+          "section": "Code Refactoring",
+          "hidden": false
+        },
+        {
+          "type": "test",
+          "section": "Tests",
+          "hidden": false
+        },
+        {
+          "type": "build",
+          "section": "Build System",
+          "hidden": false
+        },
+        {
+          "type": "ci",
+          "section": "Continuous Integration",
+          "hidden": false
+        },
+        {
+          "type": "chore",
+          "section": "Chores",
+          "hidden": false
+        }
+      ],
+      "changelog-type": "github",
+      "include-v-in-tag": true,
       "extra-files": [
         {
           "type": "json",
