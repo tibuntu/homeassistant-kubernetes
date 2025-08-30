@@ -506,6 +506,33 @@ def _validate_statefulset_schema(data: dict) -> dict:
     return data
 
 
+def _validate_entity_workload_type(
+    hass: HomeAssistant, entity_id_or_name: str, expected_workload_type: str
+) -> bool:
+    """Validate that an entity has the correct workload type or allow direct resource names.
+
+    Args:
+        hass: Home Assistant instance
+        entity_id_or_name: Entity ID or direct resource name
+        expected_workload_type: Expected workload type (Deployment, StatefulSet, CronJob)
+
+    Returns:
+        True if validation passes, False otherwise
+    """
+    # If it's not an entity ID (doesn't start with a domain), treat as direct resource name
+    if not entity_id_or_name.startswith("switch."):
+        return True
+
+    # Get entity state
+    state = hass.states.get(entity_id_or_name)
+    if not state or not state.attributes:
+        return False
+
+    # Check if the entity has the expected workload type
+    actual_workload_type = state.attributes.get("workload_type")
+    return actual_workload_type == expected_workload_type
+
+
 def _extract_cronjob_names_and_namespaces(  # noqa: C901
     call_data: dict[str, Any], hass: HomeAssistant
 ) -> tuple[list[str], list[str | None]]:

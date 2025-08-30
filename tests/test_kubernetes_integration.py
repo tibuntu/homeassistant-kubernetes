@@ -253,6 +253,9 @@ async def test_deployment_switch_turn_on(mock_coordinator):
     # Mock the async_write_ha_state method to avoid the hass error
     switch.async_write_ha_state = MagicMock()
 
+    # Mock the _verify_scaling method to avoid the 5-second sleep delays
+    switch._verify_scaling = AsyncMock()
+
     # Initially off
     switch._is_on = False
     switch._replicas = 0
@@ -266,6 +269,9 @@ async def test_deployment_switch_turn_on(mock_coordinator):
     )
     assert switch._is_on is True
     assert switch._replicas == 1
+
+    # Verify that _verify_scaling was called
+    switch._verify_scaling.assert_called_once_with(1)
 
 
 async def test_deployment_switch_turn_off(mock_coordinator):
@@ -285,6 +291,9 @@ async def test_deployment_switch_turn_off(mock_coordinator):
     # Mock the async_write_ha_state method to avoid the hass error
     switch.async_write_ha_state = MagicMock()
 
+    # Mock the _verify_scaling method to avoid the 5-second sleep delays
+    switch._verify_scaling = AsyncMock()
+
     # Initially on
     switch._is_on = True
     switch._replicas = 3
@@ -298,6 +307,9 @@ async def test_deployment_switch_turn_off(mock_coordinator):
     )
     assert switch._is_on is False
     assert switch._replicas == 0
+
+    # Verify that _verify_scaling was called
+    switch._verify_scaling.assert_called_once_with(0)
 
 
 async def test_kubernetes_client_deployment_control(mock_config):
@@ -416,6 +428,9 @@ async def test_statefulset_switch_turn_on(mock_coordinator):
     # Mock the async_write_ha_state method to avoid the hass error
     switch.async_write_ha_state = MagicMock()
 
+    # Mock the _verify_scaling method to avoid the 5-second sleep delays
+    switch._verify_scaling = AsyncMock()
+
     # Initially off
     switch._is_on = False
     switch._replicas = 0
@@ -429,6 +444,9 @@ async def test_statefulset_switch_turn_on(mock_coordinator):
     )
     assert switch._is_on is True
     assert switch._replicas == 1
+
+    # Verify that _verify_scaling was called
+    switch._verify_scaling.assert_called_once_with(1)
 
 
 async def test_statefulset_switch_turn_off(mock_coordinator):
@@ -448,6 +466,9 @@ async def test_statefulset_switch_turn_off(mock_coordinator):
     # Mock the async_write_ha_state method to avoid the hass error
     switch.async_write_ha_state = MagicMock()
 
+    # Mock the _verify_scaling method to avoid the 5-second sleep delays
+    switch._verify_scaling = AsyncMock()
+
     # Initially on
     switch._is_on = True
     switch._replicas = 3
@@ -461,6 +482,9 @@ async def test_statefulset_switch_turn_off(mock_coordinator):
     )
     assert switch._is_on is False
     assert switch._replicas == 0
+
+    # Verify that _verify_scaling was called
+    switch._verify_scaling.assert_called_once_with(0)
 
 
 def test_constants():
