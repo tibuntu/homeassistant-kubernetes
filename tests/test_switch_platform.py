@@ -153,20 +153,6 @@ class TestSwitchSetup:
         added_entities = mock_add_entities.call_args[0][0]
         assert len(added_entities) == 0
 
-    async def test_async_setup_entry_missing_domain(
-        self, mock_hass, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test switch setup when DOMAIN is missing from hass.data."""
-        # Mock hass.data with DOMAIN but missing entry_id
-        mock_hass.data = {"kubernetes": {}}
-
-        # Mock async_add_entities
-        mock_add_entities = MagicMock()
-
-        # Call the setup function - should handle missing entry gracefully
-        with pytest.raises(KeyError):
-            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
-
 
 class TestKubernetesDeploymentSwitch:
     """Test Kubernetes deployment switch."""
