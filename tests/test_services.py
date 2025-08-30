@@ -500,8 +500,12 @@ class TestCronJobServices:
         """Test that workload type validation works correctly with entity IDs."""
         from custom_components.kubernetes.services import _validate_entity_workload_type
 
+        # Mock the states attribute
+        mock_states = MagicMock()
+        mock_hass.states = mock_states
+
         # Mock entity states for different workload types
-        mock_hass.states.get.side_effect = lambda entity_id: {
+        mock_states.get.side_effect = lambda entity_id: {
             "switch.deployment_test": MagicMock(
                 attributes={"workload_type": "Deployment"}
             ),

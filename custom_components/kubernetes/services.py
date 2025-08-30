@@ -18,6 +18,7 @@ from .const import (
     ATTR_REPLICAS,
     ATTR_STATEFULSET_NAME,
     ATTR_STATEFULSET_NAMES,
+    ATTR_WORKLOAD_TYPE,
     DOMAIN,
     SERVICE_CREATE_CRONJOB_JOB,
     SERVICE_RESUME_CRONJOB,
@@ -29,18 +30,64 @@ from .const import (
     SERVICE_STOP_STATEFULSET,
     SERVICE_SUSPEND_CRONJOB,
     SERVICE_TRIGGER_CRONJOB,
+    WORKLOAD_TYPE_CRONJOB,
+    WORKLOAD_TYPE_DEPLOYMENT,
+    WORKLOAD_TYPE_STATEFULSET,
 )
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.info("Kubernetes services module loaded")
 
 
+def _validate_entity_workload_type(
+    hass: HomeAssistant, entity_id_or_name: str, expected_workload_type: str
+) -> bool:
+    """Validate that an entity represents the expected workload type."""
+    try:
+        # Only validate if this looks like an entity ID (starts with switch.)
+        # If it's a direct resource name, skip validation (for backward compatibility)
+        if not entity_id_or_name.startswith("switch."):
+            _LOGGER.debug(
+                "Skipping workload type validation for direct resource name: %s",
+                entity_id_or_name,
+            )
+            return True
+
+        # If it's already an entity ID, use it directly
+        entity_id = entity_id_or_name
+
+        entity = hass.states.get(entity_id)
+        if entity and entity.attributes:
+            workload_type = entity.attributes.get(ATTR_WORKLOAD_TYPE)
+            if workload_type == expected_workload_type:
+                _LOGGER.debug(
+                    "Entity %s has correct workload type: %s", entity_id, workload_type
+                )
+                return True
+            else:
+                _LOGGER.warning(
+                    "Entity %s has workload type %s, expected %s",
+                    entity_id,
+                    workload_type,
+                    expected_workload_type,
+                )
+                return False
+        else:
+            _LOGGER.debug("Entity %s not found or has no attributes", entity_id)
+            return False
+    except Exception as e:
+        _LOGGER.debug(
+            "Error validating workload type for entity %s: %s", entity_id_or_name, e
+        )
+        return False
+
+
 def _extract_deployment_names_and_namespaces(  # noqa: C901
     call_data: dict[str, Any], hass: HomeAssistant
 ) -> tuple[list[str], list[str | None]]:
     """Extract deployment names and namespaces from service call data, supporting both single and multiple selections."""
-    deployment_names = []
-    namespaces = []
+    deployment_names: list[str] = []
+    namespaces: list[str | None] = []
 
     _LOGGER.debug(
         "Extracting deployment names and namespaces from call data: %s", call_data
@@ -51,193 +98,213 @@ def _extract_deployment_names_and_namespaces(  # noqa: C901
         _LOGGER.debug("Found deployment_names: %s (type: %s)", names, type(names))
 
         if isinstance(names, str):
-            deployment_names.append(names)
-            # Try to get namespace from entity attributes
+            # Validate that this entity represents a deployment
             namespace, deployment_name = _get_namespace_from_entity(hass, names)
-            namespaces.append(namespace)
-            _LOGGER.debug(
-                "Extracted namespace: %s for deployment name: %s", namespace, names
-            )
+            if _validate_entity_workload_type(hass, names, WORKLOAD_TYPE_DEPLOYMENT):
+                if deployment_name is not None:
+                    deployment_names.append(deployment_name)
+                    namespaces.append(namespace)
+                    _LOGGER.debug(
+                        "Extracted namespace: %s for deployment name: %s",
+                        namespace,
+                        names,
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Could not extract deployment name from entity: %s", names
+                    )
+            else:
+                _LOGGER.error(
+                    "Entity %s is not a deployment (workload_type mismatch)", names
+                )
         elif isinstance(names, dict) and "entity_id" in names:
             # Handle Home Assistant UI format: {'entity_id': ['switch.break_time', 'switch.cert_manager']}
             entity_ids = names["entity_id"]
             if isinstance(entity_ids, list):
                 for entity_id in entity_ids:
                     if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                        # Get namespace and deployment name from entity attributes
-                        namespace, deployment_name = _get_namespace_from_entity(
-                            hass, entity_id
-                        )
-                        if deployment_name:
-                            deployment_names.append(deployment_name)
-                            namespaces.append(namespace)
-                            _LOGGER.debug(
-                                "Extracted deployment name: %s from entity: %s",
-                                deployment_name,
-                                entity_id,
+                        # Validate that this entity represents a deployment
+                        if _validate_entity_workload_type(
+                            hass, entity_id, WORKLOAD_TYPE_DEPLOYMENT
+                        ):
+                            # Get namespace and deployment name from entity attributes
+                            namespace, deployment_name = _get_namespace_from_entity(
+                                hass, entity_id
                             )
-                            _LOGGER.debug(
-                                "Extracted namespace: %s for entity: %s",
-                                namespace,
-                                entity_id,
-                            )
+                            if deployment_name:
+                                deployment_names.append(deployment_name)
+                                namespaces.append(namespace)
+                                _LOGGER.debug(
+                                    "Extracted deployment name: %s from entity: %s",
+                                    deployment_name,
+                                    entity_id,
+                                )
+                                _LOGGER.debug(
+                                    "Extracted namespace: %s for entity: %s",
+                                    namespace,
+                                    entity_id,
+                                )
+                            else:
+                                # Fallback: extract from entity ID (for backward compatibility)
+                                deployment_name = entity_id.replace("switch.", "")
+                                # Remove _deployment suffix if present
+                                if deployment_name.endswith("_deployment"):
+                                    deployment_name = deployment_name[
+                                        :-11
+                                    ]  # Remove '_deployment'
+                                deployment_names.append(deployment_name)
+                                namespaces.append(namespace)
+                                _LOGGER.debug(
+                                    "Fallback: extracted deployment name: %s from entity ID: %s",
+                                    deployment_name,
+                                    entity_id,
+                                )
+                                _LOGGER.debug(
+                                    "Extracted namespace: %s for entity: %s",
+                                    namespace,
+                                    entity_id,
+                                )
                         else:
-                            # Fallback: extract from entity ID (for backward compatibility)
-                            deployment_name = entity_id.replace("switch.", "")
-                            # Remove _deployment suffix if present
-                            if deployment_name.endswith("_deployment"):
-                                deployment_name = deployment_name[
-                                    :-11
-                                ]  # Remove '_deployment'
-                            deployment_names.append(deployment_name)
-                            namespaces.append(namespace)
-                            _LOGGER.debug(
-                                "Fallback: extracted deployment name: %s from entity ID: %s",
-                                deployment_name,
-                                entity_id,
-                            )
-                            _LOGGER.debug(
-                                "Extracted namespace: %s for entity: %s",
-                                namespace,
+                            _LOGGER.error(
+                                "Entity %s is not a deployment (workload_type mismatch)",
                                 entity_id,
                             )
         elif isinstance(names, list):
             # Handle list of dictionaries or strings
             for item in names:
                 if isinstance(item, str):
-                    deployment_names.append(item)
-                    # Try to get namespace from entity attributes
-                    namespace, _ = _get_namespace_from_entity(hass, item)
-                    namespaces.append(namespace)
+                    # Validate that this entity represents a deployment
+                    if _validate_entity_workload_type(
+                        hass, item, WORKLOAD_TYPE_DEPLOYMENT
+                    ):
+                        namespace, deployment_name = _get_namespace_from_entity(
+                            hass, item
+                        )
+                        if deployment_name is not None:
+                            deployment_names.append(deployment_name)
+                            namespaces.append(namespace)
+                            _LOGGER.debug(
+                                "Extracted deployment name: %s from list item: %s",
+                                deployment_name,
+                                item,
+                            )
+                            _LOGGER.debug(
+                                "Extracted namespace: %s for list item: %s",
+                                namespace,
+                                item,
+                            )
+                        else:
+                            _LOGGER.warning(
+                                "Could not extract deployment name from list item: %s",
+                                item,
+                            )
+                    else:
+                        _LOGGER.error(
+                            "Entity %s is not a deployment (workload_type mismatch)",
+                            item,
+                        )
                 elif isinstance(item, dict) and "entity_id" in item:
-                    # Handle Home Assistant UI format: [{'entity_id': ['switch.break_time', 'switch.cert_manager']}]
-                    entity_ids = item["entity_id"]
-                    if isinstance(entity_ids, list):
-                        for entity_id in entity_ids:
-                            if isinstance(entity_id, str) and entity_id.startswith(
-                                "switch."
-                            ):
-                                # Get namespace and deployment name from entity attributes
-                                namespace, deployment_name = _get_namespace_from_entity(
-                                    hass, entity_id
+                    entity_id = item["entity_id"]
+                    if isinstance(entity_id, str) and entity_id.startswith("switch."):
+                        # Validate that this entity represents a deployment
+                        if _validate_entity_workload_type(
+                            hass, entity_id, WORKLOAD_TYPE_DEPLOYMENT
+                        ):
+                            namespace, deployment_name = _get_namespace_from_entity(
+                                hass, entity_id
+                            )
+                            if deployment_name is not None:
+                                deployment_names.append(deployment_name)
+                                namespaces.append(namespace)
+                                _LOGGER.debug(
+                                    "Extracted deployment name: %s from dict item: %s",
+                                    deployment_name,
+                                    item,
                                 )
-                                if deployment_name:
-                                    deployment_names.append(deployment_name)
-                                    namespaces.append(namespace)
-                                    _LOGGER.debug(
-                                        "Extracted deployment name: %s from entity: %s",
-                                        deployment_name,
-                                        entity_id,
-                                    )
-                                    _LOGGER.debug(
-                                        "Extracted namespace: %s for entity: %s",
-                                        namespace,
-                                        entity_id,
-                                    )
-                                else:
-                                    # Fallback: extract from entity ID (for backward compatibility)
-                                    deployment_name = entity_id.replace("switch.", "")
-                                    # Remove _deployment suffix if present
-                                    if deployment_name.endswith("_deployment"):
-                                        deployment_name = deployment_name[
-                                            :-11
-                                        ]  # Remove '_deployment'
-                                    deployment_names.append(deployment_name)
-                                    namespaces.append(namespace)
-                                    _LOGGER.debug(
-                                        "Fallback: extracted deployment name: %s from entity ID: %s",
-                                        deployment_name,
-                                        entity_id,
-                                    )
-                                    _LOGGER.debug(
-                                        "Extracted namespace: %s for entity: %s",
-                                        namespace,
-                                        entity_id,
-                                    )
+                                _LOGGER.debug(
+                                    "Extracted namespace: %s for dict item: %s",
+                                    namespace,
+                                    item,
+                                )
+                            else:
+                                _LOGGER.warning(
+                                    "Could not extract deployment name from dict item: %s",
+                                    item,
+                                )
+                        else:
+                            _LOGGER.error(
+                                "Entity %s is not a deployment (workload_type mismatch)",
+                                entity_id,
+                            )
+        else:
+            _LOGGER.warning("Unsupported deployment_names type: %s", type(names))
 
-    elif ATTR_DEPLOYMENT_NAME in call_data:
+    if ATTR_DEPLOYMENT_NAME in call_data:
         name = call_data[ATTR_DEPLOYMENT_NAME]
         _LOGGER.debug("Found deployment_name: %s (type: %s)", name, type(name))
+
         if isinstance(name, str):
-            # Check if this looks like an entity ID
-            if name.startswith("switch."):
-                _LOGGER.debug("Detected entity ID in deployment_name: %s", name)
-                # Treat it as an entity ID
+            # Validate that this entity represents a deployment
+            if _validate_entity_workload_type(hass, name, WORKLOAD_TYPE_DEPLOYMENT):
                 namespace, deployment_name = _get_namespace_from_entity(hass, name)
-                if deployment_name:
+                if deployment_name is not None:
                     deployment_names.append(deployment_name)
                     namespaces.append(namespace)
                     _LOGGER.debug(
-                        "Extracted deployment name: %s from entity: %s",
-                        deployment_name,
+                        "Extracted namespace: %s for deployment name: %s",
+                        namespace,
                         name,
                     )
                 else:
-                    # Fallback: extract from entity ID
-                    deployment_name = name.replace("switch.", "")
-                    if deployment_name.startswith("kubernetes_"):
-                        deployment_name = deployment_name[
-                            11:
-                        ]  # Remove 'kubernetes_' prefix
-                    if deployment_name and deployment_name.endswith("_deployment"):
-                        deployment_name = deployment_name[:-11]  # Remove '_deployment'
-                    if deployment_name:  # Only append if not None
-                        deployment_names.append(deployment_name)
-                        namespaces.append(
-                            namespace or "default"
-                        )  # Use default if namespace is None
-                        _LOGGER.debug(
-                            "Fallback: extracted deployment name: %s from entity ID: %s",
-                            deployment_name,
-                            name,
-                        )
+                    _LOGGER.warning(
+                        "Could not extract deployment name from entity: %s", name
+                    )
             else:
-                # Treat it as a direct deployment name
-                deployment_names.append(name)
-                # Try to get namespace from entity attributes
-                namespace, _ = _get_namespace_from_entity(hass, name)
-                namespaces.append(namespace)
-                _LOGGER.debug(
-                    "Extracted namespace: %s for deployment name: %s", namespace, name
+                _LOGGER.error(
+                    "Entity %s is not a deployment (workload_type mismatch)", name
                 )
         elif isinstance(name, dict) and "entity_id" in name:
-            # Handle single entity selection
             entity_id = name["entity_id"]
             if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                # Get namespace and deployment name from entity attributes
-                namespace, deployment_name = _get_namespace_from_entity(hass, entity_id)
-                if deployment_name:
-                    deployment_names.append(deployment_name)
-                    namespaces.append(namespace)
-                    _LOGGER.debug(
-                        "Extracted deployment name: %s from entity: %s",
-                        deployment_name,
-                        entity_id,
+                # Validate that this entity represents a deployment
+                if _validate_entity_workload_type(
+                    hass, entity_id, WORKLOAD_TYPE_DEPLOYMENT
+                ):
+                    namespace, deployment_name = _get_namespace_from_entity(
+                        hass, entity_id
                     )
-                    _LOGGER.debug(
-                        "Extracted namespace: %s for entity: %s", namespace, entity_id
-                    )
+                    if deployment_name is not None:
+                        deployment_names.append(deployment_name)
+                        namespaces.append(namespace)
+                        _LOGGER.debug(
+                            "Extracted deployment name: %s from entity: %s",
+                            deployment_name,
+                            entity_id,
+                        )
+                        _LOGGER.debug(
+                            "Extracted namespace: %s for entity: %s",
+                            namespace,
+                            entity_id,
+                        )
+                    else:
+                        _LOGGER.warning(
+                            "Could not extract deployment name from entity: %s",
+                            entity_id,
+                        )
                 else:
-                    # Fallback: extract from entity ID (for backward compatibility)
-                    deployment_name = entity_id.replace("switch.", "")
-                    # Remove _deployment suffix if present
-                    if deployment_name.endswith("_deployment"):
-                        deployment_name = deployment_name[:-11]  # Remove '_deployment'
-                    deployment_names.append(deployment_name)
-                    namespaces.append(
-                        namespace or "default"
-                    )  # Use default if namespace is None
-                    _LOGGER.debug(
-                        "Fallback: extracted deployment name: %s from entity ID: %s",
-                        deployment_name,
+                    _LOGGER.error(
+                        "Entity %s is not a deployment (workload_type mismatch)",
                         entity_id,
                     )
-                    _LOGGER.debug(
-                        "Extracted namespace: %s for entity: %s", namespace, entity_id
-                    )
+        else:
+            _LOGGER.warning("Unsupported deployment_name type: %s", type(name))
 
-    _LOGGER.debug("Final deployment names: %s", deployment_names)
-    _LOGGER.debug("Final namespaces: %s", namespaces)
+    _LOGGER.debug(
+        "Extracted deployment names: %s, namespaces: %s", deployment_names, namespaces
+    )
+    _LOGGER.debug(
+        "Final deployment names: %s, namespaces: %s", deployment_names, namespaces
+    )
     return deployment_names, namespaces
 
 
@@ -245,8 +312,8 @@ def _extract_statefulset_names_and_namespaces(  # noqa: C901
     call_data: dict[str, Any], hass: HomeAssistant
 ) -> tuple[list[str], list[str | None]]:
     """Extract StatefulSet names and namespaces from service call data, supporting both single and multiple selections."""
-    statefulset_names = []
-    namespaces = []
+    statefulset_names: list[str] = []
+    namespaces: list[str | None] = []
 
     _LOGGER.debug(
         "Extracting statefulset names and namespaces from call data: %s", call_data
@@ -257,201 +324,213 @@ def _extract_statefulset_names_and_namespaces(  # noqa: C901
         _LOGGER.debug("Found statefulset_names: %s (type: %s)", names, type(names))
 
         if isinstance(names, str):
-            statefulset_names.append(names)
-            # Try to get namespace from entity attributes
-            namespace, _ = _get_namespace_from_entity(hass, names)
-            namespaces.append(namespace)
-            _LOGGER.debug(
-                "Extracted namespace: %s for statefulset name: %s", namespace, names
-            )
+            # Validate that this entity represents a StatefulSet
+            if _validate_entity_workload_type(hass, names, WORKLOAD_TYPE_STATEFULSET):
+                namespace, statefulset_name = _get_namespace_from_entity(hass, names)
+                if statefulset_name is not None:
+                    statefulset_names.append(statefulset_name)
+                    namespaces.append(namespace)
+                    _LOGGER.debug(
+                        "Extracted namespace: %s for statefulset name: %s",
+                        namespace,
+                        names,
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Could not extract statefulset name from entity: %s", names
+                    )
+            else:
+                _LOGGER.error(
+                    "Entity %s is not a StatefulSet (workload_type mismatch)", names
+                )
         elif isinstance(names, dict) and "entity_id" in names:
             # Handle Home Assistant UI format: {'entity_id': ['switch.redis_statefulset', 'switch.postgres_statefulset']}
             entity_ids = names["entity_id"]
             if isinstance(entity_ids, list):
                 for entity_id in entity_ids:
                     if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                        # Get namespace and statefulset name from entity attributes
-                        namespace, statefulset_name = _get_namespace_from_entity(
-                            hass, entity_id
-                        )
-                        if statefulset_name:
-                            statefulset_names.append(statefulset_name)
-                            namespaces.append(namespace)
-                            _LOGGER.debug(
-                                "Extracted statefulset name: %s from entity: %s",
-                                statefulset_name,
-                                entity_id,
+                        # Validate that this entity represents a StatefulSet
+                        if _validate_entity_workload_type(
+                            hass, entity_id, WORKLOAD_TYPE_STATEFULSET
+                        ):
+                            # Get namespace and statefulset name from entity attributes
+                            namespace, statefulset_name = _get_namespace_from_entity(
+                                hass, entity_id
                             )
-                            _LOGGER.debug(
-                                "Extracted namespace: %s for entity: %s",
-                                namespace,
-                                entity_id,
-                            )
+                            if statefulset_name:
+                                statefulset_names.append(statefulset_name)
+                                namespaces.append(namespace)
+                                _LOGGER.debug(
+                                    "Extracted statefulset name: %s from entity: %s",
+                                    statefulset_name,
+                                    entity_id,
+                                )
+                                _LOGGER.debug(
+                                    "Extracted namespace: %s for entity: %s",
+                                    namespace,
+                                    entity_id,
+                                )
+                            else:
+                                # Fallback: extract from entity ID (for backward compatibility)
+                                statefulset_name = entity_id.replace("switch.", "")
+                                # Remove _statefulset suffix if present
+                                if statefulset_name.endswith("_statefulset"):
+                                    statefulset_name = statefulset_name[
+                                        :-12
+                                    ]  # Remove '_statefulset'
+                                statefulset_names.append(statefulset_name)
+                                namespaces.append(namespace)
+                                _LOGGER.debug(
+                                    "Fallback: extracted statefulset name: %s from entity ID: %s",
+                                    statefulset_name,
+                                    entity_id,
+                                )
+                                _LOGGER.debug(
+                                    "Extracted namespace: %s for entity: %s",
+                                    namespace,
+                                    entity_id,
+                                )
                         else:
-                            # Fallback: extract from entity ID (for backward compatibility)
-                            statefulset_name = entity_id.replace("switch.", "")
-                            # Remove _statefulset suffix if present
-                            if statefulset_name.endswith("_statefulset"):
-                                statefulset_name = statefulset_name[
-                                    :-12
-                                ]  # Remove '_statefulset'
-                            statefulset_names.append(statefulset_name)
-                            namespaces.append(
-                                namespace or "default"
-                            )  # Use default if namespace is None
-                            _LOGGER.debug(
-                                "Fallback: extracted statefulset name: %s from entity ID: %s",
-                                statefulset_name,
-                                entity_id,
-                            )
-                            _LOGGER.debug(
-                                "Extracted namespace: %s for entity: %s",
-                                namespace,
+                            _LOGGER.error(
+                                "Entity %s is not a StatefulSet (workload_type mismatch)",
                                 entity_id,
                             )
         elif isinstance(names, list):
             # Handle list of dictionaries or strings
             for item in names:
                 if isinstance(item, str):
-                    statefulset_names.append(item)
-                    # Try to get namespace from entity attributes
-                    namespace, _ = _get_namespace_from_entity(hass, item)
-                    namespaces.append(namespace)
+                    # Validate that this entity represents a StatefulSet
+                    if _validate_entity_workload_type(
+                        hass, item, WORKLOAD_TYPE_STATEFULSET
+                    ):
+                        namespace, statefulset_name = _get_namespace_from_entity(
+                            hass, item
+                        )
+                        if statefulset_name is not None:
+                            statefulset_names.append(statefulset_name)
+                            namespaces.append(namespace)
+                            _LOGGER.debug(
+                                "Extracted statefulset name: %s from list item: %s",
+                                statefulset_name,
+                                item,
+                            )
+                            _LOGGER.debug(
+                                "Extracted namespace: %s for list item: %s",
+                                namespace,
+                                item,
+                            )
+                        else:
+                            _LOGGER.warning(
+                                "Could not extract statefulset name from list item: %s",
+                                item,
+                            )
+                    else:
+                        _LOGGER.error(
+                            "Entity %s is not a StatefulSet (workload_type mismatch)",
+                            item,
+                        )
                 elif isinstance(item, dict) and "entity_id" in item:
-                    # Handle Home Assistant UI format: [{'entity_id': ['switch.redis_statefulset', 'switch.postgres_statefulset']}]
-                    entity_ids = item["entity_id"]
-                    if isinstance(entity_ids, list):
-                        for entity_id in entity_ids:
-                            if isinstance(entity_id, str) and entity_id.startswith(
-                                "switch."
-                            ):
-                                # Get namespace and statefulset name from entity attributes
-                                namespace, statefulset_name = (
-                                    _get_namespace_from_entity(hass, entity_id)
+                    entity_id = item["entity_id"]
+                    if isinstance(entity_id, str) and entity_id.startswith("switch."):
+                        # Validate that this entity represents a StatefulSet
+                        if _validate_entity_workload_type(
+                            hass, entity_id, WORKLOAD_TYPE_STATEFULSET
+                        ):
+                            namespace, statefulset_name = _get_namespace_from_entity(
+                                hass, entity_id
+                            )
+                            if statefulset_name is not None:
+                                statefulset_names.append(statefulset_name)
+                                namespaces.append(namespace)
+                                _LOGGER.debug(
+                                    "Extracted statefulset name: %s from dict item: %s",
+                                    statefulset_name,
+                                    item,
                                 )
-                                if statefulset_name:
-                                    statefulset_names.append(statefulset_name)
-                                    namespaces.append(namespace)
-                                    _LOGGER.debug(
-                                        "Extracted statefulset name: %s from entity: %s",
-                                        statefulset_name,
-                                        entity_id,
-                                    )
-                                    _LOGGER.debug(
-                                        "Extracted namespace: %s for entity: %s",
-                                        namespace,
-                                        entity_id,
-                                    )
-                                else:
-                                    # Fallback: extract from entity ID (for backward compatibility)
-                                    statefulset_name = entity_id.replace("switch.", "")
-                                    # Remove _statefulset suffix if present
-                                    if statefulset_name.endswith("_statefulset"):
-                                        statefulset_name = statefulset_name[
-                                            :-12
-                                        ]  # Remove '_statefulset'
-                                    statefulset_names.append(statefulset_name)
-                                    namespaces.append(
-                                        namespace or "default"
-                                    )  # Use default if namespace is None
-                                    _LOGGER.debug(
-                                        "Fallback: extracted statefulset name: %s from entity ID: %s",
-                                        statefulset_name,
-                                        entity_id,
-                                    )
-                                    _LOGGER.debug(
-                                        "Extracted namespace: %s for entity: %s",
-                                        namespace,
-                                        entity_id,
-                                    )
+                                _LOGGER.debug(
+                                    "Extracted namespace: %s for dict item: %s",
+                                    namespace,
+                                    item,
+                                )
+                            else:
+                                _LOGGER.warning(
+                                    "Could not extract statefulset name from dict item: %s",
+                                    item,
+                                )
+                        else:
+                            _LOGGER.error(
+                                "Entity %s is not a StatefulSet (workload_type mismatch)",
+                                entity_id,
+                            )
+        else:
+            _LOGGER.warning("Unsupported statefulset_names type: %s", type(names))
 
-    elif ATTR_STATEFULSET_NAME in call_data:
+    if ATTR_STATEFULSET_NAME in call_data:
         name = call_data[ATTR_STATEFULSET_NAME]
         _LOGGER.debug("Found statefulset_name: %s (type: %s)", name, type(name))
+
         if isinstance(name, str):
-            # Check if this looks like an entity ID
-            if name.startswith("switch."):
-                _LOGGER.debug("Detected entity ID in statefulset_name: %s", name)
-                # Treat it as an entity ID
+            # Validate that this entity represents a StatefulSet
+            if _validate_entity_workload_type(hass, name, WORKLOAD_TYPE_STATEFULSET):
                 namespace, statefulset_name = _get_namespace_from_entity(hass, name)
-                if statefulset_name:
+                if statefulset_name is not None:
                     statefulset_names.append(statefulset_name)
                     namespaces.append(namespace)
                     _LOGGER.debug(
-                        "Extracted statefulset name: %s from entity: %s",
-                        statefulset_name,
+                        "Extracted namespace: %s for statefulset name: %s",
+                        namespace,
                         name,
                     )
                 else:
-                    # Fallback: extract from entity ID
-                    statefulset_name = name.replace("switch.", "")
-                    if statefulset_name.startswith("kubernetes_"):
-                        statefulset_name = statefulset_name[
-                            11:
-                        ]  # Remove 'kubernetes_' prefix
-                    if statefulset_name and statefulset_name.endswith("_statefulset"):
-                        statefulset_name = statefulset_name[
-                            :-12
-                        ]  # Remove '_statefulset'
-                    if statefulset_name:  # Only append if not None
-                        statefulset_names.append(statefulset_name)
-                        namespaces.append(
-                            namespace or "default"
-                        )  # Use default if namespace is None
-                        _LOGGER.debug(
-                            "Fallback: extracted statefulset name: %s from entity ID: %s",
-                            statefulset_name,
-                            name,
-                        )
+                    _LOGGER.warning(
+                        "Could not extract statefulset name from entity: %s", name
+                    )
             else:
-                # Treat it as a direct statefulset name
-                statefulset_names.append(name)
-                # Try to get namespace from entity attributes
-                namespace, _ = _get_namespace_from_entity(hass, name)
-                namespaces.append(namespace)
-                _LOGGER.debug(
-                    "Extracted namespace: %s for statefulset name: %s", namespace, name
+                _LOGGER.error(
+                    "Entity %s is not a StatefulSet (workload_type mismatch)", name
                 )
         elif isinstance(name, dict) and "entity_id" in name:
-            # Handle single entity selection
             entity_id = name["entity_id"]
             if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                # Get namespace and statefulset name from entity attributes
-                namespace, statefulset_name = _get_namespace_from_entity(
-                    hass, entity_id
-                )
-                if statefulset_name:
-                    statefulset_names.append(statefulset_name)
-                    namespaces.append(namespace)
-                    _LOGGER.debug(
-                        "Extracted statefulset name: %s from entity: %s",
-                        statefulset_name,
-                        entity_id,
+                # Validate that this entity represents a StatefulSet
+                if _validate_entity_workload_type(
+                    hass, entity_id, WORKLOAD_TYPE_STATEFULSET
+                ):
+                    namespace, statefulset_name = _get_namespace_from_entity(
+                        hass, entity_id
                     )
-                    _LOGGER.debug(
-                        "Extracted namespace: %s for entity: %s", namespace, entity_id
-                    )
+                    if statefulset_name is not None:
+                        statefulset_names.append(statefulset_name)
+                        namespaces.append(namespace)
+                        _LOGGER.debug(
+                            "Extracted statefulset name: %s from entity: %s",
+                            statefulset_name,
+                            entity_id,
+                        )
+                        _LOGGER.debug(
+                            "Extracted namespace: %s for entity: %s",
+                            namespace,
+                            entity_id,
+                        )
+                    else:
+                        _LOGGER.warning(
+                            "Could not extract statefulset name from entity: %s",
+                            entity_id,
+                        )
                 else:
-                    # Fallback: extract from entity ID (for backward compatibility)
-                    statefulset_name = entity_id.replace("switch.", "")
-                    # Remove _statefulset suffix if present
-                    if statefulset_name.endswith("_statefulset"):
-                        statefulset_name = statefulset_name[
-                            :-12
-                        ]  # Remove '_statefulset'
-                    statefulset_names.append(statefulset_name)
-                    namespaces.append(namespace)
-                    _LOGGER.debug(
-                        "Fallback: extracted statefulset name: %s from entity ID: %s",
-                        statefulset_name,
+                    _LOGGER.error(
+                        "Entity %s is not a StatefulSet (workload_type mismatch)",
                         entity_id,
                     )
-                    _LOGGER.debug(
-                        "Extracted namespace: %s for entity: %s", namespace, entity_id
-                    )
+        else:
+            _LOGGER.warning("Unsupported statefulset_name type: %s", type(name))
 
-    _LOGGER.debug("Final statefulset names: %s", statefulset_names)
-    _LOGGER.debug("Final namespaces: %s", namespaces)
+    _LOGGER.debug(
+        "Extracted statefulset names: %s, namespaces: %s", statefulset_names, namespaces
+    )
+    _LOGGER.debug(
+        "Final statefulset names: %s, namespaces: %s", statefulset_names, namespaces
+    )
     return statefulset_names, namespaces
 
 
@@ -506,33 +585,6 @@ def _validate_statefulset_schema(data: dict) -> dict:
     return data
 
 
-def _validate_entity_workload_type(
-    hass: HomeAssistant, entity_id_or_name: str, expected_workload_type: str
-) -> bool:
-    """Validate that an entity has the correct workload type or allow direct resource names.
-
-    Args:
-        hass: Home Assistant instance
-        entity_id_or_name: Entity ID or direct resource name
-        expected_workload_type: Expected workload type (Deployment, StatefulSet, CronJob)
-
-    Returns:
-        True if validation passes, False otherwise
-    """
-    # If it's not an entity ID (doesn't start with a domain), treat as direct resource name
-    if not entity_id_or_name.startswith("switch."):
-        return True
-
-    # Get entity state
-    state = hass.states.get(entity_id_or_name)
-    if not state or not state.attributes:
-        return False
-
-    # Check if the entity has the expected workload type
-    actual_workload_type = state.attributes.get("workload_type")
-    return actual_workload_type == expected_workload_type
-
-
 def _extract_cronjob_names_and_namespaces(  # noqa: C901
     call_data: dict[str, Any], hass: HomeAssistant
 ) -> tuple[list[str], list[str | None]]:
@@ -554,20 +606,26 @@ def _extract_cronjob_names_and_namespaces(  # noqa: C901
         _LOGGER.debug("Found cronjob_names: %s (type: %s)", names, type(names))
 
         if isinstance(names, str):
-            cronjob_names.append(names)
-            if provided_namespace:
-                namespaces.append(provided_namespace)
-                _LOGGER.debug(
-                    "Using provided namespace: %s for CronJob name: %s",
-                    provided_namespace,
-                    names,
-                )
+            # Validate that this entity represents a CronJob
+            if _validate_entity_workload_type(hass, names, WORKLOAD_TYPE_CRONJOB):
+                if provided_namespace:
+                    namespaces.append(provided_namespace)
+                    _LOGGER.debug(
+                        "Using provided namespace: %s for CronJob name: %s",
+                        provided_namespace,
+                        names,
+                    )
+                else:
+                    # Try to get namespace from entity attributes
+                    namespace, cronjob_name = _get_namespace_from_entity(hass, names)
+                    namespaces.append(namespace)
+                    _LOGGER.debug(
+                        "Extracted namespace: %s for CronJob name: %s", namespace, names
+                    )
+                cronjob_names.append(names)
             else:
-                # Try to get namespace from entity attributes
-                namespace, cronjob_name = _get_namespace_from_entity(hass, names)
-                namespaces.append(namespace)
-                _LOGGER.debug(
-                    "Extracted namespace: %s for CronJob name: %s", namespace, names
+                _LOGGER.error(
+                    "Entity %s is not a CronJob (workload_type mismatch)", names
                 )
         elif isinstance(names, dict) and "entity_id" in names:
             # Handle Home Assistant UI format: {'entity_id': ['switch.cronjob1', 'switch.cronjob2']}
@@ -575,156 +633,170 @@ def _extract_cronjob_names_and_namespaces(  # noqa: C901
             if isinstance(entity_ids, list):
                 for entity_id in entity_ids:
                     if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                        # Get namespace and CronJob name from entity attributes
-                        namespace, cronjob_name = _get_namespace_from_entity(
-                            hass, entity_id
-                        )
-                        _LOGGER.debug(
-                            "Entity lookup result for %s: namespace=%s, cronjob_name=%s",
-                            entity_id,
-                            namespace,
-                            cronjob_name,
-                        )
-                        if cronjob_name:
-                            cronjob_names.append(cronjob_name)
-                            namespaces.append(namespace)
-                            _LOGGER.debug(
-                                "Extracted CronJob name: %s from entity: %s",
-                                cronjob_name,
-                                entity_id,
+                        # Validate that this entity represents a CronJob
+                        if _validate_entity_workload_type(
+                            hass, entity_id, WORKLOAD_TYPE_CRONJOB
+                        ):
+                            # Get namespace and CronJob name from entity attributes
+                            namespace, cronjob_name = _get_namespace_from_entity(
+                                hass, entity_id
                             )
                             _LOGGER.debug(
-                                "Extracted namespace: %s for entity: %s",
+                                "Entity lookup result for %s: namespace=%s, cronjob_name=%s",
+                                entity_id,
                                 namespace,
-                                entity_id,
+                                cronjob_name,
                             )
+                            if cronjob_name:
+                                cronjob_names.append(cronjob_name)
+                                namespaces.append(namespace)
+                                _LOGGER.debug(
+                                    "Extracted CronJob name: %s from entity: %s",
+                                    cronjob_name,
+                                    entity_id,
+                                )
+                                _LOGGER.debug(
+                                    "Extracted namespace: %s for entity: %s",
+                                    namespace,
+                                    entity_id,
+                                )
+                            else:
+                                # Fallback: extract from entity ID (for backward compatibility)
+                                # Remove 'switch.' prefix and 'kubernetes_' prefix if present
+                                cronjob_name = entity_id.replace("switch.", "")
+                                if cronjob_name.startswith("kubernetes_"):
+                                    cronjob_name = cronjob_name[
+                                        11:
+                                    ]  # Remove 'kubernetes_' prefix
+                                # Remove _cronjob suffix if present
+                                if cronjob_name.endswith("_cronjob"):
+                                    cronjob_name = cronjob_name[
+                                        :-8
+                                    ]  # Remove '_cronjob'
+                                cronjob_names.append(cronjob_name)
+                                namespaces.append(namespace)
+                                _LOGGER.info(
+                                    "Fallback: extracted CronJob name: %s from entity ID: %s",
+                                    cronjob_name,
+                                    entity_id,
+                                )
+                                _LOGGER.info(
+                                    "Extracted namespace: %s for entity: %s",
+                                    namespace,
+                                    entity_id,
+                                )
                         else:
-                            # Fallback: extract from entity ID (for backward compatibility)
-                            # Remove 'switch.' prefix and 'kubernetes_' prefix if present
-                            cronjob_name = entity_id.replace("switch.", "")
-                            if cronjob_name.startswith("kubernetes_"):
-                                cronjob_name = cronjob_name[
-                                    11:
-                                ]  # Remove 'kubernetes_' prefix
-                            # Remove _cronjob suffix if present
-                            if cronjob_name.endswith("_cronjob"):
-                                cronjob_name = cronjob_name[:-8]  # Remove '_cronjob'
-                            cronjob_names.append(cronjob_name)
-                            namespaces.append(namespace)
-                            _LOGGER.info(
-                                "Fallback: extracted CronJob name: %s from entity ID: %s",
-                                cronjob_name,
-                                entity_id,
-                            )
-                            _LOGGER.info(
-                                "Extracted namespace: %s for entity: %s",
-                                namespace,
+                            _LOGGER.error(
+                                "Entity %s is not a CronJob (workload_type mismatch)",
                                 entity_id,
                             )
         elif isinstance(names, list):
             # Handle list of dictionaries or strings
             for item in names:
                 if isinstance(item, str):
-                    cronjob_names.append(item)
-                    if provided_namespace:
-                        namespaces.append(provided_namespace)
+                    # Validate that this entity represents a CronJob
+                    if _validate_entity_workload_type(
+                        hass, item, WORKLOAD_TYPE_CRONJOB
+                    ):
+                        if provided_namespace:
+                            namespaces.append(provided_namespace)
+                        else:
+                            namespace, cronjob_name = _get_namespace_from_entity(
+                                hass, item
+                            )
+                            namespaces.append(namespace)
+                        cronjob_names.append(item)
                     else:
-                        namespace, cronjob_name = _get_namespace_from_entity(hass, item)
-                        namespaces.append(namespace)
+                        _LOGGER.error(
+                            "Entity %s is not a CronJob (workload_type mismatch)", item
+                        )
                 elif isinstance(item, dict) and "entity_id" in item:
                     entity_id = item["entity_id"]
-                    namespace, cronjob_name = _get_namespace_from_entity(
-                        hass, entity_id
-                    )
-                    if cronjob_name:
-                        cronjob_names.append(cronjob_name)
-                        namespaces.append(namespace)
+                    # Validate that this entity represents a CronJob
+                    if _validate_entity_workload_type(
+                        hass, entity_id, WORKLOAD_TYPE_CRONJOB
+                    ):
+                        namespace, cronjob_name = _get_namespace_from_entity(
+                            hass, entity_id
+                        )
+                        if cronjob_name:
+                            cronjob_names.append(cronjob_name)
+                            namespaces.append(namespace)
+                        else:
+                            # Fallback: extract from entity ID
+                            if entity_id is not None:
+                                cronjob_name = entity_id.replace("switch.", "")
+                                if cronjob_name and cronjob_name.startswith(
+                                    "kubernetes_"
+                                ):
+                                    cronjob_name = cronjob_name[
+                                        11:
+                                    ]  # Remove 'kubernetes_' prefix
+                                if cronjob_name and cronjob_name.endswith("_cronjob"):
+                                    cronjob_name = cronjob_name[:-8]
+                                if cronjob_name:  # Only append if not None
+                                    cronjob_names.append(cronjob_name)
+                                    namespaces.append(
+                                        namespace or "default"
+                                    )  # Use default if namespace is None
                     else:
-                        # Fallback: extract from entity ID
-                        if entity_id is not None:
-                            cronjob_name = entity_id.replace("switch.", "")
-                            if cronjob_name and cronjob_name.startswith("kubernetes_"):
-                                cronjob_name = cronjob_name[
-                                    11:
-                                ]  # Remove 'kubernetes_' prefix
-                            if cronjob_name and cronjob_name.endswith("_cronjob"):
-                                cronjob_name = cronjob_name[:-8]
-                            if cronjob_name:  # Only append if not None
-                                cronjob_names.append(cronjob_name)
-                                namespaces.append(
-                                    namespace or "default"
-                                )  # Use default if namespace is None
+                        _LOGGER.error(
+                            "Entity %s is not a CronJob (workload_type mismatch)",
+                            entity_id,
+                        )
                 else:
                     _LOGGER.warning(
                         "Unsupported item type in cronjob_names: %s", type(item)
                     )
+        else:
+            _LOGGER.warning("Unsupported cronjob_names type: %s", type(names))
 
-    elif ATTR_CRONJOB_NAME in call_data:
+    if ATTR_CRONJOB_NAME in call_data:
         name = call_data[ATTR_CRONJOB_NAME]
         _LOGGER.debug("Found cronjob_name: %s (type: %s)", name, type(name))
 
         if isinstance(name, str):
-            # Check if this looks like an entity ID
-            if name.startswith("switch."):
-                _LOGGER.debug("Detected entity ID in cronjob_name: %s", name)
-                # Treat it as an entity ID
-                namespace, cronjob_name = _get_namespace_from_entity(hass, name)
-                if cronjob_name:
-                    cronjob_names.append(cronjob_name)
-                    namespaces.append(
-                        namespace or "default"
-                    )  # Use default if namespace is None
-                    _LOGGER.debug(
-                        "Extracted CronJob name: %s from entity: %s", cronjob_name, name
-                    )
-                else:
-                    # Fallback: extract from entity ID
-                    cronjob_name = name.replace("switch.", "")
-                    if cronjob_name.startswith("kubernetes_"):
-                        cronjob_name = cronjob_name[11:]  # Remove 'kubernetes_' prefix
-                    if cronjob_name and cronjob_name.endswith("_cronjob"):
-                        cronjob_name = cronjob_name[:-8]
-                    if cronjob_name:  # Only append if not None
-                        cronjob_names.append(cronjob_name)
-                        namespaces.append(
-                            namespace or "default"
-                        )  # Use default if namespace is None
-                        _LOGGER.debug(
-                            "Fallback: extracted CronJob name: %s from entity ID: %s",
-                            cronjob_name,
-                            name,
-                        )
-            else:
-                # Treat it as a direct CronJob name
-                cronjob_names.append(name)
+            # Validate that this entity represents a CronJob
+            if _validate_entity_workload_type(hass, name, WORKLOAD_TYPE_CRONJOB):
                 if provided_namespace:
                     namespaces.append(provided_namespace)
                 else:
+                    # Try to get namespace from entity attributes
                     namespace, cronjob_name = _get_namespace_from_entity(hass, name)
-                    namespaces.append(
-                        namespace or "default"
-                    )  # Use default if namespace is None
+                    namespaces.append(namespace)
+                cronjob_names.append(name)
+                _LOGGER.debug("Extracted CronJob name: %s", name)
+            else:
+                _LOGGER.error(
+                    "Entity %s is not a CronJob (workload_type mismatch)", name
+                )
         elif isinstance(name, dict) and "entity_id" in name:
             entity_id = name["entity_id"]
-            namespace, cronjob_name = _get_namespace_from_entity(hass, entity_id)
-            if cronjob_name:
-                cronjob_names.append(cronjob_name)
-                namespaces.append(
-                    namespace or "default"
-                )  # Use default if namespace is None
+            # Validate that this entity represents a CronJob
+            if _validate_entity_workload_type(hass, entity_id, WORKLOAD_TYPE_CRONJOB):
+                namespace, cronjob_name = _get_namespace_from_entity(hass, entity_id)
+                if cronjob_name:
+                    cronjob_names.append(cronjob_name)
+                    namespaces.append(namespace)
+                else:
+                    # Fallback: extract from entity ID
+                    if entity_id is not None:
+                        cronjob_name = entity_id.replace("switch.", "")
+                        if cronjob_name and cronjob_name.startswith("kubernetes_"):
+                            cronjob_name = cronjob_name[
+                                11:
+                            ]  # Remove 'kubernetes_' prefix
+                        if cronjob_name and cronjob_name.endswith("_cronjob"):
+                            cronjob_name = cronjob_name[:-8]
+                        if cronjob_name:  # Only append if not None
+                            cronjob_names.append(cronjob_name)
+                            namespaces.append(
+                                namespace or "default"
+                            )  # Use default if namespace is None
             else:
-                # Fallback: extract from entity ID
-                if entity_id is not None:
-                    cronjob_name = entity_id.replace("switch.", "")
-                    if cronjob_name and cronjob_name.startswith("kubernetes_"):
-                        cronjob_name = cronjob_name[11:]  # Remove 'kubernetes_' prefix
-                    if cronjob_name and cronjob_name.endswith("_cronjob"):
-                        cronjob_name = cronjob_name[:-8]
-                    if cronjob_name:  # Only append if not None
-                        cronjob_names.append(cronjob_name)
-                        namespaces.append(
-                            namespace or "default"
-                        )  # Use default if namespace is None
+                _LOGGER.error(
+                    "Entity %s is not a CronJob (workload_type mismatch)", entity_id
+                )
         else:
             _LOGGER.warning("Unsupported cronjob_name type: %s", type(name))
 

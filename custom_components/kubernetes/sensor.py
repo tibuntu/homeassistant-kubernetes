@@ -72,6 +72,16 @@ class KubernetesBaseSensor(SensorEntity):
         """Handle updated data from the coordinator."""
         self.async_write_ha_state()
 
+    async def async_update(self) -> None:
+        """Update the sensor state."""
+        # This method is called by tests and can be used for direct updates
+        # In normal operation, the coordinator handles updates
+        try:
+            # Trigger coordinator update if needed
+            await self.coordinator.async_request_refresh()
+        except Exception as ex:
+            _LOGGER.error("Failed to update sensor %s: %s", self.name, ex)
+
 
 class KubernetesPodsSensor(KubernetesBaseSensor):
     """Sensor for Kubernetes pods count."""
@@ -97,6 +107,19 @@ class KubernetesPodsSensor(KubernetesBaseSensor):
 
         # Fallback to calling client directly if not in coordinator data
         return 0
+
+    async def async_update(self) -> None:
+        """Update the pods sensor state."""
+        try:
+            await super().async_update()
+            # If coordinator data is not available, try to get data directly from client
+            if not self.coordinator.data or "pods_count" not in self.coordinator.data:
+                if hasattr(self.client, "get_pods_count"):
+                    count = await self.client.get_pods_count()
+                    self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update pods sensor: %s", ex)
+            self._attr_native_value = 0
 
 
 class KubernetesNodesSensor(KubernetesBaseSensor):
@@ -124,6 +147,19 @@ class KubernetesNodesSensor(KubernetesBaseSensor):
         # Fallback to calling client directly if not in coordinator data
         return 0
 
+    async def async_update(self) -> None:
+        """Update the nodes sensor state."""
+        try:
+            await super().async_update()
+            # If coordinator data is not available, try to get data directly from client
+            if not self.coordinator.data or "nodes_count" not in self.coordinator.data:
+                if hasattr(self.client, "get_nodes_count"):
+                    count = await self.client.get_nodes_count()
+                    self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update nodes sensor: %s", ex)
+            self._attr_native_value = 0
+
 
 class KubernetesDeploymentsSensor(KubernetesBaseSensor):
     """Sensor for Kubernetes deployments count."""
@@ -149,6 +185,19 @@ class KubernetesDeploymentsSensor(KubernetesBaseSensor):
 
         # Fallback to calling client directly if not in coordinator data
         return 0
+
+    async def async_update(self) -> None:
+        """Update the deployments sensor state."""
+        try:
+            await super().async_update()
+            # If coordinator data is not available, try to get data directly from client
+            if not self.coordinator.data or "deployments" not in self.coordinator.data:
+                if hasattr(self.client, "get_deployments_count"):
+                    count = await self.client.get_deployments_count()
+                    self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update deployments sensor: %s", ex)
+            self._attr_native_value = 0
 
 
 class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
@@ -176,6 +225,19 @@ class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
         # Fallback to calling client directly if not in coordinator data
         return 0
 
+    async def async_update(self) -> None:
+        """Update the statefulsets sensor state."""
+        try:
+            await super().async_update()
+            # If coordinator data is not available, try to get data directly from client
+            if not self.coordinator.data or "statefulsets" not in self.coordinator.data:
+                if hasattr(self.client, "get_statefulsets_count"):
+                    count = await self.client.get_statefulsets_count()
+                    self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update statefulsets sensor: %s", ex)
+            self._attr_native_value = 0
+
 
 class KubernetesCronJobsSensor(KubernetesBaseSensor):
     """Sensor for Kubernetes CronJobs count."""
@@ -201,3 +263,16 @@ class KubernetesCronJobsSensor(KubernetesBaseSensor):
 
         # Fallback to calling client directly if not in coordinator data
         return 0
+
+    async def async_update(self) -> None:
+        """Update the cronjobs sensor state."""
+        try:
+            await super().async_update()
+            # If coordinator data is not available, try to get data directly from client
+            if not self.coordinator.data or "cronjobs" not in self.coordinator.data:
+                if hasattr(self.client, "get_cronjobs_count"):
+                    count = await self.client.get_cronjobs_count()
+                    self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update cronjobs sensor: %s", ex)
+            self._attr_native_value = 0
