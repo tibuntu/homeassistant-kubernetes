@@ -39,6 +39,7 @@ def mock_hass():
     """Mock Home Assistant instance."""
     hass = MagicMock(spec=HomeAssistant)
     hass.services = MagicMock()
+    hass.states = MagicMock()
     hass.data = {
         DOMAIN: {
             "test-entry-id": {
@@ -63,6 +64,8 @@ def mock_client():
     client.scale_statefulset = AsyncMock(return_value=True)
     client.stop_deployment = AsyncMock(return_value=True)
     client.stop_statefulset = AsyncMock(return_value=True)
+    client.start_deployment = AsyncMock(return_value=True)
+    client.start_statefulset = AsyncMock(return_value=True)
     client.trigger_cronjob = AsyncMock(
         return_value={"success": True, "job_name": "test-job-123"}
     )
@@ -465,7 +468,7 @@ class TestCronJobServices:
             mock_client_class.assert_not_called()
 
     async def test_suspend_cronjob_no_cronjob_names(self, mock_hass, mock_client):
-        """Test CronJob suspension with no valid CronJob names."""
+        """Test CronJob suspension with no cronjob names provided."""
         with patch(
             "custom_components.kubernetes.kubernetes_client.KubernetesClient"
         ) as mock_client_class:
@@ -481,14 +484,331 @@ class TestCronJobServices:
 
             assert service_func is not None, "Service function not found"
 
-            # Create a mock call object
+            # Create a mock call object with no cronjob names
             mock_call = MagicMock()
-            mock_call.data = {
-                ATTR_NAMESPACE: "default",
-            }
+            mock_call.data = {}
 
             # Execute service
             await service_func(mock_call)
 
-            # Verify no client calls were made
+            # Verify no calls were made
             mock_client.suspend_cronjob.assert_not_called()
+
+    async def test_workload_type_validation_with_entity_ids(
+        self, mock_hass, mock_client
+    ):
+        """Test that workload type validation works correctly with entity IDs."""
+        from custom_components.kubernetes.services import _validate_entity_workload_type
+
+        # Mock entity states for different workload types
+        mock_hass.states.get.side_effect = lambda entity_id: {
+            "switch.deployment_test": MagicMock(
+                attributes={"workload_type": "Deployment"}
+            ),
+            "switch.statefulset_test": MagicMock(
+                attributes={"workload_type": "StatefulSet"}
+            ),
+            "switch.cronjob_test": MagicMock(attributes={"workload_type": "CronJob"}),
+        }.get(entity_id)
+
+        # Test deployment validation
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.deployment_test", "Deployment"
+            )
+            is True
+        )
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.deployment_test", "StatefulSet"
+            )
+            is False
+        )
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.deployment_test", "CronJob"
+            )
+            is False
+        )
+
+        # Test StatefulSet validation
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.statefulset_test", "Deployment"
+            )
+            is False
+        )
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.statefulset_test", "StatefulSet"
+            )
+            is True
+        )
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.statefulset_test", "CronJob"
+            )
+            is False
+        )
+
+        # Test CronJob validation
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.cronjob_test", "Deployment"
+            )
+            is False
+        )
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.cronjob_test", "StatefulSet"
+            )
+            is False
+        )
+        assert (
+            _validate_entity_workload_type(mock_hass, "switch.cronjob_test", "CronJob")
+            is True
+        )
+
+        # Test that direct resource names (not entity IDs) are allowed
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "direct-deployment-name", "Deployment"
+            )
+            is True
+        )
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "direct-statefulset-name", "StatefulSet"
+            )
+            is True
+        )
+        assert (
+            _validate_entity_workload_type(mock_hass, "direct-cronjob-name", "CronJob")
+            is True
+        )
+
+    async def test_workload_type_validation_edge_cases(self, mock_hass, mock_client):
+        """Test edge cases for workload type validation."""
+        from custom_components.kubernetes.services import _validate_entity_workload_type
+
+        # Test with None entity
+        mock_hass.states.get.return_value = None
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.nonexistent", "Deployment"
+            )
+            is False
+        )
+
+        # Test with entity that has no attributes
+        mock_hass.states.get.return_value = MagicMock(attributes=None)
+        assert (
+            _validate_entity_workload_type(mock_hass, "switch.no_attrs", "Deployment")
+            is False
+        )
+
+        # Test with entity that has empty attributes
+        mock_hass.states.get.return_value = MagicMock(attributes={})
+        assert (
+            _validate_entity_workload_type(
+                mock_hass, "switch.empty_attrs", "Deployment"
+            )
+            is False
+        )
+
+        # Test with entity that has wrong workload type
+        mock_hass.states.get.return_value = MagicMock(
+            attributes={"workload_type": "WrongType"}
+        )
+        assert (
+            _validate_entity_workload_type(mock_hass, "switch.wrong_type", "Deployment")
+            is False
+        )
+
+    async def test_validate_entity_workload_type_function(self, mock_hass, mock_client):
+        """Test the _validate_entity_workload_type function directly."""
+        from custom_components.kubernetes.services import _validate_entity_workload_type
+
+        # Test with non-entity ID (should return True)
+        assert (
+            _validate_entity_workload_type(mock_hass, "deployment-name", "Deployment")
+            is True
+        )
+        assert (
+            _validate_entity_workload_type(mock_hass, "statefulset-name", "StatefulSet")
+            is True
+        )
+        assert (
+            _validate_entity_workload_type(mock_hass, "cronjob-name", "CronJob") is True
+        )
+
+        # Test with entity ID that doesn't start with switch.
+        assert (
+            _validate_entity_workload_type(mock_hass, "sensor.test", "Deployment")
+            is True
+        )
+
+        # Test with entity ID that starts with switch. but has no state
+        mock_hass.states.get.return_value = None
+        assert (
+            _validate_entity_workload_type(mock_hass, "switch.test", "Deployment")
+            is False
+        )
+
+        # Test with entity ID that has state but no attributes
+        mock_hass.states.get.return_value = MagicMock(attributes=None)
+        assert (
+            _validate_entity_workload_type(mock_hass, "switch.test", "Deployment")
+            is False
+        )
+
+        # Test with entity ID that has attributes but no workload_type
+        mock_hass.states.get.return_value = MagicMock(attributes={})
+        assert (
+            _validate_entity_workload_type(mock_hass, "switch.test", "Deployment")
+            is False
+        )
+
+        # Test with entity ID that has correct workload_type
+        mock_hass.states.get.return_value = MagicMock(
+            attributes={"workload_type": "Deployment"}
+        )
+        assert (
+            _validate_entity_workload_type(mock_hass, "switch.test", "Deployment")
+            is True
+        )
+
+        # Test with entity ID that has wrong workload_type
+        mock_hass.states.get.return_value = MagicMock(
+            attributes={"workload_type": "StatefulSet"}
+        )
+        assert (
+            _validate_entity_workload_type(mock_hass, "switch.test", "Deployment")
+            is False
+        )
+
+    async def test_service_call_with_invalid_data(self, mock_hass, mock_client):
+        """Test service calls with invalid data."""
+        from custom_components.kubernetes.services import async_setup_services
+
+        # Setup services
+        await async_setup_services(mock_hass)
+
+        # Test suspend cronjob with invalid data (missing cronjob_names)
+        mock_call = ServiceCall(
+            "suspend_cronjob",
+            {"namespace": "default"},  # Missing cronjob_names
+            None,
+        )
+
+        # Get the service function
+        service_func = mock_hass.services.async_register.call_args_list[6][0][
+            2
+        ]  # suspend_cronjob
+
+        # Execute service - should handle the error gracefully
+        await service_func(mock_call)
+
+        # Verify no calls were made to the client
+        mock_client.suspend_cronjob.assert_not_called()
+
+    async def test_service_call_with_empty_data(self, mock_hass, mock_client):
+        """Test service calls with empty data."""
+        from custom_components.kubernetes.services import async_setup_services
+
+        # Setup services
+        await async_setup_services(mock_hass)
+
+        # Test suspend cronjob with empty data
+        mock_call = ServiceCall("suspend_cronjob", {}, None)
+
+        # Get the service function
+        service_func = mock_hass.services.async_register.call_args_list[6][0][
+            2
+        ]  # suspend_cronjob
+
+        # Execute service - should handle the error gracefully
+        await service_func(mock_call)
+
+        # Verify no calls were made to the client
+        mock_client.suspend_cronjob.assert_not_called()
+
+    async def test_validate_deployment_schema_with_missing_namespace(
+        self, mock_hass, mock_client
+    ):
+        """Test deployment schema validation with missing namespace."""
+        from custom_components.kubernetes.services import _validate_deployment_schema
+
+        # Test with valid data but missing namespace (should be optional)
+        call_data = {"deployment_names": ["test-deployment"], "replicas": 3}
+
+        result = _validate_deployment_schema(call_data)
+        assert result == call_data
+
+    async def test_validate_statefulset_schema_with_missing_namespace(
+        self, mock_hass, mock_client
+    ):
+        """Test StatefulSet schema validation with missing namespace."""
+        from custom_components.kubernetes.services import _validate_statefulset_schema
+
+        # Test with valid data but missing namespace (should be optional)
+        call_data = {"statefulset_names": ["test-statefulset"], "replicas": 3}
+
+        result = _validate_statefulset_schema(call_data)
+        assert result == call_data
+
+    async def test_validate_cronjob_schema_with_missing_namespace(
+        self, mock_hass, mock_client
+    ):
+        """Test CronJob schema validation with missing namespace."""
+        from custom_components.kubernetes.services import _validate_cronjob_schema
+
+        # Test with valid data but missing namespace (should be optional)
+        call_data = {"cronjob_names": ["test-cronjob"]}
+
+        result = _validate_cronjob_schema(call_data)
+        assert result == call_data
+
+    async def test_validate_deployment_schema_with_list_names(
+        self, mock_hass, mock_client
+    ):
+        """Test deployment schema validation with list of names."""
+        from custom_components.kubernetes.services import _validate_deployment_schema
+
+        # Test with list of deployment names
+        call_data = {
+            "deployment_names": ["deployment1", "deployment2"],
+            "replicas": 3,
+            "namespace": "default",
+        }
+
+        result = _validate_deployment_schema(call_data)
+        assert result == call_data
+
+    async def test_validate_statefulset_schema_with_list_names(
+        self, mock_hass, mock_client
+    ):
+        """Test StatefulSet schema validation with list of names."""
+        from custom_components.kubernetes.services import _validate_statefulset_schema
+
+        # Test with list of StatefulSet names
+        call_data = {
+            "statefulset_names": ["statefulset1", "statefulset2"],
+            "replicas": 3,
+            "namespace": "default",
+        }
+
+        result = _validate_statefulset_schema(call_data)
+        assert result == call_data
+
+    async def test_validate_cronjob_schema_with_list_names(
+        self, mock_hass, mock_client
+    ):
+        """Test CronJob schema validation with list of names."""
+        from custom_components.kubernetes.services import _validate_cronjob_schema
+
+        # Test with list of CronJob names
+        call_data = {"cronjob_names": ["cronjob1", "cronjob2"], "namespace": "default"}
+
+        result = _validate_cronjob_schema(call_data)
+        assert result == call_data

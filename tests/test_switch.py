@@ -392,3 +392,17 @@ class TestKubernetesCronJobSwitch:
 
         # Verify
         cronjob_switch.async_write_ha_state.assert_called_once()
+
+    async def test_switch_available_when_coordinator_last_update_success_is_true(
+        self, mock_coordinator, mock_config_entry
+    ):
+        """Test switch available property when coordinator last_update_success is True."""
+        switch = KubernetesCronJobSwitch(
+            mock_coordinator, mock_config_entry, "test-cronjob", "default"
+        )
+
+        # Set coordinator last_update_success to True
+        mock_coordinator.last_update_success = True
+
+        # Verify available is True when last_update_success is True
+        assert switch.available is True
