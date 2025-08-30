@@ -82,9 +82,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             # Clean up entities for resources that no longer exist
             await self._cleanup_orphaned_entities(data)
 
-            # Trigger discovery of new entities (listeners will handle this)
-            self.async_update_listeners()
-
             return data
 
         except Exception as ex:
@@ -151,6 +148,20 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     continue
 
                 resource_type = parts[-1]  # 'deployment', 'statefulset', or 'cronjob'
+
+                # Skip count sensors - they are not tracking individual resources
+                if resource_type in (
+                    "count",
+                    "pods_count",
+                    "nodes_count",
+                    "deployments_count",
+                    "statefulsets_count",
+                    "cronjobs_count",
+                ):
+                    _LOGGER.debug(
+                        "Skipping cleanup for count sensor: %s", entity.unique_id
+                    )
+                    continue
 
                 # Handle different formats:
                 # - Old format: {resource_name}_{resource_type}
