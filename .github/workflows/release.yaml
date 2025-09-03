@@ -13,7 +13,30 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Release Please
+        uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: .release-please-config.json
+
+      - name: Update pyproject.toml version
+        if: github.event_name == 'release'
+        run: |
+          # Install toml-cli
+          npm install -g @iarna/toml-cli
+
+          # Get the new version from the release
+          NEW_VERSION="${{ github.event.release.tag_name }}"
+
+          # Update the version in pyproject.toml
+          toml set pyproject.toml project.version "$NEW_VERSION"
+
+          # Commit and push the changes
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add pyproject.toml
+          git commit -m "chore: update version to $NEW_VERSION [skip ci]"
+          git push
