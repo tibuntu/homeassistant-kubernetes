@@ -4,7 +4,6 @@
       "release-type": "simple",
       "include-component-in-tag": false,
       "changelog-path": "CHANGELOG.md",
-      "version-file": "pyproject.toml",
       "changelog-sections": [
         {
           "type": "feat",
