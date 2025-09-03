@@ -36,6 +36,19 @@ jobs:
 
           echo "Updating pyproject.toml to version: $NEW_VERSION"
 
+          # Check if version actually changed to prevent infinite loops
+          CURRENT_VERSION=$(python3 -c "
+          import tomli
+          with open('pyproject.toml', 'rb') as f:
+              data = tomli.load(f)
+          print(data['project']['version'])
+          ")
+
+          if [ "$CURRENT_VERSION" = "$NEW_VERSION" ]; then
+              echo "Version already up to date: $NEW_VERSION"
+              exit 0
+          fi
+
           # Update the version in pyproject.toml using Python
           python3 -c "
           import tomli
@@ -53,9 +66,9 @@ jobs:
               tomli_w.dump(data, f)
           "
 
-          # Commit and push the changes
+          # Commit and push the changes (without [skip ci] to allow release workflow)
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add pyproject.toml
-          git commit -m "chore: update version to $NEW_VERSION [skip ci]"
+          git commit -m "chore: sync version to $NEW_VERSION in pyproject.toml"
           git push
