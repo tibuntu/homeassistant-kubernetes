@@ -7,11 +7,17 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 
 ## 📋 Table of Contents
 
-- [Features](#-features)
-- [Quick Start](#-quick-start)
-- [Documentation](#-documentation)
-- [Contributing](#-contributing)
-- [License](#-license)
+- [Home Assistant Kubernetes Integration](#home-assistant-kubernetes-integration)
+  - [📋 Table of Contents](#-table-of-contents)
+  - [✨ Features](#-features)
+  - [🚀 Quick Start](#-quick-start)
+    - [Installation](#installation)
+      - [HACS (Recommended)](#hacs-recommended)
+      - [Manual Installation](#manual-installation)
+    - [Setup](#setup)
+  - [📚 Documentation](#-documentation)
+  - [🤝 Contributing](#-contributing)
+  - [📄 License](#-license)
 
 ## ✨ Features
 
@@ -29,9 +35,8 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 #### HACS (Recommended)
 
 1. Ensure [HACS](https://hacs.xyz/) is installed
-2. Add this repository as a custom repository in HACS
-3. Search for "Kubernetes" and install
-4. Restart Home Assistant
+2. Search for "Kubernetes" and install
+3. Restart Home Assistant
 
 #### Manual Installation
 
@@ -44,10 +49,10 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 
    ```bash
    # Apply the required manifests
-   kubectl apply -f manifests/serviceaccount.yaml
-   kubectl apply -f manifests/clusterrole.yaml
-   kubectl apply -f manifests/clusterrolebinding.yaml
-   kubectl apply -f manifests/serviceaccount-token-secret.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/serviceaccount.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/clusterrole.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/clusterrolebinding.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/serviceaccount-token-secret.yaml
 
    # Extract the token
    kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -o jsonpath='{.data.token}' | base64 -d
