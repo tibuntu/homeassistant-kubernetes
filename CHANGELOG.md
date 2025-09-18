@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.4.1...v0.4.2) (2025-09-18)
+
+
+### Documentation
+
+* improve RBAC configuration to allow usage of manifests without cloning the repo ([52e959b](https://github.com/tibuntu/homeassistant-kubernetes/commit/52e959b443273aa0343980415a11f94ed5fd6dcd))
+
+
+### Other
+
+* **deps:** update actions/setup-python action to v6 ([6ea39f9](https://github.com/tibuntu/homeassistant-kubernetes/commit/6ea39f9cd338569be96f3dd71ea9ef38f1f9e7fe))
+
 ## [0.4.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.4.0...v0.4.1) (2025-09-12)
 
 
