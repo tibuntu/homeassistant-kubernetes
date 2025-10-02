@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -35,8 +36,22 @@ async def async_setup_entry(
             KubernetesCronJobsSensor(coordinator, client, config_entry),
         ]
 
+        # Wait for the coordinator to have initial data
+        await coordinator.async_config_entry_first_refresh()
+
+        # Create individual sensors for each Kubernetes node
+        nodes_data = coordinator.get_all_nodes_data()
+        _LOGGER.debug("Creating node sensors for nodes: %s", list(nodes_data.keys()))
+        
+        node_sensors_created = 0
+        for node_name in nodes_data:
+            node_sensor = KubernetesNodeSensor(coordinator, client, config_entry, node_name)
+            sensors.append(node_sensor)
+            node_sensors_created += 1
+            _LOGGER.debug("Created node sensor for: %s (unique_id: %s)", node_name, node_sensor.unique_id)
+
         async_add_entities(sensors)
-        _LOGGER.debug("Successfully set up %d Kubernetes sensors", len(sensors))
+        _LOGGER.debug("Successfully set up %d Kubernetes sensors (including %d node sensors)", len(sensors), node_sensors_created)
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
         raise
@@ -58,11 +73,19 @@ class KubernetesBaseSensor(SensorEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.coordinator.last_update_success
+        available = self.coordinator.last_update_success
+        # Add specific logging for node sensors to track availability issues
+        if hasattr(self, 'node_name'):
+            _LOGGER.debug("Node sensor %s availability: %s (coordinator success: %s)",
+                         self.node_name, available, self.coordinator.last_update_success)
+        return available
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
+        # Add specific logging for node sensors
+        if hasattr(self, 'node_name'):
+            _LOGGER.info("Node sensor %s added to Home Assistant", self.node_name)
         self.async_on_remove(
             self.coordinator.async_add_listener(self._handle_coordinator_update)
         )
@@ -70,6 +93,9 @@ class KubernetesBaseSensor(SensorEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        # Add specific logging for node sensors during updates
+        if hasattr(self, 'node_name'):
+            _LOGGER.debug("Node sensor %s received coordinator update", self.node_name)
         self.async_write_ha_state()
 
     async def async_update(self) -> None:
@@ -276,3 +302,68 @@ class KubernetesCronJobsSensor(KubernetesBaseSensor):
         except Exception as ex:
             _LOGGER.error("Failed to update cronjobs sensor: %s", ex)
             self._attr_native_value = 0
+
+
+class KubernetesNodeSensor(KubernetesBaseSensor):
+    """Sensor for individual Kubernetes node with detailed information."""
+
+    def __init__(
+        self, 
+        coordinator: KubernetesDataCoordinator, 
+        client, 
+        config_entry: ConfigEntry,
+        node_name: str,
+    ) -> None:
+        """Initialize the node sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.node_name = node_name
+        self._attr_name = f"{node_name}"
+        self._attr_unique_id = f"{config_entry.entry_id}_node_{node_name}"
+        self._attr_native_unit_of_measurement = None
+        self._attr_icon = "mdi:server"
+        # Override state class since this sensor returns string values, not measurements
+        self._attr_state_class = None
+        
+        _LOGGER.debug("Initialized node sensor for %s with unique_id: %s", node_name, self._attr_unique_id)
+
+    @property
+    def native_value(self) -> str:
+        """Return the native value of the sensor (node status)."""
+        node_data = self.coordinator.get_node_data(self.node_name)
+        if node_data:
+            status = node_data.get("status", "Unknown")
+            _LOGGER.debug("Node %s native_value: %s", self.node_name, status)
+            return status
+        _LOGGER.debug("Node %s has no data, returning Unknown", self.node_name)
+        return "Unknown"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes for the node."""
+        node_data = self.coordinator.get_node_data(self.node_name)
+        if not node_data:
+            return {}
+
+        attributes = {
+            "internal_IP": node_data.get("internal_ip", "N/A"),
+            "external_IP": node_data.get("external_ip", "N/A"),
+            "memory_capacity_GB": node_data.get("memory_capacity_gb", 0),
+            "memory_allocatable_GB": node_data.get("memory_allocatable_gb", 0),
+            "CPU_cores": node_data.get("cpu_cores", 0),
+            "OS_image": node_data.get("os_image", "N/A"),
+            "kernel_version": node_data.get("kernel_version", "N/A"),
+            "container_runtime": node_data.get("container_runtime", "N/A"),
+            "kubelet_version": node_data.get("kubelet_version", "N/A"),
+            "schedulable": node_data.get("schedulable", True),
+            "creation_timestamp": node_data.get("creation_timestamp", "N/A"),
+        }
+
+        return attributes
+
+    async def async_update(self) -> None:
+        """Update the node sensor state."""
+        try:
+            await super().async_update()
+            # The base class handles coordinator updates
+        except Exception as ex:
+            _LOGGER.error("Failed to update node sensor %s: %s", self.node_name, ex)

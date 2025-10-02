@@ -24,6 +24,7 @@ from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSe
 from custom_components.kubernetes.sensor import (
     KubernetesCronJobsSensor,
     KubernetesDeploymentsSensor,
+    KubernetesNodeSensor,
     KubernetesNodesSensor,
     KubernetesPodsSensor,
     KubernetesStatefulSetsSensor,
@@ -309,10 +310,12 @@ class TestSensorSetup:
         mock_add_entities = AsyncMock()
         await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
-        # Should add 5 sensors (including CronJobs sensor)
+        # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        assert len(sensors) == 5
+        # 5 base sensors + number of node sensors from coordinator
+        expected_count = 5 + len(mock_coordinator.get_all_nodes_data())
+        assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
         self, mock_hass, mock_config_entry, mock_client, mock_coordinator
@@ -646,3 +649,108 @@ class TestCronJobsSensor:
         # Test when coordinator fails
         mock_coordinator.last_update_success = False
         assert sensor.available is False
+
+
+class TestKubernetesNodeSensor:
+    """Test Kubernetes individual node sensor."""
+
+    def test_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor initialization."""
+        node_name = "worker-node-1"
+        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+
+        assert sensor.name == f"Node {node_name}"
+        assert sensor.unique_id == f"test_entry_id_node_{node_name}"
+        assert sensor.native_unit_of_measurement is None
+        assert sensor._attr_icon == "mdi:server"
+
+    async def test_sensor_value_with_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor value with node data."""
+        node_name = "worker-node-1"
+        node_data = {
+            "name": node_name,
+            "status": "Ready",
+            "internal_ip": "10.0.0.1",
+            "external_ip": "203.0.113.1",
+            "memory_capacity_gb": 16.0,
+            "memory_allocatable_gb": 14.5,
+            "cpu_cores": 4.0,
+            "os_image": "Ubuntu 22.04",
+            "kernel_version": "5.15.0-56-generic",
+            "container_runtime": "containerd://1.6.6",
+            "kubelet_version": "v1.25.4",
+            "schedulable": True,
+            "creation_timestamp": "2023-01-01T00:00:00Z",
+        }
+        
+        # Set up coordinator data
+        mock_coordinator.get_node_data = MagicMock(return_value=node_data)
+
+        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+
+        # Test native value (status)
+        assert sensor.native_value == "Ready"
+        
+        # Test extra state attributes
+        attributes = sensor.extra_state_attributes
+        assert attributes["internal_ip"] == "10.0.0.1"
+        assert attributes["external_ip"] == "203.0.113.1"
+        assert attributes["memory_capacity_gb"] == 16.0
+        assert attributes["memory_allocatable_gb"] == 14.5
+        assert attributes["cpu_cores"] == 4.0
+        assert attributes["os_image"] == "Ubuntu 22.04"
+        assert attributes["kernel_version"] == "5.15.0-56-generic"
+        assert attributes["container_runtime"] == "containerd://1.6.6"
+        assert attributes["kubelet_version"] == "v1.25.4"
+        assert attributes["schedulable"] is True
+        assert attributes["creation_timestamp"] == "2023-01-01T00:00:00Z"
+
+    async def test_sensor_value_without_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor value without node data."""
+        node_name = "worker-node-1"
+        
+        # Set up coordinator to return None
+        mock_coordinator.get_node_data = MagicMock(return_value=None)
+
+        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+
+        # Test native value (status)
+        assert sensor.native_value == "Unknown"
+        # Test extra state attributes
+        attributes = sensor.extra_state_attributes
+        assert attributes == {}
+
+    async def test_sensor_update_success(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test successful sensor update."""
+        node_name = "worker-node-1"
+        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+
+        # Mock the coordinator update
+        mock_coordinator.async_request_refresh = AsyncMock()
+
+        # Should complete without error
+        await sensor.async_update()
+
+        # Verify coordinator refresh was called
+        mock_coordinator.async_request_refresh.assert_called_once()
+
+    async def test_sensor_update_failure(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor update failure."""
+        node_name = "worker-node-1"
+        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+
+        # Mock the coordinator to raise an exception
+        mock_coordinator.async_request_refresh = AsyncMock(side_effect=Exception("Update failed"))
+
+        # Should handle exception gracefully
+        await sensor.async_update()

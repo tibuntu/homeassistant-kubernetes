@@ -45,6 +45,7 @@ def mock_client():
     client.get_cronjobs_count = AsyncMock(return_value=0)
     client.get_pods_count = AsyncMock(return_value=0)
     client.get_nodes_count = AsyncMock(return_value=0)
+    client.get_nodes = AsyncMock(return_value=[])
     return client
 
 
@@ -100,6 +101,26 @@ class TestKubernetesDataCoordinator:
         ]
         mock_client.get_cronjobs.return_value = mock_cronjobs
 
+        # Mock detailed nodes data
+        mock_nodes = [
+            {
+                "name": "worker-node-1",
+                "status": "Ready",
+                "internal_ip": "10.0.0.1",
+                "external_ip": "203.0.113.1",
+                "memory_capacity_gb": 16.0,
+                "memory_allocatable_gb": 14.5,
+                "cpu_cores": 4.0,
+                "os_image": "Ubuntu 22.04",
+                "kernel_version": "5.15.0-56-generic",
+                "container_runtime": "containerd://1.6.6",
+                "kubelet_version": "v1.25.4",
+                "schedulable": True,
+                "creation_timestamp": "2023-01-01T00:00:00Z",
+            }
+        ]
+        mock_client.get_nodes.return_value = mock_nodes
+
         # Mock count data
         mock_client.get_deployments_count.return_value = 1
         mock_client.get_statefulsets_count.return_value = 1
@@ -111,6 +132,7 @@ class TestKubernetesDataCoordinator:
         assert "deployments" in result
         assert "statefulsets" in result
         assert "cronjobs" in result
+        assert "nodes" in result
         assert "pods_count" in result
         assert "nodes_count" in result
         assert "last_update" in result
@@ -134,6 +156,13 @@ class TestKubernetesDataCoordinator:
         assert result["cronjobs"]["backup-job"]["name"] == "backup-job"
         assert result["cronjobs"]["backup-job"]["namespace"] == "default"
         assert result["cronjobs"]["backup-job"]["schedule"] == "0 2 * * *"
+
+        # Verify nodes data
+        assert "worker-node-1" in result["nodes"]
+        assert result["nodes"]["worker-node-1"]["name"] == "worker-node-1"
+        assert result["nodes"]["worker-node-1"]["status"] == "Ready"
+        assert result["nodes"]["worker-node-1"]["internal_ip"] == "10.0.0.1"
+        assert result["nodes"]["worker-node-1"]["memory_capacity_gb"] == 16.0
 
         # Verify counts
         assert result["pods_count"] == 0
@@ -248,6 +277,54 @@ class TestKubernetesDataCoordinator:
         # Test getting non-existent CronJob
         result = coordinator.get_cronjob_data("non-existent")
         assert result is None
+
+    async def test_get_node_data(self, coordinator):
+        """Test getting node data by name."""
+        # Set up mock node data
+        node_data = {
+            "worker-node-1": {
+                "name": "worker-node-1",
+                "status": "Ready",
+                "internal_ip": "10.0.0.1",
+                "memory_capacity_gb": 16.0,
+            }
+        }
+        coordinator.data = {"nodes": node_data}
+
+        # Test getting existing node
+        result = coordinator.get_node_data("worker-node-1")
+        assert result is not None
+        assert result["name"] == "worker-node-1"
+        assert result["status"] == "Ready"
+
+        # Test getting non-existent node
+        result = coordinator.get_node_data("non-existent")
+        assert result is None
+
+        # Test with no data
+        coordinator.data = None
+        result = coordinator.get_node_data("worker-node-1")
+        assert result is None
+
+    async def test_get_all_nodes_data(self, coordinator):
+        """Test getting all nodes data."""
+        # Set up mock nodes data
+        nodes_data = {
+            "worker-node-1": {"name": "worker-node-1", "status": "Ready"},
+            "worker-node-2": {"name": "worker-node-2", "status": "NotReady"},
+        }
+        coordinator.data = {"nodes": nodes_data}
+
+        # Test getting all nodes
+        result = coordinator.get_all_nodes_data()
+        assert len(result) == 2
+        assert "worker-node-1" in result
+        assert "worker-node-2" in result
+
+        # Test with no data
+        coordinator.data = None
+        result = coordinator.get_all_nodes_data()
+        assert result == {}
 
     async def test_get_last_update_time(self, coordinator):
         """Test getting last update time."""
@@ -463,4 +540,52 @@ class TestKubernetesDataCoordinator:
             await coordinator._cleanup_orphaned_entities(current_data)
 
             # Should not remove the entity from different config entry
+            mock_registry.async_remove.assert_not_called()
+
+    async def test_cleanup_orphaned_entities_removes_node(self, coordinator):
+        """Test cleanup removes orphaned node entities."""
+        # Mock entity with node that no longer exists
+        mock_entity = MagicMock()
+        mock_entity.unique_id = "test-entry-id_node_old-node"
+        mock_entity.entity_id = "sensor.old_node"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [
+            mock_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            # Current data has no nodes (the old node is gone)
+            current_data = {"nodes": {}}
+
+            await coordinator._cleanup_orphaned_entities(current_data)
+
+            # Should remove the orphaned node entity
+            mock_registry.async_remove.assert_called_once_with("sensor.old_node")
+
+    async def test_cleanup_orphaned_entities_keeps_existing_node(self, coordinator):
+        """Test cleanup keeps existing node entities."""
+        # Mock entity with node that still exists
+        mock_entity = MagicMock()
+        mock_entity.unique_id = "test-entry-id_node_current-node"
+        mock_entity.entity_id = "sensor.current_node"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [
+            mock_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            # Current data still has the node
+            current_data = {"nodes": {"current-node": {"name": "current-node"}}}
+
+            await coordinator._cleanup_orphaned_entities(current_data)
+
+            # Should not remove the existing node entity
             mock_registry.async_remove.assert_not_called()

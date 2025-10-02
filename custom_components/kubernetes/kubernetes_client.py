@@ -363,6 +363,173 @@ class KubernetesClient:
             self._log_error("aiohttp get nodes count", ex)
             return 0
 
+    async def get_nodes(self) -> list[dict[str, Any]]:
+        """Get detailed information about all nodes in the cluster."""
+        try:
+            _LOGGER.debug("Starting get_nodes() call")
+            # Use aiohttp as primary since it works better with SSL configuration
+            result = await self._get_nodes_aiohttp()
+            if result is not None:
+                _LOGGER.debug("get_nodes() successful: retrieved %d nodes", len(result))
+                self._log_success("get nodes", f"retrieved {len(result)} nodes")
+            else:
+                _LOGGER.warning("get_nodes() returned None")
+            return result
+        except Exception as ex:
+            _LOGGER.error("get_nodes() failed with exception: %s", ex, exc_info=True)
+            self._log_error("get nodes", ex)
+            return []
+
+    async def _get_nodes_aiohttp(self) -> list[dict[str, Any]]:
+        """Get detailed nodes information using aiohttp."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/api/v1/nodes",
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        _LOGGER.debug("Received nodes API response with %d items", len(data.get("items", [])))
+                        nodes = []
+                        for i, item in enumerate(data.get("items", [])):
+                            try:
+                                _LOGGER.debug("Processing node item %d", i)
+                                # Extract node information
+                                metadata = item.get("metadata", {})
+                                status = item.get("status", {})
+                                spec = item.get("spec", {})
+                                
+                                # Get node name
+                                node_name = metadata.get("name", "unknown")
+                                # Get node status
+                                conditions = status.get("conditions", [])
+                                ready_condition = next(
+                                    (c for c in conditions if c.get("type") == "Ready"),
+                                    {}
+                                )
+                                node_status = "Ready" if ready_condition.get("status") == "True" else "NotReady"
+                                
+                                # Get IP addresses
+                                addresses = status.get("addresses", [])
+                                internal_ip = next(
+                                    (addr["address"] for addr in addresses if addr.get("type") == "InternalIP"),
+                                    "N/A"
+                                )
+                                external_ip = next(
+                                    (addr["address"] for addr in addresses if addr.get("type") == "ExternalIP"),
+                                    "N/A"
+                                )
+                                
+                                # Get resource information
+                                capacity = status.get("capacity", {})
+                                allocatable = status.get("allocatable", {})
+                                
+                                # Parse memory (convert from Ki to GB)
+                                memory_capacity_str = capacity.get("memory", "0Ki")
+                                memory_capacity_gb = self._parse_memory_to_gb(memory_capacity_str)
+                                
+                                memory_allocatable_str = allocatable.get("memory", "0Ki")
+                                memory_allocatable_gb = self._parse_memory_to_gb(memory_allocatable_str)
+                                
+                                # Parse CPU (can be in millicores or cores)
+                                cpu_capacity = capacity.get("cpu", "0")
+                                cpu_cores = self._parse_cpu_to_cores(cpu_capacity)
+                                # Get node info
+                                node_info = status.get("nodeInfo", {})
+                                os_image = node_info.get("osImage", "N/A")
+                                kernel_version = node_info.get("kernelVersion", "N/A")
+                                container_runtime = node_info.get("containerRuntimeVersion", "N/A")
+                                kubelet_version = node_info.get("kubeletVersion", "N/A")
+                                
+                                # Check if node is schedulable
+                                unschedulable = spec.get("unschedulable", False)
+                                node_data = {
+                                    "name": node_name,
+                                    "status": node_status,
+                                    "internal_ip": internal_ip,
+                                    "external_ip": external_ip,
+                                    "memory_capacity_gb": memory_capacity_gb,
+                                    "memory_allocatable_gb": memory_allocatable_gb,
+                                    "cpu_cores": cpu_cores,
+                                    "os_image": os_image,
+                                    "kernel_version": kernel_version,
+                                    "container_runtime": container_runtime,
+                                    "kubelet_version": kubelet_version,
+                                    "schedulable": not unschedulable,
+                                    "creation_timestamp": metadata.get("creationTimestamp", "N/A"),
+                                }
+                                
+                                nodes.append(node_data)
+                                _LOGGER.debug("Successfully processed node: %s (status: %s)", 
+                                            node_name, node_status)
+                                
+                            except Exception as ex:
+                                _LOGGER.error(
+                                    "Failed to parse node data for item %d: %s", i, ex, exc_info=True
+                                )
+                                continue
+                        _LOGGER.debug("Successfully parsed %d nodes", len(nodes))
+                        return nodes
+                    else:
+                        _LOGGER.error(
+                            "aiohttp nodes request failed with status: %s",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            _LOGGER.error("Exception in _get_nodes_aiohttp: %s", ex, exc_info=True)
+            self._log_error("aiohttp get nodes", ex)
+            return []
+
+    def _parse_memory_to_gb(self, memory_str: str) -> float:
+        """Parse Kubernetes memory string to GB."""
+        try:
+            if memory_str.endswith("Ki"):
+                # Kibibytes to GB
+                kb = int(memory_str[:-2])
+                return round(kb / (1024 * 1024), 2)
+            elif memory_str.endswith("Mi"):
+                # Mebibytes to GB  
+                mb = int(memory_str[:-2])
+                return round(mb / 1024, 2)
+            elif memory_str.endswith("Gi"):
+                # Gibibytes to GB
+                gb = int(memory_str[:-2])
+                return round(gb * 1.073741824, 2)  # Convert GiB to GB
+            elif memory_str.endswith("Ti"):
+                # Tebibytes to GB
+                tb = int(memory_str[:-2])
+                return round(tb * 1099.511627776, 2)  # Convert TiB to GB
+            else:
+                # Assume bytes
+                bytes_val = int(memory_str)
+                return round(bytes_val / (1024**3), 2)
+        except (ValueError, IndexError):
+            _LOGGER.warning("Failed to parse memory string: %s", memory_str)
+            return 0.0
+
+    def _parse_cpu_to_cores(self, cpu_str: str) -> float:
+        """Parse Kubernetes CPU string to cores."""
+        try:
+            if cpu_str.endswith("m"):
+                # Millicores to cores
+                millicores = int(cpu_str[:-1])
+                return millicores / 1000.0
+            else:
+                # Already in cores
+                return float(cpu_str)
+        except (ValueError, IndexError):
+            _LOGGER.warning("Failed to parse CPU string: %s", cpu_str)
+            return 0.0
+
     async def get_deployments_count(self) -> int:
         """Get the count of deployments in the namespace(s)."""
         try:

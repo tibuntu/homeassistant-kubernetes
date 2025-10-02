@@ -49,12 +49,20 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("Updating Kubernetes data for coordinator")
 
-            # Fetch deployments, statefulsets, cronjobs, pods count, and nodes count
+            # Fetch deployments, statefulsets, cronjobs, pods count, nodes count, and detailed nodes info
             deployments = await self.client.get_deployments()
             statefulsets = await self.client.get_statefulsets()
             cronjobs = await self.client.get_cronjobs()
             pods_count = await self.client.get_pods_count()
             nodes_count = await self.client.get_nodes_count()
+
+            _LOGGER.debug("Starting to fetch detailed node information")
+            nodes = await self.client.get_nodes()
+            _LOGGER.debug("Successfully fetched %d nodes with detailed information", len(nodes))
+            # Log node names for debugging
+            if nodes:
+                node_names = [node.get("name", "Unknown") for node in nodes]
+                _LOGGER.debug("Fetched nodes: %s", node_names)
 
             # Create a lookup dictionary for quick access
             data = {
@@ -65,18 +73,22 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     statefulset["name"]: statefulset for statefulset in statefulsets
                 },
                 "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
+                "nodes": {
+                    node["name"]: node for node in nodes
+                },
                 "pods_count": pods_count,
                 "nodes_count": nodes_count,
                 "last_update": asyncio.get_event_loop().time(),
             }
 
             _LOGGER.debug(
-                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d cronjobs, %d pods, %d nodes",
+                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d cronjobs, %d pods, %d nodes (detailed: %d)",
                 len(deployments),
                 len(statefulsets),
                 len(cronjobs),
                 pods_count,
                 nodes_count,
+                len(nodes),
             )
 
             # Clean up entities for resources that no longer exist
@@ -106,6 +118,30 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             return None
         return self.data["cronjobs"].get(cronjob_name)
 
+    def get_node_data(self, node_name: str) -> dict[str, Any] | None:
+        """Get node data by name."""
+        if not self.data or "nodes" not in self.data:
+            _LOGGER.debug("No coordinator data or nodes data available for node %s", node_name)
+            return None
+
+        node_data = self.data["nodes"].get(node_name)
+        if node_data is None:
+            _LOGGER.warning("Node %s not found in coordinator data. Available nodes: %s",
+                          node_name, list(self.data["nodes"].keys()))
+        else:
+            _LOGGER.debug(
+                "Retrieved data for node %s: status=%s",
+                node_name,
+                node_data.get("status", "Unknown"),
+            )
+        return node_data
+
+    def get_all_nodes_data(self) -> dict[str, dict[str, Any]]:
+        """Get all nodes data."""
+        if not self.data or "nodes" not in self.data:
+            return {}
+        return self.data["nodes"]
+
     def get_last_update_time(self) -> float:
         """Get the timestamp of the last successful update."""
         if not self.data or "last_update" not in self.data:
@@ -129,6 +165,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 self.config_entry.entry_id
             )
 
+            _LOGGER.debug("Entity cleanup: Found %d entities for config entry %s", len(entities), self.config_entry.entry_id)
+
+            # Log current data for debugging
+            current_nodes = list(current_data.get("nodes", {}).keys())
+            _LOGGER.debug("Current nodes in data: %s", current_nodes)
             # Track which entities should be removed
             entities_to_remove = []
 
@@ -149,6 +190,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
                 resource_type = parts[-1]  # 'deployment', 'statefulset', or 'cronjob'
 
+                _LOGGER.debug("Processing entity cleanup - unique_id: %s, suffix: %s, parts: %s, initial resource_type: %s",
+                            entity.unique_id, suffix, parts, resource_type)
+
                 # Skip count sensors - they are not tracking individual resources
                 if resource_type in (
                     "count",
@@ -164,9 +208,15 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     continue
 
                 # Handle different formats:
+                # - Node format: node_{node_name}
+                # - CronJob format: {namespace}_{resource_name}_{resource_type}
                 # - Old format: {resource_name}_{resource_type}
-                # - New CronJob format: {namespace}_{resource_name}_{resource_type}
-                if resource_type == "cronjob" and len(parts) >= 3:
+                if len(parts) >= 2 and parts[0] == "node":
+                    # Node format: node_{node_name}
+                    resource_type = "node"
+                    resource_name = "_".join(parts[1:])  # Everything after 'node'
+                    _LOGGER.debug("Detected node entity format - node_name: %s", resource_name)
+                elif resource_type == "cronjob" and len(parts) >= 3:
                     # New CronJob format: {namespace}_{resource_name}_cronjob
                     resource_name = "_".join(
                         parts[1:-1]
@@ -177,6 +227,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         parts[:-1]
                     )  # Handle names with underscores
 
+                _LOGGER.debug("Parsed entity - resource_type: %s, resource_name: %s", resource_type, resource_name)
                 should_remove = False
 
                 if resource_type in ("deployment", "deployments"):
@@ -200,13 +251,21 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             "CronJob %s no longer exists, marking entity for removal",
                             resource_name,
                         )
+                elif resource_type in ("node", "nodes"):
+                    if resource_name not in current_data.get("nodes", {}):
+                        should_remove = True
+                        _LOGGER.info(
+                            "Node %s no longer exists, marking entity for removal",
+                            resource_name,
+                        )
                 else:
-                    # Handle other entity types like sensors that might track deployments/statefulsets/cronjobs
+                    # Handle other entity types like sensors that might track deployments/statefulsets/cronjobs/nodes
                     # Check if this entity is tracking a resource that no longer exists
                     if (
                         resource_name not in current_data.get("deployments", {})
                         and resource_name not in current_data.get("statefulsets", {})
                         and resource_name not in current_data.get("cronjobs", {})
+                        and resource_name not in current_data.get("nodes", {})
                     ):
                         should_remove = True
                         _LOGGER.info(
