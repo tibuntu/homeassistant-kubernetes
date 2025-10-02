@@ -160,6 +160,82 @@ automation:
           namespace: "development"
 ```
 
+### Node Monitoring Automations
+
+#### Alert on Node Not Ready
+
+```yaml
+automation:
+  - alias: "Alert on node not ready"
+    trigger:
+      - platform: state
+        entity_id:
+          - sensor.kubernetes_node_master_1
+          - sensor.kubernetes_node_worker_1
+          - sensor.kubernetes_node_worker_2
+        to: "NotReady"
+        for:
+          minutes: 2
+    action:
+      - service: notify.mobile_app_your_phone
+        data:
+          title: "Kubernetes Node Alert"
+          message: >
+            Node {{ trigger.entity_id.split('.')[-1].replace('kubernetes_node_', '').replace('_', '-') }} 
+            is not ready. Status: {{ trigger.to_state.state }}
+          data:
+            priority: high
+```
+
+#### Monitor Node Resource Usage
+
+```yaml
+automation:
+  - alias: "High memory usage alert"
+    trigger:
+      - platform: template
+        value_template: >
+          {% set nodes = states.sensor | selectattr('entity_id', 'match', 'sensor.kubernetes_node_.*') | list %}
+          {% for node in nodes %}
+            {% set memory_used = state_attr(node.entity_id, 'memory_capacity_gb') | float - state_attr(node.entity_id, 'memory_allocatable_gb') | float %}
+            {% set memory_total = state_attr(node.entity_id, 'memory_capacity_gb') | float %}
+            {% if memory_used / memory_total > 0.9 %}
+              true
+            {% endif %}
+          {% endfor %}
+    action:
+      - service: notify.persistent_notification
+        data:
+          title: "High Memory Usage"
+          message: >
+            One or more nodes are running low on memory. 
+            Check the node monitoring dashboard for details.
+```
+
+#### Log Node Status Changes
+
+```yaml
+automation:
+  - alias: "Log node status changes"
+    trigger:
+      - platform: state
+        entity_id:
+          - sensor.kubernetes_node_master_1
+          - sensor.kubernetes_node_worker_1
+          - sensor.kubernetes_node_worker_2
+    condition:
+      - condition: template
+        value_template: "{{ trigger.from_state.state != trigger.to_state.state }}"
+    action:
+      - service: logbook.log
+        data:
+          name: "Kubernetes Node Status"
+          message: >
+            Node {{ trigger.entity_id.split('.')[-1].replace('kubernetes_node_', '').replace('_', '-') }} 
+            changed from {{ trigger.from_state.state }} to {{ trigger.to_state.state }}
+          entity_id: "{{ trigger.entity_id }}"
+```
+
 ## Dashboard Examples
 
 ### Basic Cluster Overview
@@ -178,6 +254,10 @@ views:
             name: "Cluster Nodes"
           - entity: sensor.kubernetes_deployments_count
             name: "Active Deployments"
+          - entity: sensor.kubernetes_statefulsets_count
+            name: "StatefulSets"
+          - entity: sensor.kubernetes_cronjobs_count
+            name: "CronJobs"
           - entity: binary_sensor.kubernetes_cluster_health
             name: "Cluster Health"
 ```
@@ -223,6 +303,42 @@ views:
           - sensor.kubernetes_pods_count
           - sensor.kubernetes_deployments_count
         hours_to_show: 24
+
+### Node Monitoring Dashboard
+
+```yaml
+views:
+  - title: "Node Status"
+    path: kubernetes-nodes
+    cards:
+      - type: entities
+        title: "Node Overview"
+        entities:
+          - entity: sensor.kubernetes_node_master_1
+            name: "Master Node"
+          - entity: sensor.kubernetes_node_worker_1
+            name: "Worker Node 1"
+          - entity: sensor.kubernetes_node_worker_2
+            name: "Worker Node 2"
+        show_header_toggle: false
+      - type: custom:auto-entities
+        card:
+          type: entities
+          title: "All Cluster Nodes"
+        filter:
+          include:
+            - entity_id: "sensor.kubernetes_node_*"
+        sort:
+          method: name
+      - type: markdown
+        content: >
+          ## Node Resources
+
+          **{{ states('sensor.kubernetes_node_worker_1') }}** Worker 1:
+          - Memory: {{ state_attr('sensor.kubernetes_node_worker_1', 'memory_allocatable_gb') }}GB / {{ state_attr('sensor.kubernetes_node_worker_1', 'memory_capacity_gb') }}GB
+          - CPU Cores: {{ state_attr('sensor.kubernetes_node_worker_1', 'cpu_cores') }}
+          - Internal IP: {{ state_attr('sensor.kubernetes_node_worker_1', 'internal_ip') }}
+          - OS: {{ state_attr('sensor.kubernetes_node_worker_1', 'os_image') }}
 ```
 
 ## Script Examples

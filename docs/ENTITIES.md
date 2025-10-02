@@ -12,6 +12,33 @@ The integration provides the following sensors to monitor your Kubernetes cluste
 | **Nodes Count** | Number of nodes in the cluster | `3` | nodes |
 | **Deployments Count** | Number of deployments in the monitored namespace(s) | `8` | deployments |
 | **StatefulSets Count** | Number of statefulsets in the monitored namespace(s) | `2` | statefulsets |
+| **CronJobs Count** | Number of cronjobs in the monitored namespace(s) | `5` | cronjobs |
+
+### Individual Node Sensors
+
+The integration creates a separate sensor for each Kubernetes node in the cluster:
+
+| Sensor | Description | Example Value | Unit |
+|--------|-------------|---------------|------|
+| **Node [node-name]** | Individual node status and information | `Ready` / `NotReady` / `Unknown` | - |
+
+#### Node Sensor Attributes
+
+Each node sensor provides comprehensive information about the node:
+
+| Attribute | Description | Example Value |
+|-----------|-------------|---------------|
+| **internal_ip** | Internal IP address of the node | `10.0.0.1` |
+| **external_ip** | External IP address of the node | `203.0.113.1` |
+| **memory_capacity_gb** | Total memory capacity in GB | `16.0` |
+| **memory_allocatable_gb** | Allocatable memory in GB | `14.5` |
+| **cpu_cores** | Number of CPU cores | `4.0` |
+| **os_image** | Operating system image | `Ubuntu 22.04.3 LTS` |
+| **kernel_version** | Kernel version | `5.15.0-56-generic` |
+| **container_runtime** | Container runtime version | `containerd://1.6.6` |
+| **kubelet_version** | Kubelet version | `v1.25.4` |
+| **schedulable** | Whether the node can schedule new pods | `true` / `false` |
+| **creation_timestamp** | When the node was created | `2023-01-01T00:00:00Z` |
 
 ### Sensor Attributes
 
@@ -88,6 +115,16 @@ The integration automatically discovers and creates entities for:
 
 - All deployments in monitored namespaces
 - All statefulsets in monitored namespaces
-- Cluster-wide metrics (nodes, overall health)
+- All cronjobs in monitored namespaces
+- Individual Kubernetes nodes in the cluster
+- Cluster-wide metrics (pods, nodes, deployments, statefulsets, cronjobs count)
+- Overall cluster health
 
 Entities are automatically added when new resources are created and removed when resources are deleted from the cluster.
+
+### Node Entity Management
+
+- **Automatic Creation**: Node sensors are automatically created for each node discovered during integration setup
+- **Dynamic Updates**: Node information is refreshed during regular coordinator updates
+- **Automatic Cleanup**: Node sensors are automatically removed when nodes are deleted from the cluster
+- **Entity Naming**: Node entities use the format `sensor.kubernetes_node_[node_name]`
