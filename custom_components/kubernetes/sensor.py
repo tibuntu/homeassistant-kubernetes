@@ -160,22 +160,11 @@ class KubernetesBaseSensor(SensorEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         available = self.coordinator.last_update_success
-        # Add specific logging for node sensors to track availability issues
-        if hasattr(self, "node_name"):
-            _LOGGER.debug(
-                "Node sensor %s availability: %s (coordinator success: %s)",
-                self.node_name,
-                available,
-                self.coordinator.last_update_success,
-            )
         return available
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
-        # Add specific logging for node sensors
-        if hasattr(self, "node_name"):
-            _LOGGER.info("Node sensor %s added to Home Assistant", self.node_name)
         self.async_on_remove(
             self.coordinator.async_add_listener(self._handle_coordinator_update)
         )
@@ -183,9 +172,6 @@ class KubernetesBaseSensor(SensorEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        # Add specific logging for node sensors during updates
-        if hasattr(self, "node_name"):
-            _LOGGER.debug("Node sensor %s received coordinator update", self.node_name)
         self.async_write_ha_state()
 
     async def async_update(self) -> None:

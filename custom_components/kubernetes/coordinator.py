@@ -58,7 +58,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
             _LOGGER.debug("Starting to fetch detailed node information")
             nodes = await self.client.get_nodes()
-            _LOGGER.debug("Successfully fetched %d nodes with detailed information", len(nodes))
+            _LOGGER.debug(
+                "Successfully fetched %d nodes with detailed information", len(nodes)
+            )
+
             # Log node names for debugging
             if nodes:
                 node_names = [node.get("name", "Unknown") for node in nodes]
@@ -73,9 +76,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     statefulset["name"]: statefulset for statefulset in statefulsets
                 },
                 "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
-                "nodes": {
-                    node["name"]: node for node in nodes
-                },
+                "nodes": {node["name"]: node for node in nodes},
                 "pods_count": pods_count,
                 "nodes_count": nodes_count,
                 "last_update": asyncio.get_event_loop().time(),
@@ -121,13 +122,18 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
     def get_node_data(self, node_name: str) -> dict[str, Any] | None:
         """Get node data by name."""
         if not self.data or "nodes" not in self.data:
-            _LOGGER.debug("No coordinator data or nodes data available for node %s", node_name)
+            _LOGGER.debug(
+                "No coordinator data or nodes data available for node %s", node_name
+            )
             return None
 
         node_data = self.data["nodes"].get(node_name)
         if node_data is None:
-            _LOGGER.warning("Node %s not found in coordinator data. Available nodes: %s",
-                          node_name, list(self.data["nodes"].keys()))
+            _LOGGER.warning(
+                "Node %s not found in coordinator data. Available nodes: %s",
+                node_name,
+                list(self.data["nodes"].keys()),
+            )
         else:
             _LOGGER.debug(
                 "Retrieved data for node %s: status=%s",
@@ -165,11 +171,16 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 self.config_entry.entry_id
             )
 
-            _LOGGER.debug("Entity cleanup: Found %d entities for config entry %s", len(entities), self.config_entry.entry_id)
+            _LOGGER.debug(
+                "Entity cleanup: Found %d entities for config entry %s",
+                len(entities),
+                self.config_entry.entry_id,
+            )
 
             # Log current data for debugging
             current_nodes = list(current_data.get("nodes", {}).keys())
             _LOGGER.debug("Current nodes in data: %s", current_nodes)
+
             # Track which entities should be removed
             entities_to_remove = []
 
@@ -190,8 +201,13 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
                 resource_type = parts[-1]  # 'deployment', 'statefulset', or 'cronjob'
 
-                _LOGGER.debug("Processing entity cleanup - unique_id: %s, suffix: %s, parts: %s, initial resource_type: %s",
-                            entity.unique_id, suffix, parts, resource_type)
+                _LOGGER.debug(
+                    "Processing entity cleanup - unique_id: %s, suffix: %s, parts: %s, initial resource_type: %s",
+                    entity.unique_id,
+                    suffix,
+                    parts,
+                    resource_type,
+                )
 
                 # Skip count sensors - they are not tracking individual resources
                 if resource_type in (
@@ -215,7 +231,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     # Node format: node_{node_name}
                     resource_type = "node"
                     resource_name = "_".join(parts[1:])  # Everything after 'node'
-                    _LOGGER.debug("Detected node entity format - node_name: %s", resource_name)
+                    _LOGGER.debug(
+                        "Detected node entity format - node_name: %s", resource_name
+                    )
                 elif resource_type == "cronjob" and len(parts) >= 3:
                     # New CronJob format: {namespace}_{resource_name}_cronjob
                     resource_name = "_".join(
@@ -227,7 +245,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         parts[:-1]
                     )  # Handle names with underscores
 
-                _LOGGER.debug("Parsed entity - resource_type: %s, resource_name: %s", resource_type, resource_name)
+                _LOGGER.debug(
+                    "Parsed entity - resource_type: %s, resource_name: %s",
+                    resource_type,
+                    resource_name,
+                )
                 should_remove = False
 
                 if resource_type in ("deployment", "deployments"):
