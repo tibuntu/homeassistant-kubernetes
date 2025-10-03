@@ -659,9 +659,11 @@ class TestKubernetesNodeSensor:
     ):
         """Test sensor initialization."""
         node_name = "worker-node-1"
-        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+        sensor = KubernetesNodeSensor(
+            mock_coordinator, mock_client, mock_config_entry, node_name
+        )
 
-        assert sensor.name == f"Node {node_name}"
+        assert sensor.name == node_name
         assert sensor.unique_id == f"test_entry_id_node_{node_name}"
         assert sensor.native_unit_of_measurement is None
         assert sensor._attr_icon == "mdi:server"
@@ -686,23 +688,25 @@ class TestKubernetesNodeSensor:
             "schedulable": True,
             "creation_timestamp": "2023-01-01T00:00:00Z",
         }
-        
+
         # Set up coordinator data
         mock_coordinator.get_node_data = MagicMock(return_value=node_data)
 
-        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+        sensor = KubernetesNodeSensor(
+            mock_coordinator, mock_client, mock_config_entry, node_name
+        )
 
         # Test native value (status)
         assert sensor.native_value == "Ready"
-        
+
         # Test extra state attributes
         attributes = sensor.extra_state_attributes
-        assert attributes["internal_ip"] == "10.0.0.1"
-        assert attributes["external_ip"] == "203.0.113.1"
-        assert attributes["memory_capacity_gb"] == 16.0
-        assert attributes["memory_allocatable_gb"] == 14.5
-        assert attributes["cpu_cores"] == 4.0
-        assert attributes["os_image"] == "Ubuntu 22.04"
+        assert attributes["internal_IP"] == "10.0.0.1"
+        assert attributes["external_IP"] == "203.0.113.1"
+        assert attributes["memory_capacity_GB"] == 16.0
+        assert attributes["memory_allocatable_GB"] == 14.5
+        assert attributes["CPU_cores"] == 4.0
+        assert attributes["OS_image"] == "Ubuntu 22.04"
         assert attributes["kernel_version"] == "5.15.0-56-generic"
         assert attributes["container_runtime"] == "containerd://1.6.6"
         assert attributes["kubelet_version"] == "v1.25.4"
@@ -714,14 +718,17 @@ class TestKubernetesNodeSensor:
     ):
         """Test sensor value without node data."""
         node_name = "worker-node-1"
-        
+
         # Set up coordinator to return None
         mock_coordinator.get_node_data = MagicMock(return_value=None)
 
-        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+        sensor = KubernetesNodeSensor(
+            mock_coordinator, mock_client, mock_config_entry, node_name
+        )
 
         # Test native value (status)
         assert sensor.native_value == "Unknown"
+
         # Test extra state attributes
         attributes = sensor.extra_state_attributes
         assert attributes == {}
@@ -731,7 +738,9 @@ class TestKubernetesNodeSensor:
     ):
         """Test successful sensor update."""
         node_name = "worker-node-1"
-        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+        sensor = KubernetesNodeSensor(
+            mock_coordinator, mock_client, mock_config_entry, node_name
+        )
 
         # Mock the coordinator update
         mock_coordinator.async_request_refresh = AsyncMock()
@@ -747,10 +756,14 @@ class TestKubernetesNodeSensor:
     ):
         """Test sensor update failure."""
         node_name = "worker-node-1"
-        sensor = KubernetesNodeSensor(mock_coordinator, mock_client, mock_config_entry, node_name)
+        sensor = KubernetesNodeSensor(
+            mock_coordinator, mock_client, mock_config_entry, node_name
+        )
 
         # Mock the coordinator to raise an exception
-        mock_coordinator.async_request_refresh = AsyncMock(side_effect=Exception("Update failed"))
+        mock_coordinator.async_request_refresh = AsyncMock(
+            side_effect=Exception("Update failed")
+        )
 
         # Should handle exception gracefully
         await sensor.async_update()

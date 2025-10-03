@@ -42,16 +42,26 @@ async def async_setup_entry(
         # Create individual sensors for each Kubernetes node
         nodes_data = coordinator.get_all_nodes_data()
         _LOGGER.debug("Creating node sensors for nodes: %s", list(nodes_data.keys()))
-        
+
         node_sensors_created = 0
         for node_name in nodes_data:
-            node_sensor = KubernetesNodeSensor(coordinator, client, config_entry, node_name)
+            node_sensor = KubernetesNodeSensor(
+                coordinator, client, config_entry, node_name
+            )
             sensors.append(node_sensor)
             node_sensors_created += 1
-            _LOGGER.debug("Created node sensor for: %s (unique_id: %s)", node_name, node_sensor.unique_id)
+            _LOGGER.debug(
+                "Created node sensor for: %s (unique_id: %s)",
+                node_name,
+                node_sensor.unique_id,
+            )
 
         async_add_entities(sensors)
-        _LOGGER.debug("Successfully set up %d Kubernetes sensors (including %d node sensors)", len(sensors), node_sensors_created)
+        _LOGGER.debug(
+            "Successfully set up %d Kubernetes sensors (including %d node sensors)",
+            len(sensors),
+            node_sensors_created,
+        )
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
         raise
@@ -75,16 +85,20 @@ class KubernetesBaseSensor(SensorEntity):
         """Return True if entity is available."""
         available = self.coordinator.last_update_success
         # Add specific logging for node sensors to track availability issues
-        if hasattr(self, 'node_name'):
-            _LOGGER.debug("Node sensor %s availability: %s (coordinator success: %s)",
-                         self.node_name, available, self.coordinator.last_update_success)
+        if hasattr(self, "node_name"):
+            _LOGGER.debug(
+                "Node sensor %s availability: %s (coordinator success: %s)",
+                self.node_name,
+                available,
+                self.coordinator.last_update_success,
+            )
         return available
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
         # Add specific logging for node sensors
-        if hasattr(self, 'node_name'):
+        if hasattr(self, "node_name"):
             _LOGGER.info("Node sensor %s added to Home Assistant", self.node_name)
         self.async_on_remove(
             self.coordinator.async_add_listener(self._handle_coordinator_update)
@@ -94,7 +108,7 @@ class KubernetesBaseSensor(SensorEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         # Add specific logging for node sensors during updates
-        if hasattr(self, 'node_name'):
+        if hasattr(self, "node_name"):
             _LOGGER.debug("Node sensor %s received coordinator update", self.node_name)
         self.async_write_ha_state()
 
@@ -308,9 +322,9 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
     """Sensor for individual Kubernetes node with detailed information."""
 
     def __init__(
-        self, 
-        coordinator: KubernetesDataCoordinator, 
-        client, 
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client,
         config_entry: ConfigEntry,
         node_name: str,
     ) -> None:
@@ -323,8 +337,12 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
         self._attr_icon = "mdi:server"
         # Override state class since this sensor returns string values, not measurements
         self._attr_state_class = None
-        
-        _LOGGER.debug("Initialized node sensor for %s with unique_id: %s", node_name, self._attr_unique_id)
+
+        _LOGGER.debug(
+            "Initialized node sensor for %s with unique_id: %s",
+            node_name,
+            self._attr_unique_id,
+        )
 
     @property
     def native_value(self) -> str:
