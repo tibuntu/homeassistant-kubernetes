@@ -9,6 +9,7 @@ from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 from .const import DOMAIN
 from .coordinator import KubernetesDataCoordinator
@@ -57,6 +58,29 @@ async def async_setup_entry(
             )
 
         async_add_entities(sensors)
+
+        # Store the add_entities callback for dynamic entity management
+        if DOMAIN not in hass.data:
+            hass.data[DOMAIN] = {}
+        if config_entry.entry_id not in hass.data[DOMAIN]:
+            hass.data[DOMAIN][config_entry.entry_id] = {}
+        hass.data[DOMAIN][config_entry.entry_id][
+            "sensor_add_entities"
+        ] = async_add_entities
+
+        # Set up listener for adding new entities dynamically
+        @callback
+        def _async_add_new_entities() -> None:
+            """Add new entities when new resources are discovered."""
+            hass.async_create_task(
+                _async_discover_and_add_new_node_sensors(
+                    hass, config_entry, coordinator, client
+                )
+            )
+
+        # Register the callback with the coordinator
+        coordinator.async_add_listener(_async_add_new_entities)
+
         _LOGGER.debug(
             "Successfully set up %d Kubernetes sensors (including %d node sensors)",
             len(sensors),
@@ -65,6 +89,58 @@ async def async_setup_entry(
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
         raise
+
+
+async def _async_discover_and_add_new_node_sensors(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+) -> None:
+    """Discover and add new node sensors for newly discovered Kubernetes nodes."""
+    try:
+        entity_registry = async_get_entity_registry(hass)
+
+        # Get the stored add_entities callback
+        sensor_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+        add_entities_callback = sensor_data.get("sensor_add_entities")
+        if not add_entities_callback:
+            _LOGGER.warning(
+                "No add_entities callback found for dynamic node sensor management"
+            )
+            return
+
+        # Get existing entities for this config entry
+        existing_entities = entity_registry.entities.get_entries_for_config_entry_id(
+            config_entry.entry_id
+        )
+        existing_unique_ids = {
+            entity.unique_id for entity in existing_entities if entity.unique_id
+        }
+
+        new_entities = []
+
+        # Check for new nodes
+        if coordinator.data and "nodes" in coordinator.data:
+            for node_name in coordinator.data["nodes"]:
+                unique_id = f"{config_entry.entry_id}_node_{node_name}"
+                if unique_id not in existing_unique_ids:
+                    _LOGGER.info("Adding new node sensor for: %s", node_name)
+                    new_entities.append(
+                        KubernetesNodeSensor(
+                            coordinator, client, config_entry, node_name
+                        )
+                    )
+
+        # Add new entities if any were found
+        if new_entities:
+            _LOGGER.info("Adding %d new node sensors", len(new_entities))
+            add_entities_callback(new_entities)
+        else:
+            _LOGGER.debug("No new node sensors to add")
+
+    except Exception as ex:
+        _LOGGER.error("Failed to discover and add new node sensors: %s", ex)
 
 
 class KubernetesBaseSensor(SensorEntity):
@@ -365,9 +441,9 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
         attributes = {
             "internal_IP": node_data.get("internal_ip", "N/A"),
             "external_IP": node_data.get("external_ip", "N/A"),
-            "memory_capacity_GB": node_data.get("memory_capacity_gb", 0),
-            "memory_allocatable_GB": node_data.get("memory_allocatable_gb", 0),
-            "CPU_cores": node_data.get("cpu_cores", 0),
+            "memory_capacity_GiB": f"{node_data.get('memory_capacity_gib', 0)} GiB",
+            "memory_allocatable_GiB": f"{node_data.get('memory_allocatable_gib', 0)} GiB",
+            "CPU_cores": f"{node_data.get('cpu_cores', 0)} Cores",
             "OS_image": node_data.get("os_image", "N/A"),
             "kernel_version": node_data.get("kernel_version", "N/A"),
             "container_runtime": node_data.get("container_runtime", "N/A"),
