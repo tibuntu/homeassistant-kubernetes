@@ -397,7 +397,10 @@ class KubernetesClient:
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
-                        _LOGGER.debug("Received nodes API response with %d items", len(data.get("items", [])))
+                        _LOGGER.debug(
+                            "Received nodes API response with %d items",
+                            len(data.get("items", [])),
+                        )
                         nodes = []
                         for i, item in enumerate(data.get("items", [])):
                             try:
@@ -413,31 +416,49 @@ class KubernetesClient:
                                 conditions = status.get("conditions", [])
                                 ready_condition = next(
                                     (c for c in conditions if c.get("type") == "Ready"),
-                                    {}
+                                    {},
                                 )
-                                node_status = "Ready" if ready_condition.get("status") == "True" else "NotReady"
+                                node_status = (
+                                    "Ready"
+                                    if ready_condition.get("status") == "True"
+                                    else "NotReady"
+                                )
 
                                 # Get IP addresses
                                 addresses = status.get("addresses", [])
                                 internal_ip = next(
-                                    (addr["address"] for addr in addresses if addr.get("type") == "InternalIP"),
-                                    "N/A"
+                                    (
+                                        addr["address"]
+                                        for addr in addresses
+                                        if addr.get("type") == "InternalIP"
+                                    ),
+                                    "N/A",
                                 )
                                 external_ip = next(
-                                    (addr["address"] for addr in addresses if addr.get("type") == "ExternalIP"),
-                                    "N/A"
+                                    (
+                                        addr["address"]
+                                        for addr in addresses
+                                        if addr.get("type") == "ExternalIP"
+                                    ),
+                                    "N/A",
                                 )
 
                                 # Get resource information
                                 capacity = status.get("capacity", {})
                                 allocatable = status.get("allocatable", {})
 
-                                # Parse memory (convert from Ki to GB)
+                                # Parse memory (convert from Ki to GiB)
                                 memory_capacity_str = capacity.get("memory", "0Ki")
-                                memory_capacity_gb = self._parse_memory_to_gb(memory_capacity_str)
+                                memory_capacity_gib = self._parse_memory_to_gib(
+                                    memory_capacity_str
+                                )
 
-                                memory_allocatable_str = allocatable.get("memory", "0Ki")
-                                memory_allocatable_gb = self._parse_memory_to_gb(memory_allocatable_str)
+                                memory_allocatable_str = allocatable.get(
+                                    "memory", "0Ki"
+                                )
+                                memory_allocatable_gib = self._parse_memory_to_gib(
+                                    memory_allocatable_str
+                                )
 
                                 # Parse CPU (can be in millicores or cores)
                                 cpu_capacity = capacity.get("cpu", "0")
@@ -446,7 +467,9 @@ class KubernetesClient:
                                 node_info = status.get("nodeInfo", {})
                                 os_image = node_info.get("osImage", "N/A")
                                 kernel_version = node_info.get("kernelVersion", "N/A")
-                                container_runtime = node_info.get("containerRuntimeVersion", "N/A")
+                                container_runtime = node_info.get(
+                                    "containerRuntimeVersion", "N/A"
+                                )
                                 kubelet_version = node_info.get("kubeletVersion", "N/A")
 
                                 # Check if node is schedulable
@@ -456,24 +479,32 @@ class KubernetesClient:
                                     "status": node_status,
                                     "internal_ip": internal_ip,
                                     "external_ip": external_ip,
-                                    "memory_capacity_gb": memory_capacity_gb,
-                                    "memory_allocatable_gb": memory_allocatable_gb,
+                                    "memory_capacity_gib": memory_capacity_gib,
+                                    "memory_allocatable_gib": memory_allocatable_gib,
                                     "cpu_cores": cpu_cores,
                                     "os_image": os_image,
                                     "kernel_version": kernel_version,
                                     "container_runtime": container_runtime,
                                     "kubelet_version": kubelet_version,
                                     "schedulable": not unschedulable,
-                                    "creation_timestamp": metadata.get("creationTimestamp", "N/A"),
+                                    "creation_timestamp": metadata.get(
+                                        "creationTimestamp", "N/A"
+                                    ),
                                 }
 
                                 nodes.append(node_data)
-                                _LOGGER.debug("Successfully processed node: %s (status: %s)",
-                                            node_name, node_status)
+                                _LOGGER.debug(
+                                    "Successfully processed node: %s (status: %s)",
+                                    node_name,
+                                    node_status,
+                                )
 
                             except Exception as ex:
                                 _LOGGER.error(
-                                    "Failed to parse node data for item %d: %s", i, ex, exc_info=True
+                                    "Failed to parse node data for item %d: %s",
+                                    i,
+                                    ex,
+                                    exc_info=True,
                                 )
                                 continue
                         _LOGGER.debug("Successfully parsed %d nodes", len(nodes))
@@ -489,25 +520,25 @@ class KubernetesClient:
             self._log_error("aiohttp get nodes", ex)
             return []
 
-    def _parse_memory_to_gb(self, memory_str: str) -> float:
-        """Parse Kubernetes memory string to GB."""
+    def _parse_memory_to_gib(self, memory_str: str) -> float:
+        """Parse Kubernetes memory string to GiB."""
         try:
             if memory_str.endswith("Ki"):
-                # Kibibytes to GB
+                # Kibibytes to GiB
                 kb = int(memory_str[:-2])
                 return round(kb / (1024 * 1024), 2)
             elif memory_str.endswith("Mi"):
-                # Mebibytes to GB
+                # Mebibytes to GiB
                 mb = int(memory_str[:-2])
                 return round(mb / 1024, 2)
             elif memory_str.endswith("Gi"):
-                # Gibibytes to GB
+                # Already in GiB
                 gb = int(memory_str[:-2])
-                return round(gb * 1.073741824, 2)  # Convert GiB to GB
+                return float(gb)
             elif memory_str.endswith("Ti"):
-                # Tebibytes to GB
+                # Tebibytes to GiB
                 tb = int(memory_str[:-2])
-                return round(tb * 1099.511627776, 2)  # Convert TiB to GB
+                return round(tb * 1024, 2)
             else:
                 # Assume bytes
                 bytes_val = int(memory_str)

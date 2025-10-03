@@ -21,6 +21,7 @@ except ImportError:
 import pytest
 
 from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
+from custom_components.kubernetes.const import DOMAIN
 from custom_components.kubernetes.sensor import (
     KubernetesCronJobsSensor,
     KubernetesDeploymentsSensor,
@@ -678,8 +679,8 @@ class TestKubernetesNodeSensor:
             "status": "Ready",
             "internal_ip": "10.0.0.1",
             "external_ip": "203.0.113.1",
-            "memory_capacity_gb": 16.0,
-            "memory_allocatable_gb": 14.5,
+            "memory_capacity_gib": 16.0,
+            "memory_allocatable_gib": 14.5,
             "cpu_cores": 4.0,
             "os_image": "Ubuntu 22.04",
             "kernel_version": "5.15.0-56-generic",
@@ -703,9 +704,9 @@ class TestKubernetesNodeSensor:
         attributes = sensor.extra_state_attributes
         assert attributes["internal_IP"] == "10.0.0.1"
         assert attributes["external_IP"] == "203.0.113.1"
-        assert attributes["memory_capacity_GB"] == 16.0
-        assert attributes["memory_allocatable_GB"] == 14.5
-        assert attributes["CPU_cores"] == 4.0
+        assert attributes["memory_capacity_GiB"] == "16.0 GiB"
+        assert attributes["memory_allocatable_GiB"] == "14.5 GiB"
+        assert attributes["CPU_cores"] == "4.0 Cores"
         assert attributes["OS_image"] == "Ubuntu 22.04"
         assert attributes["kernel_version"] == "5.15.0-56-generic"
         assert attributes["container_runtime"] == "containerd://1.6.6"
@@ -767,3 +768,163 @@ class TestKubernetesNodeSensor:
 
         # Should handle exception gracefully
         await sensor.async_update()
+
+
+@pytest.mark.asyncio
+class TestDynamicNodeSensorDiscovery:
+    """Tests for dynamic node sensor discovery functionality."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Mock HomeAssistant instance."""
+        hass = MagicMock()
+        hass.data = {}
+        return hass
+
+    async def test_discover_new_node_sensors_success(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test successful discovery of new node sensors."""
+        from custom_components.kubernetes.sensor import (
+            _async_discover_and_add_new_node_sensors,
+        )
+
+        # Set up hass.data with add_entities callback
+        mock_hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {
+                "sensor_add_entities": MagicMock(),
+            }
+        }
+
+        # Mock coordinator data with nodes
+        mock_coordinator.data = {
+            "nodes": {
+                "node1": {"status": "Ready"},
+                "node2": {"status": "Ready"},
+            }
+        }
+
+        # Mock entity registry with no existing entities
+        mock_entity_registry = MagicMock()
+        mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = []
+
+        with patch(
+            "custom_components.kubernetes.sensor.async_get_entity_registry",
+            return_value=mock_entity_registry,
+        ):
+            await _async_discover_and_add_new_node_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
+
+        # Verify add_entities was called with 2 new node sensors
+        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
+            "sensor_add_entities"
+        ]
+        callback.assert_called_once()
+
+        # Check that 2 node sensors were created
+        call_args = callback.call_args[0][0]  # Get the list of entities passed
+        assert len(call_args) == 2
+        assert all(hasattr(sensor, "node_name") for sensor in call_args)
+
+    async def test_discover_new_node_sensors_no_callback(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test discovery when no add_entities callback is available."""
+        from custom_components.kubernetes.sensor import (
+            _async_discover_and_add_new_node_sensors,
+        )
+
+        # Set up hass.data without callback
+        mock_hass.data[DOMAIN] = {}
+
+        # Mock entity registry
+        mock_entity_registry = MagicMock()
+        mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = []
+
+        with patch(
+            "custom_components.kubernetes.sensor.async_get_entity_registry",
+            return_value=mock_entity_registry,
+        ):
+            # Should not raise exception
+            await _async_discover_and_add_new_node_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
+
+    async def test_discover_new_node_sensors_existing_entities(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test discovery with existing node sensors."""
+        from custom_components.kubernetes.sensor import (
+            _async_discover_and_add_new_node_sensors,
+        )
+
+        # Set up hass.data with add_entities callback
+        mock_hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {
+                "sensor_add_entities": MagicMock(),
+            }
+        }
+
+        # Mock coordinator data with nodes
+        mock_coordinator.data = {
+            "nodes": {
+                "node1": {"status": "Ready"},
+                "node2": {"status": "Ready"},
+            }
+        }
+
+        # Mock entity registry with existing entities
+        existing_entity = MagicMock()
+        existing_entity.unique_id = f"{mock_config_entry.entry_id}_node_node1"
+        mock_entity_registry = MagicMock()
+        mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = [
+            existing_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.sensor.async_get_entity_registry",
+            return_value=mock_entity_registry,
+        ):
+            await _async_discover_and_add_new_node_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
+
+        # Verify add_entities was called with only 1 new node sensor (node2)
+        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
+            "sensor_add_entities"
+        ]
+        callback.assert_called_once()
+
+        # Check that only 1 node sensor was created (for node2)
+        call_args = callback.call_args[0][0]  # Get the list of entities passed
+        assert len(call_args) == 1
+        assert call_args[0].node_name == "node2"
+
+    async def test_discover_new_node_sensors_exception(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test discovery with exception handling."""
+        from custom_components.kubernetes.sensor import (
+            _async_discover_and_add_new_node_sensors,
+        )
+
+        # Set up hass.data with add_entities callback
+        mock_hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {
+                "sensor_add_entities": MagicMock(),
+            }
+        }
+
+        # Mock coordinator data
+        mock_coordinator.data = {"nodes": {"node1": {"status": "Ready"}}}
+
+        # Mock entity registry to raise exception
+        with patch(
+            "custom_components.kubernetes.sensor.async_get_entity_registry",
+            side_effect=Exception("Registry error"),
+        ):
+            # Should not raise exception, but handle it gracefully
+            await _async_discover_and_add_new_node_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
