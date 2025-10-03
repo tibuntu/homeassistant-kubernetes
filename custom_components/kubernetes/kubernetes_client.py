@@ -406,7 +406,7 @@ class KubernetesClient:
                                 metadata = item.get("metadata", {})
                                 status = item.get("status", {})
                                 spec = item.get("spec", {})
-                                
+
                                 # Get node name
                                 node_name = metadata.get("name", "unknown")
                                 # Get node status
@@ -416,7 +416,7 @@ class KubernetesClient:
                                     {}
                                 )
                                 node_status = "Ready" if ready_condition.get("status") == "True" else "NotReady"
-                                
+
                                 # Get IP addresses
                                 addresses = status.get("addresses", [])
                                 internal_ip = next(
@@ -427,18 +427,18 @@ class KubernetesClient:
                                     (addr["address"] for addr in addresses if addr.get("type") == "ExternalIP"),
                                     "N/A"
                                 )
-                                
+
                                 # Get resource information
                                 capacity = status.get("capacity", {})
                                 allocatable = status.get("allocatable", {})
-                                
+
                                 # Parse memory (convert from Ki to GB)
                                 memory_capacity_str = capacity.get("memory", "0Ki")
                                 memory_capacity_gb = self._parse_memory_to_gb(memory_capacity_str)
-                                
+
                                 memory_allocatable_str = allocatable.get("memory", "0Ki")
                                 memory_allocatable_gb = self._parse_memory_to_gb(memory_allocatable_str)
-                                
+
                                 # Parse CPU (can be in millicores or cores)
                                 cpu_capacity = capacity.get("cpu", "0")
                                 cpu_cores = self._parse_cpu_to_cores(cpu_capacity)
@@ -448,7 +448,7 @@ class KubernetesClient:
                                 kernel_version = node_info.get("kernelVersion", "N/A")
                                 container_runtime = node_info.get("containerRuntimeVersion", "N/A")
                                 kubelet_version = node_info.get("kubeletVersion", "N/A")
-                                
+
                                 # Check if node is schedulable
                                 unschedulable = spec.get("unschedulable", False)
                                 node_data = {
@@ -466,11 +466,11 @@ class KubernetesClient:
                                     "schedulable": not unschedulable,
                                     "creation_timestamp": metadata.get("creationTimestamp", "N/A"),
                                 }
-                                
+
                                 nodes.append(node_data)
-                                _LOGGER.debug("Successfully processed node: %s (status: %s)", 
+                                _LOGGER.debug("Successfully processed node: %s (status: %s)",
                                             node_name, node_status)
-                                
+
                             except Exception as ex:
                                 _LOGGER.error(
                                     "Failed to parse node data for item %d: %s", i, ex, exc_info=True
@@ -497,7 +497,7 @@ class KubernetesClient:
                 kb = int(memory_str[:-2])
                 return round(kb / (1024 * 1024), 2)
             elif memory_str.endswith("Mi"):
-                # Mebibytes to GB  
+                # Mebibytes to GB
                 mb = int(memory_str[:-2])
                 return round(mb / 1024, 2)
             elif memory_str.endswith("Gi"):
