@@ -62,6 +62,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 "Successfully fetched %d nodes with detailed information", len(nodes)
             )
 
+            _LOGGER.debug("Starting to fetch detailed pod information")
+            pods = await self.client.get_pods()
+            _LOGGER.debug(
+                "Successfully fetched %d pods with detailed information", len(pods)
+            )
+
             # Log node names for debugging
             if nodes:
                 node_names = [node.get("name", "Unknown") for node in nodes]
@@ -77,17 +83,19 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 },
                 "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
                 "nodes": {node["name"]: node for node in nodes},
+                "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                 "pods_count": pods_count,
                 "nodes_count": nodes_count,
                 "last_update": asyncio.get_event_loop().time(),
             }
 
             _LOGGER.debug(
-                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d cronjobs, %d pods, %d nodes (detailed: %d)",
+                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d cronjobs, %d pods (detailed: %d), %d nodes (detailed: %d)",
                 len(deployments),
                 len(statefulsets),
                 len(cronjobs),
                 pods_count,
+                len(pods),
                 nodes_count,
                 len(nodes),
             )
@@ -148,6 +156,19 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             return {}
         return self.data["nodes"]
 
+    def get_pod_data(self, namespace: str, pod_name: str) -> dict[str, Any] | None:
+        """Get pod data by namespace and name."""
+        if not self.data or "pods" not in self.data:
+            return None
+        pod_key = f"{namespace}_{pod_name}"
+        return self.data["pods"].get(pod_key)
+
+    def get_all_pods_data(self) -> dict[str, dict[str, Any]]:
+        """Get all pods data."""
+        if not self.data or "pods" not in self.data:
+            return {}
+        return self.data["pods"]
+
     def get_last_update_time(self) -> float:
         """Get the timestamp of the last successful update."""
         if not self.data or "last_update" not in self.data:
@@ -179,7 +200,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
             # Log current data for debugging
             current_nodes = list(current_data.get("nodes", {}).keys())
+            current_pods = list(current_data.get("pods", {}).keys())
             _LOGGER.debug("Current nodes in data: %s", current_nodes)
+            _LOGGER.debug("Current pods in data: %s", current_pods)
 
             # Track which entities should be removed
             entities_to_remove = []
@@ -225,6 +248,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
                 # Handle different formats:
                 # - Node format: node_{node_name}
+                # - Pod format: pod_{namespace}_{pod_name}
                 # - CronJob format: {namespace}_{resource_name}_{resource_type}
                 # - Old format: {resource_name}_{resource_type}
                 if len(parts) >= 2 and parts[0] == "node":
@@ -233,6 +257,18 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     resource_name = "_".join(parts[1:])  # Everything after 'node'
                     _LOGGER.debug(
                         "Detected node entity format - node_name: %s", resource_name
+                    )
+                elif len(parts) >= 3 and parts[0] == "pod":
+                    # Pod format: pod_{namespace}_{pod_name}
+                    resource_type = "pod"
+                    namespace = parts[1]
+                    resource_name = "_".join(parts[2:])  # Everything after namespace
+                    pod_key = f"{namespace}_{resource_name}"
+                    _LOGGER.debug(
+                        "Detected pod entity format - namespace: %s, pod_name: %s, key: %s",
+                        namespace,
+                        resource_name,
+                        pod_key,
                     )
                 elif resource_type == "cronjob" and len(parts) >= 3:
                     # New CronJob format: {namespace}_{resource_name}_cronjob
@@ -280,14 +316,34 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             "Node %s no longer exists, marking entity for removal",
                             resource_name,
                         )
+                elif resource_type in ("pod", "pods"):
+                    if len(parts) >= 3 and parts[0] == "pod":
+                        # For pod entities, check using the pod_key format
+                        pod_key = f"{namespace}_{resource_name}"
+                        if pod_key not in current_data.get("pods", {}):
+                            should_remove = True
+                            _LOGGER.info(
+                                "Pod %s in namespace %s no longer exists, marking entity for removal",
+                                resource_name,
+                                namespace,
+                            )
+                    else:
+                        # Fallback for other pod formats
+                        if resource_name not in current_data.get("pods", {}):
+                            should_remove = True
+                            _LOGGER.info(
+                                "Pod %s no longer exists, marking entity for removal",
+                                resource_name,
+                            )
                 else:
-                    # Handle other entity types like sensors that might track deployments/statefulsets/cronjobs/nodes
+                    # Handle other entity types like sensors that might track deployments/statefulsets/cronjobs/nodes/pods
                     # Check if this entity is tracking a resource that no longer exists
                     if (
                         resource_name not in current_data.get("deployments", {})
                         and resource_name not in current_data.get("statefulsets", {})
                         and resource_name not in current_data.get("cronjobs", {})
                         and resource_name not in current_data.get("nodes", {})
+                        and resource_name not in current_data.get("pods", {})
                     ):
                         should_remove = True
                         _LOGGER.info(

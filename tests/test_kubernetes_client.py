@@ -1139,3 +1139,182 @@ class TestKubernetesClientCronJobOperations:
                 client._resume_cronjob_aiohttp.assert_called_once_with(
                     "test-cronjob", "other-namespace"
                 )
+
+
+class TestKubernetesClientGetPods:
+    """Test cases for Kubernetes client get_pods method."""
+
+    @pytest.mark.asyncio
+    async def test_get_pods_success(self, mock_client):
+        """Test successful get_pods call."""
+        # Mock the aiohttp response
+        mock_response_data = {
+            "items": [
+                {
+                    "metadata": {
+                        "name": "test-pod-1",
+                        "namespace": "default",
+                        "uid": "pod-uid-1",
+                        "creationTimestamp": "2023-01-01T00:00:00Z",
+                        "labels": {"app": "test-app", "version": "v1.0"},
+                    },
+                    "spec": {"nodeName": "worker-node-1"},
+                    "status": {
+                        "phase": "Running",
+                        "podIP": "10.244.1.5",
+                        "containerStatuses": [
+                            {"ready": True, "restartCount": 0},
+                            {"ready": True, "restartCount": 0},
+                        ],
+                    },
+                },
+                {
+                    "metadata": {
+                        "name": "test-pod-2",
+                        "namespace": "default",
+                        "uid": "pod-uid-2",
+                        "creationTimestamp": "2023-01-01T00:00:00Z",
+                        "labels": {"app": "test-app-2"},
+                        "ownerReferences": [
+                            {"kind": "ReplicaSet", "name": "test-app-2-7d4b8c9f6b"}
+                        ],
+                    },
+                    "spec": {"nodeName": "worker-node-2"},
+                    "status": {
+                        "phase": "Pending",
+                        "podIP": "10.244.1.6",
+                        "containerStatuses": [{"ready": False, "restartCount": 1}],
+                    },
+                },
+            ]
+        }
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value=mock_response_data)
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            result = await mock_client.get_pods()
+
+            assert len(result) == 2
+
+            # Check first pod
+            pod1 = result[0]
+            assert pod1["name"] == "test-pod-1"
+            assert pod1["namespace"] == "default"
+            assert pod1["phase"] == "Running"
+            assert pod1["ready_containers"] == 2
+            assert pod1["total_containers"] == 2
+            assert pod1["restart_count"] == 0
+            assert pod1["node_name"] == "worker-node-1"
+            assert pod1["pod_ip"] == "10.244.1.5"
+            assert pod1["owner_kind"] == "N/A"
+            assert pod1["owner_name"] == "N/A"
+            assert pod1["labels"]["app"] == "test-app"
+            assert pod1["labels"]["version"] == "v1.0"
+
+            # Check second pod
+            pod2 = result[1]
+            assert pod2["name"] == "test-pod-2"
+            assert pod2["namespace"] == "default"
+            assert pod2["phase"] == "Pending"
+            assert pod2["ready_containers"] == 0
+            assert pod2["total_containers"] == 1
+            assert pod2["restart_count"] == 1
+            assert pod2["node_name"] == "worker-node-2"
+            assert pod2["pod_ip"] == "10.244.1.6"
+            assert pod2["owner_kind"] == "ReplicaSet"
+            assert pod2["owner_name"] == "test-app-2-7d4b8c9f6b"
+
+    @pytest.mark.asyncio
+    async def test_get_pods_empty_response(self, mock_client):
+        """Test get_pods with empty response."""
+        mock_response_data = {"items": []}
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value=mock_response_data)
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            result = await mock_client.get_pods()
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_pods_http_error(self, mock_client):
+        """Test get_pods with HTTP error."""
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            result = await mock_client.get_pods()
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_pods_connection_error(self, mock_client):
+        """Test get_pods with connection error."""
+        with patch(
+            "aiohttp.ClientSession.get",
+            side_effect=aiohttp.ClientError("Connection error"),
+        ):
+            result = await mock_client.get_pods()
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_pods_all_namespaces(self, mock_client):
+        """Test get_pods with monitor_all_namespaces enabled."""
+        mock_client.monitor_all_namespaces = True
+
+        mock_response_data = {"items": []}
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value=mock_response_data)
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            await mock_client.get_pods()
+
+            # Verify the correct URL was called (all namespaces)
+            mock_get.assert_called_once()
+            call_args = mock_get.call_args
+            assert "/api/v1/pods" in call_args[1]["url"]
+
+    def test_parse_pods_data(self, mock_client):
+        """Test _parse_pods_data method."""
+        raw_pods = [
+            {
+                "metadata": {
+                    "name": "test-pod",
+                    "namespace": "default",
+                    "uid": "pod-uid",
+                    "creationTimestamp": "2023-01-01T00:00:00Z",
+                    "labels": {"app": "test-app"},
+                },
+                "spec": {"nodeName": "worker-node-1"},
+                "status": {
+                    "phase": "Running",
+                    "podIP": "10.244.1.5",
+                    "containerStatuses": [
+                        {"ready": True, "restartCount": 0},
+                        {"ready": False, "restartCount": 1},
+                    ],
+                },
+            }
+        ]
+
+        result = mock_client._parse_pods_data(raw_pods)
+
+        assert len(result) == 1
+        pod = result[0]
+        assert pod["name"] == "test-pod"
+        assert pod["namespace"] == "default"
+        assert pod["phase"] == "Running"
+        assert pod["ready_containers"] == 1
+        assert pod["total_containers"] == 2
+        assert pod["restart_count"] == 1
+        assert pod["node_name"] == "worker-node-1"
+        assert pod["pod_ip"] == "10.244.1.5"
+        assert pod["labels"]["app"] == "test-app"

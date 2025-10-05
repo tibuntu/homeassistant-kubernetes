@@ -323,6 +323,156 @@ class KubernetesClient:
             self._log_error("aiohttp get all pods count", ex)
             return 0
 
+    async def get_pods(self) -> list[dict[str, Any]]:
+        """Get detailed information about all pods in the namespace(s)."""
+        try:
+            # Test connection first
+            if not await self._test_connection():
+                _LOGGER.error("Cannot connect to Kubernetes API")
+                return []
+
+            # Use aiohttp as primary since it works better with SSL configuration
+            if self.monitor_all_namespaces:
+                result = await self._get_pods_all_namespaces_aiohttp()
+            else:
+                result = await self._get_pods_aiohttp()
+
+            if result is not None:
+                self._log_success("get pods", f"retrieved {len(result)} pods")
+            return result
+
+        except Exception as ex:
+            self._log_error("get pods", ex)
+            return []
+
+    async def _get_pods_aiohttp(self) -> list[dict[str, Any]]:
+        """Get pods using aiohttp for single namespace."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/api/v1/namespaces/{self.namespace}/pods",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_pods_data(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "aiohttp pods request failed with status: %s",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("aiohttp get pods", ex)
+            return []
+
+    async def _get_pods_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
+        """Get pods using aiohttp for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/api/v1/pods",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_pods_data(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "aiohttp all pods request failed with status: %s",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("aiohttp get all pods", ex)
+            return []
+
+    def _parse_pods_data(self, pods: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Parse raw pod data from Kubernetes API into standardized format."""
+        parsed_pods = []
+
+        for pod in pods:
+            try:
+                metadata = pod.get("metadata", {})
+                spec = pod.get("spec", {})
+                status = pod.get("status", {})
+
+                # Get pod phase
+                phase = status.get("phase", "Unknown")
+
+                # Get container statuses
+                container_statuses = status.get("containerStatuses", [])
+                ready_containers = 0
+                total_containers = len(container_statuses)
+
+                for container_status in container_statuses:
+                    if container_status.get("ready", False):
+                        ready_containers += 1
+
+                # Get restart count
+                restart_count = 0
+                for container_status in container_statuses:
+                    restart_count += container_status.get("restartCount", 0)
+
+                # Get node name
+                node_name = spec.get("nodeName", "N/A")
+
+                # Get pod IP
+                pod_ip = status.get("podIP", "N/A")
+
+                # Get creation timestamp
+                creation_timestamp = metadata.get("creationTimestamp", "N/A")
+
+                # Get labels
+                labels = metadata.get("labels", {})
+
+                # Get owner references (to identify which workload owns this pod)
+                owner_references = metadata.get("ownerReferences", [])
+                owner_kind = "N/A"
+                owner_name = "N/A"
+                if owner_references:
+                    owner = owner_references[0]
+                    owner_kind = owner.get("kind", "N/A")
+                    owner_name = owner.get("name", "N/A")
+
+                parsed_pod = {
+                    "name": metadata.get("name", "Unknown"),
+                    "namespace": metadata.get("namespace", "default"),
+                    "phase": phase,
+                    "ready_containers": ready_containers,
+                    "total_containers": total_containers,
+                    "restart_count": restart_count,
+                    "node_name": node_name,
+                    "pod_ip": pod_ip,
+                    "creation_timestamp": creation_timestamp,
+                    "labels": labels,
+                    "owner_kind": owner_kind,
+                    "owner_name": owner_name,
+                    "uid": metadata.get("uid", ""),
+                }
+
+                parsed_pods.append(parsed_pod)
+
+            except Exception as ex:
+                _LOGGER.warning("Failed to parse pod data: %s", ex)
+                continue
+
+        return parsed_pods
+
     async def get_nodes_count(self) -> int:
         """Get the count of nodes in the cluster."""
         try:
