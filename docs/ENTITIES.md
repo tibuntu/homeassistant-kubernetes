@@ -22,6 +22,14 @@ The integration creates a separate sensor for each Kubernetes node in the cluste
 |--------|-------------|---------------|------|
 | **Node [node-name]** | Individual node status and information | `Ready` / `NotReady` / `Unknown` | - |
 
+### Individual Pod Sensors
+
+The integration creates a separate sensor for each Kubernetes pod in the monitored namespace(s):
+
+| Sensor | Description | Example Value | Unit |
+|--------|-------------|---------------|------|
+| **Pod [pod-name]** | Individual pod phase and information | `Running` / `Pending` / `Failed` / `Succeeded` / `Unknown` | - |
+
 #### Node Sensor Attributes
 
 Each node sensor provides comprehensive information about the node:
@@ -39,6 +47,25 @@ Each node sensor provides comprehensive information about the node:
 | **kubelet_version** | Kubelet version | `v1.25.4` |
 | **schedulable** | Whether the node can schedule new pods | `true` / `false` |
 | **creation_timestamp** | When the node was created | `2023-01-01T00:00:00Z` |
+
+#### Pod Sensor Attributes
+
+Each pod sensor provides comprehensive information about the pod:
+
+| Attribute | Description | Example Value |
+|-----------|-------------|---------------|
+| **namespace** | Kubernetes namespace where the pod is located | `default` |
+| **phase** | Current phase of the pod (useful for filtering with auto-entities) | `Running` / `Pending` / `Failed` / `Succeeded` / `Unknown` |
+| **ready_containers** | Number of ready containers in the pod | `2` |
+| **total_containers** | Total number of containers in the pod | `2` |
+| **restart_count** | Total number of container restarts | `0` |
+| **node_name** | Name of the node where the pod is running | `worker-node-1` |
+| **pod_ip** | IP address of the pod | `10.244.1.5` |
+| **creation_timestamp** | When the pod was created | `2023-01-01T00:00:00Z` |
+| **owner_kind** | Type of resource that owns this pod | `ReplicaSet` |
+| **owner_name** | Name of the resource that owns this pod | `my-app-7d4b8c9f6b` |
+| **uid** | Unique identifier of the pod | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
+| **label_[key]** | Pod labels as individual attributes | `app=my-app`, `version=v1.0` |
 
 ### Sensor Attributes
 
@@ -110,6 +137,7 @@ Entities are automatically named using the following patterns:
 - **Sensors**: `sensor.kubernetes_[cluster_name]_[metric_type]`
 - **Binary Sensors**: `binary_sensor.kubernetes_[cluster_name]_cluster_health`
 - **Switches**: `switch.kubernetes_[cluster_name]_[resource_type]_[resource_name]`
+- **Pod Sensors**: `sensor.kubernetes_[cluster_name]_[pod_name]`
 
 ## Dynamic Entity Discovery
 
@@ -118,6 +146,7 @@ The integration automatically discovers and creates entities for:
 - All deployments in monitored namespaces
 - All statefulsets in monitored namespaces
 - All cronjobs in monitored namespaces
+- Individual Kubernetes pods in monitored namespaces
 - Individual Kubernetes nodes in the cluster
 - Cluster-wide metrics (pods, nodes, deployments, statefulsets, cronjobs count)
 - Overall cluster health
@@ -130,3 +159,37 @@ Entities are automatically added when new resources are created and removed when
 - **Dynamic Updates**: Node information is refreshed during regular coordinator updates
 - **Automatic Cleanup**: Node sensors are automatically removed when nodes are deleted from the cluster
 - **Entity Naming**: Node entities use the format `sensor.kubernetes_node_[node_name]`
+
+### Pod Entity Management
+
+- **Automatic Creation**: Pod sensors are automatically created for each pod discovered during integration setup
+- **Dynamic Updates**: Pod information is refreshed during regular coordinator updates
+- **Automatic Cleanup**: Pod sensors are automatically removed when pods are deleted from the cluster
+- **Entity Naming**: Pod entities use the format `sensor.kubernetes_[pod_name]`
+- **Namespace Support**: Pods are tracked by both namespace and name for proper identification
+- **Phase Tracking**: Pod sensors show the current phase (Running, Pending, Failed, Succeeded, etc.)
+- **Container Status**: Detailed information about container readiness and restart counts
+- **Owner Information**: Shows which workload (Deployment, StatefulSet, etc.) owns the pod
+
+## Using Pod Entities with Auto-Entities
+
+The pod entities are perfect for use with the [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) card to create dynamic dashboards. Here's an example configuration to show pods that are not in a Running or Completed phase:
+
+```yaml
+type: custom:auto-entities
+card:
+  type: entities
+  title: "Pods with Issues"
+filter:
+  include:
+    - entity_id: sensor.kubernetes_*
+      state:
+        - "Pending"
+        - "Failed"
+        - "Unknown"
+  exclude:
+    - state: "Running"
+    - state: "Succeeded"
+```
+
+This configuration will automatically populate a card with all pod entities that are in a problematic state, making it easy to monitor and troubleshoot your Kubernetes cluster.

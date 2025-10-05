@@ -1248,11 +1248,13 @@ async def test_enrich_statefulsets_with_metrics(mock_client):
 @pytest.fixture
 def extended_client(mock_config):
     """Create a Kubernetes client instance for extended tests."""
-    with patch("kubernetes.client.Configuration"), \
-         patch("kubernetes.client.ApiClient"), \
-         patch("kubernetes.client.CoreV1Api"), \
-         patch("kubernetes.client.AppsV1Api"), \
-         patch("kubernetes.client.BatchV1Api"):
+    with (
+        patch("kubernetes.client.Configuration"),
+        patch("kubernetes.client.ApiClient"),
+        patch("kubernetes.client.CoreV1Api"),
+        patch("kubernetes.client.AppsV1Api"),
+        patch("kubernetes.client.BatchV1Api"),
+    ):
         return KubernetesClient(mock_config)
 
 
@@ -1263,7 +1265,9 @@ class TestKubernetesClientExtended:
         """Test _log_error method with various exceptions."""
         # Test ApiException 401 (Auth)
         error_401 = ApiException(status=401, reason="Unauthorized")
-        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+        with patch(
+            "custom_components.kubernetes.kubernetes_client._LOGGER"
+        ) as mock_logger:
             extended_client._log_error("test_op", error_401)
             mock_logger.error.assert_called()
 
@@ -1273,37 +1277,49 @@ class TestKubernetesClientExtended:
 
         # Test ApiException 403 (Forbidden)
         error_403 = ApiException(status=403, reason="Forbidden")
-        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+        with patch(
+            "custom_components.kubernetes.kubernetes_client._LOGGER"
+        ) as mock_logger:
             extended_client._log_error("test_op", error_403)
             mock_logger.error.assert_called()
 
         # Test ApiException 404 (Not Found)
         error_404 = ApiException(status=404, reason="Not Found")
-        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+        with patch(
+            "custom_components.kubernetes.kubernetes_client._LOGGER"
+        ) as mock_logger:
             extended_client._log_error("test_op", error_404)
             mock_logger.error.assert_called()
 
         # Test ApiException 500 (Server Error)
         error_500 = ApiException(status=500, reason="Server Error")
-        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+        with patch(
+            "custom_components.kubernetes.kubernetes_client._LOGGER"
+        ) as mock_logger:
             extended_client._log_error("test_op", error_500)
             mock_logger.error.assert_called()
 
         # Test aiohttp.ClientError
         error_aiohttp = aiohttp.ClientError("Network error")
-        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+        with patch(
+            "custom_components.kubernetes.kubernetes_client._LOGGER"
+        ) as mock_logger:
             extended_client._log_error("test_op", error_aiohttp)
             mock_logger.error.assert_called()
 
         # Test asyncio.TimeoutError
         error_timeout = asyncio.TimeoutError()
-        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+        with patch(
+            "custom_components.kubernetes.kubernetes_client._LOGGER"
+        ) as mock_logger:
             extended_client._log_error("test_op", error_timeout)
             mock_logger.error.assert_called()
 
         # Test generic Exception
         error_generic = Exception("Generic error")
-        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+        with patch(
+            "custom_components.kubernetes.kubernetes_client._LOGGER"
+        ) as mock_logger:
             extended_client._log_error("test_op", error_generic)
             mock_logger.error.assert_called()
 
@@ -1318,7 +1334,9 @@ class TestKubernetesClientExtended:
             assert await extended_client._test_connection_aiohttp() is False
 
         # Test exception
-        with patch("aiohttp.ClientSession.get", side_effect=Exception("Connection error")):
+        with patch(
+            "aiohttp.ClientSession.get", side_effect=Exception("Connection error")
+        ):
             assert await extended_client._test_connection_aiohttp() is False
 
     async def test_get_pods_count_aiohttp_failure(self, extended_client):
@@ -1368,12 +1386,15 @@ class TestKubernetesClientExtended:
         mock_node_data = {
             "items": [
                 {
-                    "metadata": {"name": "node1", "creationTimestamp": "2023-01-01T00:00:00Z"},
+                    "metadata": {
+                        "name": "node1",
+                        "creationTimestamp": "2023-01-01T00:00:00Z",
+                    },
                     "status": {
                         "conditions": [{"type": "Ready", "status": "True"}],
                         "addresses": [
                             {"type": "InternalIP", "address": "10.0.0.1"},
-                            {"type": "ExternalIP", "address": "1.2.3.4"}
+                            {"type": "ExternalIP", "address": "1.2.3.4"},
                         ],
                         "capacity": {"memory": "16Gi", "cpu": "4"},
                         "allocatable": {"memory": "15Gi", "cpu": "4"},
@@ -1381,10 +1402,10 @@ class TestKubernetesClientExtended:
                             "osImage": "Linux",
                             "kernelVersion": "5.15",
                             "containerRuntimeVersion": "docker",
-                            "kubeletVersion": "v1.25"
-                        }
+                            "kubeletVersion": "v1.25",
+                        },
                     },
-                    "spec": {"unschedulable": False}
+                    "spec": {"unschedulable": False},
                 }
             ]
         }
@@ -1407,11 +1428,7 @@ class TestKubernetesClientExtended:
     async def test_get_nodes_aiohttp_parsing_error(self, extended_client):
         """Test _get_nodes_aiohttp parsing error handling."""
         # Malformed data that causes parsing error
-        mock_node_data = {
-            "items": [
-                {"metadata": {}} # Missing status, spec, etc.
-            ]
-        }
+        mock_node_data = {"items": [{"metadata": {}}]}  # Missing status, spec, etc.
 
         with patch("aiohttp.ClientSession.get") as mock_get:
             mock_response = AsyncMock()
@@ -1438,3 +1455,189 @@ class TestKubernetesClientExtended:
         # Test exception
         with patch("aiohttp.ClientSession.get", side_effect=Exception("Network error")):
             assert await extended_client._get_nodes_aiohttp() == []
+
+
+class TestKubernetesClientGetPods:
+    """Test cases for Kubernetes client get_pods method."""
+
+    @pytest.mark.asyncio
+    async def test_get_pods_success(self, mock_client):
+        """Test successful get_pods call."""
+        # Mock the aiohttp response
+        mock_response_data = {
+            "items": [
+                {
+                    "metadata": {
+                        "name": "test-pod-1",
+                        "namespace": "default",
+                        "uid": "pod-uid-1",
+                        "creationTimestamp": "2023-01-01T00:00:00Z",
+                        "labels": {"app": "test-app", "version": "v1.0"},
+                    },
+                    "spec": {"nodeName": "worker-node-1"},
+                    "status": {
+                        "phase": "Running",
+                        "podIP": "10.244.1.5",
+                        "containerStatuses": [
+                            {"ready": True, "restartCount": 0},
+                            {"ready": True, "restartCount": 0},
+                        ],
+                    },
+                },
+                {
+                    "metadata": {
+                        "name": "test-pod-2",
+                        "namespace": "default",
+                        "uid": "pod-uid-2",
+                        "creationTimestamp": "2023-01-01T00:00:00Z",
+                        "labels": {"app": "test-app-2"},
+                        "ownerReferences": [
+                            {"kind": "ReplicaSet", "name": "test-app-2-7d4b8c9f6b"}
+                        ],
+                    },
+                    "spec": {"nodeName": "worker-node-2"},
+                    "status": {
+                        "phase": "Pending",
+                        "podIP": "10.244.1.6",
+                        "containerStatuses": [{"ready": False, "restartCount": 1}],
+                    },
+                },
+            ]
+        }
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value=mock_response_data)
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            result = await mock_client.get_pods()
+
+            assert len(result) == 2
+
+            # Check first pod
+            pod1 = result[0]
+            assert pod1["name"] == "test-pod-1"
+            assert pod1["namespace"] == "default"
+            assert pod1["phase"] == "Running"
+            assert pod1["ready_containers"] == 2
+            assert pod1["total_containers"] == 2
+            assert pod1["restart_count"] == 0
+            assert pod1["node_name"] == "worker-node-1"
+            assert pod1["pod_ip"] == "10.244.1.5"
+            assert pod1["owner_kind"] == "N/A"
+            assert pod1["owner_name"] == "N/A"
+            assert pod1["labels"]["app"] == "test-app"
+            assert pod1["labels"]["version"] == "v1.0"
+
+            # Check second pod
+            pod2 = result[1]
+            assert pod2["name"] == "test-pod-2"
+            assert pod2["namespace"] == "default"
+            assert pod2["phase"] == "Pending"
+            assert pod2["ready_containers"] == 0
+            assert pod2["total_containers"] == 1
+            assert pod2["restart_count"] == 1
+            assert pod2["node_name"] == "worker-node-2"
+            assert pod2["pod_ip"] == "10.244.1.6"
+            assert pod2["owner_kind"] == "ReplicaSet"
+            assert pod2["owner_name"] == "test-app-2-7d4b8c9f6b"
+
+    @pytest.mark.asyncio
+    async def test_get_pods_empty_response(self, mock_client):
+        """Test get_pods with empty response."""
+        mock_response_data = {"items": []}
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value=mock_response_data)
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            result = await mock_client.get_pods()
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_pods_http_error(self, mock_client):
+        """Test get_pods with HTTP error."""
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            result = await mock_client.get_pods()
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_pods_connection_error(self, mock_client):
+        """Test get_pods with connection error."""
+        with patch(
+            "aiohttp.ClientSession.get",
+            side_effect=aiohttp.ClientError("Connection error"),
+        ):
+            result = await mock_client.get_pods()
+            assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_pods_all_namespaces(self, mock_client):
+        """Test get_pods with monitor_all_namespaces enabled."""
+        mock_client.monitor_all_namespaces = True
+
+        mock_response_data = {"items": []}
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(return_value=mock_response_data)
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            await mock_client.get_pods()
+
+            # Verify the correct URL was called (all namespaces)
+            # get_pods() calls _test_connection() first, then the actual pods endpoint
+            assert mock_get.call_count >= 1
+            # Find the call to the pods endpoint
+            pods_call = None
+            for call in mock_get.call_args_list:
+                if call[0] and "/api/v1/pods" in call[0][0]:
+                    pods_call = call
+                    break
+            assert pods_call is not None, "Expected call to /api/v1/pods endpoint"
+            assert "/api/v1/pods" in pods_call[0][0]
+
+    def test_parse_pods_data(self, mock_client):
+        """Test _parse_pods_data method."""
+        raw_pods = [
+            {
+                "metadata": {
+                    "name": "test-pod",
+                    "namespace": "default",
+                    "uid": "pod-uid",
+                    "creationTimestamp": "2023-01-01T00:00:00Z",
+                    "labels": {"app": "test-app"},
+                },
+                "spec": {"nodeName": "worker-node-1"},
+                "status": {
+                    "phase": "Running",
+                    "podIP": "10.244.1.5",
+                    "containerStatuses": [
+                        {"ready": True, "restartCount": 0},
+                        {"ready": False, "restartCount": 1},
+                    ],
+                },
+            }
+        ]
+
+        result = mock_client._parse_pods_data(raw_pods)
+
+        assert len(result) == 1
+        pod = result[0]
+        assert pod["name"] == "test-pod"
+        assert pod["namespace"] == "default"
+        assert pod["phase"] == "Running"
+        assert pod["ready_containers"] == 1
+        assert pod["total_containers"] == 2
+        assert pod["restart_count"] == 1
+        assert pod["node_name"] == "worker-node-1"
+        assert pod["pod_ip"] == "10.244.1.5"
+        assert pod["labels"]["app"] == "test-app"

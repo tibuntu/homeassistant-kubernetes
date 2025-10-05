@@ -57,9 +57,25 @@ async def async_setup_entry(
                 node_sensor.unique_id,
             )
 
-        # Create individual sensors for each Kubernetes deployment
-        # Deployment sensors are removed in favor of attributes on the deployment switch
-        deployment_sensors_created = 0
+        # Create individual sensors for each Kubernetes pod
+        pods_data = coordinator.get_all_pods_data()
+        _LOGGER.debug("Creating pod sensors for pods: %s", list(pods_data.keys()))
+
+        pod_sensors_created = 0
+        for pod_key, pod_data in pods_data.items():
+            namespace = pod_data.get("namespace", "default")
+            pod_name = pod_data.get("name", "unknown")
+            pod_sensor = KubernetesPodSensor(
+                coordinator, client, config_entry, namespace, pod_name
+            )
+            sensors.append(pod_sensor)
+            pod_sensors_created += 1
+            _LOGGER.debug(
+                "Created pod sensor for: %s/%s (unique_id: %s)",
+                namespace,
+                pod_name,
+                pod_sensor.unique_id,
+            )
 
         async_add_entities(sensors)
 
@@ -77,7 +93,7 @@ async def async_setup_entry(
         def _async_add_new_entities() -> None:
             """Add new entities when new resources are discovered."""
             hass.async_create_task(
-                _async_discover_and_add_new_entities(
+                _async_discover_and_add_new_sensors(
                     hass, config_entry, coordinator, client
                 )
             )
@@ -86,17 +102,59 @@ async def async_setup_entry(
         coordinator.async_add_listener(_async_add_new_entities)
 
         _LOGGER.debug(
-            "Successfully set up %d Kubernetes sensors (including %d node sensors and %d deployment sensors)",
+            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors)",
             len(sensors),
             node_sensors_created,
-            deployment_sensors_created,
+            pod_sensors_created,
         )
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
         raise
 
 
-async def _async_discover_and_add_new_entities(
+def _discover_new_node_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesNodeSensor]:
+    """Discover new node sensors."""
+    new_entities = []
+    if coordinator.data and "nodes" in coordinator.data:
+        for node_name in coordinator.data["nodes"]:
+            unique_id = f"{config_entry.entry_id}_node_{node_name}"
+            if unique_id not in existing_unique_ids:
+                _LOGGER.info("Adding new node sensor for: %s", node_name)
+                new_entities.append(
+                    KubernetesNodeSensor(coordinator, client, config_entry, node_name)
+                )
+    return new_entities
+
+
+def _discover_new_pod_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesPodSensor]:
+    """Discover new pod sensors."""
+    new_entities = []
+    if coordinator.data and "pods" in coordinator.data:
+        for pod_key, pod_data in coordinator.data["pods"].items():
+            namespace = pod_data.get("namespace", "default")
+            pod_name = pod_data.get("name", "unknown")
+            unique_id = f"{config_entry.entry_id}_pod_{namespace}_{pod_name}"
+            if unique_id not in existing_unique_ids:
+                _LOGGER.info("Adding new pod sensor for: %s/%s", namespace, pod_name)
+                new_entities.append(
+                    KubernetesPodSensor(
+                        coordinator, client, config_entry, namespace, pod_name
+                    )
+                )
+    return new_entities
+
+
+async def _async_discover_and_add_new_sensors(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     coordinator: KubernetesDataCoordinator,
@@ -123,19 +181,18 @@ async def _async_discover_and_add_new_entities(
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
 
+        # Discover new sensors
         new_entities = []
-
-        # Check for new nodes
-        if coordinator.data and "nodes" in coordinator.data:
-            for node_name in coordinator.data["nodes"]:
-                unique_id = f"{config_entry.entry_id}_node_{node_name}"
-                if unique_id not in existing_unique_ids:
-                    _LOGGER.info("Adding new node sensor for: %s", node_name)
-                    new_entities.append(
-                        KubernetesNodeSensor(
-                            coordinator, client, config_entry, node_name
-                        )
-                    )
+        new_entities.extend(
+            _discover_new_node_sensors(
+                coordinator, client, config_entry, existing_unique_ids
+            )
+        )
+        new_entities.extend(
+            _discover_new_pod_sensors(
+                coordinator, client, config_entry, existing_unique_ids
+            )
+        )
 
         # Check for new deployments
         # Deployment sensors are removed in favor of attributes on the deployment switch
@@ -457,63 +514,89 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
             _LOGGER.error("Failed to update node sensor %s: %s", self.node_name, ex)
 
 
-class KubernetesDeploymentSensor(KubernetesBaseSensor):
-    """Sensor for individual Kubernetes deployment with detailed information."""
+class KubernetesPodSensor(KubernetesBaseSensor):
+    """Sensor for individual Kubernetes pod with detailed information."""
 
     def __init__(
         self,
         coordinator: KubernetesDataCoordinator,
         client,
         config_entry: ConfigEntry,
-        deployment_name: str,
+        namespace: str,
+        pod_name: str,
     ) -> None:
-        """Initialize the deployment sensor."""
+        """Initialize the pod sensor."""
         super().__init__(coordinator, client, config_entry)
-        self.deployment_name = deployment_name
-        self._attr_name = f"Deployment {deployment_name}"
-        self._attr_unique_id = f"{config_entry.entry_id}_deployment_{deployment_name}"
+        self.namespace = namespace
+        self.pod_name = pod_name
+        self._attr_name = f"{pod_name}"
+        self._attr_unique_id = f"{config_entry.entry_id}_pod_{namespace}_{pod_name}"
+        self._attr_native_unit_of_measurement = None
         self._attr_icon = "mdi:cube"
-        # State is the number of available replicas
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = "replicas"
+        # Override state class since this sensor returns string values, not measurements
+        self._attr_state_class = None
+
+        _LOGGER.debug(
+            "Initialized pod sensor for %s/%s with unique_id: %s",
+            namespace,
+            pod_name,
+            self._attr_unique_id,
+        )
 
     @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor (available replicas)."""
-        if not self.coordinator.data or "deployments" not in self.coordinator.data:
-            return 0
-
-        deployments = self.coordinator.data["deployments"]
-        if self.deployment_name in deployments:
-            return deployments[self.deployment_name].get("available_replicas", 0)
-        return 0
+    def native_value(self) -> str:
+        """Return the native value of the sensor (pod phase)."""
+        pod_data = self.coordinator.get_pod_data(self.namespace, self.pod_name)
+        if pod_data:
+            phase = pod_data.get("phase", "Unknown")
+            _LOGGER.debug(
+                "Pod %s/%s native_value: %s", self.namespace, self.pod_name, phase
+            )
+            return phase
+        _LOGGER.debug(
+            "Pod %s/%s has no data, returning Unknown", self.namespace, self.pod_name
+        )
+        return "Unknown"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional state attributes for the deployment."""
-        if not self.coordinator.data or "deployments" not in self.coordinator.data:
+        """Return additional state attributes for the pod."""
+        pod_data = self.coordinator.get_pod_data(self.namespace, self.pod_name)
+        if not pod_data:
             return {}
 
-        deployments = self.coordinator.data["deployments"]
-        if self.deployment_name not in deployments:
-            return {}
-
-        deployment = deployments[self.deployment_name]
-        return {
-            "namespace": deployment.get("namespace"),
-            "replicas": deployment.get("replicas", 0),
-            "ready_replicas": deployment.get("ready_replicas", 0),
-            "available_replicas": deployment.get("available_replicas", 0),
-            "cpu_usage_(millicores)": f"{deployment.get('cpu_usage', 0.0):.3f}",
-            "memory_usage_(MiB)": f"{deployment.get('memory_usage', 0.0):.2f}",
+        attributes = {
+            "namespace": pod_data.get("namespace", "N/A"),
+            "phase": pod_data.get("phase", "Unknown"),
+            "ready_containers": pod_data.get("ready_containers", 0),
+            "total_containers": pod_data.get("total_containers", 0),
+            "restart_count": pod_data.get("restart_count", 0),
+            "node_name": pod_data.get("node_name", "N/A"),
+            "pod_ip": pod_data.get("pod_ip", "N/A"),
+            "creation_timestamp": pod_data.get("creation_timestamp", "N/A"),
+            "owner_kind": pod_data.get("owner_kind", "N/A"),
+            "owner_name": pod_data.get("owner_name", "N/A"),
+            "uid": pod_data.get("uid", "N/A"),
         }
 
+        # Add labels as individual attributes (flattened)
+        labels = pod_data.get("labels", {})
+        for key, value in labels.items():
+            # Replace special characters in label keys to make them valid attribute names
+            attr_key = f"label_{key.replace('/', '_').replace('.', '_')}"
+            attributes[attr_key] = value
+
+        return attributes
+
     async def async_update(self) -> None:
-        """Update the deployment sensor state."""
+        """Update the pod sensor state."""
         try:
             await super().async_update()
             # The base class handles coordinator updates
         except Exception as ex:
             _LOGGER.error(
-                "Failed to update deployment sensor %s: %s", self.deployment_name, ex
+                "Failed to update pod sensor %s/%s: %s",
+                self.namespace,
+                self.pod_name,
+                ex,
             )

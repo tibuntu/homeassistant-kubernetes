@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 import time
 from typing import Any
 
@@ -323,6 +324,156 @@ class KubernetesClient:
             self._log_error("aiohttp get all pods count", ex)
             return 0
 
+    async def get_pods(self) -> list[dict[str, Any]]:
+        """Get detailed information about all pods in the namespace(s)."""
+        try:
+            # Test connection first
+            if not await self._test_connection():
+                _LOGGER.error("Cannot connect to Kubernetes API")
+                return []
+
+            # Use aiohttp as primary since it works better with SSL configuration
+            if self.monitor_all_namespaces:
+                result = await self._get_pods_all_namespaces_aiohttp()
+            else:
+                result = await self._get_pods_aiohttp()
+
+            if result is not None:
+                self._log_success("get pods", f"retrieved {len(result)} pods")
+            return result
+
+        except Exception as ex:
+            self._log_error("get pods", ex)
+            return []
+
+    async def _get_pods_aiohttp(self) -> list[dict[str, Any]]:
+        """Get pods using aiohttp for single namespace."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/api/v1/namespaces/{self.namespace}/pods",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_pods_data(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "aiohttp pods request failed with status: %s",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("aiohttp get pods", ex)
+            return []
+
+    async def _get_pods_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
+        """Get pods using aiohttp for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/api/v1/pods",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_pods_data(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "aiohttp all pods request failed with status: %s",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("aiohttp get all pods", ex)
+            return []
+
+    def _parse_pods_data(self, pods: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Parse raw pod data from Kubernetes API into standardized format."""
+        parsed_pods = []
+
+        for pod in pods:
+            try:
+                metadata = pod.get("metadata", {})
+                spec = pod.get("spec", {})
+                status = pod.get("status", {})
+
+                # Get pod phase
+                phase = status.get("phase", "Unknown")
+
+                # Get container statuses
+                container_statuses = status.get("containerStatuses", [])
+                ready_containers = 0
+                total_containers = len(container_statuses)
+
+                for container_status in container_statuses:
+                    if container_status.get("ready", False):
+                        ready_containers += 1
+
+                # Get restart count
+                restart_count = 0
+                for container_status in container_statuses:
+                    restart_count += container_status.get("restartCount", 0)
+
+                # Get node name
+                node_name = spec.get("nodeName", "N/A")
+
+                # Get pod IP
+                pod_ip = status.get("podIP", "N/A")
+
+                # Get creation timestamp
+                creation_timestamp = metadata.get("creationTimestamp", "N/A")
+
+                # Get labels
+                labels = metadata.get("labels", {})
+
+                # Get owner references (to identify which workload owns this pod)
+                owner_references = metadata.get("ownerReferences", [])
+                owner_kind = "N/A"
+                owner_name = "N/A"
+                if owner_references:
+                    owner = owner_references[0]
+                    owner_kind = owner.get("kind", "N/A")
+                    owner_name = owner.get("name", "N/A")
+
+                parsed_pod = {
+                    "name": metadata.get("name", "Unknown"),
+                    "namespace": metadata.get("namespace", "default"),
+                    "phase": phase,
+                    "ready_containers": ready_containers,
+                    "total_containers": total_containers,
+                    "restart_count": restart_count,
+                    "node_name": node_name,
+                    "pod_ip": pod_ip,
+                    "creation_timestamp": creation_timestamp,
+                    "labels": labels,
+                    "owner_kind": owner_kind,
+                    "owner_name": owner_name,
+                    "uid": metadata.get("uid", ""),
+                }
+
+                parsed_pods.append(parsed_pod)
+
+            except Exception as ex:
+                _LOGGER.warning("Failed to parse pod data: %s", ex)
+                continue
+
+        return parsed_pods
+
     async def get_nodes_count(self) -> int:
         """Get the count of nodes in the cluster."""
         try:
@@ -446,9 +597,15 @@ class KubernetesClient:
 
                                 # Parse memory (in GiB)
                                 memory_capacity_str = capacity.get("memory", "0Ki")
-                                memory_capacity_gib = self._parse_memory(memory_capacity_str, "GiB")
-                                memory_allocatable_str = allocatable.get("memory", "0Ki")
-                                memory_allocatable_gib = self._parse_memory(memory_allocatable_str, "GiB")
+                                memory_capacity_gib = self._parse_memory(
+                                    memory_capacity_str, "GiB"
+                                )
+                                memory_allocatable_str = allocatable.get(
+                                    "memory", "0Ki"
+                                )
+                                memory_allocatable_gib = self._parse_memory(
+                                    memory_allocatable_str, "GiB"
+                                )
 
                                 # Parse CPU String
                                 cpu_capacity = capacity.get("cpu", "0")
@@ -514,52 +671,52 @@ class KubernetesClient:
     def _parse_memory(self, memory_str: str, output_type: str = "MiB") -> float:
         """Parse Kubernetes memory string to specified unit (KiB, MiB, or GiB)"""
         try:
-            # First convert to bytes
+            # Binary prefix multipliers (Ki, Mi, Gi, Ti, Pi, Ei)
+            binary_prefixes = {
+                "Ki": 1024,
+                "Mi": 1024**2,
+                "Gi": 1024**3,
+                "Ti": 1024**4,
+                "Pi": 1024**5,
+                "Ei": 1024**6,
+            }
+            # Decimal prefix multipliers (k, M, G, T, P, E)
+            decimal_prefixes = {
+                "k": 1000,
+                "M": 1000**2,
+                "G": 1000**3,
+                "T": 1000**4,
+                "P": 1000**5,
+                "E": 1000**6,
+            }
+
+            # Convert to bytes
             bytes_value = 0.0
-
-            # Handle binary prefixes (Ki, Mi, Gi, Ti, Pi, Ei)
-            if memory_str.endswith("Ki"):
-                bytes_value = float(memory_str[:-2]) * 1024
-            elif memory_str.endswith("Mi"):
-                bytes_value = float(memory_str[:-2]) * 1024**2
-            elif memory_str.endswith("Gi"):
-                bytes_value = float(memory_str[:-2]) * 1024**3
-            elif memory_str.endswith("Ti"):
-                bytes_value = float(memory_str[:-2]) * 1024**4
-            elif memory_str.endswith("Pi"):
-                bytes_value = float(memory_str[:-2]) * 1024**5
-            elif memory_str.endswith("Ei"):
-                bytes_value = float(memory_str[:-2]) * 1024**6
-
-            # Handle decimal prefixes (k, M, G, T, P, E)
-            elif memory_str.endswith("k"):
-                bytes_value = float(memory_str[:-1]) * 1000
-            elif memory_str.endswith("M"):
-                bytes_value = float(memory_str[:-1]) * 1000**2
-            elif memory_str.endswith("G"):
-                bytes_value = float(memory_str[:-1]) * 1000**3
-            elif memory_str.endswith("T"):
-                bytes_value = float(memory_str[:-1]) * 1000**4
-            elif memory_str.endswith("P"):
-                bytes_value = float(memory_str[:-1]) * 1000**5
-            elif memory_str.endswith("E"):
-                bytes_value = float(memory_str[:-1]) * 1000**6
-
-            # Handle plain bytes
+            for suffix, multiplier in binary_prefixes.items():
+                if memory_str.endswith(suffix):
+                    bytes_value = float(memory_str[: -len(suffix)]) * multiplier
+                    break
             else:
-                bytes_value = float(memory_str)
+                for suffix, multiplier in decimal_prefixes.items():
+                    if memory_str.endswith(suffix):
+                        bytes_value = float(memory_str[: -len(suffix)]) * multiplier
+                        break
+                else:
+                    # Plain bytes
+                    bytes_value = float(memory_str)
 
             # Convert to requested output type
-            if output_type == "KiB":
-                value = bytes_value / 1024
-            elif output_type == "MiB":
-                value = bytes_value / (1024**2)
-            elif output_type == "GiB":
-                value = bytes_value / (1024**3)
-            else:
-                # Default to MiB if invalid type provided
-                _LOGGER.warning("Invalid output type '%s', defaulting to MiB", output_type)
-                value = bytes_value / (1024**2)
+            output_multipliers = {
+                "KiB": 1024,
+                "MiB": 1024**2,
+                "GiB": 1024**3,
+            }
+            multiplier = output_multipliers.get(output_type, 1024**2)
+            if output_type not in output_multipliers:
+                _LOGGER.warning(
+                    "Invalid output type '%s', defaulting to MiB", output_type
+                )
+            value = bytes_value / multiplier
 
             # Round up to 2 decimal places
             return round(value, 2)
@@ -571,42 +728,42 @@ class KubernetesClient:
     def _parse_cpu(self, cpu_str: str, output_type: str = "cores") -> float:
         """Parse Kubernetes CPU string to specified unit (n, u, m, or cores)"""
         try:
-            # First convert to nanocores
-            nanocores = 0.0
+            # Input multipliers (to nanocores)
+            input_multipliers = {
+                "n": 1,
+                "u": 1000,
+                "m": 1_000_000,
+            }
+            # Output divisors (from nanocores)
+            output_divisors = {
+                "n": 1,
+                "u": 1000,
+                "m": 1_000_000,
+                "cores": 1_000_000_000,
+            }
 
             # Parse input to nanocores
-            if cpu_str.endswith("n"):
-                # Nanocores
-                nanocores = float(cpu_str[:-1])
-            elif cpu_str.endswith("u"):
-                # Microcores to nanocores
-                nanocores = float(cpu_str[:-1]) * 1000
-            elif cpu_str.endswith("m"):
-                # Millicores to nanocores
-                nanocores = float(cpu_str[:-1]) * 1_000_000
+            nanocores = 0.0
+            for suffix, multiplier in input_multipliers.items():
+                if cpu_str.endswith(suffix):
+                    nanocores = float(cpu_str[: -len(suffix)]) * multiplier
+                    break
             else:
                 # Cores to nanocores
                 nanocores = float(cpu_str) * 1_000_000_000
 
             # Convert to requested output type
-            if output_type == "n":
-                value = nanocores
-            elif output_type == "u":
-                value = nanocores / 1000
-            elif output_type == "m":
-                value = nanocores / 1_000_000
-            elif output_type == "cores":
-                value = nanocores / 1_000_000_000
-            else:
-                # Default to cores if invalid type provided
-                _LOGGER.warning("Invalid output type '%s', defaulting to cores", output_type)
-                value = nanocores / 1_000_000_000
+            divisor = output_divisors.get(output_type, 1_000_000_000)
+            if output_type not in output_divisors:
+                _LOGGER.warning(
+                    "Invalid output type '%s', defaulting to cores", output_type
+                )
+            value = nanocores / divisor
 
             # Round based on output type - cores get whole numbers, others get 2 decimal places
-            if output_type == "cores" or (output_type not in ["n", "u", "m", "cores"]):
+            if output_type == "cores" or output_type not in output_divisors:
                 return int(round(value))
-            else:
-                return round(value, 2)
+            return round(value, 2)
 
         except (ValueError, IndexError):
             _LOGGER.warning("Failed to parse CPU string: %s", cpu_str)
@@ -1415,81 +1572,6 @@ class KubernetesClient:
         """Start a StatefulSet by scaling it to the specified number of replicas."""
         return await self.scale_statefulset(statefulset_name, replicas, namespace)
 
-    async def get_pods(self) -> list[dict[str, Any]]:
-        """Get all pods with their details."""
-        try:
-            # Try using the official client first if available
-            if self.core_v1:
-                if self.monitor_all_namespaces:
-                    loop = asyncio.get_event_loop()
-                    pods = await loop.run_in_executor(
-                        None, self.core_v1.list_pod_for_all_namespaces
-                    )
-                else:
-                    loop = asyncio.get_event_loop()
-                    pods = await loop.run_in_executor(
-                        None,
-                        lambda: self.core_v1.list_namespaced_pod(self.namespace),
-                    )
-
-                pod_list = []
-                for pod in pods.items:
-                    pod_info = {
-                        "name": pod.metadata.name,
-                        "namespace": pod.metadata.namespace,
-                        "labels": pod.metadata.labels or {},
-                        "status": pod.status.phase,
-                    }
-                    pod_list.append(pod_info)
-                return pod_list
-            else:
-                return await self._get_pods_aiohttp()
-        except Exception as ex:
-            self._log_error("get pods", ex)
-            return await self._get_pods_aiohttp()
-
-    async def _get_pods_aiohttp(self) -> list[dict[str, Any]]:
-        """Get pods using aiohttp as fallback."""
-        try:
-            headers = {"Authorization": f"Bearer {self.api_token}"}
-            if self.monitor_all_namespaces:
-                url = f"https://{self.host}:{self.port}/api/v1/pods"
-            else:
-                url = f"https://{self.host}:{self.port}/api/v1/namespaces/{self.namespace}/pods"
-
-            ssl_context = False
-            if self.verify_ssl:
-                import ssl
-
-                ssl_context = ssl.create_default_context(cafile=self.ca_cert)
-
-            connector = aiohttp.TCPConnector(ssl=ssl_context)
-            async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(url, headers=headers, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        pod_list = []
-                        for item in data.get("items", []):
-                            metadata = item.get("metadata", {})
-                            status = item.get("status", {})
-                            pod_info = {
-                                "name": metadata.get("name"),
-                                "namespace": metadata.get("namespace"),
-                                "labels": metadata.get("labels", {}),
-                                "status": status.get("phase"),
-                            }
-                            pod_list.append(pod_info)
-                        return pod_list
-                    else:
-                        _LOGGER.error(
-                            "aiohttp pods request failed with status: %s",
-                            response.status,
-                        )
-                        return []
-        except Exception as ex:
-            _LOGGER.error("Exception in _get_pods_aiohttp: %s", ex)
-            return []
-
     async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
         """Get pod metrics (CPU and memory usage)."""
         # Metrics API is usually accessed via /apis/metrics.k8s.io/v1beta1/pods
@@ -1506,10 +1588,8 @@ class KubernetesClient:
             else:
                 url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/namespaces/{self.namespace}/pods"
 
-            ssl_context = False
+            ssl_context: ssl.SSLContext | bool = False
             if self.verify_ssl:
-                import ssl
-
                 ssl_context = ssl.create_default_context(cafile=self.ca_cert)
 
             connector = aiohttp.TCPConnector(ssl=ssl_context)
@@ -1517,7 +1597,7 @@ class KubernetesClient:
                 async with session.get(url, headers=headers, timeout=10) as response:
                     if response.status == 200:
                         data = await response.json()
-                        metrics = {}
+                        metrics: dict[str, dict[str, float]] = {}
                         for item in data.get("items", []):
                             metadata = item.get("metadata", {})
                             name = metadata.get("name")
@@ -1559,6 +1639,40 @@ class KubernetesClient:
             _LOGGER.warning("Exception in _get_pod_metrics_aiohttp: %s", ex)
             return {}
 
+    def _pod_matches_selector(
+        self, pod_labels: dict[str, Any], selector: dict[str, Any]
+    ) -> bool:
+        """Check if a pod matches a selector."""
+        if not selector:
+            return False
+        return all(pod_labels.get(key) == value for key, value in selector.items())
+
+    def _calculate_resource_usage(
+        self,
+        workload: dict[str, Any],
+        pods: list[dict[str, Any]],
+        metrics: dict[str, dict[str, float]],
+    ) -> tuple[float, float]:
+        """Calculate CPU and memory usage for a workload from its pods."""
+        selector = workload.get("selector", {})
+        namespace = workload.get("namespace")
+
+        cpu_usage = 0.0
+        memory_usage = 0.0
+
+        for pod in pods:
+            pod_name = pod.get("name")
+            pod_ns = pod.get("namespace")
+            pod_labels = pod.get("labels", {})
+
+            if pod_ns == namespace and self._pod_matches_selector(pod_labels, selector):
+                pod_metric = metrics.get(f"{namespace}/{pod_name}")
+                if pod_metric:
+                    cpu_usage += pod_metric.get("cpu", 0.0)
+                    memory_usage += pod_metric.get("memory", 0.0)
+
+        return cpu_usage, memory_usage
+
     async def _enrich_deployments_with_metrics(
         self, deployments: list[dict[str, Any]]
     ) -> None:
@@ -1570,38 +1684,10 @@ class KubernetesClient:
             if not pods or not metrics:
                 return
 
-            # Helper to check if a pod matches a selector
-            def pod_matches_selector(pod_labels: dict, selector: dict) -> bool:
-                if not selector:
-                    return False
-                for key, value in selector.items():
-                    if pod_labels.get(key) != value:
-                        return False
-                return True
-
             for deployment in deployments:
-                selector = deployment.get("selector", {})
-                namespace = deployment.get("namespace")
-
-                cpu_usage = 0.0
-                memory_usage = 0.0
-
-                for pod in pods:
-                    # My _get_pods_aiohttp returns flat structure, not nested metadata
-                    pod_name = pod.get("name")
-                    pod_ns = pod.get("namespace")
-                    pod_labels = pod.get("labels", {})
-
-                    if pod_ns == namespace and pod_matches_selector(
-                        pod_labels, selector
-                    ):
-                        # Found a pod for this deployment
-                        pod_metric = metrics.get(f"{namespace}/{pod_name}")
-
-                        if pod_metric:
-                            cpu_usage += pod_metric.get("cpu", 0.0)
-                            memory_usage += pod_metric.get("memory", 0.0)
-
+                cpu_usage, memory_usage = self._calculate_resource_usage(
+                    deployment, pods, metrics
+                )
                 deployment["cpu_usage"] = cpu_usage
                 deployment["memory_usage"] = memory_usage
         except Exception as ex:
@@ -1618,38 +1704,10 @@ class KubernetesClient:
             if not pods or not metrics:
                 return
 
-            # Helper to check if a pod matches a selector
-            def pod_matches_selector(pod_labels: dict, selector: dict) -> bool:
-                if not selector:
-                    return False
-                for key, value in selector.items():
-                    if pod_labels.get(key) != value:
-                        return False
-                return True
-
             for statefulset in statefulsets:
-                selector = statefulset.get("selector", {})
-                namespace = statefulset.get("namespace")
-
-                cpu_usage = 0.0
-                memory_usage = 0.0
-
-                for pod in pods:
-                    # My _get_pods_aiohttp returns flat structure, not nested metadata
-                    pod_name = pod.get("name")
-                    pod_ns = pod.get("namespace")
-                    pod_labels = pod.get("labels", {})
-
-                    if pod_ns == namespace and pod_matches_selector(
-                        pod_labels, selector
-                    ):
-                        # Found a pod for this statefulset
-                        pod_metric = metrics.get(f"{namespace}/{pod_name}")
-
-                        if pod_metric:
-                            cpu_usage += pod_metric.get("cpu", 0.0)
-                            memory_usage += pod_metric.get("memory", 0.0)
-
+                cpu_usage, memory_usage = self._calculate_resource_usage(
+                    statefulset, pods, metrics
+                )
                 statefulset["cpu_usage"] = cpu_usage
                 statefulset["memory_usage"] = memory_usage
         except Exception as ex:
