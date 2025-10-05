@@ -14,6 +14,7 @@
   "mounts": ["source=homeassistant-config,target=/config,type=volume"],
   "postCreateCommand": "bash .devcontainer/setup.sh",
   "remoteUser": "vscode",
+  "runArgs": ["--network=host"],
   "features": {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
     "ghcr.io/devcontainers/features/git:1": {}
