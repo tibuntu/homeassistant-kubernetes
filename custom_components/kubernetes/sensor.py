@@ -57,6 +57,26 @@ async def async_setup_entry(
                 node_sensor.unique_id,
             )
 
+        # Create individual sensors for each Kubernetes pod
+        pods_data = coordinator.get_all_pods_data()
+        _LOGGER.debug("Creating pod sensors for pods: %s", list(pods_data.keys()))
+
+        pod_sensors_created = 0
+        for pod_key, pod_data in pods_data.items():
+            namespace = pod_data.get("namespace", "default")
+            pod_name = pod_data.get("name", "unknown")
+            pod_sensor = KubernetesPodSensor(
+                coordinator, client, config_entry, namespace, pod_name
+            )
+            sensors.append(pod_sensor)
+            pod_sensors_created += 1
+            _LOGGER.debug(
+                "Created pod sensor for: %s/%s (unique_id: %s)",
+                namespace,
+                pod_name,
+                pod_sensor.unique_id,
+            )
+
         async_add_entities(sensors)
 
         # Store the add_entities callback for dynamic entity management
@@ -73,7 +93,7 @@ async def async_setup_entry(
         def _async_add_new_entities() -> None:
             """Add new entities when new resources are discovered."""
             hass.async_create_task(
-                _async_discover_and_add_new_node_sensors(
+                _async_discover_and_add_new_sensors(
                     hass, config_entry, coordinator, client
                 )
             )
@@ -82,22 +102,65 @@ async def async_setup_entry(
         coordinator.async_add_listener(_async_add_new_entities)
 
         _LOGGER.debug(
-            "Successfully set up %d Kubernetes sensors (including %d node sensors)",
+            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors)",
             len(sensors),
             node_sensors_created,
+            pod_sensors_created,
         )
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
         raise
 
 
-async def _async_discover_and_add_new_node_sensors(
+def _discover_new_node_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesNodeSensor]:
+    """Discover new node sensors."""
+    new_entities = []
+    if coordinator.data and "nodes" in coordinator.data:
+        for node_name in coordinator.data["nodes"]:
+            unique_id = f"{config_entry.entry_id}_node_{node_name}"
+            if unique_id not in existing_unique_ids:
+                _LOGGER.info("Adding new node sensor for: %s", node_name)
+                new_entities.append(
+                    KubernetesNodeSensor(coordinator, client, config_entry, node_name)
+                )
+    return new_entities
+
+
+def _discover_new_pod_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesPodSensor]:
+    """Discover new pod sensors."""
+    new_entities = []
+    if coordinator.data and "pods" in coordinator.data:
+        for pod_key, pod_data in coordinator.data["pods"].items():
+            namespace = pod_data.get("namespace", "default")
+            pod_name = pod_data.get("name", "unknown")
+            unique_id = f"{config_entry.entry_id}_pod_{namespace}_{pod_name}"
+            if unique_id not in existing_unique_ids:
+                _LOGGER.info("Adding new pod sensor for: %s/%s", namespace, pod_name)
+                new_entities.append(
+                    KubernetesPodSensor(
+                        coordinator, client, config_entry, namespace, pod_name
+                    )
+                )
+    return new_entities
+
+
+async def _async_discover_and_add_new_sensors(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     coordinator: KubernetesDataCoordinator,
     client: Any,
 ) -> None:
-    """Discover and add new node sensors for newly discovered Kubernetes nodes."""
+    """Discover and add new sensors for newly discovered Kubernetes resources."""
     try:
         entity_registry = async_get_entity_registry(hass)
 
@@ -106,7 +169,7 @@ async def _async_discover_and_add_new_node_sensors(
         add_entities_callback = sensor_data.get("sensor_add_entities")
         if not add_entities_callback:
             _LOGGER.warning(
-                "No add_entities callback found for dynamic node sensor management"
+                "No add_entities callback found for dynamic sensor management"
             )
             return
 
@@ -118,29 +181,28 @@ async def _async_discover_and_add_new_node_sensors(
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
 
+        # Discover new sensors
         new_entities = []
-
-        # Check for new nodes
-        if coordinator.data and "nodes" in coordinator.data:
-            for node_name in coordinator.data["nodes"]:
-                unique_id = f"{config_entry.entry_id}_node_{node_name}"
-                if unique_id not in existing_unique_ids:
-                    _LOGGER.info("Adding new node sensor for: %s", node_name)
-                    new_entities.append(
-                        KubernetesNodeSensor(
-                            coordinator, client, config_entry, node_name
-                        )
-                    )
+        new_entities.extend(
+            _discover_new_node_sensors(
+                coordinator, client, config_entry, existing_unique_ids
+            )
+        )
+        new_entities.extend(
+            _discover_new_pod_sensors(
+                coordinator, client, config_entry, existing_unique_ids
+            )
+        )
 
         # Add new entities if any were found
         if new_entities:
-            _LOGGER.info("Adding %d new node sensors", len(new_entities))
+            _LOGGER.info("Adding %d new sensors", len(new_entities))
             add_entities_callback(new_entities)
         else:
-            _LOGGER.debug("No new node sensors to add")
+            _LOGGER.debug("No new sensors to add")
 
     except Exception as ex:
-        _LOGGER.error("Failed to discover and add new node sensors: %s", ex)
+        _LOGGER.error("Failed to discover and add new sensors: %s", ex)
 
 
 class KubernetesBaseSensor(SensorEntity):
@@ -447,3 +509,90 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
             # The base class handles coordinator updates
         except Exception as ex:
             _LOGGER.error("Failed to update node sensor %s: %s", self.node_name, ex)
+
+
+class KubernetesPodSensor(KubernetesBaseSensor):
+    """Sensor for individual Kubernetes pod with detailed information."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client,
+        config_entry: ConfigEntry,
+        namespace: str,
+        pod_name: str,
+    ) -> None:
+        """Initialize the pod sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.namespace = namespace
+        self.pod_name = pod_name
+        self._attr_name = f"{pod_name}"
+        self._attr_unique_id = f"{config_entry.entry_id}_pod_{namespace}_{pod_name}"
+        self._attr_native_unit_of_measurement = None
+        self._attr_icon = "mdi:cube"
+        # Override state class since this sensor returns string values, not measurements
+        self._attr_state_class = None
+
+        _LOGGER.debug(
+            "Initialized pod sensor for %s/%s with unique_id: %s",
+            namespace,
+            pod_name,
+            self._attr_unique_id,
+        )
+
+    @property
+    def native_value(self) -> str:
+        """Return the native value of the sensor (pod phase)."""
+        pod_data = self.coordinator.get_pod_data(self.namespace, self.pod_name)
+        if pod_data:
+            phase = pod_data.get("phase", "Unknown")
+            _LOGGER.debug(
+                "Pod %s/%s native_value: %s", self.namespace, self.pod_name, phase
+            )
+            return phase
+        _LOGGER.debug(
+            "Pod %s/%s has no data, returning Unknown", self.namespace, self.pod_name
+        )
+        return "Unknown"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes for the pod."""
+        pod_data = self.coordinator.get_pod_data(self.namespace, self.pod_name)
+        if not pod_data:
+            return {}
+
+        attributes = {
+            "namespace": pod_data.get("namespace", "N/A"),
+            "ready_containers": pod_data.get("ready_containers", 0),
+            "total_containers": pod_data.get("total_containers", 0),
+            "restart_count": pod_data.get("restart_count", 0),
+            "node_name": pod_data.get("node_name", "N/A"),
+            "pod_ip": pod_data.get("pod_ip", "N/A"),
+            "creation_timestamp": pod_data.get("creation_timestamp", "N/A"),
+            "owner_kind": pod_data.get("owner_kind", "N/A"),
+            "owner_name": pod_data.get("owner_name", "N/A"),
+            "uid": pod_data.get("uid", "N/A"),
+        }
+
+        # Add labels as individual attributes (flattened)
+        labels = pod_data.get("labels", {})
+        for key, value in labels.items():
+            # Replace special characters in label keys to make them valid attribute names
+            attr_key = f"label_{key.replace('/', '_').replace('.', '_')}"
+            attributes[attr_key] = value
+
+        return attributes
+
+    async def async_update(self) -> None:
+        """Update the pod sensor state."""
+        try:
+            await super().async_update()
+            # The base class handles coordinator updates
+        except Exception as ex:
+            _LOGGER.error(
+                "Failed to update pod sensor %s/%s: %s",
+                self.namespace,
+                self.pod_name,
+                ex,
+            )
