@@ -181,7 +181,7 @@ automation:
         data:
           title: "Kubernetes Node Alert"
           message: >
-            Node {{ trigger.entity_id.split('.')[-1].replace('kubernetes_node_', '').replace('_', '-') }} 
+            Node {{ trigger.entity_id.split('.')[-1].replace('kubernetes_node_', '').replace('_', '-') }}
             is not ready. Status: {{ trigger.to_state.state }}
           data:
             priority: high
@@ -208,7 +208,7 @@ automation:
         data:
           title: "High Memory Usage"
           message: >
-            One or more nodes are running low on memory. 
+            One or more nodes are running low on memory.
             Check the node monitoring dashboard for details.
 ```
 
@@ -231,7 +231,7 @@ automation:
         data:
           name: "Kubernetes Node Status"
           message: >
-            Node {{ trigger.entity_id.split('.')[-1].replace('kubernetes_node_', '').replace('_', '-') }} 
+            Node {{ trigger.entity_id.split('.')[-1].replace('kubernetes_node_', '').replace('_', '-') }}
             changed from {{ trigger.from_state.state }} to {{ trigger.to_state.state }}
           entity_id: "{{ trigger.entity_id }}"
 ```

@@ -369,11 +369,8 @@ class KubernetesClient:
             _LOGGER.debug("Starting get_nodes() call")
             # Use aiohttp as primary since it works better with SSL configuration
             result = await self._get_nodes_aiohttp()
-            if result is not None:
-                _LOGGER.debug("get_nodes() successful: retrieved %d nodes", len(result))
-                self._log_success("get nodes", f"retrieved {len(result)} nodes")
-            else:
-                _LOGGER.warning("get_nodes() returned None")
+            _LOGGER.debug("get_nodes() successful: retrieved %d nodes", len(result))
+            self._log_success("get nodes", f"retrieved {len(result)} nodes")
             return result
         except Exception as ex:
             _LOGGER.error("get_nodes() failed with exception: %s", ex, exc_info=True)
@@ -414,7 +411,7 @@ class KubernetesClient:
                                 node_name = metadata.get("name", "unknown")
                                 # Get node status
                                 conditions = status.get("conditions", [])
-                                ready_condition = next(
+                                ready_condition: dict[str, Any] = next(
                                     (c for c in conditions if c.get("type") == "Ready"),
                                     {},
                                 )

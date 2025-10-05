@@ -103,10 +103,12 @@ def mock_coordinator():
     coordinator.last_update_success = True
     coordinator.async_add_listener = MagicMock(return_value=lambda: None)
     coordinator.async_config_entry_first_refresh = AsyncMock()
-    coordinator.get_all_nodes_data = MagicMock(return_value={
-        "worker-node-1": {"name": "worker-node-1", "status": "Ready"},
-        "worker-node-2": {"name": "worker-node-2", "status": "Ready"},
-    })
+    coordinator.get_all_nodes_data = MagicMock(
+        return_value={
+            "worker-node-1": {"name": "worker-node-1", "status": "Ready"},
+            "worker-node-2": {"name": "worker-node-2", "status": "Ready"},
+        }
+    )
     coordinator.get_node_data = MagicMock(return_value=None)
     return coordinator
 
