@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.5.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.4.1...v0.5.0) (2025-10-05)
+
+
+### Features
+
+* add detailed kubernetes node information functionality ([e148276](https://github.com/tibuntu/homeassistant-kubernetes/commit/e1482762d91b6b90de45a79bcbe9ea9beb733f24))
+* enhance Kubernetes sensor functionality with dynamic discovery and recovery tests ([4b597ad](https://github.com/tibuntu/homeassistant-kubernetes/commit/4b597ad1458ce9017617569f6717f81af3e8b99b))
+
+
+### Bug Fixes
+
+* streamline logging in get_nodes() and enhance type hinting ([5385488](https://github.com/tibuntu/homeassistant-kubernetes/commit/53854886e747e2065dbd9b759a02f6313db7d692))
+
+
+### Documentation
+
+* improve RBAC configuration to allow usage of manifests without cloning the repo ([52e959b](https://github.com/tibuntu/homeassistant-kubernetes/commit/52e959b443273aa0343980415a11f94ed5fd6dcd))
+
+
+### Other
+
+* add network host argument to devcontainer configuration ([764f57f](https://github.com/tibuntu/homeassistant-kubernetes/commit/764f57f934a834320d379a0aa99df46a4713c891))
+* **deps:** update actions/setup-python action to v6 ([6ea39f9](https://github.com/tibuntu/homeassistant-kubernetes/commit/6ea39f9cd338569be96f3dd71ea9ef38f1f9e7fe))
+* improve KubernetesNodeSensor and tests for better readability ([276bd04](https://github.com/tibuntu/homeassistant-kubernetes/commit/276bd04c41d7a064f8d7a587f9ac9065337f1155))
+* remove debug logging from coordinator and sensor ([e86451e](https://github.com/tibuntu/homeassistant-kubernetes/commit/e86451e76d4986bb8065dc210e8e29aa8f10ebea))
+
 ## [0.4.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.4.0...v0.4.1) (2025-09-12)
 
 
