@@ -32,6 +32,7 @@ CONF_SCALE_COOLDOWN = "scale_cooldown"
 
 # Sensor types
 SENSOR_TYPE_PODS = "pods"
+SENSOR_TYPE_POD = "pod"
 SENSOR_TYPE_NODES = "nodes"
 SENSOR_TYPE_DEPLOYMENTS = "deployments"
 SENSOR_TYPE_STATEFULSETS = "statefulsets"

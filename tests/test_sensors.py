@@ -27,6 +27,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesDeploymentsSensor,
     KubernetesNodeSensor,
     KubernetesNodesSensor,
+    KubernetesPodSensor,
     KubernetesPodsSensor,
     KubernetesStatefulSetsSensor,
 )
@@ -786,7 +787,7 @@ class TestDynamicNodeSensorDiscovery:
     ):
         """Test successful discovery of new node sensors."""
         from custom_components.kubernetes.sensor import (
-            _async_discover_and_add_new_entities,
+            _async_discover_and_add_new_sensors,
         )
 
         # Set up hass.data with add_entities callback
@@ -812,7 +813,7 @@ class TestDynamicNodeSensorDiscovery:
             "custom_components.kubernetes.sensor.async_get_entity_registry",
             return_value=mock_entity_registry,
         ):
-            await _async_discover_and_add_new_entities(
+            await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
@@ -832,7 +833,7 @@ class TestDynamicNodeSensorDiscovery:
     ):
         """Test discovery when no add_entities callback is available."""
         from custom_components.kubernetes.sensor import (
-            _async_discover_and_add_new_entities,
+            _async_discover_and_add_new_sensors,
         )
 
         # Set up hass.data without callback
@@ -847,7 +848,7 @@ class TestDynamicNodeSensorDiscovery:
             return_value=mock_entity_registry,
         ):
             # Should not raise exception
-            await _async_discover_and_add_new_entities(
+            await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
@@ -856,7 +857,7 @@ class TestDynamicNodeSensorDiscovery:
     ):
         """Test discovery with existing node sensors."""
         from custom_components.kubernetes.sensor import (
-            _async_discover_and_add_new_entities,
+            _async_discover_and_add_new_sensors,
         )
 
         # Set up hass.data with add_entities callback
@@ -886,7 +887,7 @@ class TestDynamicNodeSensorDiscovery:
             "custom_components.kubernetes.sensor.async_get_entity_registry",
             return_value=mock_entity_registry,
         ):
-            await _async_discover_and_add_new_entities(
+            await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
@@ -906,7 +907,7 @@ class TestDynamicNodeSensorDiscovery:
     ):
         """Test discovery with exception handling."""
         from custom_components.kubernetes.sensor import (
-            _async_discover_and_add_new_entities,
+            _async_discover_and_add_new_sensors,
         )
 
         # Set up hass.data with add_entities callback
@@ -925,6 +926,202 @@ class TestDynamicNodeSensorDiscovery:
             side_effect=Exception("Registry error"),
         ):
             # Should not raise exception, but handle it gracefully
-            await _async_discover_and_add_new_entities(
+            await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
+
+
+class TestKubernetesPodSensor:
+    """Test cases for KubernetesPodSensor."""
+
+    def test_pod_sensor_initialization(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test pod sensor initialization."""
+        namespace = "default"
+        pod_name = "test-pod"
+
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+
+        assert sensor.namespace == namespace
+        assert sensor.pod_name == pod_name
+        assert sensor.name == pod_name
+        assert (
+            sensor.unique_id
+            == f"{mock_config_entry.entry_id}_pod_{namespace}_{pod_name}"
+        )
+        assert sensor.icon == "mdi:cube"
+        assert sensor.state_class is None
+
+    def test_pod_sensor_native_value_with_data(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test pod sensor native value when data is available."""
+        namespace = "default"
+        pod_name = "test-pod"
+
+        # Mock coordinator data
+        mock_coordinator.get_pod_data.return_value = {
+            "name": pod_name,
+            "namespace": namespace,
+            "phase": "Running",
+            "ready_containers": 2,
+            "total_containers": 2,
+            "restart_count": 0,
+            "node_name": "worker-node-1",
+            "pod_ip": "10.244.1.5",
+            "creation_timestamp": "2023-01-01T00:00:00Z",
+            "owner_kind": "ReplicaSet",
+            "owner_name": "test-app-7d4b8c9f6b",
+            "uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "labels": {"app": "test-app", "version": "v1.0"},
+        }
+
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+
+        assert sensor.native_value == "Running"
+
+    def test_pod_sensor_native_value_no_data(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test pod sensor native value when no data is available."""
+        namespace = "default"
+        pod_name = "test-pod"
+
+        # Mock coordinator to return no data
+        mock_coordinator.get_pod_data.return_value = None
+
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+
+        assert sensor.native_value == "Unknown"
+
+    def test_pod_sensor_extra_state_attributes(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test pod sensor extra state attributes."""
+        namespace = "default"
+        pod_name = "test-pod"
+
+        # Mock coordinator data
+        mock_coordinator.get_pod_data.return_value = {
+            "name": pod_name,
+            "namespace": namespace,
+            "phase": "Running",
+            "ready_containers": 2,
+            "total_containers": 2,
+            "restart_count": 0,
+            "node_name": "worker-node-1",
+            "pod_ip": "10.244.1.5",
+            "creation_timestamp": "2023-01-01T00:00:00Z",
+            "owner_kind": "ReplicaSet",
+            "owner_name": "test-app-7d4b8c9f6b",
+            "uid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "labels": {"app": "test-app", "version": "v1.0"},
+        }
+
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+
+        attributes = sensor.extra_state_attributes
+
+        assert attributes["namespace"] == namespace
+        assert attributes["phase"] == "Running"
+        assert attributes["ready_containers"] == 2
+        assert attributes["total_containers"] == 2
+        assert attributes["restart_count"] == 0
+        assert attributes["node_name"] == "worker-node-1"
+        assert attributes["pod_ip"] == "10.244.1.5"
+        assert attributes["creation_timestamp"] == "2023-01-01T00:00:00Z"
+        assert attributes["owner_kind"] == "ReplicaSet"
+        assert attributes["owner_name"] == "test-app-7d4b8c9f6b"
+        assert attributes["uid"] == "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        assert attributes["label_app"] == "test-app"
+        assert attributes["label_version"] == "v1.0"
+
+    def test_pod_sensor_extra_state_attributes_no_data(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test pod sensor extra state attributes when no data is available."""
+        namespace = "default"
+        pod_name = "test-pod"
+
+        # Mock coordinator to return no data
+        mock_coordinator.get_pod_data.return_value = None
+
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+
+        attributes = sensor.extra_state_attributes
+        assert attributes == {}
+
+    def test_pod_sensor_phase_attribute_for_filtering(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test pod sensor phase attribute for auto-entities filtering."""
+        namespace = "default"
+        pod_name = "failed-pod"
+
+        # Test with Failed phase
+        mock_coordinator.get_pod_data.return_value = {
+            "name": pod_name,
+            "namespace": namespace,
+            "phase": "Failed",
+            "ready_containers": 0,
+            "total_containers": 1,
+        }
+
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+
+        attributes = sensor.extra_state_attributes
+        assert attributes["phase"] == "Failed"
+        assert sensor.native_value == "Failed"
+
+        # Test with Pending phase
+        mock_coordinator.get_pod_data.return_value = {
+            "name": pod_name,
+            "namespace": namespace,
+            "phase": "Pending",
+        }
+
+        attributes = sensor.extra_state_attributes
+        assert attributes["phase"] == "Pending"
+        assert sensor.native_value == "Pending"
+
+        # Test with Succeeded phase
+        mock_coordinator.get_pod_data.return_value = {
+            "name": pod_name,
+            "namespace": namespace,
+            "phase": "Succeeded",
+        }
+
+        attributes = sensor.extra_state_attributes
+        assert attributes["phase"] == "Succeeded"
+        assert sensor.native_value == "Succeeded"
+
+    async def test_pod_sensor_async_update(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test pod sensor async update."""
+        namespace = "default"
+        pod_name = "test-pod"
+
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+
+        # Mock the parent class async_update method
+        with patch.object(
+            sensor.__class__.__bases__[0], "async_update"
+        ) as mock_parent_update:
+            await sensor.async_update()
+            mock_parent_update.assert_called_once()

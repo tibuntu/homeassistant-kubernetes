@@ -44,8 +44,10 @@ def mock_client():
     client.get_statefulsets_count = AsyncMock(return_value=0)
     client.get_cronjobs_count = AsyncMock(return_value=0)
     client.get_pods_count = AsyncMock(return_value=0)
+    client.get_pods = AsyncMock(return_value=[])
     client.get_nodes_count = AsyncMock(return_value=0)
     client.get_nodes = AsyncMock(return_value=[])
+    client._test_connection = AsyncMock(return_value=True)
     return client
 
 
