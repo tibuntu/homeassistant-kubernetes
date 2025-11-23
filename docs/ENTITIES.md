@@ -100,6 +100,8 @@ Each switch includes detailed attributes:
 - **Scale Status**: Success/failure status of the last scaling operation
 - **Namespace**: Kubernetes namespace
 - **Resource Type**: `deployment` or `statefulset`
+- **CPU Usage**: CPU usage in millicores (for Deployments and StatefulSets)
+- **Memory Usage**: Memory usage in MiB (for Deployments and StatefulSets)
 
 ## Entity Naming
 

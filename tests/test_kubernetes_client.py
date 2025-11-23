@@ -1139,3 +1139,100 @@ class TestKubernetesClientCronJobOperations:
                 client._resume_cronjob_aiohttp.assert_called_once_with(
                     "test-cronjob", "other-namespace"
                 )
+
+
+def test_parse_memory(mock_client):
+    """Test memory parsing."""
+    # Binary prefixes
+    assert mock_client._parse_memory("1Ki", "KiB") == 1.0
+    assert mock_client._parse_memory("1Mi", "MiB") == 1.0
+    assert mock_client._parse_memory("1Gi", "GiB") == 1.0
+
+    # Decimal prefixes
+    assert mock_client._parse_memory("1k", "KiB") == 0.98  # 1000/1024
+    assert mock_client._parse_memory("1M", "MiB") == 0.95  # 1000^2/1024^2
+
+    # Bytes
+    assert mock_client._parse_memory("1024", "KiB") == 1.0
+
+    # Default output type (MiB)
+    assert mock_client._parse_memory("1Gi") == 1024.0
+
+
+def test_parse_cpu(mock_client):
+    """Test CPU parsing."""
+    # Nanocores
+    assert mock_client._parse_cpu("1000000000n", "cores") == 1.0
+
+    # Microcores
+    assert mock_client._parse_cpu("1000000u", "cores") == 1.0
+
+    # Millicores
+    assert mock_client._parse_cpu("1000m", "cores") == 1.0
+
+    # Cores
+    assert mock_client._parse_cpu("1", "cores") == 1.0
+
+    # Output types
+    assert mock_client._parse_cpu("1", "m") == 1000.0
+    assert mock_client._parse_cpu("1000m", "m") == 1000.0
+
+
+async def test_enrich_deployments_with_metrics(mock_client):
+    """Test enriching deployments with metrics."""
+    deployments = [
+        {
+            "name": "test-deployment",
+            "namespace": "default",
+            "selector": {"app": "test"},
+        }
+    ]
+
+    mock_client._get_pods_aiohttp = AsyncMock(
+        return_value=[
+            {
+                "name": "test-pod",
+                "namespace": "default",
+                "labels": {"app": "test"},
+            }
+        ]
+    )
+
+    mock_client._get_pod_metrics_aiohttp = AsyncMock(
+        return_value={"default/test-pod": {"cpu": 0.5, "memory": 128.0}}
+    )
+
+    await mock_client._enrich_deployments_with_metrics(deployments)
+
+    assert deployments[0]["cpu_usage"] == 0.5
+    assert deployments[0]["memory_usage"] == 128.0
+
+
+async def test_enrich_statefulsets_with_metrics(mock_client):
+    """Test enriching statefulsets with metrics."""
+    statefulsets = [
+        {
+            "name": "test-statefulset",
+            "namespace": "default",
+            "selector": {"app": "test"},
+        }
+    ]
+
+    mock_client._get_pods_aiohttp = AsyncMock(
+        return_value=[
+            {
+                "name": "test-pod",
+                "namespace": "default",
+                "labels": {"app": "test"},
+            }
+        ]
+    )
+
+    mock_client._get_pod_metrics_aiohttp = AsyncMock(
+        return_value={"default/test-pod": {"cpu": 0.5, "memory": 128.0}}
+    )
+
+    await mock_client._enrich_statefulsets_with_metrics(statefulsets)
+
+    assert statefulsets[0]["cpu_usage"] == 0.5
+    assert statefulsets[0]["memory_usage"] == 128.0
