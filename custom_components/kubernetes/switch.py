@@ -446,6 +446,8 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
             CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
         )
         self._last_scale_attempt_failed = False
+        self._cpu_usage = 0.0
+        self._memory_usage = 0.0
 
     @property
     def is_on(self) -> bool:
@@ -461,6 +463,8 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
             "replicas": self._replicas,
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
             "last_scale_attempt_failed": self._last_scale_attempt_failed,
+            "cpu_usage_(millicores)": f"{int(self._cpu_usage)}",
+            "memory_usage_(MiB)": f"{int(self._memory_usage)}",
         }
 
     @property
@@ -570,6 +574,8 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
 
         self._replicas = statefulset_data["replicas"]
         self._is_on = statefulset_data["is_running"]
+        self._cpu_usage = statefulset_data.get("cpu_usage", 0.0)
+        self._memory_usage = statefulset_data.get("memory_usage", 0.0)
 
         # Log state changes for debugging
         if old_replicas != self._replicas:
