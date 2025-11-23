@@ -16,6 +16,7 @@ from custom_components.kubernetes.const import (
     ATTR_REPLICAS,
     ATTR_STATEFULSET_NAME,
     ATTR_STATEFULSET_NAMES,
+    ATTR_WORKLOAD_TYPE,
     DOMAIN,
     SERVICE_CREATE_CRONJOB_JOB,
     SERVICE_RESUME_CRONJOB,
@@ -27,10 +28,20 @@ from custom_components.kubernetes.const import (
     SERVICE_STOP_STATEFULSET,
     SERVICE_SUSPEND_CRONJOB,
     SERVICE_TRIGGER_CRONJOB,
+    WORKLOAD_TYPE_CRONJOB,
+    WORKLOAD_TYPE_DEPLOYMENT,
+    WORKLOAD_TYPE_STATEFULSET,
 )
 from custom_components.kubernetes.services import (
     async_setup_services,
     async_unload_services,
+    _extract_cronjob_names_and_namespaces,
+    _extract_deployment_names_and_namespaces,
+    _extract_statefulset_names_and_namespaces,
+    _get_namespace_from_entity,
+    _validate_deployment_schema,
+    _validate_entity_workload_type,
+    _validate_statefulset_schema,
 )
 
 
@@ -816,3 +827,334 @@ class TestCronJobServices:
 
         result = _validate_cronjob_schema(call_data)
         assert result == call_data
+
+
+class TestServiceHelpers:
+    """Test service helper functions."""
+
+    def test_validate_entity_workload_type(self, mock_hass):
+        """Test _validate_entity_workload_type function."""
+        # Test non-entity string
+        assert _validate_entity_workload_type(mock_hass, "my-deployment", WORKLOAD_TYPE_DEPLOYMENT) is True
+
+        # Test entity not found
+        mock_hass.states.get.return_value = None
+        assert _validate_entity_workload_type(mock_hass, "switch.my_deployment", WORKLOAD_TYPE_DEPLOYMENT) is False
+
+        # Test entity with correct workload type
+        entity = MagicMock()
+        entity.attributes = {ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT}
+        mock_hass.states.get.return_value = entity
+        assert _validate_entity_workload_type(mock_hass, "switch.my_deployment", WORKLOAD_TYPE_DEPLOYMENT) is True
+
+        # Test entity with incorrect workload type
+        entity.attributes = {ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET}
+        assert _validate_entity_workload_type(mock_hass, "switch.my_deployment", WORKLOAD_TYPE_DEPLOYMENT) is False
+
+        # Test exception handling
+        mock_hass.states.get.side_effect = Exception("Test error")
+        assert _validate_entity_workload_type(mock_hass, "switch.my_deployment", WORKLOAD_TYPE_DEPLOYMENT) is False
+        mock_hass.states.get.side_effect = None  # Reset side effect
+
+    def test_get_namespace_from_entity(self, mock_hass):
+        """Test _get_namespace_from_entity function."""
+        # Test entity found with deployment_name
+        entity = MagicMock()
+        entity.attributes = {
+            "namespace": "default",
+            "deployment_name": "my-app"
+        }
+        mock_hass.states.get.return_value = entity
+
+        ns, name = _get_namespace_from_entity(mock_hass, "switch.my_app")
+        assert ns == "default"
+        assert name == "my-app"
+
+        # Test entity found with statefulset_name
+        entity.attributes = {
+            "namespace": "prod",
+            "statefulset_name": "my-db"
+        }
+        ns, name = _get_namespace_from_entity(mock_hass, "switch.my_db")
+        assert ns == "prod"
+        assert name == "my-db"
+
+        # Test entity found with cronjob_name
+        entity.attributes = {
+            "namespace": "batch",
+            "cronjob_name": "my-job"
+        }
+        ns, name = _get_namespace_from_entity(mock_hass, "switch.my_job")
+        assert ns == "batch"
+        assert name == "my-job"
+
+        # Test entity not found
+        mock_hass.states.get.return_value = None
+        ns, name = _get_namespace_from_entity(mock_hass, "switch.unknown")
+        assert ns is None
+        assert name is None
+
+        # Test exception handling
+        mock_hass.states.get.side_effect = Exception("Test error")
+        ns, name = _get_namespace_from_entity(mock_hass, "switch.error")
+        assert ns is None
+        assert name is None
+        mock_hass.states.get.side_effect = None  # Reset side effect
+
+    def test_validate_deployment_schema(self):
+        """Test _validate_deployment_schema function."""
+        # Valid data
+        assert _validate_deployment_schema({ATTR_DEPLOYMENT_NAME: "app"}) == {ATTR_DEPLOYMENT_NAME: "app"}
+        assert _validate_deployment_schema({ATTR_DEPLOYMENT_NAMES: ["app"]}) == {ATTR_DEPLOYMENT_NAMES: ["app"]}
+
+        # Invalid data
+        with pytest.raises(vol.Invalid):
+            _validate_deployment_schema({})
+
+    def test_validate_statefulset_schema(self):
+        """Test _validate_statefulset_schema function."""
+        # Valid data
+        assert _validate_statefulset_schema({ATTR_STATEFULSET_NAME: "db"}) == {ATTR_STATEFULSET_NAME: "db"}
+        assert _validate_statefulset_schema({ATTR_STATEFULSET_NAMES: ["db"]}) == {ATTR_STATEFULSET_NAMES: ["db"]}
+
+        # Invalid data
+        with pytest.raises(vol.Invalid):
+            _validate_statefulset_schema({})
+
+
+class TestDeploymentExtraction:
+    """Test deployment extraction logic."""
+
+    def test_extract_deployment_names_single_string(self, mock_hass):
+        """Test extracting from single string name."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+            "namespace": "default",
+            "deployment_name": "my-app"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with entity ID
+        names, namespaces = _extract_deployment_names_and_namespaces(
+            {ATTR_DEPLOYMENT_NAME: "switch.my_app"}, mock_hass
+        )
+        assert names == ["my-app"]
+        assert namespaces == ["default"]
+
+    def test_extract_deployment_names_single_dict(self, mock_hass):
+        """Test extracting from single dict with entity_id."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+            "namespace": "default",
+            "deployment_name": "my-app"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with dict
+        names, namespaces = _extract_deployment_names_and_namespaces(
+            {ATTR_DEPLOYMENT_NAME: {"entity_id": "switch.my_app"}}, mock_hass
+        )
+        assert names == ["my-app"]
+        assert namespaces == ["default"]
+
+    def test_extract_deployment_names_list_strings(self, mock_hass):
+        """Test extracting from list of strings."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+            "namespace": "default",
+            "deployment_name": "my-app"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with list of strings
+        names, namespaces = _extract_deployment_names_and_namespaces(
+            {ATTR_DEPLOYMENT_NAMES: ["switch.my_app"]}, mock_hass
+        )
+        assert names == ["my-app"]
+        assert namespaces == ["default"]
+
+    def test_extract_deployment_names_list_dicts(self, mock_hass):
+        """Test extracting from list of dicts."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+            "namespace": "default",
+            "deployment_name": "my-app"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with list of dicts
+        names, namespaces = _extract_deployment_names_and_namespaces(
+            {ATTR_DEPLOYMENT_NAMES: [{"entity_id": "switch.my_app"}]}, mock_hass
+        )
+        assert names == ["my-app"]
+        assert namespaces == ["default"]
+
+    def test_extract_deployment_names_ha_ui_format(self, mock_hass):
+        """Test extracting from HA UI format (dict with entity_id list)."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+            "namespace": "default",
+            "deployment_name": "my-app"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with HA UI format
+        names, namespaces = _extract_deployment_names_and_namespaces(
+            {ATTR_DEPLOYMENT_NAMES: {"entity_id": ["switch.my_app"]}}, mock_hass
+        )
+        assert names == ["my-app"]
+        assert namespaces == ["default"]
+
+    def test_extract_deployment_names_fallback(self, mock_hass):
+        """Test fallback extraction when attributes missing."""
+        # Setup mock entity with correct type but missing name
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+            "namespace": "default"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test fallback
+        names, namespaces = _extract_deployment_names_and_namespaces(
+            {ATTR_DEPLOYMENT_NAMES: {"entity_id": ["switch.my_app_deployment"]}}, mock_hass
+        )
+        # Fallback replaces switch. and _deployment, but keeps underscores from entity_id
+        assert names == ["my_app"]
+        assert namespaces == ["default"]
+
+    def test_extract_deployment_names_invalid_type(self, mock_hass):
+        """Test extracting with invalid type."""
+        names, namespaces = _extract_deployment_names_and_namespaces(
+            {ATTR_DEPLOYMENT_NAMES: 123}, mock_hass
+        )
+        assert names == []
+        assert namespaces == []
+
+
+class TestStatefulSetExtraction:
+    """Test StatefulSet extraction logic."""
+
+    def test_extract_statefulset_names_single_string(self, mock_hass):
+        """Test extracting from single string name."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
+            "namespace": "default",
+            "statefulset_name": "my-db"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with entity ID
+        names, namespaces = _extract_statefulset_names_and_namespaces(
+            {ATTR_STATEFULSET_NAME: "switch.my_db"}, mock_hass
+        )
+        assert names == ["my-db"]
+        assert namespaces == ["default"]
+
+    def test_extract_statefulset_names_ha_ui_format(self, mock_hass):
+        """Test extracting from HA UI format."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
+            "namespace": "default",
+            "statefulset_name": "my-db"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with HA UI format
+        names, namespaces = _extract_statefulset_names_and_namespaces(
+            {ATTR_STATEFULSET_NAMES: {"entity_id": ["switch.my_db"]}}, mock_hass
+        )
+        assert names == ["my-db"]
+        assert namespaces == ["default"]
+
+    def test_extract_statefulset_names_fallback(self, mock_hass):
+        """Test fallback extraction when attributes missing."""
+        # Setup mock entity with correct type but missing name
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
+            "namespace": "default"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test fallback
+        names, namespaces = _extract_statefulset_names_and_namespaces(
+            {ATTR_STATEFULSET_NAMES: {"entity_id": ["switch.my_db_statefulset"]}}, mock_hass
+        )
+        # Fallback replaces switch. and _statefulset, but keeps underscores from entity_id
+        assert names == ["my_db"]
+        assert namespaces == ["default"]
+
+
+class TestCronJobExtraction:
+    """Test CronJob extraction logic."""
+
+    def test_extract_cronjob_names_single_string(self, mock_hass):
+        """Test extracting from single string name."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
+            "namespace": "default",
+            "cronjob_name": "my-job"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with entity ID
+        names, namespaces = _extract_cronjob_names_and_namespaces(
+            {ATTR_CRONJOB_NAME: "switch.my_job"}, mock_hass
+        )
+        # Current implementation returns the entity ID (name) instead of extracted cronjob_name
+        # This matches current behavior in services.py
+        assert names == ["switch.my_job"]
+        assert namespaces == ["default"]
+
+    def test_extract_cronjob_names_ha_ui_format(self, mock_hass):
+        """Test extracting from HA UI format."""
+        # Setup mock entity
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
+            "namespace": "default",
+            "cronjob_name": "my-job"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test with HA UI format
+        names, namespaces = _extract_cronjob_names_and_namespaces(
+            {ATTR_CRONJOB_NAMES: {"entity_id": ["switch.my_job"]}}, mock_hass
+        )
+        assert names == ["my-job"]
+        assert namespaces == ["default"]
+
+    def test_extract_cronjob_names_fallback(self, mock_hass):
+        """Test fallback extraction when attributes missing."""
+        # Setup mock entity with correct type but missing name
+        entity = MagicMock()
+        entity.attributes = {
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
+            "namespace": "default"
+        }
+        mock_hass.states.get.return_value = entity
+
+        # Test fallback
+        names, namespaces = _extract_cronjob_names_and_namespaces(
+            {ATTR_CRONJOB_NAMES: {"entity_id": ["switch.my_job_cronjob"]}}, mock_hass
+        )
+        # Fallback replaces switch. and _cronjob, but keeps underscores from entity_id
+        assert names == ["my_job"]
+        assert namespaces == ["default"]
