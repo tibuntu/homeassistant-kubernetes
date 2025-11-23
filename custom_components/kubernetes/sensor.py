@@ -57,6 +57,10 @@ async def async_setup_entry(
                 node_sensor.unique_id,
             )
 
+        # Create individual sensors for each Kubernetes deployment
+        # Deployment sensors are removed in favor of attributes on the deployment switch
+        deployment_sensors_created = 0
+
         async_add_entities(sensors)
 
         # Store the add_entities callback for dynamic entity management
@@ -73,7 +77,7 @@ async def async_setup_entry(
         def _async_add_new_entities() -> None:
             """Add new entities when new resources are discovered."""
             hass.async_create_task(
-                _async_discover_and_add_new_node_sensors(
+                _async_discover_and_add_new_entities(
                     hass, config_entry, coordinator, client
                 )
             )
@@ -82,22 +86,23 @@ async def async_setup_entry(
         coordinator.async_add_listener(_async_add_new_entities)
 
         _LOGGER.debug(
-            "Successfully set up %d Kubernetes sensors (including %d node sensors)",
+            "Successfully set up %d Kubernetes sensors (including %d node sensors and %d deployment sensors)",
             len(sensors),
             node_sensors_created,
+            deployment_sensors_created,
         )
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
         raise
 
 
-async def _async_discover_and_add_new_node_sensors(
+async def _async_discover_and_add_new_entities(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     coordinator: KubernetesDataCoordinator,
     client: Any,
 ) -> None:
-    """Discover and add new node sensors for newly discovered Kubernetes nodes."""
+    """Discover and add new sensors for newly discovered Kubernetes resources."""
     try:
         entity_registry = async_get_entity_registry(hass)
 
@@ -106,7 +111,7 @@ async def _async_discover_and_add_new_node_sensors(
         add_entities_callback = sensor_data.get("sensor_add_entities")
         if not add_entities_callback:
             _LOGGER.warning(
-                "No add_entities callback found for dynamic node sensor management"
+                "No add_entities callback found for dynamic sensor management"
             )
             return
 
@@ -132,15 +137,18 @@ async def _async_discover_and_add_new_node_sensors(
                         )
                     )
 
+        # Check for new deployments
+        # Deployment sensors are removed in favor of attributes on the deployment switch
+
         # Add new entities if any were found
         if new_entities:
-            _LOGGER.info("Adding %d new node sensors", len(new_entities))
+            _LOGGER.info("Adding %d new sensors", len(new_entities))
             add_entities_callback(new_entities)
         else:
-            _LOGGER.debug("No new node sensors to add")
+            _LOGGER.debug("No new sensors to add")
 
     except Exception as ex:
-        _LOGGER.error("Failed to discover and add new node sensors: %s", ex)
+        _LOGGER.error("Failed to discover and add new sensors: %s", ex)
 
 
 class KubernetesBaseSensor(SensorEntity):
@@ -427,9 +435,9 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
         attributes = {
             "internal_IP": node_data.get("internal_ip", "N/A"),
             "external_IP": node_data.get("external_ip", "N/A"),
-            "memory_capacity_GiB": f"{node_data.get('memory_capacity_gib', 0)} GiB",
-            "memory_allocatable_GiB": f"{node_data.get('memory_allocatable_gib', 0)} GiB",
-            "CPU_cores": f"{node_data.get('cpu_cores', 0)} Cores",
+            "memory_capacity_(GiB)": f"{node_data.get('memory_capacity_gib', 0)} GiB",
+            "memory_allocatable_(GiB)": f"{node_data.get('memory_allocatable_gib', 0)} GiB",
+            "CPU": f"{node_data.get('cpu_cores', 0)} vCPU",
             "OS_image": node_data.get("os_image", "N/A"),
             "kernel_version": node_data.get("kernel_version", "N/A"),
             "container_runtime": node_data.get("container_runtime", "N/A"),
@@ -447,3 +455,65 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
             # The base class handles coordinator updates
         except Exception as ex:
             _LOGGER.error("Failed to update node sensor %s: %s", self.node_name, ex)
+
+
+class KubernetesDeploymentSensor(KubernetesBaseSensor):
+    """Sensor for individual Kubernetes deployment with detailed information."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client,
+        config_entry: ConfigEntry,
+        deployment_name: str,
+    ) -> None:
+        """Initialize the deployment sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.deployment_name = deployment_name
+        self._attr_name = f"Deployment {deployment_name}"
+        self._attr_unique_id = f"{config_entry.entry_id}_deployment_{deployment_name}"
+        self._attr_icon = "mdi:cube"
+        # State is the number of available replicas
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_native_unit_of_measurement = "replicas"
+
+    @property
+    def native_value(self) -> int:
+        """Return the native value of the sensor (available replicas)."""
+        if not self.coordinator.data or "deployments" not in self.coordinator.data:
+            return 0
+
+        deployments = self.coordinator.data["deployments"]
+        if self.deployment_name in deployments:
+            return deployments[self.deployment_name].get("available_replicas", 0)
+        return 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes for the deployment."""
+        if not self.coordinator.data or "deployments" not in self.coordinator.data:
+            return {}
+
+        deployments = self.coordinator.data["deployments"]
+        if self.deployment_name not in deployments:
+            return {}
+
+        deployment = deployments[self.deployment_name]
+        return {
+            "namespace": deployment.get("namespace"),
+            "replicas": deployment.get("replicas", 0),
+            "ready_replicas": deployment.get("ready_replicas", 0),
+            "available_replicas": deployment.get("available_replicas", 0),
+            "cpu_usage_(millicores)": f"{deployment.get('cpu_usage', 0.0):.3f}",
+            "memory_usage_(MiB)": f"{deployment.get('memory_usage', 0.0):.2f}",
+        }
+
+    async def async_update(self) -> None:
+        """Update the deployment sensor state."""
+        try:
+            await super().async_update()
+            # The base class handles coordinator updates
+        except Exception as ex:
+            _LOGGER.error(
+                "Failed to update deployment sensor %s: %s", self.deployment_name, ex
+            )

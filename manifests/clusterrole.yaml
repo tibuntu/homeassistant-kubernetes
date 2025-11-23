@@ -37,3 +37,7 @@ rules:
   - apiGroups: ["batch"]
     resources: ["cronjobs", "cronjobs/status", "jobs"]
     verbs: ["get", "list", "watch", "patch", "update", "create"]
+  # Metrics API permissions
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]

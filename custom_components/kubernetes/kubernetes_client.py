@@ -444,22 +444,16 @@ class KubernetesClient:
                                 capacity = status.get("capacity", {})
                                 allocatable = status.get("allocatable", {})
 
-                                # Parse memory (convert from Ki to GiB)
+                                # Parse memory (in GiB)
                                 memory_capacity_str = capacity.get("memory", "0Ki")
-                                memory_capacity_gib = self._parse_memory_to_gib(
-                                    memory_capacity_str
-                                )
+                                memory_capacity_gib = self._parse_memory(memory_capacity_str, "GiB")
+                                memory_allocatable_str = allocatable.get("memory", "0Ki")
+                                memory_allocatable_gib = self._parse_memory(memory_allocatable_str, "GiB")
 
-                                memory_allocatable_str = allocatable.get(
-                                    "memory", "0Ki"
-                                )
-                                memory_allocatable_gib = self._parse_memory_to_gib(
-                                    memory_allocatable_str
-                                )
-
-                                # Parse CPU (can be in millicores or cores)
+                                # Parse CPU String
                                 cpu_capacity = capacity.get("cpu", "0")
-                                cpu_cores = self._parse_cpu_to_cores(cpu_capacity)
+                                cpu_cores = self._parse_cpu(cpu_capacity, "cores")
+
                                 # Get node info
                                 node_info = status.get("nodeInfo", {})
                                 os_image = node_info.get("osImage", "N/A")
@@ -517,43 +511,103 @@ class KubernetesClient:
             self._log_error("aiohttp get nodes", ex)
             return []
 
-    def _parse_memory_to_gib(self, memory_str: str) -> float:
-        """Parse Kubernetes memory string to GiB."""
+    def _parse_memory(self, memory_str: str, output_type: str = "MiB") -> float:
+        """Parse Kubernetes memory string to specified unit (KiB, MiB, or GiB)"""
         try:
+            # First convert to bytes
+            bytes_value = 0.0
+
+            # Handle binary prefixes (Ki, Mi, Gi, Ti, Pi, Ei)
             if memory_str.endswith("Ki"):
-                # Kibibytes to GiB
-                kb = int(memory_str[:-2])
-                return round(kb / (1024 * 1024), 2)
+                bytes_value = float(memory_str[:-2]) * 1024
             elif memory_str.endswith("Mi"):
-                # Mebibytes to GiB
-                mb = int(memory_str[:-2])
-                return round(mb / 1024, 2)
+                bytes_value = float(memory_str[:-2]) * 1024**2
             elif memory_str.endswith("Gi"):
-                # Already in GiB
-                gb = int(memory_str[:-2])
-                return float(gb)
+                bytes_value = float(memory_str[:-2]) * 1024**3
             elif memory_str.endswith("Ti"):
-                # Tebibytes to GiB
-                tb = int(memory_str[:-2])
-                return round(tb * 1024, 2)
+                bytes_value = float(memory_str[:-2]) * 1024**4
+            elif memory_str.endswith("Pi"):
+                bytes_value = float(memory_str[:-2]) * 1024**5
+            elif memory_str.endswith("Ei"):
+                bytes_value = float(memory_str[:-2]) * 1024**6
+
+            # Handle decimal prefixes (k, M, G, T, P, E)
+            elif memory_str.endswith("k"):
+                bytes_value = float(memory_str[:-1]) * 1000
+            elif memory_str.endswith("M"):
+                bytes_value = float(memory_str[:-1]) * 1000**2
+            elif memory_str.endswith("G"):
+                bytes_value = float(memory_str[:-1]) * 1000**3
+            elif memory_str.endswith("T"):
+                bytes_value = float(memory_str[:-1]) * 1000**4
+            elif memory_str.endswith("P"):
+                bytes_value = float(memory_str[:-1]) * 1000**5
+            elif memory_str.endswith("E"):
+                bytes_value = float(memory_str[:-1]) * 1000**6
+
+            # Handle plain bytes
             else:
-                # Assume bytes
-                bytes_val = int(memory_str)
-                return round(bytes_val / (1024**3), 2)
+                bytes_value = float(memory_str)
+
+            # Convert to requested output type
+            if output_type == "KiB":
+                value = bytes_value / 1024
+            elif output_type == "MiB":
+                value = bytes_value / (1024**2)
+            elif output_type == "GiB":
+                value = bytes_value / (1024**3)
+            else:
+                # Default to MiB if invalid type provided
+                _LOGGER.warning("Invalid output type '%s', defaulting to MiB", output_type)
+                value = bytes_value / (1024**2)
+
+            # Round up to 2 decimal places
+            return round(value, 2)
+
         except (ValueError, IndexError):
             _LOGGER.warning("Failed to parse memory string: %s", memory_str)
             return 0.0
 
-    def _parse_cpu_to_cores(self, cpu_str: str) -> float:
-        """Parse Kubernetes CPU string to cores."""
+    def _parse_cpu(self, cpu_str: str, output_type: str = "cores") -> float:
+        """Parse Kubernetes CPU string to specified unit (n, u, m, or cores)"""
         try:
-            if cpu_str.endswith("m"):
-                # Millicores to cores
-                millicores = int(cpu_str[:-1])
-                return millicores / 1000.0
+            # First convert to nanocores
+            nanocores = 0.0
+
+            # Parse input to nanocores
+            if cpu_str.endswith("n"):
+                # Nanocores
+                nanocores = float(cpu_str[:-1])
+            elif cpu_str.endswith("u"):
+                # Microcores to nanocores
+                nanocores = float(cpu_str[:-1]) * 1000
+            elif cpu_str.endswith("m"):
+                # Millicores to nanocores
+                nanocores = float(cpu_str[:-1]) * 1_000_000
             else:
-                # Already in cores
-                return float(cpu_str)
+                # Cores to nanocores
+                nanocores = float(cpu_str) * 1_000_000_000
+
+            # Convert to requested output type
+            if output_type == "n":
+                value = nanocores
+            elif output_type == "u":
+                value = nanocores / 1000
+            elif output_type == "m":
+                value = nanocores / 1_000_000
+            elif output_type == "cores":
+                value = nanocores / 1_000_000_000
+            else:
+                # Default to cores if invalid type provided
+                _LOGGER.warning("Invalid output type '%s', defaulting to cores", output_type)
+                value = nanocores / 1_000_000_000
+
+            # Round based on output type - cores get whole numbers, others get 2 decimal places
+            if output_type == "cores" or (output_type not in ["n", "u", "m", "cores"]):
+                return int(round(value))
+            else:
+                return round(value, 2)
+
         except (ValueError, IndexError):
             _LOGGER.warning("Failed to parse CPU string: %s", cpu_str)
             return 0.0
@@ -652,6 +706,7 @@ class KubernetesClient:
                 result = await self._get_deployments_aiohttp()
 
             if result:
+                await self._enrich_deployments_with_metrics(result)
                 self._log_success(
                     "get deployments", f"retrieved {len(result)} deployments"
                 )
@@ -693,6 +748,11 @@ class KubernetesClient:
                     if deployment.status.available_replicas
                     else False
                 ),
+                "selector": (
+                    deployment.spec.selector.match_labels
+                    if deployment.spec.selector
+                    else {}
+                ),
             }
             deployment_list.append(deployment_info)
 
@@ -731,6 +791,9 @@ class KubernetesClient:
                                     "availableReplicas", 0
                                 )
                                 > 0,
+                                "selector": deployment.get("spec", {})
+                                .get("selector", {})
+                                .get("matchLabels", {}),
                             }
                             deployment_list.append(deployment_info)
                         return deployment_list
@@ -777,6 +840,9 @@ class KubernetesClient:
                                     "availableReplicas", 0
                                 )
                                 > 0,
+                                "selector": deployment.get("spec", {})
+                                .get("selector", {})
+                                .get("matchLabels", {}),
                             }
                             deployment_list.append(deployment_info)
                         return deployment_list
@@ -787,7 +853,7 @@ class KubernetesClient:
                         )
                         return []
         except Exception as ex:
-            self._log_error("aiohttp get all deployments", ex)
+            self._log_error("aiohttp get all deployments count", ex)
             return []
 
     async def scale_deployment(
@@ -1331,6 +1397,198 @@ class KubernetesClient:
     ) -> bool:
         """Start a StatefulSet by scaling it to the specified number of replicas."""
         return await self.scale_statefulset(statefulset_name, replicas, namespace)
+
+    async def get_pods(self) -> list[dict[str, Any]]:
+        """Get all pods with their details."""
+        try:
+            # Try using the official client first if available
+            if self.core_v1:
+                if self.monitor_all_namespaces:
+                    loop = asyncio.get_event_loop()
+                    pods = await loop.run_in_executor(
+                        None, self.core_v1.list_pod_for_all_namespaces
+                    )
+                else:
+                    loop = asyncio.get_event_loop()
+                    pods = await loop.run_in_executor(
+                        None,
+                        lambda: self.core_v1.list_namespaced_pod(self.namespace),
+                    )
+
+                pod_list = []
+                for pod in pods.items:
+                    pod_info = {
+                        "name": pod.metadata.name,
+                        "namespace": pod.metadata.namespace,
+                        "labels": pod.metadata.labels or {},
+                        "status": pod.status.phase,
+                    }
+                    pod_list.append(pod_info)
+                return pod_list
+            else:
+                return await self._get_pods_aiohttp()
+        except Exception as ex:
+            self._log_error("get pods", ex)
+            return await self._get_pods_aiohttp()
+
+    async def _get_pods_aiohttp(self) -> list[dict[str, Any]]:
+        """Get pods using aiohttp as fallback."""
+        try:
+            headers = {"Authorization": f"Bearer {self.api_token}"}
+            if self.monitor_all_namespaces:
+                url = f"https://{self.host}:{self.port}/api/v1/pods"
+            else:
+                url = f"https://{self.host}:{self.port}/api/v1/namespaces/{self.namespace}/pods"
+
+            ssl_context = False
+            if self.verify_ssl:
+                import ssl
+
+                ssl_context = ssl.create_default_context(cafile=self.ca_cert)
+
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        pod_list = []
+                        for item in data.get("items", []):
+                            metadata = item.get("metadata", {})
+                            status = item.get("status", {})
+                            pod_info = {
+                                "name": metadata.get("name"),
+                                "namespace": metadata.get("namespace"),
+                                "labels": metadata.get("labels", {}),
+                                "status": status.get("phase"),
+                            }
+                            pod_list.append(pod_info)
+                        return pod_list
+                    else:
+                        _LOGGER.error(
+                            "aiohttp pods request failed with status: %s",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            _LOGGER.error("Exception in _get_pods_aiohttp: %s", ex)
+            return []
+
+    async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
+        """Get pod metrics (CPU and memory usage)."""
+        # Metrics API is usually accessed via /apis/metrics.k8s.io/v1beta1/pods
+        return await self._get_pod_metrics_aiohttp()
+
+    async def _get_pod_metrics_aiohttp(self) -> dict[str, dict[str, float]]:
+        """Get pod metrics using aiohttp."""
+        try:
+            headers = {"Authorization": f"Bearer {self.api_token}"}
+            if self.monitor_all_namespaces:
+                url = (
+                    f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/pods"
+                )
+            else:
+                url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/namespaces/{self.namespace}/pods"
+
+            ssl_context = False
+            if self.verify_ssl:
+                import ssl
+
+                ssl_context = ssl.create_default_context(cafile=self.ca_cert)
+
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        metrics = {}
+                        for item in data.get("items", []):
+                            metadata = item.get("metadata", {})
+                            name = metadata.get("name")
+                            namespace = metadata.get("namespace")
+                            containers = item.get("containers", [])
+
+                            cpu_usage = 0.0
+                            memory_usage = 0.0
+
+                            for container in containers:
+                                usage = container.get("usage", {})
+                                cpu_str = usage.get("cpu", "0")
+                                memory_str = usage.get("memory", "0")
+
+                                # Debug log for first few items to verify parsing
+                                if len(metrics) < 5:
+                                    _LOGGER.debug(
+                                        "Parsing metrics for %s/%s: cpu=%s, memory=%s",
+                                        namespace,
+                                        name,
+                                        cpu_str,
+                                        memory_str,
+                                    )
+
+                                cpu_usage += self._parse_cpu(cpu_str, "m")
+                                memory_usage += self._parse_memory(memory_str, "MiB")
+
+                            # Key by namespace/name to be unique across namespaces
+                            key = f"{namespace}/{name}"
+                            metrics[key] = {"cpu": cpu_usage, "memory": memory_usage}
+                        return metrics
+                    else:
+                        _LOGGER.warning(
+                            "Failed to fetch pod metrics: %s. Metrics API might not be available.",
+                            response.status,
+                        )
+                        return {}
+        except Exception as ex:
+            _LOGGER.warning("Exception in _get_pod_metrics_aiohttp: %s", ex)
+            return {}
+
+    async def _enrich_deployments_with_metrics(
+        self, deployments: list[dict[str, Any]]
+    ) -> None:
+        """Enrich deployments with CPU and memory usage metrics."""
+        try:
+            pods = await self._get_pods_aiohttp()
+            metrics = await self._get_pod_metrics_aiohttp()
+
+            if not pods or not metrics:
+                return
+
+            # Helper to check if a pod matches a selector
+            def pod_matches_selector(pod_labels: dict, selector: dict) -> bool:
+                if not selector:
+                    return False
+                for key, value in selector.items():
+                    if pod_labels.get(key) != value:
+                        return False
+                return True
+
+            for deployment in deployments:
+                selector = deployment.get("selector", {})
+                namespace = deployment.get("namespace")
+
+                cpu_usage = 0.0
+                memory_usage = 0.0
+
+                for pod in pods:
+                    # My _get_pods_aiohttp returns flat structure, not nested metadata
+                    pod_name = pod.get("name")
+                    pod_ns = pod.get("namespace")
+                    pod_labels = pod.get("labels", {})
+
+                    if pod_ns == namespace and pod_matches_selector(
+                        pod_labels, selector
+                    ):
+                        # Found a pod for this deployment
+                        pod_metric = metrics.get(f"{namespace}/{pod_name}")
+
+                        if pod_metric:
+                            cpu_usage += pod_metric.get("cpu", 0.0)
+                            memory_usage += pod_metric.get("memory", 0.0)
+
+                deployment["cpu_usage"] = cpu_usage
+                deployment["memory_usage"] = memory_usage
+        except Exception as ex:
+            _LOGGER.error("Error enriching deployments with metrics: %s", ex)
 
     async def compare_authentication_methods(self) -> dict[str, Any]:
         """Compare authentication methods to help diagnose issues."""
