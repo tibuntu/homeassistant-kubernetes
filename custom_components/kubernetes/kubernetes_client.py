@@ -1090,6 +1090,7 @@ class KubernetesClient:
                 result = await self._get_statefulsets_aiohttp()
 
             if result:
+                await self._enrich_statefulsets_with_metrics(result)
                 self._log_success(
                     "get statefulsets", f"retrieved {len(result)} statefulsets"
                 )
@@ -1128,6 +1129,11 @@ class KubernetesClient:
                     if statefulset.status.available_replicas
                     else False
                 ),
+                "selector": (
+                    statefulset.spec.selector.match_labels
+                    if statefulset.spec.selector
+                    else {}
+                ),
             }
             statefulset_list.append(statefulset_info)
 
@@ -1162,6 +1168,11 @@ class KubernetesClient:
                     statefulset.status.available_replicas > 0
                     if statefulset.status.available_replicas
                     else False
+                ),
+                "selector": (
+                    statefulset.spec.selector.match_labels
+                    if statefulset.spec.selector
+                    else {}
                 ),
             }
             statefulset_list.append(statefulset_info)
@@ -1201,6 +1212,9 @@ class KubernetesClient:
                                     "availableReplicas", 0
                                 )
                                 > 0,
+                                "selector": statefulset.get("spec", {})
+                                .get("selector", {})
+                                .get("matchLabels", {}),
                             }
                             statefulset_list.append(statefulset_info)
                         return statefulset_list
@@ -1247,17 +1261,20 @@ class KubernetesClient:
                                     "availableReplicas", 0
                                 )
                                 > 0,
+                                "selector": statefulset.get("spec", {})
+                                .get("selector", {})
+                                .get("matchLabels", {}),
                             }
                             statefulset_list.append(statefulset_info)
                         return statefulset_list
                     else:
                         _LOGGER.error(
-                            "aiohttp statefulsets all namespaces request failed with status: %s",
+                            "aiohttp all statefulsets request failed with status: %s",
                             response.status,
                         )
                         return []
         except Exception as ex:
-            self._log_error("aiohttp get statefulsets all namespaces", ex)
+            self._log_error("aiohttp get all statefulsets count", ex)
             return []
 
     async def scale_statefulset(
@@ -1302,7 +1319,7 @@ class KubernetesClient:
     async def _scale_statefulset_aiohttp(
         self, statefulset_name: str, replicas: int, namespace: str | None = None
     ) -> bool:
-        """Scale StatefulSet using aiohttp."""
+        """Scale StatefulSet using aiohttp as fallback."""
         try:
             target_namespace = namespace or self.namespace
             headers = {
@@ -1589,6 +1606,54 @@ class KubernetesClient:
                 deployment["memory_usage"] = memory_usage
         except Exception as ex:
             _LOGGER.error("Error enriching deployments with metrics: %s", ex)
+
+    async def _enrich_statefulsets_with_metrics(
+        self, statefulsets: list[dict[str, Any]]
+    ) -> None:
+        """Enrich StatefulSets with CPU and memory usage metrics."""
+        try:
+            pods = await self._get_pods_aiohttp()
+            metrics = await self._get_pod_metrics_aiohttp()
+
+            if not pods or not metrics:
+                return
+
+            # Helper to check if a pod matches a selector
+            def pod_matches_selector(pod_labels: dict, selector: dict) -> bool:
+                if not selector:
+                    return False
+                for key, value in selector.items():
+                    if pod_labels.get(key) != value:
+                        return False
+                return True
+
+            for statefulset in statefulsets:
+                selector = statefulset.get("selector", {})
+                namespace = statefulset.get("namespace")
+
+                cpu_usage = 0.0
+                memory_usage = 0.0
+
+                for pod in pods:
+                    # My _get_pods_aiohttp returns flat structure, not nested metadata
+                    pod_name = pod.get("name")
+                    pod_ns = pod.get("namespace")
+                    pod_labels = pod.get("labels", {})
+
+                    if pod_ns == namespace and pod_matches_selector(
+                        pod_labels, selector
+                    ):
+                        # Found a pod for this statefulset
+                        pod_metric = metrics.get(f"{namespace}/{pod_name}")
+
+                        if pod_metric:
+                            cpu_usage += pod_metric.get("cpu", 0.0)
+                            memory_usage += pod_metric.get("memory", 0.0)
+
+                statefulset["cpu_usage"] = cpu_usage
+                statefulset["memory_usage"] = memory_usage
+        except Exception as ex:
+            _LOGGER.error("Error enriching statefulsets with metrics: %s", ex)
 
     async def compare_authentication_methods(self) -> dict[str, Any]:
         """Compare authentication methods to help diagnose issues."""
