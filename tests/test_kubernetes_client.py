@@ -1,11 +1,18 @@
 """Tests for the Kubernetes integration client."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 from kubernetes.client import ApiException
 import pytest
 
+from custom_components.kubernetes.const import (
+    CONF_API_TOKEN,
+    CONF_HOST,
+    CONF_PORT,
+    CONF_VERIFY_SSL,
+)
 from custom_components.kubernetes.kubernetes_client import KubernetesClient
 
 
@@ -1236,3 +1243,198 @@ async def test_enrich_statefulsets_with_metrics(mock_client):
 
     assert statefulsets[0]["cpu_usage"] == 0.5
     assert statefulsets[0]["memory_usage"] == 128.0
+
+
+@pytest.fixture
+def extended_client(mock_config):
+    """Create a Kubernetes client instance for extended tests."""
+    with patch("kubernetes.client.Configuration"), \
+         patch("kubernetes.client.ApiClient"), \
+         patch("kubernetes.client.CoreV1Api"), \
+         patch("kubernetes.client.AppsV1Api"), \
+         patch("kubernetes.client.BatchV1Api"):
+        return KubernetesClient(mock_config)
+
+
+class TestKubernetesClientExtended:
+    """Extended tests for Kubernetes client."""
+
+    def test_log_error(self, extended_client):
+        """Test _log_error method with various exceptions."""
+        # Test ApiException 401 (Auth)
+        error_401 = ApiException(status=401, reason="Unauthorized")
+        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+            extended_client._log_error("test_op", error_401)
+            mock_logger.error.assert_called()
+
+            # Test deduplication (should be debug)
+            extended_client._log_error("test_op", error_401)
+            mock_logger.debug.assert_called()
+
+        # Test ApiException 403 (Forbidden)
+        error_403 = ApiException(status=403, reason="Forbidden")
+        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+            extended_client._log_error("test_op", error_403)
+            mock_logger.error.assert_called()
+
+        # Test ApiException 404 (Not Found)
+        error_404 = ApiException(status=404, reason="Not Found")
+        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+            extended_client._log_error("test_op", error_404)
+            mock_logger.error.assert_called()
+
+        # Test ApiException 500 (Server Error)
+        error_500 = ApiException(status=500, reason="Server Error")
+        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+            extended_client._log_error("test_op", error_500)
+            mock_logger.error.assert_called()
+
+        # Test aiohttp.ClientError
+        error_aiohttp = aiohttp.ClientError("Network error")
+        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+            extended_client._log_error("test_op", error_aiohttp)
+            mock_logger.error.assert_called()
+
+        # Test asyncio.TimeoutError
+        error_timeout = asyncio.TimeoutError()
+        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+            extended_client._log_error("test_op", error_timeout)
+            mock_logger.error.assert_called()
+
+        # Test generic Exception
+        error_generic = Exception("Generic error")
+        with patch("custom_components.kubernetes.kubernetes_client._LOGGER") as mock_logger:
+            extended_client._log_error("test_op", error_generic)
+            mock_logger.error.assert_called()
+
+    async def test_test_connection_aiohttp_failure(self, extended_client):
+        """Test _test_connection_aiohttp failure scenarios."""
+        # Test non-200 status
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 401
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            assert await extended_client._test_connection_aiohttp() is False
+
+        # Test exception
+        with patch("aiohttp.ClientSession.get", side_effect=Exception("Connection error")):
+            assert await extended_client._test_connection_aiohttp() is False
+
+    async def test_get_pods_count_aiohttp_failure(self, extended_client):
+        """Test _get_pods_count_aiohttp failure scenarios."""
+        # Test non-200 status
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            assert await extended_client._get_pods_count_aiohttp() == 0
+
+        # Test exception
+        with patch("aiohttp.ClientSession.get", side_effect=Exception("Network error")):
+            assert await extended_client._get_pods_count_aiohttp() == 0
+
+    async def test_get_pods_count_all_namespaces_aiohttp_failure(self, extended_client):
+        """Test _get_pods_count_all_namespaces_aiohttp failure scenarios."""
+        # Test non-200 status
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            assert await extended_client._get_pods_count_all_namespaces_aiohttp() == 0
+
+        # Test exception
+        with patch("aiohttp.ClientSession.get", side_effect=Exception("Network error")):
+            assert await extended_client._get_pods_count_all_namespaces_aiohttp() == 0
+
+    async def test_get_nodes_count_aiohttp_failure(self, extended_client):
+        """Test _get_nodes_count_aiohttp failure scenarios."""
+        # Test non-200 status
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            assert await extended_client._get_nodes_count_aiohttp() == 0
+
+        # Test exception
+        with patch("aiohttp.ClientSession.get", side_effect=Exception("Network error")):
+            assert await extended_client._get_nodes_count_aiohttp() == 0
+
+    async def test_get_nodes_aiohttp_parsing(self, extended_client):
+        """Test _get_nodes_aiohttp parsing logic."""
+        mock_node_data = {
+            "items": [
+                {
+                    "metadata": {"name": "node1", "creationTimestamp": "2023-01-01T00:00:00Z"},
+                    "status": {
+                        "conditions": [{"type": "Ready", "status": "True"}],
+                        "addresses": [
+                            {"type": "InternalIP", "address": "10.0.0.1"},
+                            {"type": "ExternalIP", "address": "1.2.3.4"}
+                        ],
+                        "capacity": {"memory": "16Gi", "cpu": "4"},
+                        "allocatable": {"memory": "15Gi", "cpu": "4"},
+                        "nodeInfo": {
+                            "osImage": "Linux",
+                            "kernelVersion": "5.15",
+                            "containerRuntimeVersion": "docker",
+                            "kubeletVersion": "v1.25"
+                        }
+                    },
+                    "spec": {"unschedulable": False}
+                }
+            ]
+        }
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json.return_value = mock_node_data
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            nodes = await extended_client._get_nodes_aiohttp()
+            assert len(nodes) == 1
+            node = nodes[0]
+            assert node["name"] == "node1"
+            assert node["status"] == "Ready"
+            assert node["internal_ip"] == "10.0.0.1"
+            assert node["external_ip"] == "1.2.3.4"
+            assert node["schedulable"] is True
+
+    async def test_get_nodes_aiohttp_parsing_error(self, extended_client):
+        """Test _get_nodes_aiohttp parsing error handling."""
+        # Malformed data that causes parsing error
+        mock_node_data = {
+            "items": [
+                {"metadata": {}} # Missing status, spec, etc.
+            ]
+        }
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json.return_value = mock_node_data
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            # Should handle parsing error gracefully and return a node with "unknown" status
+            nodes = await extended_client._get_nodes_aiohttp()
+            assert len(nodes) == 1
+            assert nodes[0]["name"] == "unknown"
+            assert nodes[0]["status"] == "NotReady"
+
+    async def test_get_nodes_aiohttp_failure(self, extended_client):
+        """Test _get_nodes_aiohttp failure scenarios."""
+        # Test non-200 status
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            assert await extended_client._get_nodes_aiohttp() == []
+
+        # Test exception
+        with patch("aiohttp.ClientSession.get", side_effect=Exception("Network error")):
+            assert await extended_client._get_nodes_aiohttp() == []
