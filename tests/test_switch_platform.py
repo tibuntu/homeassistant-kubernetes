@@ -193,12 +193,18 @@ class TestKubernetesDeploymentSwitch:
             mock_coordinator, mock_config_entry, "test-deployment", "default"
         )
 
+        # Set metrics
+        switch._cpu_usage = 500.0
+        switch._memory_usage = 256.0
+
         attributes = switch.extra_state_attributes
         assert attributes["deployment_name"] == "test-deployment"
         assert attributes["namespace"] == "default"
         assert attributes["replicas"] == 0
         assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_DEPLOYMENT
         assert attributes["last_scale_attempt_failed"] is False
+        assert attributes["cpu_usage_(millicores)"] == "500"
+        assert attributes["memory_usage_(MiB)"] == "256"
 
     def test_switch_available_property(self, mock_config_entry, mock_coordinator):
         """Test switch available property."""
@@ -346,6 +352,8 @@ class TestKubernetesDeploymentSwitch:
         mock_coordinator.get_deployment_data.return_value = {
             "replicas": 2,
             "is_running": True,
+            "cpu_usage": 100.0,
+            "memory_usage": 50.0,
         }
 
         # Call update
@@ -354,6 +362,8 @@ class TestKubernetesDeploymentSwitch:
         # Verify state was updated
         assert switch._replicas == 2
         assert switch._is_on is True
+        assert switch._cpu_usage == 100.0
+        assert switch._memory_usage == 50.0
 
     async def test_switch_update_not_found(self, mock_config_entry, mock_coordinator):
         """Test switch update when deployment not found."""
@@ -415,12 +425,18 @@ class TestKubernetesStatefulSetSwitch:
             mock_coordinator, mock_config_entry, "test-statefulset", "default"
         )
 
+        # Set metrics
+        switch._cpu_usage = 500.0
+        switch._memory_usage = 256.0
+
         attributes = switch.extra_state_attributes
         assert attributes["statefulset_name"] == "test-statefulset"
         assert attributes["namespace"] == "default"
         assert attributes["replicas"] == 0
         assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_STATEFULSET
         assert attributes["last_scale_attempt_failed"] is False
+        assert attributes["cpu_usage_(millicores)"] == "500"
+        assert attributes["memory_usage_(MiB)"] == "256"
 
     async def test_switch_turn_on_success(self, mock_config_entry, mock_coordinator):
         """Test successful StatefulSet turn on."""
@@ -473,6 +489,29 @@ class TestKubernetesStatefulSetSwitch:
 
         # Verify that _verify_scaling was called
         switch._verify_scaling.assert_called_once_with(0)
+
+    async def test_switch_update_success(self, mock_config_entry, mock_coordinator):
+        """Test successful switch update."""
+        switch = KubernetesStatefulSetSwitch(
+            mock_coordinator, mock_config_entry, "test-statefulset", "default"
+        )
+
+        # Mock coordinator method
+        mock_coordinator.get_statefulset_data.return_value = {
+            "replicas": 2,
+            "is_running": True,
+            "cpu_usage": 100.0,
+            "memory_usage": 50.0,
+        }
+
+        # Call update
+        await switch.async_update()
+
+        # Verify state was updated
+        assert switch._replicas == 2
+        assert switch._is_on is True
+        assert switch._cpu_usage == 100.0
+        assert switch._memory_usage == 50.0
 
 
 class TestKubernetesCronJobSwitch:

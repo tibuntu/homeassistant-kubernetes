@@ -704,9 +704,9 @@ class TestKubernetesNodeSensor:
         attributes = sensor.extra_state_attributes
         assert attributes["internal_IP"] == "10.0.0.1"
         assert attributes["external_IP"] == "203.0.113.1"
-        assert attributes["memory_capacity_GiB"] == "16.0 GiB"
-        assert attributes["memory_allocatable_GiB"] == "14.5 GiB"
-        assert attributes["CPU_cores"] == "4.0 Cores"
+        assert attributes["memory_capacity_(GiB)"] == "16.0 GiB"
+        assert attributes["memory_allocatable_(GiB)"] == "14.5 GiB"
+        assert attributes["CPU"] == "4.0 vCPU"
         assert attributes["OS_image"] == "Ubuntu 22.04"
         assert attributes["kernel_version"] == "5.15.0-56-generic"
         assert attributes["container_runtime"] == "containerd://1.6.6"
@@ -786,7 +786,7 @@ class TestDynamicNodeSensorDiscovery:
     ):
         """Test successful discovery of new node sensors."""
         from custom_components.kubernetes.sensor import (
-            _async_discover_and_add_new_node_sensors,
+            _async_discover_and_add_new_entities,
         )
 
         # Set up hass.data with add_entities callback
@@ -812,7 +812,7 @@ class TestDynamicNodeSensorDiscovery:
             "custom_components.kubernetes.sensor.async_get_entity_registry",
             return_value=mock_entity_registry,
         ):
-            await _async_discover_and_add_new_node_sensors(
+            await _async_discover_and_add_new_entities(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
@@ -832,7 +832,7 @@ class TestDynamicNodeSensorDiscovery:
     ):
         """Test discovery when no add_entities callback is available."""
         from custom_components.kubernetes.sensor import (
-            _async_discover_and_add_new_node_sensors,
+            _async_discover_and_add_new_entities,
         )
 
         # Set up hass.data without callback
@@ -847,7 +847,7 @@ class TestDynamicNodeSensorDiscovery:
             return_value=mock_entity_registry,
         ):
             # Should not raise exception
-            await _async_discover_and_add_new_node_sensors(
+            await _async_discover_and_add_new_entities(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
@@ -856,7 +856,7 @@ class TestDynamicNodeSensorDiscovery:
     ):
         """Test discovery with existing node sensors."""
         from custom_components.kubernetes.sensor import (
-            _async_discover_and_add_new_node_sensors,
+            _async_discover_and_add_new_entities,
         )
 
         # Set up hass.data with add_entities callback
@@ -886,7 +886,7 @@ class TestDynamicNodeSensorDiscovery:
             "custom_components.kubernetes.sensor.async_get_entity_registry",
             return_value=mock_entity_registry,
         ):
-            await _async_discover_and_add_new_node_sensors(
+            await _async_discover_and_add_new_entities(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
@@ -906,7 +906,7 @@ class TestDynamicNodeSensorDiscovery:
     ):
         """Test discovery with exception handling."""
         from custom_components.kubernetes.sensor import (
-            _async_discover_and_add_new_node_sensors,
+            _async_discover_and_add_new_entities,
         )
 
         # Set up hass.data with add_entities callback
@@ -925,6 +925,6 @@ class TestDynamicNodeSensorDiscovery:
             side_effect=Exception("Registry error"),
         ):
             # Should not raise exception, but handle it gracefully
-            await _async_discover_and_add_new_node_sensors(
+            await _async_discover_and_add_new_entities(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
