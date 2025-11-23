@@ -214,6 +214,8 @@ class KubernetesDeploymentSwitch(SwitchEntity):
             CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
         )
         self._last_scale_attempt_failed = False
+        self._cpu_usage = 0.0
+        self._memory_usage = 0.0
 
     @property
     def is_on(self) -> bool:
@@ -229,12 +231,26 @@ class KubernetesDeploymentSwitch(SwitchEntity):
             "replicas": self._replicas,
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
             "last_scale_attempt_failed": self._last_scale_attempt_failed,
+            "cpu_usage_(millicores)": f"{int(self._cpu_usage)}",
+            "memory_usage_(MiB)": f"{int(self._memory_usage)}",
         }
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
         return self.coordinator.last_update_success
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the deployment on by scaling to 1 replica."""
@@ -325,6 +341,8 @@ class KubernetesDeploymentSwitch(SwitchEntity):
 
         self._replicas = deployment_data["replicas"]
         self._is_on = deployment_data["is_running"]
+        self._cpu_usage = deployment_data.get("cpu_usage", 0.0)
+        self._memory_usage = deployment_data.get("memory_usage", 0.0)
 
         # Log state changes for debugging
         if old_replicas != self._replicas:
@@ -449,6 +467,18 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         return self.coordinator.last_update_success
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the StatefulSet on by scaling to 1 replica."""
