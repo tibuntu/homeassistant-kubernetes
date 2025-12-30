@@ -48,90 +48,86 @@ Individual switches for each CronJob that control the suspension state.
 
 ## Services
 
-### 1. `kubernetes.suspend_cronjob`
+### Trigger CronJobs
 
-Suspends one or more CronJobs by setting `suspend=true`.
+**Service**: `kubernetes.start_workload`
+
+Triggers one or more CronJobs immediately (creates a job from the CronJob template).
 
 **Parameters**:
-- `cronjob_name` (optional): Single CronJob name
-- `cronjob_names` (optional): List of CronJob names
-- `namespace` (optional): Target namespace (defaults to configured namespace)
+- `workload_name` (string or entity ID, optional): Single CronJob name or entity ID (e.g., `switch.backup_job`)
+- `workload_names` (list or target selector, optional): Multiple CronJob names or entity IDs
+- `namespace` (string, optional): Target namespace (defaults to configured namespace)
+- `replicas` (integer, optional): Ignored for CronJobs
 
 **Examples**:
 
 ```yaml
-# Suspend a single CronJob
-service: kubernetes.suspend_cronjob
+# Trigger a single CronJob using entity ID
+service: kubernetes.start_workload
 data:
-  cronjob_name: backup-job
+  workload_name: switch.backup_job
   namespace: default
 
-# Suspend multiple CronJobs
-service: kubernetes.suspend_cronjob
+# Trigger multiple CronJobs
+service: kubernetes.start_workload
 data:
-  cronjob_names:
-    - backup-job
-    - cleanup-job
+  workload_names:
+    - switch.backup_job
+    - switch.cleanup_job
   namespace: production
+
+# Trigger using direct CronJob name
+service: kubernetes.start_workload
+data:
+  workload_name: backup-job
+  namespace: default
 ```
 
-### 2. `kubernetes.resume_cronjob`
+> **Note**: The `replicas` parameter is ignored for CronJobs. When you trigger a CronJob, it creates a job immediately regardless of the `replicas` value.
 
-Resumes one or more CronJobs by setting `suspend=false`.
+### Suspend/Resume CronJobs
 
-**Parameters**:
-- `cronjob_name` (optional): Single CronJob name
-- `cronjob_names` (optional): List of CronJob names
-- `namespace` (optional): Target namespace (defaults to configured namespace)
+CronJobs can be suspended or resumed using the switch entities. There are no dedicated services for this operation.
 
-**Examples**:
+**Using Switch Entities**:
 
 ```yaml
-# Resume a single CronJob
-service: kubernetes.resume_cronjob
-data:
-  cronjob_name: backup-job
-  namespace: default
+# Suspend a CronJob (turn switch OFF)
+service: switch.turn_off
+target:
+  entity_id: switch.backup_job
 
-# Resume multiple CronJobs
-service: kubernetes.resume_cronjob
-data:
-  cronjob_names:
-    - backup-job
-    - cleanup-job
-  namespace: production
+# Resume a CronJob (turn switch ON)
+service: switch.turn_on
+target:
+  entity_id: switch.backup_job
 ```
 
-### 3. `kubernetes.create_cronjob_job`
-
-Creates a job from one or more CronJobs (manual trigger).
-
-**Parameters**:
-- `cronjob_name` (optional): Single CronJob name
-- `cronjob_names` (optional): List of CronJob names
-- `namespace` (optional): Target namespace (defaults to configured namespace)
-
-**Examples**:
+**Using Entity IDs in Automations**:
 
 ```yaml
-# Create a job from a single CronJob
-service: kubernetes.create_cronjob_job
-data:
-  cronjob_name: backup-job
-  namespace: default
-
-# Create jobs from multiple CronJobs
-service: kubernetes.create_cronjob_job
-data:
-  cronjob_names:
-    - backup-job
-    - cleanup-job
-  namespace: production
+automation:
+  - alias: "Suspend CronJobs During Maintenance"
+    trigger:
+      - platform: time
+        at: "02:00:00"
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id:
+            - switch.backup_job
+            - switch.cleanup_job
 ```
 
-### 4. `kubernetes.trigger_cronjob` (Legacy)
+### Services That Don't Affect CronJobs
 
-This service is maintained for backward compatibility and functions identically to `kubernetes.create_cronjob_job`.
+The following services do **not** affect CronJobs and will log a warning if a CronJob is provided:
+
+- **`kubernetes.scale_workload`**: Scaling is not applicable to CronJobs
+- **`kubernetes.stop_workload`**: Stopping is not applicable to CronJobs (use the switch entity to suspend instead)
+
+If you need to suspend a CronJob, use the switch entity (`switch.turn_off`). If you need to trigger a CronJob, use `kubernetes.start_workload`.
 
 ## Configuration
 
@@ -171,12 +167,12 @@ Use switches to suspend CronJobs during maintenance windows:
 
 ```yaml
 # Suspend all backup jobs during maintenance
-service: kubernetes.suspend_cronjob
-data:
-  cronjob_names:
-    - daily-backup
-    - hourly-backup
-    - weekly-backup
+service: switch.turn_off
+target:
+  entity_id:
+    - switch.daily_backup
+    - switch.hourly_backup
+    - switch.weekly_backup
 ```
 
 ### 2. Manual Job Execution
@@ -185,9 +181,9 @@ Trigger jobs manually when needed:
 
 ```yaml
 # Manually trigger a backup job
-service: kubernetes.create_cronjob_job
+service: kubernetes.start_workload
 data:
-  cronjob_name: backup-job
+  workload_name: switch.backup_job
 ```
 
 ### 3. Conditional Job Execution
@@ -202,11 +198,11 @@ automation:
       entity_id: sensor.cpu_usage
       above: 80
     action:
-      service: kubernetes.suspend_cronjob
-      data:
-        cronjob_names:
-          - non-critical-job
-          - maintenance-job
+      service: switch.turn_off
+      target:
+        entity_id:
+          - switch.non_critical_job
+          - switch.maintenance_job
 
   - alias: "Resume CronJobs on Normal Load"
     trigger:
@@ -214,11 +210,11 @@ automation:
       entity_id: sensor.cpu_usage
       below: 60
     action:
-      service: kubernetes.resume_cronjob
-      data:
-        cronjob_names:
-          - non-critical-job
-          - maintenance-job
+      service: switch.turn_on
+      target:
+        entity_id:
+          - switch.non_critical_job
+          - switch.maintenance_job
 ```
 
 ### 4. UI Integration
@@ -254,9 +250,9 @@ automation:
       entity_id: sensor.database_status
       to: "modified"
     action:
-      service: kubernetes.create_cronjob_job
+      service: kubernetes.start_workload
       data:
-        cronjob_name: database-backup
+        workload_name: switch.database_backup
         namespace: production
 ```
 
@@ -297,14 +293,14 @@ All service calls include comprehensive error handling:
 4. **Namespace Awareness**: Always specify the namespace when working with multiple namespaces
 5. **Error Handling**: Check service call results in automations
 
-## Migration from Previous Version
+## Migration from Legacy Services
 
-If you were using the previous CronJob switch behavior (where switches triggered jobs):
+If you were using the legacy CronJob services (`suspend_cronjob`, `resume_cronjob`, `create_cronjob_job`):
 
-1. **Switch Behavior Changed**: Switches now control suspension instead of triggering jobs
-2. **Use `kubernetes.create_cronjob_job`**: For manual job triggering, use the new service
-3. **Update Automations**: Review and update any automations that used the old switch behavior
-4. **New Attributes**: Take advantage of the new suspension tracking attributes
+1. **Use `kubernetes.start_workload`**: For triggering CronJobs, use `kubernetes.start_workload` instead of `create_cronjob_job`
+2. **Use Switch Entities**: For suspending/resuming CronJobs, use the switch entities (`switch.turn_on`/`switch.turn_off`) instead of the old services
+3. **Update Automations**: Review and update any automations that used the old service names
+4. **Entity IDs**: The new services accept entity IDs (e.g., `switch.backup_job`) which makes them easier to use in the UI
 
 ## Troubleshooting
 
@@ -369,18 +365,7 @@ The integration provides CronJob data in the following format:
 
 ### Service Response
 
-When suspending/resuming a CronJob, the service returns:
-
-```python
-{
-    "success": True,
-    "cronjob_name": "backup-job",
-    "namespace": "default",
-    "action": "suspended"  # or "resumed"
-}
-```
-
-When creating a job from a CronJob, the service returns:
+When triggering a CronJob using `kubernetes.start_workload`, the service returns:
 
 ```python
 {
@@ -402,3 +387,5 @@ Or on failure:
     "namespace": "default"
 }
 ```
+
+> **Note**: The service response is logged to the Home Assistant logs. The service itself doesn't return a value that can be captured in automations, but you can check the logs for the job name that was created.
