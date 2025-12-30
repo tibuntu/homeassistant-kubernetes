@@ -49,34 +49,34 @@ kubernetes:
   namespace: "default"
   monitor_all_namespaces: false
 
-# Example automations using the new multi-selection services
+# Example automations using the generic workload services
 
-# Stop multiple deployments at once
+# Stop multiple workloads at once
 automation:
-  - alias: "Stop Multiple Deployments"
+  - alias: "Stop Multiple Workloads"
     trigger:
       platform: time
       at: "22:00:00"
     action:
-      - service: kubernetes.stop_deployment
+      - service: kubernetes.stop_workload
         data:
-          deployment_names:
-            - "web-app"
-            - "api-server"
-            - "cache-service"
+          workload_names:
+            - switch.web_app
+            - switch.api_server
+            - switch.cache_service
           namespace: "production"
 
-  # Start multiple deployments with specific replica counts
-  - alias: "Start Multiple Deployments"
+  # Start multiple workloads with specific replica counts
+  - alias: "Start Multiple Workloads"
     trigger:
       platform: time
       at: "06:00:00"
     action:
-      - service: kubernetes.start_deployment
+      - service: kubernetes.start_workload
         data:
-          deployment_names:
-            - "web-app"
-            - "api-server"
+          workload_names:
+            - switch.web_app
+            - switch.api_server
           replicas: 3
           namespace: "production"
 
@@ -86,43 +86,54 @@ automation:
       platform: time
       at: "08:00:00"
     action:
-      - service: kubernetes.scale_statefulset
+      - service: kubernetes.scale_workload
         data:
-          statefulset_names:
-            - "database-primary"
-            - "database-replica"
+          workload_names:
+            - switch.database_primary
+            - switch.database_replica
           replicas: 2
           namespace: "database"
 
-  # Single deployment operations (backward compatible)
-  - alias: "Stop Single Deployment"
+  # Single workload operations
+  - alias: "Stop Single Workload"
     trigger:
       platform: time
       at: "23:00:00"
     action:
-      - service: kubernetes.stop_deployment
+      - service: kubernetes.stop_workload
         data:
-          deployment_name: "monitoring"
+          workload_name: switch.monitoring
           namespace: "monitoring"
 
-  # Multiple StatefulSets with different replica counts (requires multiple calls)
-  - alias: "Scale Different StatefulSets"
+  # Trigger a CronJob manually
+  - alias: "Trigger Backup CronJob"
+    trigger:
+      platform: time
+      at: "12:00:00"
+    action:
+      - service: kubernetes.start_workload
+        data:
+          workload_name: switch.backup_job
+          namespace: "default"
+
+  # Multiple workloads with different replica counts (requires multiple calls)
+  - alias: "Scale Different Workloads"
     trigger:
       platform: time
       at: "09:00:00"
     action:
-      - service: kubernetes.scale_statefulset
+      - service: kubernetes.scale_workload
         data:
-          statefulset_names:
-            - "redis-cache"
-            - "redis-session"
+          workload_names:
+            - switch.redis_cache
+            - switch.redis_session
           replicas: 3
           namespace: "cache"
-      - service: kubernetes.scale_statefulset
+      - service: kubernetes.scale_workload
         data:
-          statefulset_names:
-            - "elasticsearch-data"
-            - "elasticsearch-master"
+          workload_names:
+            - switch.elasticsearch_data
+            - switch.elasticsearch_master
           replicas: 1
           namespace: "logging"
 
@@ -143,22 +154,20 @@ script:
   scale_production_api:
     alias: "Scale Production API"
     sequence:
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.scale_workload
         data:
-          deployment_name: production-api
+          workload_name: switch.production_api
           replicas: 3
           namespace: production
 
   stop_development:
     alias: "Stop Development Environment"
     sequence:
-      - service: kubernetes.stop_deployment
+      - service: kubernetes.stop_workload
         data:
-          deployment_name: development-api
-          namespace: development
-      - service: kubernetes.stop_deployment
-        data:
-          deployment_name: development-database
+          workload_names:
+            - switch.development_api
+            - switch.development_database
           namespace: development
       - service: notify.mobile_app
         data:
@@ -168,14 +177,11 @@ script:
   start_development:
     alias: "Start Development Environment"
     sequence:
-      - service: kubernetes.start_deployment
+      - service: kubernetes.start_workload
         data:
-          deployment_name: development-api
-          replicas: 1
-          namespace: development
-      - service: kubernetes.start_deployment
-        data:
-          deployment_name: development-database
+          workload_names:
+            - switch.development_api
+            - switch.development_database
           replicas: 1
           namespace: development
       - service: notify.mobile_app
@@ -186,27 +192,27 @@ script:
   scale_production_databases:
     alias: "Scale Production Databases"
     sequence:
-      - service: kubernetes.scale_statefulset
+      - service: kubernetes.scale_workload
         data:
-          statefulset_name: redis-cache
+          workload_names:
+            - switch.redis_cache
+            - switch.postgres_db
           replicas: 3
           namespace: production
-      - service: kubernetes.scale_statefulset
+      - service: kubernetes.scale_workload
         data:
-          statefulset_name: postgres-db
+          workload_name: switch.postgres_db
           replicas: 2
           namespace: production
 
   stop_production_databases:
     alias: "Stop Production Databases"
     sequence:
-      - service: kubernetes.stop_statefulset
+      - service: kubernetes.stop_workload
         data:
-          statefulset_name: redis-cache
-          namespace: production
-      - service: kubernetes.stop_statefulset
-        data:
-          statefulset_name: postgres-db
+          workload_names:
+            - switch.redis_cache
+            - switch.postgres_db
           namespace: production
       - service: notify.mobile_app
         data:

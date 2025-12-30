@@ -15,12 +15,12 @@ automation:
       platform: time
       at: "22:00:00"
     action:
-      - service: kubernetes.stop_deployment
+      - service: kubernetes.stop_workload
         data:
-          deployment_names:
-            - "development-api"
-            - "staging-api"
-            - "monitoring"
+          workload_names:
+            - switch.development_api
+            - switch.staging_api
+            - switch.monitoring
           namespace: "production"
 ```
 
@@ -33,12 +33,12 @@ automation:
       platform: time
       at: "07:00:00"
     action:
-      - service: kubernetes.start_deployment
+      - service: kubernetes.start_workload
         data:
-          deployment_names:
-            - "web-app"
-            - "api-server"
-            - "cache-service"
+          workload_names:
+            - switch.web_app
+            - switch.api_server
+            - switch.cache_service
           replicas: 3
           namespace: "production"
 ```
@@ -60,11 +60,11 @@ automation:
         - thu
         - fri
     action:
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.scale_workload
         data:
-          deployment_names:
-            - "web-frontend"
-            - "api-backend"
+          workload_names:
+            - switch.web_frontend
+            - switch.api_backend
           replicas: 1
           namespace: "production"
 ```
@@ -83,9 +83,9 @@ automation:
       for:
         minutes: 5
     action:
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.scale_workload
         data:
-          deployment_name: "web-app"
+          workload_name: switch.web_app
           namespace: "production"
           replicas: 5
 ```
@@ -100,17 +100,17 @@ automation:
       entity_id: binary_sensor.ups_power_failure
       to: "on"
     action:
-      - service: kubernetes.stop_deployment
+      - service: kubernetes.stop_workload
         data:
-          deployment_names:
-            - "non-critical-app"
-            - "development-services"
+          workload_names:
+            - switch.non_critical_app
+            - switch.development_services
           namespace: "default"
       - delay: "00:02:00"
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.scale_workload
         data:
-          deployment_names:
-            - "critical-app"
+          workload_names:
+            - switch.critical_app
           replicas: 1
           namespace: "production"
 ```
@@ -130,11 +130,11 @@ automation:
       weekday:
         - sun
     action:
-      - service: kubernetes.scale_statefulset
+      - service: kubernetes.scale_workload
         data:
-          statefulset_names:
-            - "database-primary"
-            - "database-replica"
+          workload_names:
+            - switch.database_primary
+            - switch.database_replica
           replicas: 1
           namespace: "database"
 ```
@@ -152,11 +152,11 @@ automation:
       weekday:
         - fri
     action:
-      - service: kubernetes.stop_statefulset
+      - service: kubernetes.stop_workload
         data:
-          statefulset_names:
-            - "dev-postgres"
-            - "dev-redis"
+          workload_names:
+            - switch.dev_postgres
+            - switch.dev_redis
           namespace: "development"
 ```
 
@@ -352,12 +352,12 @@ script:
   scale_production_environment:
     alias: "Scale Production Environment"
     sequence:
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.scale_workload
         data:
-          deployment_names:
-            - "web-frontend"
-            - "api-backend"
-            - "worker-queue"
+          workload_names:
+            - switch.web_frontend
+            - switch.api_backend
+            - switch.worker_queue
           replicas: "{{ replicas | default(3) }}"
           namespace: "production"
 ```
@@ -369,15 +369,15 @@ script:
   rolling_restart_deployment:
     alias: "Rolling Restart Deployment"
     sequence:
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.scale_workload
         data:
-          deployment_name: "{{ deployment_name }}"
+          workload_name: "{{ workload_name }}"
           namespace: "{{ namespace }}"
           replicas: 0
       - delay: "00:00:30"
-      - service: kubernetes.scale_deployment
+      - service: kubernetes.scale_workload
         data:
-          deployment_name: "{{ deployment_name }}"
+          workload_name: "{{ workload_name }}"
           namespace: "{{ namespace }}"
           replicas: "{{ original_replicas | default(1) }}"
 ```
@@ -441,9 +441,9 @@ automation:
                   - thu
                   - fri
             sequence:
-              - service: kubernetes.scale_deployment
+              - service: kubernetes.scale_workload
                 data:
-                  deployment_name: "business-app"
+                  workload_name: switch.business_app
                   namespace: "production"
                   replicas: 5
           - conditions:
@@ -452,9 +452,9 @@ automation:
                   - sat
                   - sun
             sequence:
-              - service: kubernetes.scale_deployment
+              - service: kubernetes.scale_workload
                 data:
-                  deployment_name: "business-app"
+                  workload_name: switch.business_app
                   namespace: "production"
                   replicas: 2
 ```
@@ -466,14 +466,14 @@ script:
   promote_to_production:
     alias: "Promote to Production"
     sequence:
-      - service: kubernetes.stop_deployment
+      - service: kubernetes.stop_workload
         data:
-          deployment_name: "{{ app_name }}"
+          workload_name: "{{ workload_name }}"
           namespace: "staging"
       - delay: "00:01:00"
-      - service: kubernetes.start_deployment
+      - service: kubernetes.start_workload
         data:
-          deployment_name: "{{ app_name }}"
+          workload_name: "{{ workload_name }}"
           namespace: "production"
           replicas: 3
 ```

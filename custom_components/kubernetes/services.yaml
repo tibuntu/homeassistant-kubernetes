@@ -1,18 +1,18 @@
-scale_deployment:
-  name: Scale Deployment
-  description: Scale one or more Kubernetes deployments to the specified number of replicas.
+scale_workload:
+  name: Scale Workload
+  description: Scale one or more Kubernetes workloads (Deployments/StatefulSets) to the specified number of replicas.
   fields:
-    deployment_name:
-      name: Deployment Name
-      description: The name of a single deployment to scale (use deployment_names for multiple).
+    workload_name:
+      name: Workload Name
+      description: The name of a single workload to scale (use workload_names for multiple).
       required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
-    deployment_names:
-      name: Deployment Names
-      description: A list of deployment names to scale (use deployment_name for single).
+    workload_names:
+      name: Workload Names
+      description: A list of workload names to scale (use workload_name for single).
       required: false
       selector:
         target:
@@ -29,24 +29,24 @@ scale_deployment:
           max: 100
     namespace:
       name: Namespace
-      description: The namespace containing the deployment(s) (optional, defaults to configured namespace).
+      description: The namespace containing the workload(s) (optional, defaults to configured namespace).
       required: false
 
-start_deployment:
-  name: Start Deployment
-  description: Start one or more Kubernetes deployments by scaling them to the specified number of replicas.
+start_workload:
+  name: Start Workload
+  description: Start one or more Kubernetes workloads by scaling them to the specified number of replicas, or trigger CronJobs (creates a job immediately).
   fields:
-    deployment_name:
-      name: Deployment Name
-      description: The name of a single deployment to start (use deployment_names for multiple).
+    workload_name:
+      name: Workload Name
+      description: The name of a single workload to start (use workload_names for multiple).
       required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
-    deployment_names:
-      name: Deployment Names
-      description: A list of deployment names to start (use deployment_name for single).
+    workload_names:
+      name: Workload Names
+      description: A list of workload names to start (use workload_name for single).
       required: false
       selector:
         target:
@@ -55,7 +55,7 @@ start_deployment:
             integration: kubernetes
     replicas:
       name: Replicas
-      description: The number of replicas to scale to (1 or more, defaults to 1).
+      description: The number of replicas to scale to for Deployments/StatefulSets (1 or more, defaults to 1). Ignored for CronJobs.
       required: false
       default: 1
       selector:
@@ -64,24 +64,24 @@ start_deployment:
           max: 100
     namespace:
       name: Namespace
-      description: The namespace containing the deployment(s) (optional, defaults to configured namespace).
+      description: The namespace containing the workload(s) (optional, defaults to configured namespace).
       required: false
 
-stop_deployment:
-  name: Stop Deployment
-  description: Stop one or more Kubernetes deployments by scaling them to 0 replicas.
+stop_workload:
+  name: Stop Workload
+  description: Stop one or more Kubernetes workloads by scaling them to 0 replicas (Deployments/StatefulSets). CronJobs are not affected - use the switch entity to suspend them.
   fields:
-    deployment_name:
-      name: Deployment Name
-      description: The name of a single deployment to stop (use deployment_names for multiple).
+    workload_name:
+      name: Workload Name
+      description: The name of a single workload to stop (use workload_names for multiple).
       required: false
       selector:
         entity:
           domain: switch
           integration: kubernetes
-    deployment_names:
-      name: Deployment Names
-      description: A list of deployment names to stop (use deployment_name for single).
+    workload_names:
+      name: Workload Names
+      description: A list of workload names to stop (use workload_name for single).
       required: false
       selector:
         target:
@@ -90,206 +90,5 @@ stop_deployment:
             integration: kubernetes
     namespace:
       name: Namespace
-      description: The namespace containing the deployment(s) (optional, defaults to configured namespace).
-      required: false
-
-# StatefulSet services
-scale_statefulset:
-  name: Scale StatefulSet
-  description: Scale one or more Kubernetes StatefulSets to the specified number of replicas.
-  fields:
-    statefulset_name:
-      name: StatefulSet Name
-      description: The name of a single StatefulSet to scale (use statefulset_names for multiple).
-      required: false
-      selector:
-        entity:
-          domain: switch
-          integration: kubernetes
-    statefulset_names:
-      name: StatefulSet Names
-      description: A list of StatefulSet names to scale (use statefulset_name for single).
-      required: false
-      selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
-    replicas:
-      name: Replicas
-      description: The number of replicas to scale to (0 or more).
-      required: true
-      selector:
-        number:
-          min: 0
-          max: 100
-    namespace:
-      name: Namespace
-      description: The namespace containing the StatefulSet(s) (optional, defaults to configured namespace).
-      required: false
-
-start_statefulset:
-  name: Start StatefulSet
-  description: Start one or more Kubernetes StatefulSets by scaling them to the specified number of replicas.
-  fields:
-    statefulset_name:
-      name: StatefulSet Name
-      description: The name of a single StatefulSet to start (use statefulset_names for multiple).
-      required: false
-      selector:
-        entity:
-          domain: switch
-          integration: kubernetes
-    statefulset_names:
-      name: StatefulSet Names
-      description: A list of StatefulSet names to start (use statefulset_name for single).
-      required: false
-      selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
-    replicas:
-      name: Replicas
-      description: The number of replicas to scale to (1 or more, defaults to 1).
-      required: false
-      default: 1
-      selector:
-        number:
-          min: 1
-          max: 100
-    namespace:
-      name: Namespace
-      description: The namespace containing the StatefulSet(s) (optional, defaults to configured namespace).
-      required: false
-
-stop_statefulset:
-  name: Stop StatefulSet
-  description: Stop one or more Kubernetes StatefulSets by scaling them to 0 replicas.
-  fields:
-    statefulset_name:
-      name: StatefulSet Name
-      description: The name of a single StatefulSet to stop (use statefulset_names for multiple).
-      required: false
-      selector:
-        entity:
-          domain: switch
-          integration: kubernetes
-    statefulset_names:
-      name: StatefulSet Names
-      description: A list of StatefulSet names to stop (use statefulset_name for single).
-      required: false
-      selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
-    namespace:
-      name: Namespace
-      description: The namespace containing the StatefulSet(s) (optional, defaults to configured namespace).
-      required: false
-
-# CronJob services
-trigger_cronjob:
-  name: Trigger CronJob
-  description: Trigger one or more Kubernetes CronJobs by creating jobs from them.
-  fields:
-    cronjob_name:
-      name: CronJob Name
-      description: The name of a single CronJob to trigger (use cronjob_names for multiple).
-      required: false
-      selector:
-        entity:
-          domain: switch
-          integration: kubernetes
-    cronjob_names:
-      name: CronJob Names
-      description: A list of CronJob names to trigger (use cronjob_name for single).
-      required: false
-      selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
-    namespace:
-      name: Namespace
-      description: The namespace containing the CronJob(s) (optional, defaults to configured namespace).
-      required: false
-
-suspend_cronjob:
-  name: Suspend CronJob
-  description: Suspend one or more Kubernetes CronJobs by setting suspend=true.
-  fields:
-    cronjob_name:
-      name: CronJob Name
-      description: The name of a single CronJob to suspend (use cronjob_names for multiple).
-      required: false
-      selector:
-        entity:
-          domain: switch
-          integration: kubernetes
-    cronjob_names:
-      name: CronJob Names
-      description: A list of CronJob names to suspend (use cronjob_name for single).
-      required: false
-      selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
-    namespace:
-      name: Namespace
-      description: The namespace containing the CronJob(s) (optional, defaults to configured namespace).
-      required: false
-
-resume_cronjob:
-  name: Resume CronJob
-  description: Resume one or more Kubernetes CronJobs by setting suspend=false.
-  fields:
-    cronjob_name:
-      name: CronJob Name
-      description: The name of a single CronJob to resume (use cronjob_names for multiple).
-      required: false
-      selector:
-        entity:
-          domain: switch
-          integration: kubernetes
-    cronjob_names:
-      name: CronJob Names
-      description: A list of CronJob names to resume (use cronjob_name for single).
-      required: false
-      selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
-    namespace:
-      name: Namespace
-      description: The namespace containing the CronJob(s) (optional, defaults to configured namespace).
-      required: false
-
-create_cronjob_job:
-  name: Create CronJob Job
-  description: Create a job from one or more Kubernetes CronJobs (manual trigger).
-  fields:
-    cronjob_name:
-      name: CronJob Name
-      description: The name of a single CronJob to create a job from (use cronjob_names for multiple).
-      required: false
-      selector:
-        entity:
-          domain: switch
-          integration: kubernetes
-    cronjob_names:
-      name: CronJob Names
-      description: A list of CronJob names to create jobs from (use cronjob_name for single).
-      required: false
-      selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
-    namespace:
-      name: Namespace
-      description: The namespace containing the CronJob(s) (optional, defaults to configured namespace).
+      description: The namespace containing the workload(s) (optional, defaults to configured namespace).
       required: false

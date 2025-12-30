@@ -10,12 +10,9 @@ from custom_components.kubernetes.const import (
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DOMAIN,
-    SERVICE_SCALE_DEPLOYMENT,
-    SERVICE_SCALE_STATEFULSET,
-    SERVICE_START_DEPLOYMENT,
-    SERVICE_START_STATEFULSET,
-    SERVICE_STOP_DEPLOYMENT,
-    SERVICE_STOP_STATEFULSET,
+    SERVICE_SCALE_WORKLOAD,
+    SERVICE_START_WORKLOAD,
+    SERVICE_STOP_WORKLOAD,
     SWITCH_TYPE_DEPLOYMENT,
     SWITCH_TYPE_STATEFULSET,
 )
@@ -492,9 +489,6 @@ def test_constants():
     assert DOMAIN == "kubernetes"
     assert SWITCH_TYPE_DEPLOYMENT == "deployment"
     assert SWITCH_TYPE_STATEFULSET == "statefulset"
-    assert SERVICE_SCALE_DEPLOYMENT == "scale_deployment"
-    assert SERVICE_START_DEPLOYMENT == "start_deployment"
-    assert SERVICE_STOP_DEPLOYMENT == "stop_deployment"
-    assert SERVICE_SCALE_STATEFULSET == "scale_statefulset"
-    assert SERVICE_START_STATEFULSET == "start_statefulset"
-    assert SERVICE_STOP_STATEFULSET == "stop_statefulset"
+    assert SERVICE_SCALE_WORKLOAD == "scale_workload"
+    assert SERVICE_START_WORKLOAD == "start_workload"
+    assert SERVICE_STOP_WORKLOAD == "stop_workload"
