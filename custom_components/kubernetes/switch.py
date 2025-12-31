@@ -250,6 +250,29 @@ class KubernetesDeploymentSwitch(SwitchEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        # Update internal state from coordinator data
+        deployment_data = self.coordinator.get_deployment_data(self.deployment_name)
+        if deployment_data:
+            self._replicas = deployment_data.get("replicas", 0)
+            self._is_on = deployment_data.get("is_running", False)
+            old_cpu = self._cpu_usage
+            old_memory = self._memory_usage
+            self._cpu_usage = deployment_data.get("cpu_usage", 0.0)
+            self._memory_usage = deployment_data.get("memory_usage", 0.0)
+            if old_cpu != self._cpu_usage or old_memory != self._memory_usage:
+                _LOGGER.debug(
+                    "Deployment %s metrics updated: CPU=%.2f m (was %.2f), Memory=%.2f MiB (was %.2f)",
+                    self.deployment_name,
+                    self._cpu_usage,
+                    old_cpu,
+                    self._memory_usage,
+                    old_memory,
+                )
+        else:
+            _LOGGER.warning(
+                "Deployment %s not found in coordinator data during update",
+                self.deployment_name,
+            )
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -482,6 +505,29 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        # Update internal state from coordinator data
+        statefulset_data = self.coordinator.get_statefulset_data(self.statefulset_name)
+        if statefulset_data:
+            self._replicas = statefulset_data.get("replicas", 0)
+            self._is_on = statefulset_data.get("is_running", False)
+            old_cpu = self._cpu_usage
+            old_memory = self._memory_usage
+            self._cpu_usage = statefulset_data.get("cpu_usage", 0.0)
+            self._memory_usage = statefulset_data.get("memory_usage", 0.0)
+            if old_cpu != self._cpu_usage or old_memory != self._memory_usage:
+                _LOGGER.debug(
+                    "StatefulSet %s metrics updated: CPU=%.2f m (was %.2f), Memory=%.2f MiB (was %.2f)",
+                    self.statefulset_name,
+                    self._cpu_usage,
+                    old_cpu,
+                    self._memory_usage,
+                    old_memory,
+                )
+        else:
+            _LOGGER.warning(
+                "StatefulSet %s not found in coordinator data during update",
+                self.statefulset_name,
+            )
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:

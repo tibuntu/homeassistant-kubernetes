@@ -1628,7 +1628,18 @@ class KubernetesClient:
                             # Key by namespace/name to be unique across namespaces
                             key = f"{namespace}/{name}"
                             metrics[key] = {"cpu": cpu_usage, "memory": memory_usage}
+                        _LOGGER.debug(
+                            "Successfully fetched metrics for %d pods", len(metrics)
+                        )
                         return metrics
+                    elif response.status == 403:
+                        _LOGGER.warning(
+                            "Failed to fetch pod metrics: 403 Forbidden. "
+                            "The service account does not have permission to access the metrics API. "
+                            "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
+                            "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']"
+                        )
+                        return {}
                     else:
                         _LOGGER.warning(
                             "Failed to fetch pod metrics: %s. Metrics API might not be available.",
@@ -1656,9 +1667,11 @@ class KubernetesClient:
         """Calculate CPU and memory usage for a workload from its pods."""
         selector = workload.get("selector", {})
         namespace = workload.get("namespace")
+        workload_name = workload.get("name", "unknown")
 
         cpu_usage = 0.0
         memory_usage = 0.0
+        matched_pods = 0
 
         for pod in pods:
             pod_name = pod.get("name")
@@ -1666,10 +1679,29 @@ class KubernetesClient:
             pod_labels = pod.get("labels", {})
 
             if pod_ns == namespace and self._pod_matches_selector(pod_labels, selector):
-                pod_metric = metrics.get(f"{namespace}/{pod_name}")
+                matched_pods += 1
+                pod_metric_key = f"{namespace}/{pod_name}"
+                pod_metric = metrics.get(pod_metric_key)
                 if pod_metric:
                     cpu_usage += pod_metric.get("cpu", 0.0)
                     memory_usage += pod_metric.get("memory", 0.0)
+                else:
+                    _LOGGER.debug(
+                        "No metrics found for pod %s/%s (key: %s) belonging to workload %s/%s",
+                        pod_ns,
+                        pod_name,
+                        pod_metric_key,
+                        namespace,
+                        workload_name,
+                    )
+
+        if matched_pods == 0:
+            _LOGGER.debug(
+                "No pods matched selector %s for workload %s/%s",
+                selector,
+                namespace,
+                workload_name,
+            )
 
         return cpu_usage, memory_usage
 
@@ -1677,12 +1709,34 @@ class KubernetesClient:
         self, deployments: list[dict[str, Any]]
     ) -> None:
         """Enrich deployments with CPU and memory usage metrics."""
+        # Initialize all deployments with 0.0 values first
+        for deployment in deployments:
+            deployment.setdefault("cpu_usage", 0.0)
+            deployment.setdefault("memory_usage", 0.0)
+
         try:
-            pods = await self._get_pods_aiohttp()
+            # Get pods based on namespace monitoring configuration
+            if self.monitor_all_namespaces:
+                pods = await self._get_pods_all_namespaces_aiohttp()
+            else:
+                pods = await self._get_pods_aiohttp()
             metrics = await self._get_pod_metrics_aiohttp()
 
-            if not pods or not metrics:
+            if not pods:
+                _LOGGER.debug("No pods found for deployment metrics enrichment")
                 return
+            if not metrics:
+                _LOGGER.debug(
+                    "No pod metrics available for deployment metrics enrichment"
+                )
+                return
+
+            _LOGGER.debug(
+                "Enriching %d deployments with metrics from %d pods and %d metric entries",
+                len(deployments),
+                len(pods),
+                len(metrics),
+            )
 
             for deployment in deployments:
                 cpu_usage, memory_usage = self._calculate_resource_usage(
@@ -1690,6 +1744,13 @@ class KubernetesClient:
                 )
                 deployment["cpu_usage"] = cpu_usage
                 deployment["memory_usage"] = memory_usage
+                _LOGGER.debug(
+                    "Deployment %s/%s: CPU=%.2f m, Memory=%.2f MiB",
+                    deployment.get("namespace", "unknown"),
+                    deployment.get("name", "unknown"),
+                    cpu_usage,
+                    memory_usage,
+                )
         except Exception as ex:
             _LOGGER.error("Error enriching deployments with metrics: %s", ex)
 
@@ -1697,12 +1758,34 @@ class KubernetesClient:
         self, statefulsets: list[dict[str, Any]]
     ) -> None:
         """Enrich StatefulSets with CPU and memory usage metrics."""
+        # Initialize all StatefulSets with 0.0 values first
+        for statefulset in statefulsets:
+            statefulset.setdefault("cpu_usage", 0.0)
+            statefulset.setdefault("memory_usage", 0.0)
+
         try:
-            pods = await self._get_pods_aiohttp()
+            # Get pods based on namespace monitoring configuration
+            if self.monitor_all_namespaces:
+                pods = await self._get_pods_all_namespaces_aiohttp()
+            else:
+                pods = await self._get_pods_aiohttp()
             metrics = await self._get_pod_metrics_aiohttp()
 
-            if not pods or not metrics:
+            if not pods:
+                _LOGGER.debug("No pods found for StatefulSet metrics enrichment")
                 return
+            if not metrics:
+                _LOGGER.debug(
+                    "No pod metrics available for StatefulSet metrics enrichment"
+                )
+                return
+
+            _LOGGER.debug(
+                "Enriching %d StatefulSets with metrics from %d pods and %d metric entries",
+                len(statefulsets),
+                len(pods),
+                len(metrics),
+            )
 
             for statefulset in statefulsets:
                 cpu_usage, memory_usage = self._calculate_resource_usage(
@@ -1710,6 +1793,13 @@ class KubernetesClient:
                 )
                 statefulset["cpu_usage"] = cpu_usage
                 statefulset["memory_usage"] = memory_usage
+                _LOGGER.debug(
+                    "StatefulSet %s/%s: CPU=%.2f m, Memory=%.2f MiB",
+                    statefulset.get("namespace", "unknown"),
+                    statefulset.get("name", "unknown"),
+                    cpu_usage,
+                    memory_usage,
+                )
         except Exception as ex:
             _LOGGER.error("Error enriching statefulsets with metrics: %s", ex)
 
