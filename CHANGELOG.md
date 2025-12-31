@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.5.0...v0.6.0) (2025-12-31)
+
+
+### Features
+
+* add counter for DaemonSets ([864e7a1](https://github.com/tibuntu/homeassistant-kubernetes/commit/864e7a1172032616af4b4007df5878dcc5a21ea6)), closes [#70](https://github.com/tibuntu/homeassistant-kubernetes/issues/70)
+* add metrics support for deployments to get cpu usage & memory usage per deployment ([35267f7](https://github.com/tibuntu/homeassistant-kubernetes/commit/35267f7392a65060f52c66c80341ac2c3714a220))
+* add metrics support for statefulsets (cpu and memory usage) ([44811ac](https://github.com/tibuntu/homeassistant-kubernetes/commit/44811ac4d0b6f4560b72fcf8aef3e8ab9b3e86dc))
+* add pod entities support ([285211b](https://github.com/tibuntu/homeassistant-kubernetes/commit/285211b8789a9da0dc3575e826d0d608fd2d5184)), closes [#59](https://github.com/tibuntu/homeassistant-kubernetes/issues/59)
+
+
+### Bug Fixes
+
+* ensure pod metrics are fetched from all namespaces ([05f7036](https://github.com/tibuntu/homeassistant-kubernetes/commit/05f70360cd9fb012bb183fa1d9eb8ad265914a90))
+* remove device_info property from Kubernetes switch entities ([c70a85d](https://github.com/tibuntu/homeassistant-kubernetes/commit/c70a85db8df05f9cc30dfd551ea6184ae0fb27e4))
+
+
+### Other
+
+* add configuration schema for Kubernetes integration ([154b924](https://github.com/tibuntu/homeassistant-kubernetes/commit/154b924f7c7737925a5966e3c06ca1d143c2c9e5))
+* add daemonset counter and reflect pod icon changes ([5125967](https://github.com/tibuntu/homeassistant-kubernetes/commit/5125967ead2dc6d80a0f0c18b5c32ae5d4ddb286))
+* consolidate Kubernetes service operations under a unified workload model ([80302e6](https://github.com/tibuntu/homeassistant-kubernetes/commit/80302e6823b786e0194eb981590854eb3e43af23)), closes [#61](https://github.com/tibuntu/homeassistant-kubernetes/issues/61)
+* **deps:** update actions/checkout action to v6 ([aac02c6](https://github.com/tibuntu/homeassistant-kubernetes/commit/aac02c6e5805f4017f2cf26e039c262002a0bca8))
+* **deps:** update dependency python to 3.14 ([23b27b1](https://github.com/tibuntu/homeassistant-kubernetes/commit/23b27b1d646451dedc4012b55f7653a7cc5f1e8d))
+* **deps:** update mcr.microsoft.com/devcontainers/python docker tag to v3.14 ([267bde6](https://github.com/tibuntu/homeassistant-kubernetes/commit/267bde6c5433ee3802a367bec9f7a4d62edeab97))
+* ensure pod entity tests match current sensor attributes ([a53b5c5](https://github.com/tibuntu/homeassistant-kubernetes/commit/a53b5c558fbe397a447c9f30d9b7494411ce61cb))
+* reflect update to Python 3.14 ([9525c22](https://github.com/tibuntu/homeassistant-kubernetes/commit/9525c22c74ba3d356964c6eb7569d6a5505e8c50))
+* remove uid and label attributes from pod entities ([bc917f2](https://github.com/tibuntu/homeassistant-kubernetes/commit/bc917f29dae152261e848be4c823923a234056db))
+* use Kubernetes logo for pod entities ([727e2a5](https://github.com/tibuntu/homeassistant-kubernetes/commit/727e2a5e7a45d8368532218ca0fa24b2aee09203))
+
 ## [0.5.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.4.1...v0.5.0) (2025-10-05)
 
 
