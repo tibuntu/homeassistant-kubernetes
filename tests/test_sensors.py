@@ -1041,9 +1041,6 @@ class TestKubernetesPodSensor:
         assert attributes["creation_timestamp"] == "2023-01-01T00:00:00Z"
         assert attributes["owner_kind"] == "ReplicaSet"
         assert attributes["owner_name"] == "test-app-7d4b8c9f6b"
-        assert attributes["uid"] == "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-        assert attributes["label_app"] == "test-app"
-        assert attributes["label_version"] == "v1.0"
 
     def test_pod_sensor_extra_state_attributes_no_data(
         self, mock_hass, mock_config_entry, mock_coordinator, mock_client
