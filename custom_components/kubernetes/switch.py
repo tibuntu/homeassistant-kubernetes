@@ -10,7 +10,6 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
@@ -492,16 +491,6 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
         }
 
     @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, f"{self.config_entry.entry_id}_statefulsets")},
-            name=f"{self.config_entry.data.get('cluster_name', 'Kubernetes')} StatefulSets",
-            manufacturer="Kubernetes",
-            model="StatefulSet",
-        )
-
-    @property
     def available(self) -> bool:
         """Return True if entity is available."""
         return self.coordinator.last_update_success
@@ -746,16 +735,6 @@ class KubernetesCronJobSwitch(SwitchEntity):
     def is_on(self) -> bool:
         """Return True if the CronJob is enabled (not suspended)."""
         return self._is_on
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, f"{self.config_entry.entry_id}_cronjobs")},
-            name=f"{self.config_entry.data.get('cluster_name', 'Kubernetes')} CronJobs",
-            manufacturer="Kubernetes",
-            model="CronJob",
-        )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
