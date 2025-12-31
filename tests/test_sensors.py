@@ -363,8 +363,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 5 base sensors + number of node sensors from coordinator
-        expected_count = 5 + len(mock_coordinator.get_all_nodes_data())
+        # 6 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs) + number of node sensors from coordinator
+        expected_count = 6 + len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
@@ -1000,7 +1000,7 @@ class TestKubernetesPodSensor:
             sensor.unique_id
             == f"{mock_config_entry.entry_id}_pod_{namespace}_{pod_name}"
         )
-        assert sensor.icon == "mdi:cube"
+        assert sensor.icon == "mdi:kubernetes"
         assert sensor.state_class is None
 
     def test_pod_sensor_native_value_with_data(
