@@ -64,8 +64,6 @@ Each pod sensor provides comprehensive information about the pod:
 | **creation_timestamp** | When the pod was created | `2023-01-01T00:00:00Z` |
 | **owner_kind** | Type of resource that owns this pod | `ReplicaSet` |
 | **owner_name** | Name of the resource that owns this pod | `my-app-7d4b8c9f6b` |
-| **uid** | Unique identifier of the pod | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` |
-| **label_[key]** | Pod labels as individual attributes | `app=my-app`, `version=v1.0` |
 
 ### Sensor Attributes
 

@@ -576,15 +576,7 @@ class KubernetesPodSensor(KubernetesBaseSensor):
             "creation_timestamp": pod_data.get("creation_timestamp", "N/A"),
             "owner_kind": pod_data.get("owner_kind", "N/A"),
             "owner_name": pod_data.get("owner_name", "N/A"),
-            "uid": pod_data.get("uid", "N/A"),
         }
-
-        # Add labels as individual attributes (flattened)
-        labels = pod_data.get("labels", {})
-        for key, value in labels.items():
-            # Replace special characters in label keys to make them valid attribute names
-            attr_key = f"label_{key.replace('/', '_').replace('.', '_')}"
-            attributes[attr_key] = value
 
         return attributes
 
