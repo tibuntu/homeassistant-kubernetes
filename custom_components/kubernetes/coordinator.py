@@ -49,9 +49,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("Updating Kubernetes data for coordinator")
 
-            # Fetch deployments, statefulsets, cronjobs, pods count, nodes count, and detailed nodes info
+            # Fetch deployments, statefulsets, daemonsets, cronjobs, pods count, nodes count, and detailed nodes info
             deployments = await self.client.get_deployments()
             statefulsets = await self.client.get_statefulsets()
+            daemonsets = await self.client.get_daemonsets()
             cronjobs = await self.client.get_cronjobs()
             pods_count = await self.client.get_pods_count()
             nodes_count = await self.client.get_nodes_count()
@@ -81,6 +82,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 "statefulsets": {
                     statefulset["name"]: statefulset for statefulset in statefulsets
                 },
+                "daemonsets": {
+                    daemonset["name"]: daemonset for daemonset in daemonsets
+                },
                 "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
                 "nodes": {node["name"]: node for node in nodes},
                 "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
@@ -90,9 +94,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             }
 
             _LOGGER.debug(
-                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d cronjobs, %d pods (detailed: %d), %d nodes (detailed: %d)",
+                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d pods (detailed: %d), %d nodes (detailed: %d)",
                 len(deployments),
                 len(statefulsets),
+                len(daemonsets),
                 len(cronjobs),
                 pods_count,
                 len(pods),
@@ -120,6 +125,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "statefulsets" not in self.data:
             return None
         return self.data["statefulsets"].get(statefulset_name)
+
+    def get_daemonset_data(self, daemonset_name: str) -> dict[str, Any] | None:
+        """Get daemonset data by name."""
+        if not self.data or "daemonsets" not in self.data:
+            return None
+        return self.data["daemonsets"].get(daemonset_name)
 
     def get_cronjob_data(self, cronjob_name: str) -> dict[str, Any] | None:
         """Get cronjob data by name."""
@@ -239,6 +250,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     "nodes_count",
                     "deployments_count",
                     "statefulsets_count",
+                    "daemonsets_count",
                     "cronjobs_count",
                 ):
                     _LOGGER.debug(
@@ -302,6 +314,13 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             "StatefulSet %s no longer exists, marking entity for removal",
                             resource_name,
                         )
+                elif resource_type in ("daemonset", "daemonsets"):
+                    if resource_name not in current_data.get("daemonsets", {}):
+                        should_remove = True
+                        _LOGGER.info(
+                            "DaemonSet %s no longer exists, marking entity for removal",
+                            resource_name,
+                        )
                 elif resource_type in ("cronjob", "cronjobs"):
                     if resource_name not in current_data.get("cronjobs", {}):
                         should_remove = True
@@ -341,6 +360,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     if (
                         resource_name not in current_data.get("deployments", {})
                         and resource_name not in current_data.get("statefulsets", {})
+                        and resource_name not in current_data.get("daemonsets", {})
                         and resource_name not in current_data.get("cronjobs", {})
                         and resource_name not in current_data.get("nodes", {})
                         and resource_name not in current_data.get("pods", {})

@@ -34,6 +34,7 @@ async def async_setup_entry(
             KubernetesNodesSensor(coordinator, client, config_entry),
             KubernetesDeploymentsSensor(coordinator, client, config_entry),
             KubernetesStatefulSetsSensor(coordinator, client, config_entry),
+            KubernetesDaemonSetsSensor(coordinator, client, config_entry),
             KubernetesCronJobsSensor(coordinator, client, config_entry),
         ]
 
@@ -403,6 +404,45 @@ class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
                     self._attr_native_value = count
         except Exception as ex:
             _LOGGER.error("Failed to update statefulsets sensor: %s", ex)
+            self._attr_native_value = 0
+
+
+class KubernetesDaemonSetsSensor(KubernetesBaseSensor):
+    """Sensor for Kubernetes DaemonSets count."""
+
+    def __init__(
+        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
+    ) -> None:
+        """Initialize the DaemonSets sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self._attr_name = "DaemonSets Count"
+        self._attr_unique_id = f"{config_entry.entry_id}_daemonsets_count"
+        self._attr_native_unit_of_measurement = "daemonsets"
+
+    @property
+    def native_value(self) -> int:
+        """Return the native value of the sensor."""
+        if not self.coordinator.data:
+            return 0
+
+        # Get daemonsets count from coordinator data
+        if "daemonsets" in self.coordinator.data:
+            return len(self.coordinator.data["daemonsets"])
+
+        # Fallback to calling client directly if not in coordinator data
+        return 0
+
+    async def async_update(self) -> None:
+        """Update the daemonsets sensor state."""
+        try:
+            await super().async_update()
+            # If coordinator data is not available, try to get data directly from client
+            if not self.coordinator.data or "daemonsets" not in self.coordinator.data:
+                if hasattr(self.client, "get_daemonsets_count"):
+                    count = await self.client.get_daemonsets_count()
+                    self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update daemonsets sensor: %s", ex)
             self._attr_native_value = 0
 
 

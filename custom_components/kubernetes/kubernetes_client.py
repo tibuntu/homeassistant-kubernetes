@@ -1927,6 +1927,200 @@ class KubernetesClient:
         """Check if the cluster is healthy."""
         return await self._test_connection()
 
+    # DaemonSet methods
+    async def get_daemonsets_count(self) -> int:
+        """Get the count of DaemonSets in the namespace(s)."""
+        try:
+            if self.monitor_all_namespaces:
+                result = await self._get_daemonsets_count_all_namespaces_aiohttp()
+            else:
+                result = await self._get_daemonsets_count_aiohttp()
+
+            if result is not None:
+                self._log_success("get daemonsets count", f"count: {result}")
+            return result or 0
+        except Exception as ex:
+            self._log_error("get daemonsets count", ex)
+            return 0
+
+    async def _get_daemonsets_count_aiohttp(self) -> int:
+        """Get DaemonSets count using aiohttp for single namespace."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/daemonsets",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return len(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "aiohttp daemonsets count request failed with status: %s",
+                            response.status,
+                        )
+                        return 0
+        except Exception as ex:
+            self._log_error("aiohttp get daemonsets count", ex)
+            return 0
+
+    async def _get_daemonsets_count_all_namespaces_aiohttp(self) -> int:
+        """Get DaemonSets count using aiohttp for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/daemonsets",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return len(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "aiohttp daemonsets count all namespaces request failed with status: %s",
+                            response.status,
+                        )
+                        return 0
+        except Exception as ex:
+            self._log_error("aiohttp get daemonsets count all namespaces", ex)
+            return 0
+
+    async def get_daemonsets(self) -> list[dict[str, Any]]:
+        """Get all DaemonSets in the namespace(s) with their details."""
+        try:
+            # Use aiohttp as primary since it works better with SSL configuration
+            if self.monitor_all_namespaces:
+                result = await self._get_daemonsets_all_namespaces_aiohttp()
+            else:
+                result = await self._get_daemonsets_aiohttp()
+
+            if result:
+                self._log_success(
+                    "get daemonsets", f"retrieved {len(result)} daemonsets"
+                )
+            return result
+        except Exception as ex:
+            self._log_error("get daemonsets", ex)
+            return []
+
+    async def _get_daemonsets_aiohttp(self) -> list[dict[str, Any]]:
+        """Get DaemonSets using aiohttp for single namespace."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/daemonsets",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        daemonset_list = []
+                        for daemonset in data.get("items", []):
+                            daemonset_info = {
+                                "name": daemonset["metadata"]["name"],
+                                "namespace": daemonset["metadata"]["namespace"],
+                                "desired_number_scheduled": daemonset["status"].get(
+                                    "desiredNumberScheduled", 0
+                                ),
+                                "current_number_scheduled": daemonset["status"].get(
+                                    "currentNumberScheduled", 0
+                                ),
+                                "number_ready": daemonset["status"].get(
+                                    "numberReady", 0
+                                ),
+                                "number_available": daemonset["status"].get(
+                                    "numberAvailable", 0
+                                ),
+                                "is_running": daemonset["status"].get("numberReady", 0)
+                                > 0,
+                                "selector": daemonset.get("spec", {})
+                                .get("selector", {})
+                                .get("matchLabels", {}),
+                            }
+                            daemonset_list.append(daemonset_info)
+                        return daemonset_list
+                    else:
+                        _LOGGER.error(
+                            "aiohttp daemonsets request failed with status: %s",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("aiohttp get daemonsets", ex)
+            return []
+
+    async def _get_daemonsets_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
+        """Get DaemonSets using aiohttp for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/daemonsets",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        daemonset_list = []
+                        for daemonset in data.get("items", []):
+                            daemonset_info = {
+                                "name": daemonset["metadata"]["name"],
+                                "namespace": daemonset["metadata"]["namespace"],
+                                "desired_number_scheduled": daemonset["status"].get(
+                                    "desiredNumberScheduled", 0
+                                ),
+                                "current_number_scheduled": daemonset["status"].get(
+                                    "currentNumberScheduled", 0
+                                ),
+                                "number_ready": daemonset["status"].get(
+                                    "numberReady", 0
+                                ),
+                                "number_available": daemonset["status"].get(
+                                    "numberAvailable", 0
+                                ),
+                                "is_running": daemonset["status"].get("numberReady", 0)
+                                > 0,
+                                "selector": daemonset.get("spec", {})
+                                .get("selector", {})
+                                .get("matchLabels", {}),
+                            }
+                            daemonset_list.append(daemonset_info)
+                        return daemonset_list
+                    else:
+                        _LOGGER.error(
+                            "aiohttp all daemonsets request failed with status: %s",
+                            response.status,
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("aiohttp get all daemonsets", ex)
+            return []
+
     # CronJob methods
     async def get_cronjobs_count(self) -> int:
         """Get the count of CronJobs in the cluster."""

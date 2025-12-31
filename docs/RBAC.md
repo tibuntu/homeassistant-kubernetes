@@ -27,6 +27,7 @@ The integration requires specific Kubernetes RBAC permissions to monitor cluster
 | **statefulsets** | `get`, `list`, `watch` | ✅ | Monitor statefulset status and count | No statefulset sensors or switches |
 | **statefulsets/scale** | `get`, `patch`, `update`, `create`, `delete` | ✅ | Scale statefulsets up/down | Cannot control statefulset switches |
 | **statefulsets/status** | `get`, `patch`, `update` | ⚠️ | Accurate statefulset state reporting | Potential state inconsistencies |
+| **daemonsets** | `get`, `list`, `watch` | ✅ | Monitor daemonset status and count | No daemonset sensors |
 
 ### Batch API Group (`batch`)
 
@@ -68,7 +69,7 @@ rules:
   resources: ["pods", "nodes", "namespaces", "events"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["batch"]
   resources: ["cronjobs", "jobs"]
@@ -101,7 +102,7 @@ rules:
   resources: ["pods", "nodes", "namespaces", "events"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["batch"]
   resources: ["cronjobs", "jobs"]
@@ -133,7 +134,7 @@ rules:
   resources: ["pods", "events"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale", "statefulsets/status"]
@@ -176,7 +177,7 @@ rules:
   resources: ["pods", "nodes"]
   verbs: ["get", "list"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "statefulsets"]
+  resources: ["deployments", "statefulsets", "daemonsets"]
   verbs: ["get", "list"]
 - apiGroups: ["batch"]
   resources: ["cronjobs"]

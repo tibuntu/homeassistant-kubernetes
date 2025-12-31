@@ -12,6 +12,7 @@ The integration provides the following sensors to monitor your Kubernetes cluste
 | **Nodes Count** | Number of nodes in the cluster | `3` | nodes |
 | **Deployments Count** | Number of deployments in the monitored namespace(s) | `8` | deployments |
 | **StatefulSets Count** | Number of statefulsets in the monitored namespace(s) | `2` | statefulsets |
+| **DaemonSets Count** | Number of daemonsets in the monitored namespace(s) | `3` | daemonsets |
 | **CronJobs Count** | Number of cronjobs in the monitored namespace(s) | `5` | cronjobs |
 
 ### Individual Node Sensors
@@ -143,10 +144,11 @@ The integration automatically discovers and creates entities for:
 
 - All deployments in monitored namespaces
 - All statefulsets in monitored namespaces
+- All daemonsets in monitored namespaces
 - All cronjobs in monitored namespaces
 - Individual Kubernetes pods in monitored namespaces
 - Individual Kubernetes nodes in the cluster
-- Cluster-wide metrics (pods, nodes, deployments, statefulsets, cronjobs count)
+- Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs count)
 - Overall cluster health
 
 Entities are automatically added when new resources are created and removed when resources are deleted from the cluster.

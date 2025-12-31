@@ -321,6 +321,88 @@ async def test_get_statefulsets_count_success(mock_client):
     assert count == 3
 
 
+async def test_get_daemonsets_count_success(mock_client):
+    """Test successful daemonsets count retrieval."""
+    # Mock the connection test to return True
+    mock_client._test_connection = AsyncMock(return_value=True)
+
+    # Mock the aiohttp method to return the expected count
+    mock_client._get_daemonsets_count_aiohttp = AsyncMock(return_value=2)
+
+    count = await mock_client.get_daemonsets_count()
+
+    assert count == 2
+
+
+async def test_get_daemonsets_count_all_namespaces(mock_client):
+    """Test daemonsets count retrieval for all namespaces."""
+    mock_client.monitor_all_namespaces = True
+    mock_client._test_connection = AsyncMock(return_value=True)
+    mock_client._get_daemonsets_count_all_namespaces_aiohttp = AsyncMock(return_value=5)
+
+    count = await mock_client.get_daemonsets_count()
+
+    assert count == 5
+    mock_client._get_daemonsets_count_all_namespaces_aiohttp.assert_called_once()
+
+
+async def test_get_daemonsets_success(mock_client):
+    """Test successful daemonsets retrieval."""
+    mock_client._test_connection = AsyncMock(return_value=True)
+    mock_client._get_daemonsets_aiohttp = AsyncMock(
+        return_value=[
+            {
+                "name": "kube-proxy",
+                "namespace": "kube-system",
+                "desired_number_scheduled": 3,
+                "current_number_scheduled": 3,
+                "number_ready": 3,
+                "number_available": 3,
+                "is_running": True,
+            }
+        ]
+    )
+
+    daemonsets = await mock_client.get_daemonsets()
+
+    assert len(daemonsets) == 1
+    assert daemonsets[0]["name"] == "kube-proxy"
+    assert daemonsets[0]["number_ready"] == 3
+
+
+async def test_get_daemonsets_all_namespaces(mock_client):
+    """Test daemonsets retrieval for all namespaces."""
+    mock_client.monitor_all_namespaces = True
+    mock_client._test_connection = AsyncMock(return_value=True)
+    mock_client._get_daemonsets_all_namespaces_aiohttp = AsyncMock(
+        return_value=[
+            {
+                "name": "kube-proxy",
+                "namespace": "kube-system",
+                "desired_number_scheduled": 3,
+                "current_number_scheduled": 3,
+                "number_ready": 3,
+                "number_available": 3,
+                "is_running": True,
+            },
+            {
+                "name": "fluentd",
+                "namespace": "default",
+                "desired_number_scheduled": 2,
+                "current_number_scheduled": 2,
+                "number_ready": 2,
+                "number_available": 2,
+                "is_running": True,
+            },
+        ]
+    )
+
+    daemonsets = await mock_client.get_daemonsets()
+
+    assert len(daemonsets) == 2
+    mock_client._get_daemonsets_all_namespaces_aiohttp.assert_called_once()
+
+
 async def test_is_cluster_healthy_success(mock_client):
     """Test successful cluster health check."""
     # Mock the connection test to return True

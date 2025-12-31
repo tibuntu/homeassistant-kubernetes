@@ -24,6 +24,7 @@ from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSe
 from custom_components.kubernetes.const import DOMAIN
 from custom_components.kubernetes.sensor import (
     KubernetesCronJobsSensor,
+    KubernetesDaemonSetsSensor,
     KubernetesDeploymentsSensor,
     KubernetesNodeSensor,
     KubernetesNodesSensor,
@@ -63,6 +64,7 @@ def mock_client():
     client.get_nodes_count = AsyncMock(return_value=3)
     client.get_deployments_count = AsyncMock(return_value=2)
     client.get_statefulsets_count = AsyncMock(return_value=1)
+    client.get_daemonsets_count = AsyncMock(return_value=1)
     client.is_cluster_healthy = AsyncMock(return_value=True)
     return client
 
@@ -229,6 +231,52 @@ class TestKubernetesStatefulSetsSensor:
         mock_client.get_statefulsets_count.side_effect = Exception("API Error")
 
         sensor = KubernetesStatefulSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        # Should handle exception gracefully
+        await sensor.async_update()
+
+        # Value should be 0 on error
+        assert sensor.native_value == 0
+
+
+class TestKubernetesDaemonSetsSensor:
+    """Test Kubernetes daemonsets sensor."""
+
+    def test_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor initialization."""
+        sensor = KubernetesDaemonSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        assert sensor.name == "DaemonSets Count"
+        assert sensor.unique_id == "test_entry_id_daemonsets_count"
+        assert sensor.native_unit_of_measurement == "daemonsets"
+
+    async def test_sensor_update_success(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test successful sensor update."""
+        # Set up coordinator data
+        mock_coordinator.data = {"daemonsets": {"daemonset1": {}}}
+
+        sensor = KubernetesDaemonSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        # The sensor should read from coordinator data
+        assert sensor.native_value == 1
+
+    async def test_sensor_update_failure(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor update failure."""
+        mock_client.get_daemonsets_count.side_effect = Exception("API Error")
+
+        sensor = KubernetesDaemonSetsSensor(
             mock_coordinator, mock_client, mock_config_entry
         )
 
