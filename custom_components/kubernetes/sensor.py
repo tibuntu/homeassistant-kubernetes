@@ -572,7 +572,7 @@ class KubernetesPodSensor(KubernetesBaseSensor):
         self._attr_name = f"{pod_name}"
         self._attr_unique_id = f"{config_entry.entry_id}_pod_{namespace}_{pod_name}"
         self._attr_native_unit_of_measurement = None
-        self._attr_icon = "mdi:cube"
+        self._attr_icon = "mdi:kubernetes"
         # Override state class since this sensor returns string values, not measurements
         self._attr_state_class = None
 
