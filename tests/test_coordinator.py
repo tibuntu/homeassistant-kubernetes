@@ -39,9 +39,11 @@ def mock_client():
     client = MagicMock()
     client.get_deployments = AsyncMock(return_value=[])
     client.get_statefulsets = AsyncMock(return_value=[])
+    client.get_daemonsets = AsyncMock(return_value=[])
     client.get_cronjobs = AsyncMock(return_value=[])
     client.get_deployments_count = AsyncMock(return_value=0)
     client.get_statefulsets_count = AsyncMock(return_value=0)
+    client.get_daemonsets_count = AsyncMock(return_value=0)
     client.get_cronjobs_count = AsyncMock(return_value=0)
     client.get_pods_count = AsyncMock(return_value=0)
     client.get_pods = AsyncMock(return_value=[])
@@ -126,6 +128,7 @@ class TestKubernetesDataCoordinator:
         # Mock count data
         mock_client.get_deployments_count.return_value = 1
         mock_client.get_statefulsets_count.return_value = 1
+        mock_client.get_daemonsets_count.return_value = 1
         mock_client.get_cronjobs_count.return_value = 1
 
         result = await coordinator._async_update_data()
@@ -178,6 +181,7 @@ class TestKubernetesDataCoordinator:
         mock_client.get_cronjobs.return_value = []
         mock_client.get_deployments_count.return_value = 0
         mock_client.get_statefulsets_count.return_value = 0
+        mock_client.get_daemonsets_count.return_value = 0
         mock_client.get_cronjobs_count.return_value = 0
 
         result = await coordinator._async_update_data()

@@ -88,6 +88,21 @@ def mock_kubernetes_client(mock_config):
     client.scale_statefulset = AsyncMock(return_value=True)
     client.start_statefulset = AsyncMock(return_value=True)
     client.stop_statefulset = AsyncMock(return_value=True)
+    # Add DaemonSet methods
+    client.get_daemonsets_count = AsyncMock(return_value=1)
+    client.get_daemonsets = AsyncMock(
+        return_value=[
+            {
+                "name": "kube-proxy",
+                "namespace": "kube-system",
+                "desired_number_scheduled": 3,
+                "current_number_scheduled": 3,
+                "number_ready": 3,
+                "number_available": 3,
+                "is_running": True,
+            }
+        ]
+    )
     return client
 
 
@@ -123,6 +138,17 @@ def mock_coordinator(mock_kubernetes_client):
                 "replicas": 3,
                 "available_replicas": 3,
                 "ready_replicas": 3,
+                "is_running": True,
+            }
+        },
+        "daemonsets": {
+            "kube-proxy": {
+                "name": "kube-proxy",
+                "namespace": "kube-system",
+                "desired_number_scheduled": 3,
+                "current_number_scheduled": 3,
+                "number_ready": 3,
+                "number_available": 3,
                 "is_running": True,
             }
         },

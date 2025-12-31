@@ -82,7 +82,7 @@ rules:
   resources: ["pods", "nodes", "namespaces"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["extensions"]
   resources: ["deployments", "replicasets"]
@@ -125,6 +125,7 @@ rules:
 | **apps** | **statefulsets** | `get`, `list`, `watch` | Monitor statefulset status and metadata |
 | **apps** | **statefulsets/scale** | `patch`, `update`, `get`, `create`, `delete` | Scale statefulsets up/down |
 | **apps** | **statefulsets/status** | `get`, `patch`, `update` | Update and monitor statefulset status |
+| **apps** | **daemonsets** | `get`, `list`, `watch` | Monitor daemonset status and count |
 | **batch** | **cronjobs** | `get`, `list`, `watch` | Monitor CronJob status and metadata |
 | **batch** | **cronjobs/status** | `get`, `patch`, `update` | Update and monitor CronJob status |
 | **batch** | **jobs** | `get`, `list`, `watch`, `create` | Monitor and create jobs (for CronJob triggering) |
@@ -178,7 +179,7 @@ rules:
   resources: ["pods", "events"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets"]
+  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
   verbs: ["get", "list", "watch"]
 # Control permissions within namespace
 - apiGroups: ["apps"]

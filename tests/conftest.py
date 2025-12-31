@@ -91,6 +91,7 @@ def mock_client():
     client.get_nodes_count = AsyncMock(return_value=3)
     client.get_deployments_count = AsyncMock(return_value=2)
     client.get_statefulsets_count = AsyncMock(return_value=1)
+    client.get_daemonsets_count = AsyncMock(return_value=1)
     client.is_cluster_healthy = AsyncMock(return_value=True)
     return client
 

@@ -25,11 +25,11 @@ Welcome to the documentation for the Kubernetes Home Assistant Integration. This
 
 ## Overview
 
-This integration provides sensors, binary sensors, and switches to monitor your Kubernetes cluster directly from Home Assistant. You can track pod counts, individual node status with detailed system information, resource usage, and control deployments and statefulsets.
+This integration provides sensors, binary sensors, and switches to monitor your Kubernetes cluster directly from Home Assistant. You can track pod counts, individual node status with detailed system information, resource usage, and control deployments and statefulsets. It also monitors daemonsets and cronjobs.
 
 ### Key Features
 
-- **Cluster Metrics**: Monitor pod, node, deployment, statefulset, and cronjob counts
+- **Cluster Metrics**: Monitor pod, node, deployment, statefulset, daemonset, and cronjob counts
 - **Individual Node Monitoring**: Detailed sensors for each Kubernetes node with status, IP addresses, memory/CPU resources, and system information
 - **Workload Control**: Start/stop deployments and statefulsets via Home Assistant switches
 - **Health Monitoring**: Binary sensor for overall cluster health
