@@ -750,7 +750,7 @@ class KubernetesCronJobSwitch(SwitchEntity):
             "next_schedule_time": self._next_schedule_time,
             "last_suspend_time": self._last_suspend_time,
             "last_resume_time": self._last_resume_time,
-            "workload_type": WORKLOAD_TYPE_CRONJOB,
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
         }
 
     async def async_added_to_hass(self) -> None:

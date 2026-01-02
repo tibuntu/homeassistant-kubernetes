@@ -7,6 +7,7 @@ import pytest
 # Import from the custom component directly
 from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
 from custom_components.kubernetes.const import (
+    ATTR_WORKLOAD_TYPE,
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DOMAIN,
@@ -15,6 +16,8 @@ from custom_components.kubernetes.const import (
     SERVICE_STOP_WORKLOAD,
     SWITCH_TYPE_DEPLOYMENT,
     SWITCH_TYPE_STATEFULSET,
+    WORKLOAD_TYPE_DEPLOYMENT,
+    WORKLOAD_TYPE_STATEFULSET,
 )
 from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
 from custom_components.kubernetes.kubernetes_client import KubernetesClient
@@ -234,7 +237,7 @@ async def test_deployment_switch_initialization(mock_coordinator):
     attributes = switch.extra_state_attributes
     assert attributes["deployment_name"] == "nginx-deployment"
     assert attributes["namespace"] == "default"
-    assert attributes["workload_type"] == "Deployment"
+    assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_DEPLOYMENT
 
 
 async def test_deployment_switch_update(mock_coordinator):
@@ -409,7 +412,7 @@ async def test_statefulset_switch_initialization(mock_coordinator):
     attributes = switch.extra_state_attributes
     assert attributes["statefulset_name"] == "redis-statefulset"
     assert attributes["namespace"] == "default"
-    assert attributes["workload_type"] == "StatefulSet"
+    assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_STATEFULSET
 
 
 async def test_statefulset_switch_update(mock_coordinator):

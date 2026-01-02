@@ -21,7 +21,11 @@ except ImportError:
 import pytest
 
 from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
-from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.const import (
+    ATTR_WORKLOAD_TYPE,
+    DOMAIN,
+    WORKLOAD_TYPE_POD,
+)
 from custom_components.kubernetes.sensor import (
     KubernetesCronJobsSensor,
     KubernetesDaemonSetsSensor,
@@ -1089,6 +1093,31 @@ class TestKubernetesPodSensor:
         assert attributes["creation_timestamp"] == "2023-01-01T00:00:00Z"
         assert attributes["owner_kind"] == "ReplicaSet"
         assert attributes["owner_name"] == "test-app-7d4b8c9f6b"
+        assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_POD
+
+    def test_pod_sensor_workload_type_always_present(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test that workload_type is always present when pod data exists."""
+        namespace = "default"
+        pod_name = "test-pod"
+
+        # Mock coordinator data with minimal fields
+        mock_coordinator.get_pod_data.return_value = {
+            "name": pod_name,
+            "namespace": namespace,
+            "phase": "Pending",
+        }
+
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+
+        attributes = sensor.extra_state_attributes
+
+        # Verify workload_type is always present when data exists
+        assert ATTR_WORKLOAD_TYPE in attributes
+        assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_POD
 
     def test_pod_sensor_extra_state_attributes_no_data(
         self, mock_hass, mock_config_entry, mock_coordinator, mock_client

@@ -138,7 +138,7 @@ class TestKubernetesCronJobSwitch:
         assert attributes["next_schedule_time"] == "2023-01-02T02:00:00Z"
         assert attributes["last_suspend_time"] == 1234567890.0
         assert attributes["last_resume_time"] == 1234567891.0
-        assert attributes["workload_type"] == WORKLOAD_TYPE_CRONJOB
+        assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_CRONJOB
 
     async def test_async_turn_on_success(
         self, cronjob_switch, mock_hass, mock_config_entry, mock_client

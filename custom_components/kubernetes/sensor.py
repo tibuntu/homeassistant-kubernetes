@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
-from .const import DOMAIN
+from .const import ATTR_WORKLOAD_TYPE, DOMAIN, WORKLOAD_TYPE_POD
 from .coordinator import KubernetesDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -616,6 +616,7 @@ class KubernetesPodSensor(KubernetesBaseSensor):
             "creation_timestamp": pod_data.get("creation_timestamp", "N/A"),
             "owner_kind": pod_data.get("owner_kind", "N/A"),
             "owner_name": pod_data.get("owner_name", "N/A"),
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_POD,
         }
 
         return attributes
