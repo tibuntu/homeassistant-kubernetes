@@ -45,7 +45,19 @@ class KubernetesClient:
         self.port = config_data.get(CONF_PORT, DEFAULT_PORT)
         self.api_token = config_data[CONF_API_TOKEN]
         self.cluster_name = config_data.get(CONF_CLUSTER_NAME, "default")
-        self.namespace = config_data.get(CONF_NAMESPACE, DEFAULT_NAMESPACE)
+        # Handle namespace as list (new) or string (legacy)
+        namespace_config = config_data.get(CONF_NAMESPACE, [DEFAULT_NAMESPACE])
+        if isinstance(namespace_config, str):
+            # Legacy: single namespace as string
+            self.namespaces = [namespace_config]
+        elif isinstance(namespace_config, list):
+            self.namespaces = (
+                namespace_config if namespace_config else [DEFAULT_NAMESPACE]
+            )
+        else:
+            self.namespaces = [DEFAULT_NAMESPACE]
+        # Keep namespace for backward compatibility in error messages
+        self.namespace = self.namespaces[0] if self.namespaces else DEFAULT_NAMESPACE
         self.monitor_all_namespaces = config_data.get(
             CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
         )
@@ -157,7 +169,7 @@ class KubernetesClient:
         """Log successful operations with context."""
         cluster_info = f"cluster={self.cluster_name}, host={self.host}:{self.port}"
         namespace_info = (
-            f"namespace={self.namespace}"
+            f"namespaces={','.join(self.namespaces)}"
             if not self.monitor_all_namespaces
             else "all_namespaces"
         )
@@ -269,32 +281,38 @@ class KubernetesClient:
         return await self._get_pods_count_all_namespaces_aiohttp()
 
     async def _get_pods_count_aiohttp(self) -> int:
-        """Get pods count using aiohttp as fallback for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
+        """Get pods count using aiohttp for configured namespaces."""
+        total_count = 0
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/api/v1/namespaces/{self.namespace}/pods",
-                    headers=headers,
-                    ssl=self.verify_ssl,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return len(data.get("items", []))
-                    else:
-                        _LOGGER.error(
-                            "aiohttp pods request failed with status: %s",
-                            response.status,
-                        )
-                        return 0
-        except Exception as ex:
-            self._log_error("aiohttp get pods count", ex)
-            return 0
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    async with session.get(
+                        f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods",
+                        headers=headers,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            total_count += len(data.get("items", []))
+                        else:
+                            _LOGGER.warning(
+                                "aiohttp pods count request failed for namespace %s with status: %s",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get pods count failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return total_count
 
     async def _get_pods_count_all_namespaces_aiohttp(self) -> int:
         """Get pods count using aiohttp as fallback for all namespaces."""
@@ -347,32 +365,40 @@ class KubernetesClient:
             return []
 
     async def _get_pods_aiohttp(self) -> list[dict[str, Any]]:
-        """Get pods using aiohttp for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
+        """Get pods using aiohttp for configured namespaces."""
+        all_pods = []
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/api/v1/namespaces/{self.namespace}/pods",
-                    headers=headers,
-                    ssl=self.verify_ssl,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return self._parse_pods_data(data.get("items", []))
-                    else:
-                        _LOGGER.error(
-                            "aiohttp pods request failed with status: %s",
-                            response.status,
-                        )
-                        return []
-        except Exception as ex:
-            self._log_error("aiohttp get pods", ex)
-            return []
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    async with session.get(
+                        f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods",
+                        headers=headers,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            all_pods.extend(
+                                self._parse_pods_data(data.get("items", []))
+                            )
+                        else:
+                            _LOGGER.warning(
+                                "aiohttp pods request failed for namespace %s with status: %s",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get pods failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return all_pods
 
     async def _get_pods_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
         """Get pods using aiohttp for all namespaces."""
@@ -798,32 +824,38 @@ class KubernetesClient:
         return await self._get_deployments_count_all_namespaces_aiohttp()
 
     async def _get_deployments_count_aiohttp(self) -> int:
-        """Get deployments count using aiohttp as fallback for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
+        """Get deployments count using aiohttp for configured namespaces."""
+        total_count = 0
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/deployments",
-                    headers=headers,
-                    ssl=self.verify_ssl,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return len(data.get("items", []))
-                    else:
-                        _LOGGER.error(
-                            "aiohttp deployments request failed with status: %s",
-                            response.status,
-                        )
-                        return 0
-        except Exception as ex:
-            self._log_error("aiohttp get deployments count", ex)
-            return 0
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    async with session.get(
+                        f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{namespace}/deployments",
+                        headers=headers,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            total_count += len(data.get("items", []))
+                        else:
+                            _LOGGER.warning(
+                                "aiohttp deployments count request failed for namespace %s with status: %s",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get deployments count failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return total_count
 
     async def _get_deployments_count_all_namespaces_aiohttp(self) -> int:
         """Get deployments count using aiohttp as fallback for all namespaces."""
@@ -916,53 +948,57 @@ class KubernetesClient:
         return deployment_list
 
     async def _get_deployments_aiohttp(self) -> list[dict[str, Any]]:
-        """Get deployments using aiohttp as fallback for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
+        """Get deployments using aiohttp for configured namespaces."""
+        all_deployments = []
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/deployments",
-                    headers=headers,
-                    ssl=self.verify_ssl,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        deployment_list = []
-                        for deployment in data.get("items", []):
-                            deployment_info = {
-                                "name": deployment["metadata"]["name"],
-                                "namespace": deployment["metadata"]["namespace"],
-                                "replicas": deployment["spec"].get("replicas", 0),
-                                "available_replicas": deployment["status"].get(
-                                    "availableReplicas", 0
-                                ),
-                                "ready_replicas": deployment["status"].get(
-                                    "readyReplicas", 0
-                                ),
-                                "is_running": deployment["status"].get(
-                                    "availableReplicas", 0
-                                )
-                                > 0,
-                                "selector": deployment.get("spec", {})
-                                .get("selector", {})
-                                .get("matchLabels", {}),
-                            }
-                            deployment_list.append(deployment_info)
-                        return deployment_list
-                    else:
-                        _LOGGER.error(
-                            "aiohttp deployments request failed with status: %s",
-                            response.status,
-                        )
-                        return []
-        except Exception as ex:
-            self._log_error("aiohttp get deployments", ex)
-            return []
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    async with session.get(
+                        f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{namespace}/deployments",
+                        headers=headers,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            for deployment in data.get("items", []):
+                                deployment_info = {
+                                    "name": deployment["metadata"]["name"],
+                                    "namespace": deployment["metadata"]["namespace"],
+                                    "replicas": deployment["spec"].get("replicas", 0),
+                                    "available_replicas": deployment["status"].get(
+                                        "availableReplicas", 0
+                                    ),
+                                    "ready_replicas": deployment["status"].get(
+                                        "readyReplicas", 0
+                                    ),
+                                    "is_running": deployment["status"].get(
+                                        "availableReplicas", 0
+                                    )
+                                    > 0,
+                                    "selector": deployment.get("spec", {})
+                                    .get("selector", {})
+                                    .get("matchLabels", {}),
+                                }
+                                all_deployments.append(deployment_info)
+                        else:
+                            _LOGGER.warning(
+                                "aiohttp deployments request failed for namespace %s with status: %s",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get deployments failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return all_deployments
 
     async def _get_deployments_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
         """Get deployments using aiohttp as fallback for all namespaces."""
@@ -1182,32 +1218,38 @@ class KubernetesClient:
         return len(statefulsets.items)
 
     async def _get_statefulsets_count_aiohttp(self) -> int:
-        """Get StatefulSets count using aiohttp as fallback for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
+        """Get StatefulSets count using aiohttp for configured namespaces."""
+        total_count = 0
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/statefulsets",
-                    headers=headers,
-                    ssl=False,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return len(data.get("items", []))
-                    else:
-                        _LOGGER.error(
-                            "aiohttp statefulsets count request failed with status: %s",
-                            response.status,
-                        )
-                        return 0
-        except Exception as ex:
-            self._log_error("aiohttp get statefulsets count", ex)
-            return 0
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    async with session.get(
+                        f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{namespace}/statefulsets",
+                        headers=headers,
+                        ssl=False,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            total_count += len(data.get("items", []))
+                        else:
+                            _LOGGER.warning(
+                                "aiohttp statefulsets count request failed for namespace %s with status: %s",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get statefulsets count failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return total_count
 
     async def _get_statefulsets_count_all_namespaces_aiohttp(self) -> int:
         """Get StatefulSets count using aiohttp as fallback for all namespaces."""
@@ -1337,53 +1379,57 @@ class KubernetesClient:
         return statefulset_list
 
     async def _get_statefulsets_aiohttp(self) -> list[dict[str, Any]]:
-        """Get StatefulSets using aiohttp as fallback for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
+        """Get StatefulSets using aiohttp for configured namespaces."""
+        all_statefulsets = []
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/statefulsets",
-                    headers=headers,
-                    ssl=False,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        statefulset_list = []
-                        for statefulset in data.get("items", []):
-                            statefulset_info = {
-                                "name": statefulset["metadata"]["name"],
-                                "namespace": statefulset["metadata"]["namespace"],
-                                "replicas": statefulset["spec"].get("replicas", 0),
-                                "available_replicas": statefulset["status"].get(
-                                    "availableReplicas", 0
-                                ),
-                                "ready_replicas": statefulset["status"].get(
-                                    "readyReplicas", 0
-                                ),
-                                "is_running": statefulset["status"].get(
-                                    "availableReplicas", 0
-                                )
-                                > 0,
-                                "selector": statefulset.get("spec", {})
-                                .get("selector", {})
-                                .get("matchLabels", {}),
-                            }
-                            statefulset_list.append(statefulset_info)
-                        return statefulset_list
-                    else:
-                        _LOGGER.error(
-                            "aiohttp statefulsets request failed with status: %s",
-                            response.status,
-                        )
-                        return []
-        except Exception as ex:
-            self._log_error("aiohttp get statefulsets", ex)
-            return []
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    async with session.get(
+                        f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{namespace}/statefulsets",
+                        headers=headers,
+                        ssl=False,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            for statefulset in data.get("items", []):
+                                statefulset_info = {
+                                    "name": statefulset["metadata"]["name"],
+                                    "namespace": statefulset["metadata"]["namespace"],
+                                    "replicas": statefulset["spec"].get("replicas", 0),
+                                    "available_replicas": statefulset["status"].get(
+                                        "availableReplicas", 0
+                                    ),
+                                    "ready_replicas": statefulset["status"].get(
+                                        "readyReplicas", 0
+                                    ),
+                                    "is_running": statefulset["status"].get(
+                                        "availableReplicas", 0
+                                    )
+                                    > 0,
+                                    "selector": statefulset.get("spec", {})
+                                    .get("selector", {})
+                                    .get("matchLabels", {}),
+                                }
+                                all_statefulsets.append(statefulset_info)
+                        else:
+                            _LOGGER.warning(
+                                "aiohttp statefulsets request failed for namespace %s with status: %s",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get statefulsets failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return all_statefulsets
 
     async def _get_statefulsets_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
         """Get StatefulSets using aiohttp as fallback for all namespaces."""
@@ -1944,32 +1990,38 @@ class KubernetesClient:
             return 0
 
     async def _get_daemonsets_count_aiohttp(self) -> int:
-        """Get DaemonSets count using aiohttp for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
+        """Get DaemonSets count using aiohttp for configured namespaces."""
+        total_count = 0
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/daemonsets",
-                    headers=headers,
-                    ssl=self.verify_ssl,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return len(data.get("items", []))
-                    else:
-                        _LOGGER.error(
-                            "aiohttp daemonsets count request failed with status: %s",
-                            response.status,
-                        )
-                        return 0
-        except Exception as ex:
-            self._log_error("aiohttp get daemonsets count", ex)
-            return 0
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    async with session.get(
+                        f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{namespace}/daemonsets",
+                        headers=headers,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            total_count += len(data.get("items", []))
+                        else:
+                            _LOGGER.warning(
+                                "aiohttp daemonsets count request failed for namespace %s with status: %s",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get daemonsets count failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return total_count
 
     async def _get_daemonsets_count_all_namespaces_aiohttp(self) -> int:
         """Get DaemonSets count using aiohttp for all namespaces."""
@@ -2018,56 +2070,62 @@ class KubernetesClient:
             return []
 
     async def _get_daemonsets_aiohttp(self) -> list[dict[str, Any]]:
-        """Get DaemonSets using aiohttp for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
+        """Get DaemonSets using aiohttp for configured namespaces."""
+        all_daemonsets = []
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{self.namespace}/daemonsets",
-                    headers=headers,
-                    ssl=self.verify_ssl,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        daemonset_list = []
-                        for daemonset in data.get("items", []):
-                            daemonset_info = {
-                                "name": daemonset["metadata"]["name"],
-                                "namespace": daemonset["metadata"]["namespace"],
-                                "desired_number_scheduled": daemonset["status"].get(
-                                    "desiredNumberScheduled", 0
-                                ),
-                                "current_number_scheduled": daemonset["status"].get(
-                                    "currentNumberScheduled", 0
-                                ),
-                                "number_ready": daemonset["status"].get(
-                                    "numberReady", 0
-                                ),
-                                "number_available": daemonset["status"].get(
-                                    "numberAvailable", 0
-                                ),
-                                "is_running": daemonset["status"].get("numberReady", 0)
-                                > 0,
-                                "selector": daemonset.get("spec", {})
-                                .get("selector", {})
-                                .get("matchLabels", {}),
-                            }
-                            daemonset_list.append(daemonset_info)
-                        return daemonset_list
-                    else:
-                        _LOGGER.error(
-                            "aiohttp daemonsets request failed with status: %s",
-                            response.status,
-                        )
-                        return []
-        except Exception as ex:
-            self._log_error("aiohttp get daemonsets", ex)
-            return []
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    async with session.get(
+                        f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{namespace}/daemonsets",
+                        headers=headers,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            for daemonset in data.get("items", []):
+                                daemonset_info = {
+                                    "name": daemonset["metadata"]["name"],
+                                    "namespace": daemonset["metadata"]["namespace"],
+                                    "desired_number_scheduled": daemonset["status"].get(
+                                        "desiredNumberScheduled", 0
+                                    ),
+                                    "current_number_scheduled": daemonset["status"].get(
+                                        "currentNumberScheduled", 0
+                                    ),
+                                    "number_ready": daemonset["status"].get(
+                                        "numberReady", 0
+                                    ),
+                                    "number_available": daemonset["status"].get(
+                                        "numberAvailable", 0
+                                    ),
+                                    "is_running": daemonset["status"].get(
+                                        "numberReady", 0
+                                    )
+                                    > 0,
+                                    "selector": daemonset.get("spec", {})
+                                    .get("selector", {})
+                                    .get("matchLabels", {}),
+                                }
+                                all_daemonsets.append(daemonset_info)
+                        else:
+                            _LOGGER.warning(
+                                "aiohttp daemonsets request failed for namespace %s with status: %s",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get daemonsets failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return all_daemonsets
 
     async def _get_daemonsets_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
         """Get DaemonSets using aiohttp for all namespaces."""
@@ -2152,33 +2210,39 @@ class KubernetesClient:
         return await self._get_cronjobs_count_all_namespaces_aiohttp()
 
     async def _get_cronjobs_count_aiohttp(self) -> int:
-        """Get CronJobs count using aiohttp fallback for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
-            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{self.namespace}/cronjobs"
+        """Get CronJobs count using aiohttp for configured namespaces."""
+        total_count = 0
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    ssl=False,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return len(data.get("items", []))
-                    else:
-                        _LOGGER.error(
-                            "Failed to get CronJobs count via aiohttp: HTTP %d",
-                            response.status,
-                        )
-                        return 0
-        except Exception as ex:
-            self._log_error("_get_cronjobs_count_aiohttp", ex)
-            return 0
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs"
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        ssl=False,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            total_count += len(data.get("items", []))
+                        else:
+                            _LOGGER.warning(
+                                "Failed to get CronJobs count via aiohttp for namespace %s: HTTP %d",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get cronjobs count failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return total_count
 
     async def _get_cronjobs_count_all_namespaces_aiohttp(self) -> int:
         """Get CronJobs count using aiohttp fallback for all namespaces."""
@@ -2244,36 +2308,44 @@ class KubernetesClient:
         return await self._get_cronjobs_all_namespaces_aiohttp()
 
     async def _get_cronjobs_aiohttp(self) -> list[dict[str, Any]]:
-        """Get CronJobs using aiohttp fallback for single namespace."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
-            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{self.namespace}/cronjobs"
+        """Get CronJobs using aiohttp for configured namespaces."""
+        all_cronjobs = []
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    ssl=self.verify_ssl,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return [
-                            self._format_cronjob_from_dict(item)
-                            for item in data.get("items", [])
-                        ]
-                    else:
-                        _LOGGER.error(
-                            "Failed to get CronJobs via aiohttp: HTTP %d",
-                            response.status,
-                        )
-                        return []
-        except Exception as ex:
-            self._log_error("_get_cronjobs_aiohttp", ex)
-            return []
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs"
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            all_cronjobs.extend(
+                                [
+                                    self._format_cronjob_from_dict(item)
+                                    for item in data.get("items", [])
+                                ]
+                            )
+                        else:
+                            _LOGGER.warning(
+                                "Failed to get CronJobs via aiohttp for namespace %s: HTTP %d",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get cronjobs failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return all_cronjobs
 
     async def _get_cronjobs_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
         """Get CronJobs using aiohttp fallback for all namespaces."""
@@ -2601,10 +2673,10 @@ class KubernetesClient:
         target_namespace = namespace or self.namespace
 
         # Check namespace permissions
-        if not self.monitor_all_namespaces and target_namespace != self.namespace:
+        if not self.monitor_all_namespaces and target_namespace not in self.namespaces:
             error_msg = (
                 f"Cannot trigger CronJob '{cronjob_name}' in namespace '{target_namespace}': "
-                f"Integration is configured to monitor only namespace '{self.namespace}'. "
+                f"Integration is configured to monitor only namespaces {self.namespaces}. "
                 f"Enable 'monitor_all_namespaces' in configuration to access other namespaces."
             )
             _LOGGER.error(error_msg)
@@ -2692,10 +2764,11 @@ class KubernetesClient:
         target_namespace = namespace or self.namespace
 
         # Check namespace permissions
-        if not self.monitor_all_namespaces and target_namespace != self.namespace:
+        if not self.monitor_all_namespaces and target_namespace not in self.namespaces:
+            namespaces_str = ", ".join(self.namespaces)
             error_msg = (
                 f"Cannot suspend CronJob '{cronjob_name}' in namespace '{target_namespace}': "
-                f"Integration is configured to monitor only namespace '{self.namespace}'. "
+                f"Integration is configured to monitor only namespace(s) '{namespaces_str}'. "
                 f"Enable 'monitor_all_namespaces' in configuration to access other namespaces."
             )
             _LOGGER.error(error_msg)
@@ -2762,10 +2835,11 @@ class KubernetesClient:
         target_namespace = namespace or self.namespace
 
         # Check namespace permissions
-        if not self.monitor_all_namespaces and target_namespace != self.namespace:
+        if not self.monitor_all_namespaces and target_namespace not in self.namespaces:
+            namespaces_str = ", ".join(self.namespaces)
             error_msg = (
                 f"Cannot resume CronJob '{cronjob_name}' in namespace '{target_namespace}': "
-                f"Integration is configured to monitor only namespace '{self.namespace}'. "
+                f"Integration is configured to monitor only namespace(s) '{namespaces_str}'. "
                 f"Enable 'monitor_all_namespaces' in configuration to access other namespaces."
             )
             _LOGGER.error(error_msg)

@@ -5,11 +5,9 @@
         "title": "Kubernetes Configuration",
         "description": "Enter your Kubernetes cluster connection details.",
         "data": {
-          "name": "Integration Name",
-          "host": "Kubernetes API Host",
-          "port": "Port",
           "cluster_name": "Cluster Name",
-          "namespace": "Namespace",
+          "host": "Cluster API IP address",
+          "port": "Cluster API port",
           "api_token": "API Token",
           "ca_cert": "CA Certificate (optional)",
           "verify_ssl": "Verify SSL",
@@ -20,13 +18,32 @@
           "device_grouping_mode": "Device Grouping Mode"
         },
         "data_description": {
+          "cluster_name": "A friendly name to identify this Kubernetes cluster in Home Assistant. This name will be used as the integration name and for device identification.",
+          "host": "The hostname or IP address of your Kubernetes API server. Do not include the protocol (http:// or https://).",
+          "port": "The port number for the Kubernetes API server.",
+          "api_token": "A valid Kubernetes service account token with appropriate RBAC permissions. This token is used to authenticate API requests to your cluster. It is required to access the Kubernetes API.",
+          "ca_cert": "Optional path to your cluster's CA certificate file. Required if using self-signed certificates or custom Certificate Authorities. Leave empty if using standard certificates.",
+          "verify_ssl": "Whether to verify SSL certificates when connecting to the Kubernetes API. Disable this only for self-signed certificates or development environments.",
+          "monitor_all_namespaces": "When enabled, the integration will monitor all namespaces in your cluster. When disabled, you will be prompted to select specific namespaces to monitor. Requires cluster-wide permissions when enabled.",
+          "switch_update_interval": "How often (in seconds) the integration polls the Kubernetes API to update switch states. Lower values provide more responsive switches but increase API load.",
+          "scale_verification_timeout": "Maximum time (in seconds) to wait for scaling operations to complete before timing out. Increase this value for slow clusters or large deployments.",
+          "scale_cooldown": "Cooldown period (in seconds) after scaling operations before allowing another scale operation. This prevents rapid successive scaling requests.",
           "device_grouping_mode": "Choose how entities are organized in Home Assistant. Group by Namespace creates a device for each namespace, while Group by Cluster creates a single device containing all nodes, sensors, and entities."
+        }
+      },
+      "namespaces": {
+        "title": "Select Namespaces to Monitor",
+        "description": "Choose which Kubernetes namespaces you want to monitor. You can select multiple namespaces from the list below. Only resources in the selected namespaces will be monitored by this integration.\n\n**Tip:** Use the dropdown to search and select namespaces. Selected namespaces will appear as chips that can be removed by clicking the X icon.",
+        "data": {
+          "namespace": "Select Namespaces"
         }
       }
     },
     "error": {
       "cannot_connect": "Failed to connect to Kubernetes cluster",
-      "kubernetes_not_installed": "Kubernetes Python package is not installed. Please install it using: pip install kubernetes==33.1.0"
+      "cannot_fetch_namespaces": "Failed to fetch namespaces from cluster. Please check your connection settings and permissions.",
+      "kubernetes_not_installed": "Kubernetes Python package is not installed. Please install it using: pip install kubernetes==33.1.0",
+      "at_least_one_namespace_required": "At least one namespace is required when not monitoring all namespaces"
     },
     "abort": {
       "already_configured": "Device is already configured"

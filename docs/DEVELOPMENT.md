@@ -292,7 +292,7 @@ Create integration tests in `tests/` directory:
 
 ```python
 import pytest
-from homeassistant.const import CONF_HOST, CONF_NAME
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 
@@ -304,7 +304,7 @@ async def test_load_unload_config_entry(hass: HomeAssistant) -> None:
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
-            CONF_NAME: "Test Kubernetes",
+            CONF_CLUSTER_NAME: "test-cluster",
             CONF_HOST: "test-cluster.example.com",
             # ... other config
         },

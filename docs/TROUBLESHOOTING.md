@@ -146,7 +146,7 @@ Integration shows incorrect data or no data.
 ### Solution
 
 1. **Check Namespace Configuration**
-   - If `monitor_all_namespaces: false`, ensure the namespace exists
+   - If `monitor_all_namespaces: false`, ensure the selected namespaces exist in your cluster
    - If `monitor_all_namespaces: true`, ensure you have cluster-wide permissions
 
 2. **Verify Host Configuration**
