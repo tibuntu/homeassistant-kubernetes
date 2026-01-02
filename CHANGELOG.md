@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.6.0...v0.7.0) (2026-01-02)
+
+
+### Features
+
+* enhance integration setup process ([8a3a93c](https://github.com/tibuntu/homeassistant-kubernetes/commit/8a3a93c2b90a90ceff69685ce2f610e34ae71699)), closes [#71](https://github.com/tibuntu/homeassistant-kubernetes/issues/71)
+* ensure consistency in workload type attribute usage across components ([a9dd208](https://github.com/tibuntu/homeassistant-kubernetes/commit/a9dd208058eb86e7d5837b2167f25f2935199d98))
+* group all entities, sensors, etc. by devices wich represent k8s clusters and their namespaces for better organization ([6dd2286](https://github.com/tibuntu/homeassistant-kubernetes/commit/6dd2286bb3e28d972e3d146c7e07f1de6fc71190)), closes [#66](https://github.com/tibuntu/homeassistant-kubernetes/issues/66)
+
 ## [0.6.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.5.0...v0.6.0) (2025-12-31)
 
 
