@@ -3,6 +3,8 @@ name: Hassfest
 
 on:
   pull_request:
+    branches-ignore:
+      - release-please--branches--main
   workflow_dispatch:
 
 jobs:

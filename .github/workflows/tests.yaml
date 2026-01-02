@@ -6,6 +6,8 @@ on:
     branches:
       - main
   pull_request:
+    branches-ignore:
+      - release-please--branches--main
   workflow_dispatch:
 
 permissions:
@@ -15,6 +17,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main'
 
     steps:
       - uses: actions/checkout@v6

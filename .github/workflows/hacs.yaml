@@ -3,6 +3,8 @@ name: HACS validation
 
 on:
   pull_request:
+    branches-ignore:
+      - release-please--branches--main
   workflow_dispatch:
 
 permissions: {}
