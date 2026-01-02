@@ -16,7 +16,11 @@
           "monitor_all_namespaces": "Monitor All Namespaces",
           "switch_update_interval": "Switch Update Interval (seconds)",
           "scale_verification_timeout": "Scale Verification Timeout (seconds)",
-          "scale_cooldown": "Scale Cooldown (seconds)"
+          "scale_cooldown": "Scale Cooldown (seconds)",
+          "device_grouping_mode": "Device Grouping Mode"
+        },
+        "data_description": {
+          "device_grouping_mode": "Choose how entities are organized in Home Assistant. Group by Namespace creates a device for each namespace, while Group by Cluster creates a single device containing all nodes, sensors, and entities."
         }
       }
     },
@@ -26,6 +30,14 @@
     },
     "abort": {
       "already_configured": "Device is already configured"
+    }
+  },
+  "selector": {
+    "device_grouping_mode": {
+      "options": {
+        "namespace": "Group by Namespace",
+        "cluster": "Group by Cluster"
+      }
     }
   },
   "entity": {

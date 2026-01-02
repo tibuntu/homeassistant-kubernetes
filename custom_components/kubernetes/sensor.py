@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 
 from .const import ATTR_WORKLOAD_TYPE, DOMAIN, WORKLOAD_TYPE_POD
 from .coordinator import KubernetesDataCoordinator
+from .device import get_cluster_device_info, get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -41,6 +42,11 @@ async def async_setup_entry(
         # Wait for the coordinator to have initial data
         await coordinator.async_config_entry_first_refresh()
 
+        # Ensure cluster device exists
+        from .device import get_or_create_cluster_device
+
+        await get_or_create_cluster_device(hass, config_entry)
+
         # Create individual sensors for each Kubernetes node
         nodes_data = coordinator.get_all_nodes_data()
         _LOGGER.debug("Creating node sensors for nodes: %s", list(nodes_data.keys()))
@@ -61,6 +67,15 @@ async def async_setup_entry(
         # Create individual sensors for each Kubernetes pod
         pods_data = coordinator.get_all_pods_data()
         _LOGGER.debug("Creating pod sensors for pods: %s", list(pods_data.keys()))
+
+        # Ensure namespace devices exist for all pod namespaces
+        from .device import get_or_create_namespace_device
+
+        pod_namespaces = {
+            pod_data.get("namespace", "default") for pod_data in pods_data.values()
+        }
+        for namespace in pod_namespaces:
+            await get_or_create_namespace_device(hass, config_entry, namespace)
 
         pod_sensors_created = 0
         for pod_key, pod_data in pods_data.items():
@@ -182,6 +197,11 @@ async def _async_discover_and_add_new_sensors(
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
 
+        # Ensure cluster device exists
+        from .device import get_or_create_cluster_device, get_or_create_namespace_device
+
+        await get_or_create_cluster_device(hass, config_entry)
+
         # Discover new sensors
         new_entities = []
         new_entities.extend(
@@ -189,11 +209,14 @@ async def _async_discover_and_add_new_sensors(
                 coordinator, client, config_entry, existing_unique_ids
             )
         )
-        new_entities.extend(
-            _discover_new_pod_sensors(
-                coordinator, client, config_entry, existing_unique_ids
-            )
+        pod_sensors = _discover_new_pod_sensors(
+            coordinator, client, config_entry, existing_unique_ids
         )
+        # Ensure namespace devices exist for new pod sensors
+        pod_namespaces = {sensor.namespace for sensor in pod_sensors}
+        for namespace in pod_namespaces:
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+        new_entities.extend(pod_sensors)
 
         # Check for new deployments
         # Deployment sensors are removed in favor of attributes on the deployment switch
@@ -264,6 +287,11 @@ class KubernetesPodsSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "pods"
 
     @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    @property
     def native_value(self) -> int:
         """Return the native value of the sensor."""
         if not self.coordinator.data:
@@ -301,6 +329,11 @@ class KubernetesNodesSensor(KubernetesBaseSensor):
         self._attr_name = "Nodes Count"
         self._attr_unique_id = f"{config_entry.entry_id}_nodes_count"
         self._attr_native_unit_of_measurement = "nodes"
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
 
     @property
     def native_value(self) -> int:
@@ -342,6 +375,11 @@ class KubernetesDeploymentsSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "deployments"
 
     @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    @property
     def native_value(self) -> int:
         """Return the native value of the sensor."""
         if not self.coordinator.data:
@@ -379,6 +417,11 @@ class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
         self._attr_name = "StatefulSets Count"
         self._attr_unique_id = f"{config_entry.entry_id}_statefulsets_count"
         self._attr_native_unit_of_measurement = "statefulsets"
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
 
     @property
     def native_value(self) -> int:
@@ -420,6 +463,11 @@ class KubernetesDaemonSetsSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "daemonsets"
 
     @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    @property
     def native_value(self) -> int:
         """Return the native value of the sensor."""
         if not self.coordinator.data:
@@ -457,6 +505,11 @@ class KubernetesCronJobsSensor(KubernetesBaseSensor):
         self._attr_name = "CronJobs Count"
         self._attr_unique_id = f"{config_entry.entry_id}_cronjobs_count"
         self._attr_native_unit_of_measurement = "cronjobs"
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
 
     @property
     def native_value(self) -> int:
@@ -505,11 +558,10 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
         # Override state class since this sensor returns string values, not measurements
         self._attr_state_class = None
 
-        _LOGGER.debug(
-            "Initialized node sensor for %s with unique_id: %s",
-            node_name,
-            self._attr_unique_id,
-        )
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
 
     @property
     def native_value(self) -> str:
@@ -576,12 +628,10 @@ class KubernetesPodSensor(KubernetesBaseSensor):
         # Override state class since this sensor returns string values, not measurements
         self._attr_state_class = None
 
-        _LOGGER.debug(
-            "Initialized pod sensor for %s/%s with unique_id: %s",
-            namespace,
-            pod_name,
-            self._attr_unique_id,
-        )
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
 
     @property
     def native_value(self) -> str:

@@ -54,6 +54,7 @@ def mock_config_entry():
         "host": "test-cluster.example.com",
         "port": 6443,
         "api_token": "test-token",
+        "cluster_name": "test-cluster",
         "namespace": "default",
         "verify_ssl": True,
     }
@@ -85,6 +86,13 @@ class TestKubernetesPodsSensor:
         assert sensor.name == "Pods Count"
         assert sensor.unique_id == "test_entry_id_pods_count"
         assert sensor.native_unit_of_measurement == "pods"
+
+    def test_sensor_device_info(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test sensor device info."""
+        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
 
     async def test_sensor_update_success(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -125,6 +133,13 @@ class TestKubernetesNodesSensor:
         assert sensor.name == "Nodes Count"
         assert sensor.unique_id == "test_entry_id_nodes_count"
         assert sensor.native_unit_of_measurement == "nodes"
+
+    def test_sensor_device_info(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test sensor device info."""
+        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
 
     async def test_sensor_update_success(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -361,8 +376,17 @@ class TestSensorSetup:
 
         from custom_components.kubernetes.sensor import async_setup_entry
 
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
         mock_add_entities = AsyncMock()
-        await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+        with patch(
+            "custom_components.kubernetes.device.dr.async_get",
+            return_value=mock_device_registry,
+        ):
+            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
@@ -386,8 +410,17 @@ class TestSensorSetup:
 
         from custom_components.kubernetes.binary_sensor import async_setup_entry
 
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
         mock_add_entities = AsyncMock()
-        await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+        with patch(
+            "custom_components.kubernetes.device.dr.async_get",
+            return_value=mock_device_registry,
+        ):
+            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
         # Should add 1 binary sensor
         mock_add_entities.assert_called_once()
@@ -722,6 +755,18 @@ class TestKubernetesNodeSensor:
         assert sensor.native_unit_of_measurement is None
         assert sensor._attr_icon == "mdi:server"
 
+    def test_node_sensor_device_info(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test node sensor device info."""
+        node_name = "worker-node-1"
+        sensor = KubernetesNodeSensor(
+            mock_coordinator, mock_client, mock_config_entry, node_name
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
+
     async def test_sensor_value_with_data(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -861,9 +906,20 @@ class TestDynamicNodeSensorDiscovery:
         mock_entity_registry = MagicMock()
         mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = []
 
-        with patch(
-            "custom_components.kubernetes.sensor.async_get_entity_registry",
-            return_value=mock_entity_registry,
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.sensor.async_get_entity_registry",
+                return_value=mock_entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
         ):
             await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
@@ -935,9 +991,20 @@ class TestDynamicNodeSensorDiscovery:
             existing_entity
         ]
 
-        with patch(
-            "custom_components.kubernetes.sensor.async_get_entity_registry",
-            return_value=mock_entity_registry,
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.sensor.async_get_entity_registry",
+                return_value=mock_entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
         ):
             await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
@@ -1199,3 +1266,18 @@ class TestKubernetesPodSensor:
         ) as mock_parent_update:
             await sensor.async_update()
             mock_parent_update.assert_called_once()
+
+    def test_pod_sensor_device_info(
+        self, mock_hass, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test pod sensor device info."""
+        namespace = "default"
+        pod_name = "test-pod"
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"

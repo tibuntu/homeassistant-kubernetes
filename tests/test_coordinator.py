@@ -14,7 +14,11 @@ from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
 @pytest.fixture
 def mock_hass():
     """Mock Home Assistant instance."""
-    return MagicMock(spec=HomeAssistant)
+    hass = MagicMock(spec=HomeAssistant)
+    hass.data = {}
+    hass.config = MagicMock()
+    hass.config.config_dir = "/tmp"
+    return hass
 
 
 @pytest.fixture
@@ -27,6 +31,7 @@ def mock_config_entry():
         "host": "test-cluster.example.com",
         "port": 6443,
         "api_token": "test-token",
+        "cluster_name": "test-cluster",
         "namespace": "default",
         "verify_ssl": True,
     }
@@ -131,7 +136,22 @@ class TestKubernetesDataCoordinator:
         mock_client.get_daemonsets_count.return_value = 1
         mock_client.get_cronjobs_count.return_value = 1
 
-        result = await coordinator._async_update_data()
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            result = await coordinator._async_update_data()
 
         # Verify the result structure
         assert "deployments" in result
@@ -184,7 +204,22 @@ class TestKubernetesDataCoordinator:
         mock_client.get_daemonsets_count.return_value = 0
         mock_client.get_cronjobs_count.return_value = 0
 
-        result = await coordinator._async_update_data()
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            result = await coordinator._async_update_data()
 
         # Verify empty data structure
         assert result["deployments"] == {}
