@@ -16,7 +16,7 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
       - [Manual Installation](#manual-installation)
     - [Setup](#setup)
   - [📚 Documentation](#-documentation)
-  - [🤝 Contributing](#-contributing)
+  - [Get Involved](#get-involved)
   - [📄 License](#-license)
 
 ## ✨ Features
@@ -71,11 +71,17 @@ A comprehensive Home Assistant integration for monitoring and controlling Kubern
 
 For comprehensive documentation, visit the [Mkdocs site](https://tibuntu.github.io/homeassistant-kubernetes/).
 
-## 🤝 Contributing
+## Get Involved
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a [Pull Request](https://github.com/tibuntu/homeassistant-kubernetes/pulls).
 
 For development information, see the [Development Guide](https://tibuntu.github.io/homeassistant-kubernetes/DEVELOPMENT/).
+
+<a href="https://github.com/tibuntu/homeassistant-kubernetes/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=tibuntu/homeassistant-kubernetes" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
 
 ## 📄 License
 
