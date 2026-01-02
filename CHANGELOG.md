@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.7.0...v0.7.1) (2026-01-02)
+
+
+### Documentation
+
+* update README to improve contribution section ([0f43109](https://github.com/tibuntu/homeassistant-kubernetes/commit/0f43109476305b4165980497b4724d26bd7bd410))
+
 ## [0.7.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.6.0...v0.7.0) (2026-01-02)
 
 
