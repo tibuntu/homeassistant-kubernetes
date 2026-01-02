@@ -32,22 +32,25 @@ api:
 # Configuration for the Kubernetes integration
 # This will be configured through the UI, but here's an example of what it looks like:
 # kubernetes:
-#   - name: "Production Cluster"
+#   - cluster_name: "production"
 #     host: "k8s-prod.example.com"
 #     port: 6443
-#     cluster_name: "production"
-#     namespace: "default"
 #     api_token: "your-api-token-here"
-#     verify_ssl: true
+#     ca_cert: "your-ca-cert"
+#     verify_ssl: false
+#     monitor_all_namespaces: true
+#     namespace: ["default", "production"]  # Only used when monitor_all_namespaces is false
 
 # Example configuration.yaml entry for Kubernetes integration
 kubernetes:
-  host: "https://your-k8s-cluster:6443"
+  cluster_name: "production"
+  host: "your-k8s-cluster"
+  port: 6443
   api_token: "your-api-token"
   ca_cert: "your-ca-cert"
-  cluster_name: "production"
-  namespace: "default"
+  verify_ssl: false
   monitor_all_namespaces: false
+  namespace: ["default", "production"] # List of namespaces when monitor_all_namespaces is false
 
 # Example automations using the generic workload services
 

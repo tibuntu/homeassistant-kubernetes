@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
+from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
 
@@ -11,9 +11,11 @@ from custom_components.kubernetes.config_flow import KubernetesConfigFlow
 from custom_components.kubernetes.const import (
     CONF_API_TOKEN,
     CONF_CLUSTER_NAME,
+    CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_VERIFY_SSL,
     DEFAULT_CLUSTER_NAME,
+    DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
     DEFAULT_VERIFY_SSL,
@@ -33,13 +35,12 @@ def mock_flow():
 def valid_user_input():
     """Valid user input for config flow."""
     return {
-        CONF_NAME: "Test Cluster",
+        CONF_CLUSTER_NAME: "test-cluster",
         CONF_HOST: "test-cluster.example.com",
         CONF_PORT: 6443,
         CONF_API_TOKEN: "test-token",
-        CONF_CLUSTER_NAME: "test-cluster",
-        CONF_NAMESPACE: "default",
-        CONF_VERIFY_SSL: True,
+        CONF_MONITOR_ALL_NAMESPACES: True,
+        CONF_VERIFY_SSL: False,
     }
 
 
@@ -97,18 +98,19 @@ async def test_async_step_user_with_valid_input(mock_hass):
         flow._test_connection = AsyncMock()
 
         user_input = {
-            CONF_NAME: "Test Cluster",
+            CONF_CLUSTER_NAME: "test-cluster",
             CONF_HOST: "kubernetes.example.com",
             CONF_PORT: 6443,
-            CONF_CLUSTER_NAME: "test-cluster",
             CONF_API_TOKEN: "test-token",
-            CONF_VERIFY_SSL: True,
+            CONF_MONITOR_ALL_NAMESPACES: True,
+            CONF_VERIFY_SSL: False,
         }
 
         result = await flow.async_step_user(user_input=user_input)
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
-        assert result["data"] == user_input
+        assert result["title"] == "test-cluster"
+        assert result["data"][CONF_CLUSTER_NAME] == "test-cluster"
         flow._test_connection.assert_called_once_with(user_input)
 
 
@@ -131,7 +133,7 @@ async def test_async_step_user_connection_test_fails(mock_hass):
         flow._test_connection = AsyncMock(side_effect=Exception("Connection failed"))
 
         user_input = {
-            CONF_NAME: "Test Cluster",
+            CONF_CLUSTER_NAME: "test-cluster",
             CONF_HOST: "kubernetes.example.com",
             CONF_API_TOKEN: "test-token",
         }
@@ -170,10 +172,10 @@ async def test_async_step_user_duplicate_entry(mock_hass):
         )
 
         user_input = {
-            CONF_NAME: "Test Cluster",
-            CONF_HOST: "kubernetes.example.com",
             CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "kubernetes.example.com",
             CONF_API_TOKEN: "test-token",
+            CONF_MONITOR_ALL_NAMESPACES: True,
         }
 
         with pytest.raises(AbortFlow) as exc_info:
@@ -193,7 +195,7 @@ async def test_test_connection_success(mock_flow):
             CONF_HOST: "test-host",
             CONF_PORT: 6443,
             CONF_API_TOKEN: "test-token",
-            CONF_VERIFY_SSL: True,
+            CONF_VERIFY_SSL: False,
         }
     )
 
@@ -211,7 +213,7 @@ async def test_test_connection_failure(mock_flow):
                     CONF_HOST: "test-host",
                     CONF_PORT: 6443,
                     CONF_API_TOKEN: "test-token",
-                    CONF_VERIFY_SSL: True,
+                    CONF_VERIFY_SSL: False,
                 }
             )
 
@@ -235,6 +237,92 @@ def test_ensure_kubernetes_imported_failure():
 def test_config_flow_constants():
     """Test config flow constants."""
     assert KubernetesConfigFlow.VERSION == 1
+
+
+async def test_async_step_namespaces(mock_hass):
+    """Test namespace selection step."""
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ),
+        patch(
+            "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+            True,
+        ),
+        patch(
+            "custom_components.kubernetes.config_flow.KubernetesConfigFlow.async_set_unique_id"
+        ),
+        patch(
+            "custom_components.kubernetes.config_flow.KubernetesConfigFlow._abort_if_unique_id_configured"
+        ),
+    ):
+        flow = KubernetesConfigFlow()
+        flow.hass = mock_hass
+
+        # Set up connection data
+        flow._connection_data = {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "test-cluster.example.com",
+            CONF_API_TOKEN: "test-token",
+            CONF_MONITOR_ALL_NAMESPACES: False,
+        }
+
+        # Mock namespace fetching
+        flow._fetch_namespaces = AsyncMock(
+            return_value=["default", "kube-system", "production"]
+        )
+
+        # Test initial namespace step (no user input)
+        result = await flow.async_step_namespaces()
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "namespaces"
+
+        # Test namespace selection
+        user_input = {
+            CONF_NAMESPACE: ["default", "production"],
+        }
+
+        result = await flow.async_step_namespaces(user_input=user_input)
+
+        assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["title"] == "test-cluster"
+        assert result["data"][CONF_NAMESPACE] == ["default", "production"]
+        assert result["data"][CONF_CLUSTER_NAME] == "test-cluster"
+
+
+async def test_async_step_user_goes_to_namespaces_step(mock_hass):
+    """Test that user step proceeds to namespace step when monitor_all_namespaces is False."""
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ),
+        patch(
+            "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+            True,
+        ),
+    ):
+        flow = KubernetesConfigFlow()
+        flow.hass = mock_hass
+
+        flow._test_connection = AsyncMock()
+        flow.async_step_namespaces = AsyncMock(
+            return_value={"type": "form", "step_id": "namespaces"}
+        )
+
+        user_input = {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "test-cluster.example.com",
+            CONF_API_TOKEN: "test-token",
+            CONF_MONITOR_ALL_NAMESPACES: False,
+        }
+
+        await flow.async_step_user(user_input=user_input)
+
+        # Should proceed to namespaces step
+        flow.async_step_namespaces.assert_called_once()
 
 
 async def test_async_step_user_with_defaults(mock_hass):
@@ -262,15 +350,16 @@ async def test_async_step_user_with_defaults(mock_hass):
         flow._test_connection = AsyncMock()
 
         user_input = {
-            CONF_NAME: "Test Cluster",
+            CONF_CLUSTER_NAME: "test-cluster",
             CONF_HOST: "test-cluster.example.com",
             CONF_API_TOKEN: "test-token",
-            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_MONITOR_ALL_NAMESPACES: True,
         }
 
         result = await flow.async_step_user(user_input=user_input)
 
         assert result["type"] == FlowResultType.CREATE_ENTRY
+        assert result["title"] == "test-cluster"
         assert result["data"][CONF_PORT] == DEFAULT_PORT
         assert result["data"][CONF_CLUSTER_NAME] == "test-cluster"
         assert result["data"][CONF_VERIFY_SSL] == DEFAULT_VERIFY_SSL

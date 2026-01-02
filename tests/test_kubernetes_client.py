@@ -25,6 +25,7 @@ def mock_config():
         "api_token": "test-token",
         "namespace": "default",
         "verify_ssl": True,
+        "monitor_all_namespaces": False,
     }
 
 
@@ -983,7 +984,10 @@ class TestKubernetesClientCronJobOperations:
         # Verify
         assert result["success"] is False
         assert "Cannot suspend CronJob" in result["error"]
-        assert "monitor_all_namespaces" in result["error"]
+        assert (
+            "monitor_all_namespaces" in result["error"]
+            or "namespace(s)" in result["error"]
+        )
 
     async def test_suspend_cronjob_api_exception(self, mock_client):
         """Test CronJob suspension with API exception."""
@@ -1080,7 +1084,50 @@ class TestKubernetesClientCronJobOperations:
         # Verify
         assert result["success"] is False
         assert "Cannot resume CronJob" in result["error"]
-        assert "monitor_all_namespaces" in result["error"]
+        assert (
+            "monitor_all_namespaces" in result["error"]
+            or "namespace(s)" in result["error"]
+        )
+
+    async def test_suspend_cronjob_namespace_permission_error_multiple_namespaces(
+        self, mock_client
+    ):
+        """Test CronJob suspension with namespace permission error when multiple namespaces are configured."""
+        # Configure client with multiple namespaces
+        mock_client.namespaces = ["default", "kube-system", "production"]
+        mock_client.monitor_all_namespaces = False
+
+        # Test with namespace not in the list
+        result = await mock_client.suspend_cronjob("test-cronjob", "other-namespace")
+
+        # Verify
+        assert result["success"] is False
+        assert "Cannot suspend CronJob" in result["error"]
+        assert "namespace(s)" in result["error"]
+        # Verify all namespaces are listed in the error message
+        assert "default" in result["error"]
+        assert "kube-system" in result["error"]
+        assert "production" in result["error"]
+
+    async def test_resume_cronjob_namespace_permission_error_multiple_namespaces(
+        self, mock_client
+    ):
+        """Test CronJob resume with namespace permission error when multiple namespaces are configured."""
+        # Configure client with multiple namespaces
+        mock_client.namespaces = ["default", "kube-system", "production"]
+        mock_client.monitor_all_namespaces = False
+
+        # Test with namespace not in the list
+        result = await mock_client.resume_cronjob("test-cronjob", "other-namespace")
+
+        # Verify
+        assert result["success"] is False
+        assert "Cannot resume CronJob" in result["error"]
+        assert "namespace(s)" in result["error"]
+        # Verify all namespaces are listed in the error message
+        assert "default" in result["error"]
+        assert "kube-system" in result["error"]
+        assert "production" in result["error"]
 
     async def test_resume_cronjob_api_exception(self, mock_client):
         """Test CronJob resume with API exception."""

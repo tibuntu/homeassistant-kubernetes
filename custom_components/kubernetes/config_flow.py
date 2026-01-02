@@ -8,7 +8,7 @@ from typing import Any
 
 import aiohttp
 from homeassistant import config_entries
-from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
+from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
 from homeassistant.helpers import selector
 import voluptuous as vol
@@ -79,6 +79,11 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        """Initialize the config flow."""
+        super().__init__()
+        self._connection_data: dict[str, Any] = {}
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
@@ -113,20 +118,27 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                     CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
                 )
 
-                # Add namespace if not monitoring all namespaces
+                # Store connection data for potential namespace selection step
+                self._connection_data = user_input.copy()
+
+                # If not monitoring all namespaces, proceed to namespace selection step
                 if not user_input.get(
                     CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
                 ):
-                    user_input.setdefault(CONF_NAMESPACE, DEFAULT_NAMESPACE)
+                    return await self.async_step_namespaces()
+                else:
+                    # Monitoring all namespaces - create entry directly
+                    # Remove namespace field when monitoring all namespaces
+                    user_input.pop(CONF_NAMESPACE, None)
 
-                # Create unique ID for the config entry
-                await self.async_set_unique_id(f"{user_input[CONF_CLUSTER_NAME]}")
-                self._abort_if_unique_id_configured()
+                    # Create unique ID for the config entry
+                    await self.async_set_unique_id(f"{user_input[CONF_CLUSTER_NAME]}")
+                    self._abort_if_unique_id_configured()
 
-                return self.async_create_entry(
-                    title=user_input[CONF_NAME],
-                    data=user_input,
-                )
+                    return self.async_create_entry(
+                        title=user_input[CONF_CLUSTER_NAME],
+                        data=user_input,
+                    )
             except AbortFlow:
                 # Re-raise AbortFlow exceptions to let them propagate
                 raise
@@ -134,26 +146,20 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 _LOGGER.error("Failed to connect to Kubernetes: %s", ex)
                 errors["base"] = "cannot_connect"
 
-        # Create schema with conditional namespace field
+        # Create schema for connection step (no namespace field here)
+        # Order: Cluster Name, Host, Port, API Token, CA Certificate, Verify SSL,
+        # Monitor All Namespaces, Device Grouping Mode, Switch Update Interval,
+        # Scale Verification Timeout, Scale Cooldown
         schema = {
-            vol.Required(CONF_NAME): str,
+            vol.Required(CONF_CLUSTER_NAME, default=DEFAULT_CLUSTER_NAME): str,
             vol.Required(CONF_HOST): str,
             vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-            vol.Optional(CONF_CLUSTER_NAME, default=DEFAULT_CLUSTER_NAME): str,
-            vol.Optional(
-                CONF_MONITOR_ALL_NAMESPACES, default=DEFAULT_MONITOR_ALL_NAMESPACES
-            ): bool,
             vol.Required(CONF_API_TOKEN): str,
             vol.Optional(CONF_CA_CERT): str,
             vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
             vol.Optional(
-                CONF_SWITCH_UPDATE_INTERVAL, default=DEFAULT_SWITCH_UPDATE_INTERVAL
-            ): int,
-            vol.Optional(
-                CONF_SCALE_VERIFICATION_TIMEOUT,
-                default=DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-            ): int,
-            vol.Optional(CONF_SCALE_COOLDOWN, default=DEFAULT_SCALE_COOLDOWN): int,
+                CONF_MONITOR_ALL_NAMESPACES, default=DEFAULT_MONITOR_ALL_NAMESPACES
+            ): bool,
             vol.Optional(
                 CONF_DEVICE_GROUPING_MODE,
                 default=DEFAULT_DEVICE_GROUPING_MODE,
@@ -172,16 +178,125 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 ),
             ),
+            vol.Optional(
+                CONF_SWITCH_UPDATE_INTERVAL, default=DEFAULT_SWITCH_UPDATE_INTERVAL
+            ): int,
+            vol.Optional(
+                CONF_SCALE_VERIFICATION_TIMEOUT,
+                default=DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+            ): int,
+            vol.Optional(CONF_SCALE_COOLDOWN, default=DEFAULT_SCALE_COOLDOWN): int,
         }
-
-        # Add namespace field only if not monitoring all namespaces
-        if user_input is None or not user_input.get(
-            CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
-        ):
-            schema[vol.Optional(CONF_NAMESPACE, default=DEFAULT_NAMESPACE)] = str
 
         return self.async_show_form(
             step_id="user",
+            data_schema=vol.Schema(schema),
+            errors=errors,
+        )
+
+    async def async_step_namespaces(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Handle the namespace selection step."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Validate that at least one namespace is selected
+            if CONF_NAMESPACE not in user_input or not user_input[CONF_NAMESPACE]:
+                errors[CONF_NAMESPACE] = "at_least_one_namespace_required"
+            else:
+                # Merge namespace selection with connection data
+                config_data = {**self._connection_data, **user_input}
+
+                # Ensure namespace is a list
+                if isinstance(config_data[CONF_NAMESPACE], str):
+                    config_data[CONF_NAMESPACE] = [
+                        ns.strip()
+                        for ns in config_data[CONF_NAMESPACE].split(",")
+                        if ns.strip()
+                    ]
+                elif not isinstance(config_data[CONF_NAMESPACE], list):
+                    config_data[CONF_NAMESPACE] = [DEFAULT_NAMESPACE]
+
+                # Filter out empty strings
+                config_data[CONF_NAMESPACE] = [
+                    ns for ns in config_data[CONF_NAMESPACE] if ns
+                ]
+
+                # Create unique ID for the config entry
+                await self.async_set_unique_id(f"{config_data[CONF_CLUSTER_NAME]}")
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=config_data[CONF_CLUSTER_NAME],
+                    data=config_data,
+                )
+
+        # Fetch namespaces from cluster using stored connection data
+        namespace_options: list[dict[str, str]] = []
+        default_selected: list[str] = []
+        namespace_count = 0
+
+        try:
+            _LOGGER.info(
+                "Fetching namespaces from cluster at %s:%s...",
+                self._connection_data.get(CONF_HOST),
+                self._connection_data.get(CONF_PORT, DEFAULT_PORT),
+            )
+            fetched_namespaces = await self._fetch_namespaces(self._connection_data)
+
+            if fetched_namespaces:
+                namespace_count = len(fetched_namespaces)
+                _LOGGER.info(
+                    "Successfully fetched %d namespaces from cluster", namespace_count
+                )
+                namespace_options = [
+                    {"value": ns, "label": ns} for ns in fetched_namespaces
+                ]
+                # Default to first namespace if no previous selection
+                if not default_selected and fetched_namespaces:
+                    default_selected = [fetched_namespaces[0]]
+            else:
+                _LOGGER.warning(
+                    "No namespaces were fetched from cluster. "
+                    "This might indicate a connection or permissions issue."
+                )
+                errors["base"] = "cannot_fetch_namespaces"
+        except Exception as ex:
+            _LOGGER.error("Exception while fetching namespaces: %s", ex, exc_info=True)
+            errors["base"] = "cannot_fetch_namespaces"
+
+        # If we couldn't fetch namespaces, show error but still allow manual entry
+        # by providing a text input fallback
+        if not namespace_options:
+            # Use text input as fallback if fetch failed
+            schema = {
+                vol.Required(
+                    CONF_NAMESPACE,
+                    default=(
+                        ", ".join(default_selected)
+                        if default_selected
+                        else DEFAULT_NAMESPACE
+                    ),
+                ): str,
+            }
+        else:
+            # Use multi-select dropdown with fetched namespaces
+            schema = {
+                vol.Optional(
+                    CONF_NAMESPACE,
+                    default=default_selected,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=namespace_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        multiple=True,
+                    ),
+                ),
+            }
+
+        return self.async_show_form(
+            step_id="namespaces",
             data_schema=vol.Schema(schema),
             errors=errors,
         )
@@ -298,3 +413,51 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         except Exception as ex:
             _LOGGER.error("aiohttp connection test failed: %s", ex)
             return False
+
+    async def _fetch_namespaces(self, user_input: dict[str, Any]) -> list[str]:
+        """Fetch available namespaces from the Kubernetes cluster."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {user_input[CONF_API_TOKEN]}",
+                "Accept": "application/json",
+            }
+
+            host = user_input[CONF_HOST]
+            port = user_input.get(CONF_PORT, DEFAULT_PORT)
+
+            # Match the SSL handling from _test_connection_aiohttp
+            # For now, use ssl=False to avoid certificate issues during config flow
+            # The actual connection will use the verify_ssl setting from user_input
+            ssl_context = False
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{host}:{port}/api/v1/namespaces",
+                    headers=headers,
+                    ssl=ssl_context,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        namespaces = [
+                            item["metadata"]["name"] for item in data.get("items", [])
+                        ]
+                        _LOGGER.info(
+                            "Successfully fetched %d namespaces from cluster",
+                            len(namespaces),
+                        )
+                        return sorted(namespaces)
+                    else:
+                        error_text = await response.text()
+                        _LOGGER.warning(
+                            "Failed to fetch namespaces: HTTP %d - %s",
+                            response.status,
+                            error_text[:200] if error_text else "No error details",
+                        )
+                        return []
+        except aiohttp.ClientError as ex:
+            _LOGGER.warning("Network error while fetching namespaces: %s", ex)
+            return []
+        except Exception as ex:
+            _LOGGER.warning("Failed to fetch namespaces: %s", ex, exc_info=True)
+            return []
