@@ -10,6 +10,7 @@ import aiohttp
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.data_entry_flow import AbortFlow, FlowResult
+from homeassistant.helpers import selector
 import voluptuous as vol
 
 # Global variables for lazy import
@@ -21,6 +22,7 @@ from .const import (
     CONF_API_TOKEN,
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
+    CONF_DEVICE_GROUPING_MODE,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_SCALE_COOLDOWN,
@@ -28,6 +30,7 @@ from .const import (
     CONF_SWITCH_UPDATE_INTERVAL,
     CONF_VERIFY_SSL,
     DEFAULT_CLUSTER_NAME,
+    DEFAULT_DEVICE_GROUPING_MODE,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
@@ -35,6 +38,8 @@ from .const import (
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
+    DEVICE_GROUPING_MODE_CLUSTER,
+    DEVICE_GROUPING_MODE_NAMESPACE,
     DOMAIN,
 )
 
@@ -104,6 +109,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                     CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
                 )
                 user_input.setdefault(CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN)
+                user_input.setdefault(
+                    CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
+                )
 
                 # Add namespace if not monitoring all namespaces
                 if not user_input.get(
@@ -146,6 +154,24 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 default=DEFAULT_SCALE_VERIFICATION_TIMEOUT,
             ): int,
             vol.Optional(CONF_SCALE_COOLDOWN, default=DEFAULT_SCALE_COOLDOWN): int,
+            vol.Optional(
+                CONF_DEVICE_GROUPING_MODE,
+                default=DEFAULT_DEVICE_GROUPING_MODE,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        {
+                            "value": DEVICE_GROUPING_MODE_NAMESPACE,
+                            "label": "Group by Namespace",
+                        },
+                        {
+                            "value": DEVICE_GROUPING_MODE_CLUSTER,
+                            "label": "Group by Cluster",
+                        },
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                ),
+            ),
         }
 
         # Add namespace field only if not monitoring all namespaces

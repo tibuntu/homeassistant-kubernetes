@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL, DOMAIN
+from .device import cleanup_orphaned_namespace_devices, get_all_namespaces
 from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -108,6 +109,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             # Clean up entities for resources that no longer exist
             await self._cleanup_orphaned_entities(data)
 
+            # Clean up orphaned namespace devices
+            current_namespaces = get_all_namespaces(data)
+            await cleanup_orphaned_namespace_devices(
+                self.hass, self.config_entry, current_namespaces
+            )
+
             return data
 
         except Exception as ex:
@@ -185,6 +192,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "last_update" not in self.data:
             return 0.0
         return self.data["last_update"]
+
+    def get_all_namespaces(self) -> set[str]:
+        """Get all unique namespaces from coordinator data."""
+        return get_all_namespaces(self.data)
 
     async def _cleanup_orphaned_entities(
         self, current_data: dict[str, Any]

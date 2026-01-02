@@ -25,6 +25,7 @@ from .const import (
     WORKLOAD_TYPE_STATEFULSET,
 )
 from .coordinator import KubernetesDataCoordinator
+from .device import get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,35 +40,52 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
     client = hass.data[DOMAIN][config_entry.entry_id]["client"]
 
+    # Ensure namespace devices exist
+    from .device import get_or_create_namespace_device
+
     # Store the add_entities callback for dynamic entity management
     switches = []
 
     # Get all deployments and create switches for them
     deployments = await client.get_deployments()
+    deployment_namespaces = set()
     for deployment in deployments:
+        namespace = deployment.get("namespace", "default")
+        deployment_namespaces.add(namespace)
         switches.append(
             KubernetesDeploymentSwitch(
-                coordinator, config_entry, deployment["name"], deployment["namespace"]
+                coordinator, config_entry, deployment["name"], namespace
             )
         )
 
     # Get all StatefulSets and create switches for them
     statefulsets = await client.get_statefulsets()
+    statefulset_namespaces = set()
     for statefulset in statefulsets:
+        namespace = statefulset.get("namespace", "default")
+        statefulset_namespaces.add(namespace)
         switches.append(
             KubernetesStatefulSetSwitch(
-                coordinator, config_entry, statefulset["name"], statefulset["namespace"]
+                coordinator, config_entry, statefulset["name"], namespace
             )
         )
 
     # Get all CronJobs and create switches for them
     cronjobs = await client.get_cronjobs()
+    cronjob_namespaces = set()
     for cronjob in cronjobs:
+        namespace = cronjob.get("namespace", "default")
+        cronjob_namespaces.add(namespace)
         switches.append(
             KubernetesCronJobSwitch(
-                coordinator, config_entry, cronjob["name"], cronjob["namespace"]
+                coordinator, config_entry, cronjob["name"], namespace
             )
         )
+
+    # Ensure all namespace devices exist
+    all_namespaces = deployment_namespaces | statefulset_namespaces | cronjob_namespaces
+    for namespace in all_namespaces:
+        await get_or_create_namespace_device(hass, config_entry, namespace)
 
     async_add_entities(switches)
 
@@ -118,6 +136,9 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
 
         new_entities = []
 
+        # Ensure namespace devices exist for new entities
+        from .device import get_or_create_namespace_device
+
         # Check for new deployments
         if coordinator.data and "deployments" in coordinator.data:
             for deployment_name, deployment_data in coordinator.data[
@@ -125,6 +146,8 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
             ].items():
                 unique_id = f"{config_entry.entry_id}_{deployment_name}_deployment"
                 if unique_id not in existing_unique_ids:
+                    namespace = deployment_data.get("namespace", "default")
+                    await get_or_create_namespace_device(hass, config_entry, namespace)
                     _LOGGER.info(
                         "Adding new entity for deployment: %s", deployment_name
                     )
@@ -133,7 +156,7 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
                             coordinator,
                             config_entry,
                             deployment_name,
-                            deployment_data.get("namespace", "default"),
+                            namespace,
                         )
                     )
 
@@ -144,6 +167,8 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
             ].items():
                 unique_id = f"{config_entry.entry_id}_{statefulset_name}_statefulset"
                 if unique_id not in existing_unique_ids:
+                    namespace = statefulset_data.get("namespace", "default")
+                    await get_or_create_namespace_device(hass, config_entry, namespace)
                     _LOGGER.info(
                         "Adding new entity for StatefulSet: %s", statefulset_name
                     )
@@ -152,7 +177,7 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
                             coordinator,
                             config_entry,
                             statefulset_name,
-                            statefulset_data.get("namespace", "default"),
+                            namespace,
                         )
                     )
 
@@ -164,6 +189,7 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
                     f"{config_entry.entry_id}_{namespace}_{cronjob_name}_cronjob"
                 )
                 if unique_id not in existing_unique_ids:
+                    await get_or_create_namespace_device(hass, config_entry, namespace)
                     _LOGGER.info("Adding new entity for CronJob: %s", cronjob_name)
                     new_entities.append(
                         KubernetesCronJobSwitch(
@@ -216,6 +242,11 @@ class KubernetesDeploymentSwitch(SwitchEntity):
         self._last_scale_attempt_failed = False
         self._cpu_usage = 0.0
         self._memory_usage = 0.0
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
 
     @property
     def is_on(self) -> bool:
@@ -473,6 +504,11 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
         self._memory_usage = 0.0
 
     @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
+
+    @property
     def is_on(self) -> bool:
         """Return true if the StatefulSet is running (has replicas > 0)."""
         return self._is_on
@@ -725,6 +761,11 @@ class KubernetesCronJobSwitch(SwitchEntity):
         self._next_schedule_time: str | None = None
         self._last_suspend_time: float | None = None
         self._last_resume_time: float | None = None
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
 
     @property
     def available(self) -> bool:

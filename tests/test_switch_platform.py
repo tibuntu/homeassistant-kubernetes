@@ -34,6 +34,7 @@ def mock_config_entry():
         CONF_HOST: "https://kubernetes.example.com",
         CONF_PORT: 443,
         CONF_VERIFY_SSL: True,
+        "cluster_name": "test-cluster",
     }
     return config_entry
 
@@ -93,6 +94,8 @@ def mock_hass():
     """Create a mock Home Assistant instance."""
     hass = MagicMock()
     hass.data = {DOMAIN: {}}
+    hass.config = MagicMock()
+    hass.config.config_dir = "/tmp"
     return hass
 
 
@@ -109,11 +112,20 @@ class TestSwitchSetup:
             "client": mock_client,
         }
 
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
         # Mock async_add_entities
         mock_add_entities = MagicMock()
 
         # Call the setup function
-        await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+        with patch(
+            "custom_components.kubernetes.device.dr.async_get",
+            return_value=mock_device_registry,
+        ):
+            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
         # Verify entities were added
         mock_add_entities.assert_called_once()
@@ -205,6 +217,17 @@ class TestKubernetesDeploymentSwitch:
         assert attributes["last_scale_attempt_failed"] is False
         assert attributes["cpu_usage_(millicores)"] == "500"
         assert attributes["memory_usage_(MiB)"] == "256"
+
+    def test_switch_device_info(self, mock_config_entry, mock_coordinator):
+        """Test deployment switch device info."""
+        switch = KubernetesDeploymentSwitch(
+            mock_coordinator, mock_config_entry, "test-deployment", "default"
+        )
+        device_info = switch.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
 
     def test_switch_available_property(self, mock_config_entry, mock_coordinator):
         """Test switch available property."""
@@ -438,6 +461,17 @@ class TestKubernetesStatefulSetSwitch:
         assert attributes["cpu_usage_(millicores)"] == "500"
         assert attributes["memory_usage_(MiB)"] == "256"
 
+    def test_statefulset_switch_device_info(self, mock_config_entry, mock_coordinator):
+        """Test StatefulSet switch device info."""
+        switch = KubernetesStatefulSetSwitch(
+            mock_coordinator, mock_config_entry, "test-statefulset", "default"
+        )
+        device_info = switch.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
+
     async def test_switch_turn_on_success(self, mock_config_entry, mock_coordinator):
         """Test successful StatefulSet turn on."""
         switch = KubernetesStatefulSetSwitch(
@@ -541,6 +575,17 @@ class TestKubernetesCronJobSwitch:
         assert attributes["namespace"] == "default"
         assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_CRONJOB
 
+    def test_cronjob_switch_device_info(self, mock_config_entry, mock_coordinator):
+        """Test CronJob switch device info."""
+        switch = KubernetesCronJobSwitch(
+            mock_coordinator, mock_config_entry, "test-cronjob", "default"
+        )
+        device_info = switch.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
+
     async def test_switch_turn_on_success(self, mock_config_entry, mock_coordinator):
         """Test successful CronJob turn on."""
         switch = KubernetesCronJobSwitch(
@@ -608,9 +653,20 @@ class TestDynamicEntityDiscovery:
         mock_entity_registry = MagicMock()
         mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = []
 
-        with patch(
-            "custom_components.kubernetes.switch.async_get_entity_registry",
-            return_value=mock_entity_registry,
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.switch.async_get_entity_registry",
+                return_value=mock_entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
         ):
             await _async_discover_and_add_new_entities(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client

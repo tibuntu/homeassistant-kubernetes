@@ -129,14 +129,56 @@ Each switch includes detailed attributes:
 - **CPU Usage**: CPU usage in millicores (for Deployments and StatefulSets)
 - **Memory Usage**: Memory usage in MiB (for Deployments and StatefulSets)
 
+## Device Organization
+
+The integration organizes entities using Home Assistant's device system, creating a hierarchical structure that makes it easier to manage large clusters:
+
+### Device Hierarchy
+
+```
+Cluster Device (e.g., "production-cluster")
+├── Cluster-level entities:
+│   ├── Cluster Health (binary_sensor)
+│   ├── Nodes Count (sensor)
+│   ├── Pods Count (sensor)
+│   ├── Deployments Count (sensor)
+│   ├── StatefulSets Count (sensor)
+│   ├── DaemonSets Count (sensor)
+│   ├── CronJobs Count (sensor)
+│   └── Individual Node sensors (one per node)
+│
+└── Namespace Devices (e.g., "production-cluster: default")
+    ├── Pod sensors (all pods in this namespace)
+    ├── Deployment switches (all deployments in this namespace)
+    ├── StatefulSet switches (all statefulsets in this namespace)
+    └── CronJob switches (all cronjobs in this namespace)
+```
+
+### Benefits of Device Organization
+
+- **Better Organization**: Entities are logically grouped by cluster and namespace
+- **Easier Filtering**: Filter entities by device in the Home Assistant UI
+- **Clearer Context**: Entity names clearly indicate which cluster and namespace they belong to
+- **Scalability**: Better handles large clusters with many resources
+- **Kubernetes Alignment**: Follows Kubernetes namespace organization pattern
+
+### Device Management
+
+- **Automatic Device Creation**: Devices are automatically created when entities are first discovered
+- **Automatic Device Cleanup**: Namespace devices are automatically removed when namespaces are deleted from the cluster
+- **Dynamic Updates**: New namespace devices are created when new namespaces are discovered
+
 ## Entity Naming
 
-Entities are automatically named using the following patterns:
+With device-based grouping, entities are automatically named using the following patterns:
 
-- **Sensors**: `sensor.kubernetes_[cluster_name]_[metric_type]`
-- **Binary Sensors**: `binary_sensor.kubernetes_[cluster_name]_cluster_health`
-- **Switches**: `switch.kubernetes_[cluster_name]_[resource_type]_[resource_name]`
-- **Pod Sensors**: `sensor.kubernetes_[cluster_name]_[pod_name]`
+- **Cluster-level Sensors**: `sensor.[cluster_name]_[metric_type]` (e.g., `sensor.production_cluster_nodes_count`)
+- **Cluster-level Binary Sensors**: `binary_sensor.[cluster_name]_cluster_health` (e.g., `binary_sensor.production_cluster_cluster_health`)
+- **Node Sensors**: `sensor.[cluster_name]_[node_name]` (e.g., `sensor.production_cluster_worker_node_1`)
+- **Namespace-level Pod Sensors**: `sensor.[cluster_name]_[namespace]_[pod_name]` (e.g., `sensor.production_cluster_default_my_app_pod`)
+- **Namespace-level Switches**: `switch.[cluster_name]_[namespace]_[resource_name]_[resource_type]` (e.g., `switch.production_cluster_default_my_deployment_deployment`)
+
+The device hierarchy ensures that entity names include cluster and namespace context, making it clear what each entity represents.
 
 ## Dynamic Entity Discovery
 

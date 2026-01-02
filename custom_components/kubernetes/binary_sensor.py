@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -10,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .device import get_cluster_device_info
 from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,6 +25,11 @@ async def async_setup_entry(
     """Set up Kubernetes binary sensors based on a config entry."""
     # Get the client from hass.data (shared with other platforms)
     client = hass.data[DOMAIN][config_entry.entry_id]["client"]
+
+    # Ensure cluster device exists
+    from .device import get_or_create_cluster_device
+
+    await get_or_create_cluster_device(hass, config_entry)
 
     # Create binary sensors for cluster health
     binary_sensors = [
@@ -51,6 +58,11 @@ class KubernetesClusterHealthSensor(KubernetesBaseBinarySensor):
         self._attr_name = "Cluster Health"
         self._attr_unique_id = f"{config_entry.entry_id}_cluster_health"
         self._attr_device_class = "connectivity"
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
 
     async def async_update(self) -> None:
         """Update the binary sensor state."""

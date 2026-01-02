@@ -4,10 +4,12 @@ This document explains how the Kubernetes integration manages entities and handl
 
 ## Overview
 
-The Kubernetes integration automatically manages Home Assistant entities based on the current state of your Kubernetes cluster. This includes:
+The Kubernetes integration automatically manages Home Assistant entities and devices based on the current state of your Kubernetes cluster. This includes:
 
-- **Automatic Entity Cleanup**: Removing entities for deleted deployments/statefulsets
-- **Dynamic Entity Discovery**: Adding entities for newly created deployments/statefulsets
+- **Automatic Entity Cleanup**: Removing entities for deleted deployments/statefulsets/pods/nodes
+- **Automatic Device Cleanup**: Removing namespace devices when namespaces are deleted
+- **Dynamic Entity Discovery**: Adding entities for newly created deployments/statefulsets/pods/nodes
+- **Dynamic Device Creation**: Creating namespace devices when new namespaces are discovered
 - **Real-time Synchronization**: Keeping Home Assistant entities in sync with Kubernetes resources
 
 ## Automatic Entity Cleanup
@@ -39,6 +41,7 @@ The integration now automatically removes orphaned entities during each polling 
    - Scans the entity registry for entities belonging to this integration
    - Parses unique IDs to determine resource name and type
    - Removes entities whose corresponding Kubernetes resources no longer exist
+   - Removes namespace devices when namespaces no longer contain any resources
 
 ### Logging
 
@@ -99,9 +102,27 @@ To adjust the interval:
 
 The automatic management currently supports:
 
-- **Switch Entities**: For deployments and statefulsets
-- **Sensor Entities**: Related to specific deployments/statefulsets
-- **Binary Sensor Entities**: Related to specific deployments/statefulsets
+- **Switch Entities**: For deployments, statefulsets, and cronjobs
+- **Sensor Entities**: For pods, nodes, and cluster-wide metrics
+- **Binary Sensor Entities**: For cluster health monitoring
+
+## Device Management
+
+### Namespace Device Cleanup
+
+The integration automatically manages namespace devices:
+
+- **Automatic Creation**: Namespace devices are created when the first entity in a namespace is discovered
+- **Automatic Cleanup**: Namespace devices are removed when a namespace no longer contains any resources
+- **Parent Relationship**: Namespace devices are linked to the cluster device as their parent
+
+### Cluster Device
+
+The cluster device is created when the integration is first set up and persists for the lifetime of the integration. It contains:
+
+- All cluster-level count sensors
+- Individual node sensors
+- Cluster health binary sensor
 
 ## Troubleshooting
 

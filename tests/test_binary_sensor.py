@@ -1,6 +1,6 @@
 """Tests for the Kubernetes binary sensor platform."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
@@ -42,6 +42,8 @@ def mock_hass():
     """Create a mock Home Assistant instance."""
     hass = MagicMock()
     hass.data = {DOMAIN: {}}
+    hass.config = MagicMock()
+    hass.config.config_dir = "/tmp"
     return hass
 
 
@@ -55,11 +57,20 @@ class TestKubernetesBinarySensorSetup:
         # Set up hass.data
         mock_hass.data[DOMAIN][mock_config_entry.entry_id] = {"client": mock_client}
 
+        # Mock device registry
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
         # Mock async_add_entities
         mock_add_entities = MagicMock()
 
         # Call the setup function
-        await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+        with patch(
+            "custom_components.kubernetes.device.dr.async_get",
+            return_value=mock_device_registry,
+        ):
+            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
         # Verify entities were added
         mock_add_entities.assert_called_once()
