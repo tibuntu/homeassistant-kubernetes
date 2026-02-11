@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.7.0...v0.7.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* service data not being parsed and thus called correctly selecting multiple workloads ([7ff332b](https://github.com/tibuntu/homeassistant-kubernetes/commit/7ff332b0a45d6495e8772dab7efedf868cf3d97a))
+
+
+### Documentation
+
+* update README to improve contribution section ([0f43109](https://github.com/tibuntu/homeassistant-kubernetes/commit/0f43109476305b4165980497b4724d26bd7bd410))
+
+
+### Other
+
+* add test for service calls with multiple entities (workloads) ([cbf6511](https://github.com/tibuntu/homeassistant-kubernetes/commit/cbf6511c71bddfbeab7fec0b156fbe99969b1ce6))
+
 ## [0.7.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.6.0...v0.7.0) (2026-01-02)
 
 
