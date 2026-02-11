@@ -282,6 +282,67 @@ class TestGenericWorkloadServices:
             # Verify that suspend_cronjob was NOT called
             mock_client.suspend_cronjob.assert_not_called()
 
+    async def test_stop_workload_with_workload_names_entity_id_list(
+        self, mock_hass, mock_client
+    ):
+        """Test stop_workload with workload_names as list of {entity_id: [switch.…, …]} (UI format)."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.KubernetesClient"
+        ) as mock_client_class:
+            mock_client_class.return_value = mock_client
+
+            await async_setup_services(mock_hass)
+
+            service_func = None
+            for call_args in mock_hass.services.async_register.call_args_list:
+                if call_args[0][1] == SERVICE_STOP_WORKLOAD:
+                    service_func = call_args[0][2]
+                    break
+
+            assert service_func is not None, "Service function not found"
+
+            # Mock states.get to return different attributes per entity_id (UI sends list of dicts)
+            def states_get(entity_id):
+                if entity_id == "switch.default_audiobookshelf_audiobookshelf":
+                    return MagicMock(
+                        attributes={
+                            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                            "namespace": "audiobookshelf",
+                            "deployment_name": "audiobookshelf",
+                        }
+                    )
+                if entity_id == "switch.default_cert_manager_cert_manager":
+                    return MagicMock(
+                        attributes={
+                            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                            "namespace": "cert-manager",
+                            "deployment_name": "cert-manager",
+                        }
+                    )
+                return None
+
+            mock_hass.states.get.side_effect = states_get
+
+            mock_call = MagicMock()
+            mock_call.data = {
+                ATTR_WORKLOAD_NAMES: [
+                    {
+                        "entity_id": [
+                            "switch.default_audiobookshelf_audiobookshelf",
+                            "switch.default_cert_manager_cert_manager",
+                        ]
+                    }
+                ],
+            }
+
+            await service_func(mock_call)
+
+            assert mock_client.stop_deployment.call_count == 2
+            mock_client.stop_deployment.assert_any_call(
+                "audiobookshelf", "audiobookshelf"
+            )
+            mock_client.stop_deployment.assert_any_call("cert-manager", "cert-manager")
+
 
 class TestServiceSelectorConfiguration:
     """Test that service selectors are correctly configured."""
