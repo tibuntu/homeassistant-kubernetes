@@ -114,6 +114,20 @@ def _get_workload_info_from_entity(
         return None, None, None
 
 
+def _normalize_entity_id_list(entity_ids_raw: Any) -> list[str]:
+    """Normalize entity_id from service call to a list of non-empty strings.
+
+    Handles: list of ids, single string, or comma-separated string (e.g. from UI).
+    """
+    if entity_ids_raw is None:
+        return []
+    if isinstance(entity_ids_raw, list):
+        return [s.strip() for s in entity_ids_raw if isinstance(s, str) and s.strip()]
+    if isinstance(entity_ids_raw, str):
+        return [s.strip() for s in entity_ids_raw.split(",") if s.strip()]
+    return []
+
+
 def _extract_workload_info(  # noqa: C901
     call_data: dict[str, Any], hass: HomeAssistant
 ) -> list[tuple[str, str | None, str]]:
@@ -146,31 +160,81 @@ def _extract_workload_info(  # noqa: C901
                     workload_name,
                     workload_type,
                 )
-        elif isinstance(names, dict) and "entity_id" in names:
-            # Home Assistant UI format: {'entity_id': ['switch.entity1', 'switch.entity2']}
-            entity_ids = names["entity_id"]
-            if isinstance(entity_ids, list):
-                for entity_id in entity_ids:
-                    if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                        namespace, workload_name, workload_type = (
-                            _get_workload_info_from_entity(hass, entity_id)
+        elif isinstance(names, dict) and (
+            "entity_id" in names or "entity_ids" in names
+        ):
+            # Home Assistant UI/target format: {'entity_id': ['switch.entity1', ...]} or {'entity_id': 'switch.entity1'} or comma-separated string
+            entity_ids_raw = names.get("entity_id") or names.get("entity_ids")
+            entity_ids = _normalize_entity_id_list(entity_ids_raw)
+            for entity_id in entity_ids:
+                if isinstance(entity_id, str) and entity_id.startswith("switch."):
+                    namespace, workload_name, workload_type = (
+                        _get_workload_info_from_entity(hass, entity_id)
+                    )
+                    if workload_name and workload_type:
+                        workloads.append((workload_name, namespace, workload_type))
+                    else:
+                        _LOGGER.warning(
+                            "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
+                            entity_id,
+                            namespace,
+                            workload_name,
+                            workload_type,
                         )
-                        if workload_name and workload_type:
-                            workloads.append((workload_name, namespace, workload_type))
-                        else:
-                            _LOGGER.warning(
-                                "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
-                                entity_id,
-                                namespace,
-                                workload_name,
-                                workload_type,
-                            )
         elif isinstance(names, list):
-            # List of entity IDs or names
+            # List of entity IDs, or list of target objects e.g. [{'entity_id': ['switch.x', ...]}]
             for name in names:
                 if isinstance(name, str):
                     namespace, workload_name, workload_type = (
                         _get_workload_info_from_entity(hass, name)
+                    )
+                    if workload_name and workload_type:
+                        workloads.append((workload_name, namespace, workload_type))
+                    else:
+                        _LOGGER.warning(
+                            "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
+                            name,
+                            namespace,
+                            workload_name,
+                            workload_type,
+                        )
+                elif isinstance(name, dict) and (
+                    "entity_id" in name or "entity_ids" in name
+                ):
+                    entity_ids_raw = name.get("entity_id") or name.get("entity_ids")
+                    entity_ids = _normalize_entity_id_list(entity_ids_raw)
+                    for entity_id in entity_ids:
+                        if isinstance(entity_id, str) and entity_id.startswith(
+                            "switch."
+                        ):
+                            namespace, workload_name, workload_type = (
+                                _get_workload_info_from_entity(hass, entity_id)
+                            )
+                            if workload_name and workload_type:
+                                workloads.append(
+                                    (workload_name, namespace, workload_type)
+                                )
+                            else:
+                                _LOGGER.warning(
+                                    "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
+                                    entity_id,
+                                    namespace,
+                                    workload_name,
+                                    workload_type,
+                                )
+
+    # Fallback: top-level "target" (e.g. when UI sends target selector result at root)
+    if not workloads and "target" in call_data:
+        target = call_data["target"]
+        if isinstance(target, dict) and (
+            "entity_id" in target or "entity_ids" in target
+        ):
+            entity_ids_raw = target.get("entity_id") or target.get("entity_ids")
+            entity_ids = _normalize_entity_id_list(entity_ids_raw)
+            for entity_id in entity_ids:
+                if isinstance(entity_id, str) and entity_id.startswith("switch."):
+                    namespace, workload_name, workload_type = (
+                        _get_workload_info_from_entity(hass, entity_id)
                     )
                     if workload_name and workload_type:
                         workloads.append((workload_name, namespace, workload_type))
@@ -213,6 +277,36 @@ def _extract_workload_info(  # noqa: C901
 
     _LOGGER.debug("Extracted workloads: %s", workloads)
     return workloads
+
+
+def _log_no_workloads_found(call_data: dict[str, Any], service_name: str) -> None:
+    """Log a helpful error when no valid workloads could be extracted from service data."""
+    entity_ids_snippet: list[str] = []
+    for key in (ATTR_WORKLOAD_NAMES, ATTR_WORKLOAD_NAME):
+        val = call_data.get(key)
+        if val is None:
+            continue
+        if isinstance(val, str):
+            entity_ids_snippet.append(val)
+        elif isinstance(val, list):
+            entity_ids_snippet.extend([v for v in val if isinstance(v, str)][:5])
+        elif isinstance(val, dict) and "entity_id" in val:
+            eid = val["entity_id"]
+            if isinstance(eid, str):
+                entity_ids_snippet.append(eid)
+            elif isinstance(eid, list):
+                entity_ids_snippet.extend([v for v in eid if isinstance(v, str)][:5])
+        if entity_ids_snippet:
+            break
+    sample = entity_ids_snippet[:5] if entity_ids_snippet else ["(none)"]
+    _LOGGER.error(
+        "No valid workloads found in service call data for %s. "
+        "Ensure workload_names/entity_id list entity IDs that exist (e.g. switch.xxx) and that those switches have namespace and workload_type attributes. "
+        "Received data keys: %s. Sample entity IDs: %s. Enable debug logging for custom_components.kubernetes.services for details.",
+        service_name,
+        list(call_data.keys()),
+        sample,
+    )
 
 
 def _validate_workload_schema(data: dict) -> dict:
@@ -286,7 +380,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         workloads = _extract_workload_info(call.data, hass)
 
         if not workloads:
-            _LOGGER.error("No valid workloads found in service call data")
+            _log_no_workloads_found(call.data, "scale_workload")
             return
 
         replicas = call.data[ATTR_REPLICAS]
@@ -356,10 +450,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         workloads = _extract_workload_info(call.data, hass)
 
         if not workloads:
-            _LOGGER.error(
-                "No valid workloads found in service call data. Call data: %s",
-                call.data,
-            )
+            _log_no_workloads_found(call.data, "start_workload")
             return
 
         replicas = call.data.get(ATTR_REPLICAS, 1)
@@ -444,7 +535,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         workloads = _extract_workload_info(call.data, hass)
 
         if not workloads:
-            _LOGGER.error("No valid workloads found in service call data")
+            _log_no_workloads_found(call.data, "stop_workload")
             return
 
         # Get the Kubernetes client from the first config entry
