@@ -37,7 +37,7 @@ dev = [
     "ruff==0.15.1",
 
     # Type checking
-    "mypy==1.17.1",
+    "mypy==1.19.1",
 
     # Security
     "bandit[toml]==1.9.3",
