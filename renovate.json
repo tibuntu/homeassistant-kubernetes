@@ -1,12 +1,16 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:recommended"
+  ],
   "semanticCommitType": "build",
   "customManagers": [
     {
       "customType": "regex",
       "description": "Track Python package pins in HA manifest.json",
-      "fileMatch": ["custom_components/kubernetes/manifest\\.json$"],
+      "managerFilePatterns": [
+        "/custom_components/kubernetes/manifest\\.json$/"
+      ],
       "matchStrings": [
         "\"(?<depName>[a-zA-Z0-9_-]+)==(?<currentValue>[^\"]+)\""
       ],
@@ -15,7 +19,9 @@
     {
       "customType": "regex",
       "description": "Track Python version in CI workflows",
-      "fileMatch": ["\\.github/workflows/.*\\.ya?ml$"],
+      "managerFilePatterns": [
+        "/\\.github/workflows/.*\\.ya?ml$/"
+      ],
       "matchStrings": [
         "python-version:\\s*[\"'](?<currentValue>[0-9.]+)[\"']"
       ],
