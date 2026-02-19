@@ -1,17 +1,13 @@
 """Tests for the Kubernetes switch platform."""
 
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from homeassistant.components.switch import DOMAIN as SWITCH_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 import pytest
 
 from custom_components.kubernetes.const import (
-    ATTR_NAMESPACE,
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
     WORKLOAD_TYPE_CRONJOB,

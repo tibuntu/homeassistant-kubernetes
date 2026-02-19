@@ -78,7 +78,7 @@ async def async_setup_entry(
             await get_or_create_namespace_device(hass, config_entry, namespace)
 
         pod_sensors_created = 0
-        for pod_key, pod_data in pods_data.items():
+        for _pod_key, pod_data in pods_data.items():
             namespace = pod_data.get("namespace", "default")
             pod_name = pod_data.get("name", "unknown")
             pod_sensor = KubernetesPodSensor(
@@ -100,9 +100,9 @@ async def async_setup_entry(
             hass.data[DOMAIN] = {}
         if config_entry.entry_id not in hass.data[DOMAIN]:
             hass.data[DOMAIN][config_entry.entry_id] = {}
-        hass.data[DOMAIN][config_entry.entry_id][
-            "sensor_add_entities"
-        ] = async_add_entities
+        hass.data[DOMAIN][config_entry.entry_id]["sensor_add_entities"] = (
+            async_add_entities
+        )
 
         # Set up listener for adding new entities dynamically
         @callback
@@ -156,7 +156,7 @@ def _discover_new_pod_sensors(
     """Discover new pod sensors."""
     new_entities = []
     if coordinator.data and "pods" in coordinator.data:
-        for pod_key, pod_data in coordinator.data["pods"].items():
+        for _pod_key, pod_data in coordinator.data["pods"].items():
             namespace = pod_data.get("namespace", "default")
             pod_name = pod_data.get("name", "unknown")
             unique_id = f"{config_entry.entry_id}_pod_{namespace}_{pod_name}"

@@ -4,8 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
 from custom_components.kubernetes.binary_sensor import (

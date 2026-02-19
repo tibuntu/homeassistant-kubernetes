@@ -197,9 +197,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         """Get all unique namespaces from coordinator data."""
         return get_all_namespaces(self.data)
 
-    async def _cleanup_orphaned_entities(
-        self, current_data: dict[str, Any]
-    ) -> None:  # noqa: C901
+    async def _cleanup_orphaned_entities(self, current_data: dict[str, Any]) -> None:  # noqa: C901
         """Remove entities for Kubernetes resources that no longer exist."""
         try:
             # Skip cleanup if config_entry is not available (e.g., in tests)

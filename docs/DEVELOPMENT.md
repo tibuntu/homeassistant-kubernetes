@@ -4,7 +4,7 @@ This document provides detailed instructions for developing and contributing to 
 
 ## Prerequisites
 
-- Python 3.12 or higher
+- Python 3.13 or higher
 - Home Assistant 2025.7 or higher
 - A Kubernetes cluster for testing (minikube, kind, or cloud-based)
 - Git
@@ -52,7 +52,7 @@ The devcontainer automatically provides:
 
 - ✅ Complete Home Assistant installation
 - ✅ Your integration automatically mounted and available
-- ✅ All development dependencies (black, isort, flake8, pytest)
+- ✅ All development dependencies (ruff, pytest, mypy)
 - ✅ Debug logging pre-configured
 - ✅ VS Code extensions for Python development
 - ✅ Quick test scripts and development helpers
@@ -98,9 +98,8 @@ Or use the Home Assistant UI: Settings → Integrations → Add Integration
 
 **Code quality tools** (run automatically on save):
 
-- `black custom_components/` - code formatting
-- `isort custom_components/` - import sorting
-- `flake8 custom_components/` - linting
+- `ruff check custom_components/` - linting
+- `ruff format custom_components/` - formatting
 - `pytest tests/` - run tests
 
 ### 3. Manual Setup (Alternative)
@@ -113,7 +112,6 @@ python3 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
 pip install -e ".[dev]"
 
 # Create Home Assistant config directory
@@ -142,7 +140,6 @@ homeassistant-kubernetes/
 │   └── setup_dev_environment.sh
 ├── docs/
 │   └── DEVELOPMENT.md
-├── requirements.txt
 ├── pyproject.toml
 └── README.md
 ```
@@ -240,14 +237,11 @@ kubectl get secret $(kubectl get serviceaccount homeassistant-test -o jsonpath='
 ### Code Formatting
 
 ```bash
-# Format code with black
-black .
+# Lint and auto-fix
+ruff check --fix .
 
-# Sort imports with isort
-isort .
-
-# Check code style with flake8
-flake8 .
+# Format code
+ruff format .
 ```
 
 ### Type Checking
@@ -389,7 +383,7 @@ ps aux | grep hass
 3. Make your changes
 4. Add tests for new functionality
 5. Ensure all tests pass: `pytest`
-6. Format your code: `black . && isort .`
+6. Format your code: `ruff check --fix . && ruff format .`
 7. Commit your changes: `git commit -m 'Add amazing feature'`
 8. Push to the branch: `git push origin feature/amazing-feature`
 9. Open a Pull Request

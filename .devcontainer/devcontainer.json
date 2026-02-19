@@ -30,9 +30,7 @@
       "extensions": [
         "ms-python.python",
         "ms-python.vscode-pylance",
-        "ms-python.black-formatter",
-        "ms-python.isort",
-        "ms-python.flake8",
+        "charliermarsh.ruff",
         "github.vscode-pull-request-github",
         "ryanluker.vscode-coverage-gutters",
         "ms-vscode.vscode-json",
@@ -48,13 +46,11 @@
           "/config/custom_components",
           "/workspaces/${localWorkspaceFolderBasename}/custom_components"
         ],
-        "python.linting.enabled": true,
-        "python.linting.flake8Enabled": true,
-        "python.formatting.provider": "none",
         "[python]": {
-          "editor.defaultFormatter": "ms-python.black-formatter",
+          "editor.defaultFormatter": "charliermarsh.ruff",
           "editor.codeActionsOnSave": {
-            "source.organizeImports": true
+            "source.organizeImports.ruff": "explicit",
+            "source.fixAll.ruff": "explicit"
           }
         },
         "editor.formatOnSave": true,

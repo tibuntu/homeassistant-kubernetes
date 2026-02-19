@@ -3,10 +3,8 @@
 import os
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
-from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv
+from homeassistant.core import HomeAssistant
 import pytest
-import voluptuous as vol
 import yaml
 
 from custom_components.kubernetes.const import (
@@ -24,7 +22,6 @@ from custom_components.kubernetes.const import (
     WORKLOAD_TYPE_STATEFULSET,
 )
 from custom_components.kubernetes.services import (
-    _validate_entity_workload_type,
     async_setup_services,
     async_unload_services,
 )
@@ -368,35 +365,35 @@ class TestServiceSelectorConfiguration:
                 # Check entity selector
                 if "entity" in selector_config:
                     entity_selector = selector_config["entity"]
-                    assert (
-                        "domain" in entity_selector
-                    ), f"{service_name}.{field_name} entity selector missing domain"
-                    assert (
-                        entity_selector["domain"] == "switch"
-                    ), f"{service_name}.{field_name} entity selector has wrong domain"
-                    assert (
-                        "integration" in entity_selector
-                    ), f"{service_name}.{field_name} entity selector missing integration"
-                    assert (
-                        entity_selector["integration"] == DOMAIN
-                    ), f"{service_name}.{field_name} entity selector has wrong integration"
+                    assert "domain" in entity_selector, (
+                        f"{service_name}.{field_name} entity selector missing domain"
+                    )
+                    assert entity_selector["domain"] == "switch", (
+                        f"{service_name}.{field_name} entity selector has wrong domain"
+                    )
+                    assert "integration" in entity_selector, (
+                        f"{service_name}.{field_name} entity selector missing integration"
+                    )
+                    assert entity_selector["integration"] == DOMAIN, (
+                        f"{service_name}.{field_name} entity selector has wrong integration"
+                    )
 
                 # Check target selector (for multi-select fields)
                 if "target" in selector_config:
                     target_selector = selector_config["target"]
-                    assert (
-                        "entity" in target_selector
-                    ), f"{service_name}.{field_name} target selector missing entity"
+                    assert "entity" in target_selector, (
+                        f"{service_name}.{field_name} target selector missing entity"
+                    )
                     entity_selector = target_selector["entity"]
-                    assert (
-                        "domain" in entity_selector
-                    ), f"{service_name}.{field_name} target entity selector missing domain"
-                    assert (
-                        entity_selector["domain"] == "switch"
-                    ), f"{service_name}.{field_name} target entity selector has wrong domain"
-                    assert (
-                        "integration" in entity_selector
-                    ), f"{service_name}.{field_name} target entity selector missing integration"
-                    assert (
-                        entity_selector["integration"] == DOMAIN
-                    ), f"{service_name}.{field_name} target entity selector has wrong integration"
+                    assert "domain" in entity_selector, (
+                        f"{service_name}.{field_name} target entity selector missing domain"
+                    )
+                    assert entity_selector["domain"] == "switch", (
+                        f"{service_name}.{field_name} target entity selector has wrong domain"
+                    )
+                    assert "integration" in entity_selector, (
+                        f"{service_name}.{field_name} target entity selector missing integration"
+                    )
+                    assert entity_selector["integration"] == DOMAIN, (
+                        f"{service_name}.{field_name} target entity selector has wrong integration"
+                    )
