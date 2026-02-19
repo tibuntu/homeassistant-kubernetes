@@ -10,7 +10,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/tibuntu/homeassistant-kubernetes/issues",
   "requirements": [
-    "kubernetes==33.1.0"
+    "kubernetes==35.0.0"
   ],
   "version": "0.7.1"
 }
