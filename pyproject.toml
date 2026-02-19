@@ -47,7 +47,7 @@ dev = [
 
     # Documentation
     "mkdocs==1.6.1",
-    "mkdocs-material==9.5.44",
+    "mkdocs-material==9.7.2",
 
     # Home Assistant
     "homeassistant==2026.2.2",
