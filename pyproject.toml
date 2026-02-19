@@ -31,7 +31,7 @@ dev = [
     # Testing
     "pytest==8.4.2",
     "pytest-asyncio==1.1.0",
-    "pytest-cov==6.0.0",
+    "pytest-cov==7.0.0",
 
     # Linting and formatting
     "ruff==0.15.1",
