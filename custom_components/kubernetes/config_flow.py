@@ -18,7 +18,7 @@ KUBERNETES_AVAILABLE: bool | None = None
 client: Any | None = None
 ApiException: type = Exception
 
-from .const import (
+from .const import (  # noqa: E402
     CONF_API_TOKEN,
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
@@ -369,7 +369,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 )
                 return
             else:
-                raise ValueError(f"Failed to connect to Kubernetes API: {ex.reason}")
+                raise ValueError(
+                    f"Failed to connect to Kubernetes API: {ex.reason}"
+                ) from ex
         except Exception as ex:
             _LOGGER.error("Failed to test connection: %s", ex)
             # Fallback to aiohttp if kubernetes client fails
@@ -380,7 +382,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 )
                 return
             else:
-                raise ValueError(f"Connection test failed: {str(ex)}")
+                raise ValueError(f"Connection test failed: {str(ex)}") from ex
 
     async def _test_connection_aiohttp(self, user_input: dict[str, Any]) -> bool:
         """Test the connection using aiohttp as fallback."""

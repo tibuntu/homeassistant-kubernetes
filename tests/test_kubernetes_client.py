@@ -1,18 +1,11 @@
 """Tests for the Kubernetes integration client."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
 from kubernetes.client import ApiException
 import pytest
 
-from custom_components.kubernetes.const import (
-    CONF_API_TOKEN,
-    CONF_HOST,
-    CONF_PORT,
-    CONF_VERIFY_SSL,
-)
 from custom_components.kubernetes.kubernetes_client import KubernetesClient
 
 
@@ -1437,7 +1430,7 @@ class TestKubernetesClientExtended:
             mock_logger.error.assert_called()
 
         # Test asyncio.TimeoutError
-        error_timeout = asyncio.TimeoutError()
+        error_timeout = TimeoutError()
         with patch(
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:

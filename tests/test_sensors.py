@@ -434,7 +434,7 @@ class TestSensorSetup:
         from custom_components.kubernetes.sensor import async_setup_entry
 
         mock_add_entities = AsyncMock()
-        with pytest.raises(Exception):
+        with pytest.raises(KeyError):
             await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
         mock_add_entities.assert_not_called()

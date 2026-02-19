@@ -3,10 +3,7 @@
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.components.switch import SwitchDeviceClass
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_registry import EntityRegistry
 import pytest
 
 from custom_components.kubernetes.const import (

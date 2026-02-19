@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
@@ -14,12 +13,8 @@ from custom_components.kubernetes.const import (
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_VERIFY_SSL,
-    DEFAULT_CLUSTER_NAME,
-    DEFAULT_MONITOR_ALL_NAMESPACES,
-    DEFAULT_NAMESPACE,
     DEFAULT_PORT,
     DEFAULT_VERIFY_SSL,
-    DOMAIN,
 )
 
 

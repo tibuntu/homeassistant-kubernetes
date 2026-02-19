@@ -25,38 +25,15 @@ repos:
         types_or: [yaml]
         args: [--write]
 
-  # Python code formatting
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
+  # Python linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.1
     hooks:
-      - id: black
-        name: Format Python code with Black
-        language_version: python3
-        args: [--line-length=88]
-
-  # Import sorting
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        name: Sort Python imports
-        args: [--profile=black, --line-length=88]
-
-  # Python linting
-  - repo: https://github.com/pycqa/flake8
-    rev: 7.1.1
-    hooks:
-      - id: flake8
-        name: Lint Python code
-        args:
-          - --max-line-length=127
-          - --max-complexity=10
-          - --ignore=E203,W503,E501 # Black compatibility
-        additional_dependencies:
-          - flake8-docstrings
-          - flake8-import-order
-          - flake8-bugbear
-          - flake8-comprehensions
+      - id: ruff
+        name: Lint Python code with Ruff
+        args: [--fix]
+      - id: ruff-format
+        name: Format Python code with Ruff
 
   # Type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
@@ -64,9 +41,6 @@ repos:
     hooks:
       - id: mypy
         name: Type check with mypy
-        additional_dependencies:
-          - types-requests
-          - types-PyYAML
         args:
           - --ignore-missing-imports
           - --strict-optional
@@ -82,14 +56,6 @@ repos:
         name: Security check with Bandit
         args: [-c, pyproject.toml]
         additional_dependencies: ["bandit[toml]"]
-
-  # Upgrade Python syntax
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.17.0
-    hooks:
-      - id: pyupgrade
-        name: Upgrade Python syntax
-        args: [--py311-plus]
 
   # Home Assistant specific checks
   - repo: local
@@ -200,7 +166,7 @@ repos:
 
 # Pre-commit configuration
 default_language_version:
-  python: python3.11
+  python: python3.13
 
 # Exclude patterns
 exclude: |
@@ -221,7 +187,7 @@ default_stages: [pre-commit, pre-push]
 # CI configuration
 ci:
   # Skip these hooks in CI (they run in separate jobs)
-  skip: [pip-audit, markdownlint]
+  skip: [markdownlint]
   # Auto-fix pull requests
   autofix_prs: true
   # Auto-update configuration
