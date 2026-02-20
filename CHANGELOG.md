@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.7.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.7.1...v0.7.2) (2026-02-20)
+
+
+### Bug Fixes
+
+* **deps:** update dependency bandit to v1.9.3 ([48fdc5f](https://github.com/tibuntu/homeassistant-kubernetes/commit/48fdc5f4297637bfd599ea387158e5d883ec9ea9))
+* **deps:** update dependency mkdocs-material to v9.7.2 ([2a1b047](https://github.com/tibuntu/homeassistant-kubernetes/commit/2a1b047c38ffca2214d58d32341f649ade741345))
+* **deps:** update dependency mypy to v1.19.1 ([ab80cf4](https://github.com/tibuntu/homeassistant-kubernetes/commit/ab80cf4a69b79946c84f22e061a7bb9e8ace4a5a))
+* **deps:** update dependency pre-commit to v4.5.1 ([2569c61](https://github.com/tibuntu/homeassistant-kubernetes/commit/2569c6190f41e18f990cebb1f26cbf71eb6bd890))
+* **deps:** update dependency pytest to v8.4.2 ([3abac7d](https://github.com/tibuntu/homeassistant-kubernetes/commit/3abac7d6d15462acaa29b21d8d21f9b65d5728b1))
+* **deps:** update dependency pytest to v9 ([5aab780](https://github.com/tibuntu/homeassistant-kubernetes/commit/5aab78067fc730df572f777dd1a9f1900de00815))
+* **deps:** update dependency pytest-asyncio to v1.3.0 ([18d8b08](https://github.com/tibuntu/homeassistant-kubernetes/commit/18d8b084974f4f5cb70de0910a047076d6a7c0e9))
+* **deps:** update dependency pytest-cov to v7 ([9d8d33b](https://github.com/tibuntu/homeassistant-kubernetes/commit/9d8d33bb191eaab0b3b776fc52b787f43bbe9147))
+* **deps:** update dependency ruff to v0.15.2 ([7ae996a](https://github.com/tibuntu/homeassistant-kubernetes/commit/7ae996a7bf8d04b155674452d070b5f016a39143))
+
+
+### Other
+
+* add .claude/ to gitignore ([4a2c3fa](https://github.com/tibuntu/homeassistant-kubernetes/commit/4a2c3fab56815a7586fb3d19bb142f6172302f4a))
+* **ci:** add Claude PR Assistant workflow ([3be7e9c](https://github.com/tibuntu/homeassistant-kubernetes/commit/3be7e9c87702ad46af9a219c470cc689474ef722))
+* **ci:** only trigger claude on-demand and with specific permissions ([91eca28](https://github.com/tibuntu/homeassistant-kubernetes/commit/91eca2893e61b7f747a82c90840a9895babd958e))
+* **config:** migrate config renovate.json ([729800f](https://github.com/tibuntu/homeassistant-kubernetes/commit/729800f2a7227817c839b5ecb402639a3d5cc42c))
+* **deps:** update actions/checkout action to v6 ([cb5c4a9](https://github.com/tibuntu/homeassistant-kubernetes/commit/cb5c4a9a20be13118dcd89ef5777f5fbe9d36b1b))
+* **deps:** update dependency kubernetes to v35 ([3f47940](https://github.com/tibuntu/homeassistant-kubernetes/commit/3f4794024fde804169652ec4d54b7d25b32604dd))
+* migrate to ruff, clean up dependencies, and improve Renovate tracking ([a868b68](https://github.com/tibuntu/homeassistant-kubernetes/commit/a868b68c966ee44c351c0c5256a8ac6fa9caaba9))
+* **Renovate:** do not longer create fix commits for any kind of updates ([3972f58](https://github.com/tibuntu/homeassistant-kubernetes/commit/3972f58709acba56bc5320a5ccdd742d3de16adc))
+
 ## [0.7.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.7.0...v0.7.1) (2026-02-11)
 
 
