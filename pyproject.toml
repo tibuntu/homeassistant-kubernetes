@@ -50,7 +50,7 @@ dev = [
     "mkdocs-material==9.7.2",
 
     # Home Assistant
-    "homeassistant==2026.2.2",
+    "homeassistant==2026.2.3",
 ]
 
 [tool.setuptools.packages.find]
