@@ -85,6 +85,16 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build. Releases automated via release-please.
 
+## Tests
+
+Whenever changes are implemented to any integration code, always add or update the corresponding unit tests in `tests/`. Follow the existing patterns in the test files:
+
+- Each new class gets a corresponding `Test<ClassName>` test class.
+- Each new module-level helper function gets a `TestDiscover<Name>` or similar test class.
+- Cover the happy path, edge cases (missing data, `None` coordinator data), and all distinct return values.
+- Use the shared fixtures from `conftest.py` (`mock_hass`, `mock_config_entry`, `mock_client`, `mock_coordinator`) rather than creating new ones where possible.
+- Do not attempt to run tests locally — the CI pipeline handles test execution.
+
 ## Documentation
 
 Whenever changes are implemented, update all relevant documentation to reflect the current state of the code. This includes `README.md`, files in `docs/`, and any other `.md` files in the repository. Do not leave documentation that describes outdated behaviour.
