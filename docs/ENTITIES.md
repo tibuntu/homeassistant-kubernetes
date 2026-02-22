@@ -23,6 +23,32 @@ The integration creates a separate sensor for each Kubernetes node in the cluste
 |--------|-------------|---------------|------|
 | **Node [node-name]** | Individual node status and information | `Ready` / `NotReady` / `Unknown` | - |
 
+### Individual DaemonSet Sensors
+
+The integration creates a separate sensor for each Kubernetes DaemonSet in the monitored namespace(s):
+
+| Sensor | Description | Example Value |
+|--------|-------------|---------------|
+| **[daemonset-name]** | Individual DaemonSet readiness status | `Ready` / `Degraded` / `Not Ready` / `Unknown` |
+
+#### DaemonSet Sensor Attributes
+
+Each DaemonSet sensor provides scheduling and readiness information:
+
+| Attribute | Description | Example Value |
+|-----------|-------------|---------------|
+| **namespace** | Kubernetes namespace of the DaemonSet | `kube-system` |
+| **desired** | Number of nodes that should run the DaemonSet pod | `3` |
+| **current** | Number of nodes currently running the DaemonSet pod | `3` |
+| **ready** | Number of nodes where the pod is ready | `3` |
+| **available** | Number of nodes where the pod is available | `3` |
+
+Status values:
+- `Ready` — all desired pods are ready (`ready == desired`)
+- `Degraded` — some but not all pods are ready (`0 < ready < desired`)
+- `Not Ready` — no pods are ready (`ready == 0`)
+- `Unknown` — data is unavailable or no nodes are scheduled
+
 ### Workload Metric Sensors
 
 The integration creates CPU and memory usage sensors for each deployment and statefulset. These sensors read live data from the [metrics-server](https://github.com/kubernetes-sigs/metrics-server) and require it to be installed in your cluster.
@@ -180,6 +206,7 @@ Cluster Device (e.g., "production-cluster")
     ├── Deployment CPU/memory sensors (one pair per deployment)
     ├── StatefulSet switches (all statefulsets in this namespace)
     ├── StatefulSet CPU/memory sensors (one pair per statefulset)
+    ├── DaemonSet sensors (all daemonsets in this namespace)
     └── CronJob switches (all cronjobs in this namespace)
 ```
 
@@ -213,10 +240,10 @@ The device hierarchy ensures that entity names include cluster and namespace con
 
 The integration automatically discovers and creates entities for:
 
-- All deployments in monitored namespaces
-- All statefulsets in monitored namespaces
-- All daemonsets in monitored namespaces
-- All cronjobs in monitored namespaces
+- All deployments in monitored namespaces (switch + CPU/memory sensors)
+- All statefulsets in monitored namespaces (switch + CPU/memory sensors)
+- All daemonsets in monitored namespaces (status sensor)
+- All cronjobs in monitored namespaces (switch)
 - Individual Kubernetes pods in monitored namespaces
 - Individual Kubernetes nodes in the cluster
 - Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs count)

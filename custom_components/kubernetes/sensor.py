@@ -94,6 +94,22 @@ async def async_setup_entry(
                 pod_sensor.unique_id,
             )
 
+        # Create individual sensors for each DaemonSet
+        daemonsets_data = coordinator.data.get("daemonsets", {})
+        _LOGGER.debug(
+            "Creating daemonset sensors for: %s", list(daemonsets_data.keys())
+        )
+
+        daemonset_sensors_created = 0
+        for daemonset_name, daemonset_data in daemonsets_data.items():
+            namespace = daemonset_data.get("namespace", "default")
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+            daemonset_sensor = KubernetesDaemonSetSensor(
+                coordinator, client, config_entry, daemonset_name, namespace
+            )
+            sensors.append(daemonset_sensor)
+            daemonset_sensors_created += 1
+
         # Create CPU and memory sensors for deployments and statefulsets
         metric_sensors_created = 0
         for workload_type in ("deployment", "statefulset"):
@@ -142,10 +158,11 @@ async def async_setup_entry(
         coordinator.async_add_listener(_async_add_new_entities)
 
         _LOGGER.debug(
-            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d metric sensors)",
+            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d daemonset sensors, %d metric sensors)",
             len(sensors),
             node_sensors_created,
             pod_sensors_created,
+            daemonset_sensors_created,
             metric_sensors_created,
         )
     except Exception as ex:
@@ -190,6 +207,28 @@ def _discover_new_pod_sensors(
                 new_entities.append(
                     KubernetesPodSensor(
                         coordinator, client, config_entry, namespace, pod_name
+                    )
+                )
+    return new_entities
+
+
+def _discover_new_daemonset_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesDaemonSetSensor]:
+    """Discover new individual DaemonSet sensors."""
+    new_entities = []
+    if coordinator.data and "daemonsets" in coordinator.data:
+        for daemonset_name, daemonset_data in coordinator.data["daemonsets"].items():
+            unique_id = f"{config_entry.entry_id}_daemonset_{daemonset_name}"
+            if unique_id not in existing_unique_ids:
+                namespace = daemonset_data.get("namespace", "default")
+                _LOGGER.info("Adding new daemonset sensor for: %s", daemonset_name)
+                new_entities.append(
+                    KubernetesDaemonSetSensor(
+                        coordinator, client, config_entry, daemonset_name, namespace
                     )
                 )
     return new_entities
@@ -278,6 +317,15 @@ async def _async_discover_and_add_new_sensors(
         for namespace in pod_namespaces:
             await get_or_create_namespace_device(hass, config_entry, namespace)
         new_entities.extend(pod_sensors)
+
+        # Discover new daemonset sensors
+        daemonset_sensors = _discover_new_daemonset_sensors(
+            coordinator, client, config_entry, existing_unique_ids
+        )
+        daemonset_namespaces = {s.namespace for s in daemonset_sensors}
+        for namespace in daemonset_namespaces:
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+        new_entities.extend(daemonset_sensors)
 
         # Discover new workload metric sensors
         metric_sensors = _discover_new_workload_metric_sensors(
@@ -802,3 +850,71 @@ class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
             return 0.0
         metric_key = "cpu_usage" if self._metric == "cpu" else "memory_usage"
         return round(workload_data.get(metric_key, 0.0), 2)
+
+
+class KubernetesDaemonSetSensor(KubernetesBaseSensor):
+    """Sensor for an individual Kubernetes DaemonSet."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client: Any,
+        config_entry: ConfigEntry,
+        daemonset_name: str,
+        namespace: str,
+    ) -> None:
+        """Initialize the DaemonSet sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.daemonset_name = daemonset_name
+        self.namespace = namespace
+        self._attr_name = daemonset_name
+        self._attr_unique_id = f"{config_entry.entry_id}_daemonset_{daemonset_name}"
+        self._attr_native_unit_of_measurement = None
+        self._attr_icon = "mdi:layers"
+        self._attr_state_class = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
+
+    @property
+    def native_value(self) -> str:
+        """Return the status of the DaemonSet."""
+        daemonset_data = (
+            self.coordinator.data.get("daemonsets", {}).get(self.daemonset_name)
+            if self.coordinator.data
+            else None
+        )
+        if daemonset_data is None:
+            return "Unknown"
+
+        desired = daemonset_data.get("desired_number_scheduled", 0)
+        ready = daemonset_data.get("number_ready", 0)
+
+        if desired == 0:
+            return "Unknown"
+        if ready == desired:
+            return "Ready"
+        if ready == 0:
+            return "Not Ready"
+        return "Degraded"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes for the DaemonSet."""
+        if not self.coordinator.data:
+            return {}
+        daemonset_data = self.coordinator.data.get("daemonsets", {}).get(
+            self.daemonset_name
+        )
+        if not daemonset_data:
+            return {}
+
+        return {
+            "namespace": daemonset_data.get("namespace", "N/A"),
+            "desired": daemonset_data.get("desired_number_scheduled", 0),
+            "current": daemonset_data.get("current_number_scheduled", 0),
+            "ready": daemonset_data.get("number_ready", 0),
+            "available": daemonset_data.get("number_available", 0),
+        }

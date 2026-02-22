@@ -28,6 +28,7 @@ from custom_components.kubernetes.const import (
 )
 from custom_components.kubernetes.sensor import (
     KubernetesCronJobsSensor,
+    KubernetesDaemonSetSensor,
     KubernetesDaemonSetsSensor,
     KubernetesDeploymentsSensor,
     KubernetesNodeSensor,
@@ -36,6 +37,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesPodsSensor,
     KubernetesStatefulSetsSensor,
     KubernetesWorkloadMetricSensor,
+    _discover_new_daemonset_sensors,
     _discover_new_workload_metric_sensors,
 )
 
@@ -1648,6 +1650,254 @@ class TestDiscoverWorkloadMetricSensors:
             "test_entry_id_my-app_deployment_memory",
         }
         new_sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+        assert new_sensors == []
+
+
+class TestKubernetesDaemonSetSensor:
+    """Test individual DaemonSet status sensor."""
+
+    def test_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor initialization."""
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+
+        assert sensor.name == "fluentd"
+        assert sensor.unique_id == "test_entry_id_daemonset_fluentd"
+        assert sensor.native_unit_of_measurement is None
+        assert sensor.icon == "mdi:layers"
+        assert sensor.state_class is None
+
+    def test_device_info_uses_namespace_device(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that the sensor belongs to its namespace device."""
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_kube-system")
+        }
+        assert device_info["name"] == "test-cluster: kube-system"
+
+    def test_native_value_ready(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test native value is 'Ready' when all desired pods are running."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 3,
+                    "current_number_scheduled": 3,
+                    "number_ready": 3,
+                    "number_available": 3,
+                }
+            }
+        }
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        assert sensor.native_value == "Ready"
+
+    def test_native_value_degraded(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Degraded' when only some pods are ready."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 3,
+                    "current_number_scheduled": 3,
+                    "number_ready": 1,
+                    "number_available": 1,
+                }
+            }
+        }
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        assert sensor.native_value == "Degraded"
+
+    def test_native_value_not_ready(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Not Ready' when no pods are ready."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 3,
+                    "current_number_scheduled": 0,
+                    "number_ready": 0,
+                    "number_available": 0,
+                }
+            }
+        }
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        assert sensor.native_value == "Not Ready"
+
+    def test_native_value_unknown_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Unknown' when coordinator has no data."""
+        mock_coordinator.data = None
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        assert sensor.native_value == "Unknown"
+
+    def test_native_value_unknown_daemonset_missing(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Unknown' when DaemonSet is absent from data."""
+        mock_coordinator.data = {"daemonsets": {}}
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        assert sensor.native_value == "Unknown"
+
+    def test_native_value_unknown_zero_desired(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Unknown' when desired count is 0."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 0,
+                    "number_ready": 0,
+                }
+            }
+        }
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        assert sensor.native_value == "Unknown"
+
+    def test_extra_state_attributes(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes contain scheduling information."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 3,
+                    "current_number_scheduled": 3,
+                    "number_ready": 2,
+                    "number_available": 2,
+                }
+            }
+        }
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["namespace"] == "kube-system"
+        assert attrs["desired"] == 3
+        assert attrs["current"] == 3
+        assert attrs["ready"] == 2
+        assert attrs["available"] == 2
+
+    def test_extra_state_attributes_no_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes return empty dict when no data."""
+        mock_coordinator.data = None
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        assert sensor.extra_state_attributes == {}
+
+
+class TestDiscoverDaemonSetSensors:
+    """Tests for the _discover_new_daemonset_sensors helper."""
+
+    def test_discovers_sensor_for_new_daemonset(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that a sensor is created for a new DaemonSet."""
+        mock_coordinator.data = {
+            "daemonsets": {"fluentd": {"name": "fluentd", "namespace": "kube-system"}}
+        }
+        new_sensors = _discover_new_daemonset_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        assert len(new_sensors) == 1
+        assert new_sensors[0].unique_id == "test_entry_id_daemonset_fluentd"
+        assert new_sensors[0].daemonset_name == "fluentd"
+        assert new_sensors[0].namespace == "kube-system"
+
+    def test_skips_already_existing_sensor(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an already-registered sensor is not duplicated."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "fluentd": {"name": "fluentd", "namespace": "kube-system"},
+                "node-exporter": {"name": "node-exporter", "namespace": "monitoring"},
+            }
+        }
+        existing_ids = {"test_entry_id_daemonset_fluentd"}
+        new_sensors = _discover_new_daemonset_sensors(
+            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+
+        assert len(new_sensors) == 1
+        assert new_sensors[0].daemonset_name == "node-exporter"
+
+    def test_discovers_multiple_daemonsets(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test discovery across multiple DaemonSets."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "fluentd": {"name": "fluentd", "namespace": "kube-system"},
+                "node-exporter": {"name": "node-exporter", "namespace": "monitoring"},
+                "calico": {"name": "calico", "namespace": "kube-system"},
+            }
+        }
+        new_sensors = _discover_new_daemonset_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        assert len(new_sensors) == 3
+        names = {s.daemonset_name for s in new_sensors}
+        assert names == {"fluentd", "node-exporter", "calico"}
+
+    def test_returns_empty_when_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when coordinator has no data."""
+        mock_coordinator.data = None
+        new_sensors = _discover_new_daemonset_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert new_sensors == []
+
+    def test_returns_empty_when_all_sensors_exist(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that nothing is returned when all sensors are already registered."""
+        mock_coordinator.data = {
+            "daemonsets": {"fluentd": {"name": "fluentd", "namespace": "kube-system"}}
+        }
+        existing_ids = {"test_entry_id_daemonset_fluentd"}
+        new_sensors = _discover_new_daemonset_sensors(
             mock_coordinator, mock_client, mock_config_entry, existing_ids
         )
         assert new_sensors == []
