@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -57,10 +60,10 @@ class KubernetesClusterHealthSensor(KubernetesBaseBinarySensor):
         super().__init__(client, config_entry)
         self._attr_name = "Cluster Health"
         self._attr_unique_id = f"{config_entry.entry_id}_cluster_health"
-        self._attr_device_class = "connectivity"
+        self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 

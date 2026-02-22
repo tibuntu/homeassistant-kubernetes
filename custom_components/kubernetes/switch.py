@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
@@ -44,7 +45,7 @@ async def async_setup_entry(
     from .device import get_or_create_namespace_device
 
     # Store the add_entities callback for dynamic entity management
-    switches = []
+    switches: list[SwitchEntity] = []
 
     # Get all deployments and create switches for them
     deployments = await client.get_deployments()
@@ -134,7 +135,7 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
 
-        new_entities = []
+        new_entities: list[SwitchEntity] = []
 
         # Ensure namespace devices exist for new entities
         from .device import get_or_create_namespace_device
@@ -244,7 +245,7 @@ class KubernetesDeploymentSwitch(SwitchEntity):
         self._memory_usage = 0.0
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_namespace_device_info(self.config_entry, self.namespace)
 
@@ -504,7 +505,7 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
         self._memory_usage = 0.0
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_namespace_device_info(self.config_entry, self.namespace)
 
@@ -763,7 +764,7 @@ class KubernetesCronJobSwitch(SwitchEntity):
         self._last_resume_time: float | None = None
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_namespace_device_info(self.config_entry, self.namespace)
 

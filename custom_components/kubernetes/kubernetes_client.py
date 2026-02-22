@@ -6,7 +6,7 @@ import asyncio
 import logging
 import ssl
 import time
-from typing import Any
+from typing import Any, Literal
 
 import aiohttp
 
@@ -1634,13 +1634,15 @@ class KubernetesClient:
             else:
                 url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/namespaces/{self.namespace}/pods"
 
-            ssl_context: ssl.SSLContext | bool = False
+            ssl_context: ssl.SSLContext | Literal[False] = False
             if self.verify_ssl:
                 ssl_context = ssl.create_default_context(cafile=self.ca_cert)
 
             connector = aiohttp.TCPConnector(ssl=ssl_context)
             async with aiohttp.ClientSession(connector=connector) as session:
-                async with session.get(url, headers=headers, timeout=10) as response:
+                async with session.get(
+                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
                     if response.status == 200:
                         data = await response.json()
                         metrics: dict[str, dict[str, float]] = {}

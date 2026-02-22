@@ -8,9 +8,11 @@ from typing import Any
 
 import aiohttp
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PORT
-from homeassistant.data_entry_flow import AbortFlow, FlowResult
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers import selector
+from homeassistant.helpers.selector import SelectOptionDict
 import voluptuous as vol
 
 # Global variables for lazy import
@@ -86,7 +88,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
         errors = {}
 
@@ -166,14 +168,13 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        {
-                            "value": DEVICE_GROUPING_MODE_NAMESPACE,
-                            "label": "Group by Namespace",
-                        },
-                        {
-                            "value": DEVICE_GROUPING_MODE_CLUSTER,
-                            "label": "Group by Cluster",
-                        },
+                        SelectOptionDict(
+                            value=DEVICE_GROUPING_MODE_NAMESPACE,
+                            label="Group by Namespace",
+                        ),
+                        SelectOptionDict(
+                            value=DEVICE_GROUPING_MODE_CLUSTER, label="Group by Cluster"
+                        ),
                     ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 ),
@@ -196,7 +197,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     async def async_step_namespaces(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the namespace selection step."""
         errors: dict[str, str] = {}
 
@@ -233,7 +234,8 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 )
 
         # Fetch namespaces from cluster using stored connection data
-        namespace_options: list[dict[str, str]] = []
+        namespace_options: list[Any] = []
+        schema: dict[Any, Any]
         default_selected: list[str] = []
         namespace_count = 0
 
@@ -251,7 +253,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                     "Successfully fetched %d namespaces from cluster", namespace_count
                 )
                 namespace_options = [
-                    {"value": ns, "label": ns} for ns in fetched_namespaces
+                    SelectOptionDict(value=ns, label=ns) for ns in fetched_namespaces
                 ]
                 # Default to first namespace if no previous selection
                 if not default_selected and fetched_namespaces:

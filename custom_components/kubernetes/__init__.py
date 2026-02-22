@@ -42,7 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return False
 
     # Create Kubernetes client
-    client = KubernetesClient(entry.data)
+    client = KubernetesClient(dict(entry.data))
 
     # Create and store the coordinator
     coordinator = KubernetesDataCoordinator(hass, entry, client)

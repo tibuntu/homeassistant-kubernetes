@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
@@ -203,7 +204,7 @@ async def _async_discover_and_add_new_sensors(
         await get_or_create_cluster_device(hass, config_entry)
 
         # Discover new sensors
-        new_entities = []
+        new_entities: list[KubernetesBaseSensor] = []
         new_entities.extend(
             _discover_new_node_sensors(
                 coordinator, client, config_entry, existing_unique_ids
@@ -287,7 +288,7 @@ class KubernetesPodsSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "pods"
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
@@ -331,7 +332,7 @@ class KubernetesNodesSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "nodes"
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
@@ -375,7 +376,7 @@ class KubernetesDeploymentsSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "deployments"
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
@@ -419,7 +420,7 @@ class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "statefulsets"
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
@@ -463,7 +464,7 @@ class KubernetesDaemonSetsSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "daemonsets"
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
@@ -507,7 +508,7 @@ class KubernetesCronJobsSensor(KubernetesBaseSensor):
         self._attr_native_unit_of_measurement = "cronjobs"
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
@@ -559,7 +560,7 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
         self._attr_state_class = None
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
@@ -629,7 +630,7 @@ class KubernetesPodSensor(KubernetesBaseSensor):
         self._attr_state_class = None
 
     @property
-    def device_info(self) -> dict[str, Any]:
+    def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_namespace_device_info(self.config_entry, self.namespace)
 
