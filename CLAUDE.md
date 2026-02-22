@@ -42,7 +42,7 @@ bandit -c pyproject.toml -r custom_components/
 pre-commit run --all-files
 
 # Documentation
-mkdocs serve
+zensical serve
 ```
 
 ## Architecture

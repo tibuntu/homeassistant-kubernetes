@@ -46,8 +46,7 @@ dev = [
     "pre-commit==4.5.1",
 
     # Documentation
-    "mkdocs==1.6.1",
-    "mkdocs-material==9.7.2",
+    "zensical",
 
     # Home Assistant
     "homeassistant==2026.2.3",

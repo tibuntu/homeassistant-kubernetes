@@ -31,10 +31,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install mkdocs mkdocs-material
+          pip install zensical
 
       - name: Build docs
-        run: mkdocs build
+        run: zensical build
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
