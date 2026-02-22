@@ -49,6 +49,23 @@ Status values:
 - `Not Ready` — no pods are ready (`ready == 0`)
 - `Unknown` — data is unavailable or no nodes are scheduled
 
+### Workload Status Sensors
+
+The integration creates a readiness status sensor for each deployment and statefulset:
+
+| Sensor | Description | Example Value |
+|--------|-------------|---------------|
+| **[workload-name]** | Readiness status of the workload | `Ready` / `Degraded` / `Not Ready` / `Scaled Down` / `Unknown` |
+
+Status values:
+- `Ready` — all desired replicas are ready (`ready_replicas == replicas > 0`)
+- `Degraded` — some but not all replicas are ready (`0 < ready_replicas < replicas`)
+- `Not Ready` — no replicas are ready (`ready_replicas == 0` and `replicas > 0`)
+- `Scaled Down` — workload is intentionally scaled to zero (`replicas == 0`)
+- `Unknown` — data is unavailable
+
+Each sensor exposes the following attributes: `namespace`, `replicas`, `ready_replicas`, `available_replicas`.
+
 ### Workload Metric Sensors
 
 The integration creates CPU and memory usage sensors for each deployment and statefulset. These sensors read live data from the [metrics-server](https://github.com/kubernetes-sigs/metrics-server) and require it to be installed in your cluster.
@@ -203,8 +220,10 @@ Cluster Device (e.g., "production-cluster")
 └── Namespace Devices (e.g., "production-cluster: default")
     ├── Pod sensors (all pods in this namespace)
     ├── Deployment switches (all deployments in this namespace)
+    ├── Deployment status sensors (one per deployment)
     ├── Deployment CPU/memory sensors (one pair per deployment)
     ├── StatefulSet switches (all statefulsets in this namespace)
+    ├── StatefulSet status sensors (one per statefulset)
     ├── StatefulSet CPU/memory sensors (one pair per statefulset)
     ├── DaemonSet sensors (all daemonsets in this namespace)
     └── CronJob switches (all cronjobs in this namespace)

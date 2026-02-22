@@ -37,8 +37,10 @@ from custom_components.kubernetes.sensor import (
     KubernetesPodsSensor,
     KubernetesStatefulSetsSensor,
     KubernetesWorkloadMetricSensor,
+    KubernetesWorkloadStatusSensor,
     _discover_new_daemonset_sensors,
     _discover_new_workload_metric_sensors,
+    _discover_new_workload_status_sensors,
 )
 
 
@@ -1899,5 +1901,336 @@ class TestDiscoverDaemonSetSensors:
         existing_ids = {"test_entry_id_daemonset_fluentd"}
         new_sensors = _discover_new_daemonset_sensors(
             mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+        assert new_sensors == []
+
+
+class TestKubernetesWorkloadStatusSensor:
+    """Test readiness status sensors for deployments and statefulsets."""
+
+    def test_deployment_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor initialization for a deployment."""
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+
+        assert sensor.name == "my-app"
+        assert sensor.unique_id == "test_entry_id_my-app_deployment_status"
+        assert sensor.native_unit_of_measurement is None
+        assert sensor.icon == "mdi:kubernetes"
+        assert sensor.state_class is None
+
+    def test_statefulset_sensor_unique_id(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test unique ID is distinct for statefulset vs deployment."""
+        dep = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        sts = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "statefulset",
+        )
+        assert dep.unique_id != sts.unique_id
+
+    def test_device_info_uses_namespace_device(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor is attached to its namespace device."""
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
+
+    def test_native_value_ready(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test native value is 'Ready' when all replicas are ready."""
+        mock_coordinator.data = {
+            "deployments": {
+                "my-app": {
+                    "namespace": "default",
+                    "replicas": 3,
+                    "ready_replicas": 3,
+                    "available_replicas": 3,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        assert sensor.native_value == "Ready"
+
+    def test_native_value_degraded(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Degraded' when only some replicas are ready."""
+        mock_coordinator.data = {
+            "deployments": {
+                "my-app": {
+                    "namespace": "default",
+                    "replicas": 3,
+                    "ready_replicas": 1,
+                    "available_replicas": 1,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        assert sensor.native_value == "Degraded"
+
+    def test_native_value_not_ready(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Not Ready' when no replicas are ready."""
+        mock_coordinator.data = {
+            "deployments": {
+                "my-app": {
+                    "namespace": "default",
+                    "replicas": 3,
+                    "ready_replicas": 0,
+                    "available_replicas": 0,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        assert sensor.native_value == "Not Ready"
+
+    def test_native_value_scaled_down(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Scaled Down' when replicas is zero."""
+        mock_coordinator.data = {
+            "deployments": {
+                "my-app": {
+                    "namespace": "default",
+                    "replicas": 0,
+                    "ready_replicas": 0,
+                    "available_replicas": 0,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        assert sensor.native_value == "Scaled Down"
+
+    def test_native_value_unknown_no_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Unknown' when coordinator has no data."""
+        mock_coordinator.data = None
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        assert sensor.native_value == "Unknown"
+
+    def test_native_value_unknown_workload_missing(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value is 'Unknown' when workload is absent from data."""
+        mock_coordinator.data = {"deployments": {}}
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "missing-app",
+            "default",
+            "deployment",
+        )
+        assert sensor.native_value == "Unknown"
+
+    def test_extra_state_attributes(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes contain replica counts."""
+        mock_coordinator.data = {
+            "deployments": {
+                "my-app": {
+                    "namespace": "default",
+                    "replicas": 3,
+                    "ready_replicas": 2,
+                    "available_replicas": 2,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["namespace"] == "default"
+        assert attrs["replicas"] == 3
+        assert attrs["ready_replicas"] == 2
+        assert attrs["available_replicas"] == 2
+
+    def test_extra_state_attributes_no_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes return empty dict when no data."""
+        mock_coordinator.data = None
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+        )
+        assert sensor.extra_state_attributes == {}
+
+    def test_statefulset_reads_from_correct_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that a statefulset sensor reads from the statefulsets key."""
+        mock_coordinator.data = {
+            "statefulsets": {
+                "my-db": {
+                    "namespace": "default",
+                    "replicas": 1,
+                    "ready_replicas": 1,
+                    "available_replicas": 1,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-db",
+            "default",
+            "statefulset",
+        )
+        assert sensor.native_value == "Ready"
+
+
+class TestDiscoverWorkloadStatusSensors:
+    """Tests for the _discover_new_workload_status_sensors helper."""
+
+    def test_discovers_sensor_for_new_deployment(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that a status sensor is created for a new deployment."""
+        mock_coordinator.data = {
+            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "statefulsets": {},
+        }
+        new_sensors = _discover_new_workload_status_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        assert len(new_sensors) == 1
+        assert new_sensors[0].unique_id == "test_entry_id_my-app_deployment_status"
+
+    def test_discovers_sensor_for_statefulset(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that a status sensor is created for a statefulset."""
+        mock_coordinator.data = {
+            "deployments": {},
+            "statefulsets": {"my-db": {"name": "my-db", "namespace": "production"}},
+        }
+        new_sensors = _discover_new_workload_status_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        assert len(new_sensors) == 1
+        assert new_sensors[0].unique_id == "test_entry_id_my-db_statefulset_status"
+
+    def test_skips_existing_sensor(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an already-registered sensor is not duplicated."""
+        mock_coordinator.data = {
+            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "statefulsets": {},
+        }
+        existing_ids = {"test_entry_id_my-app_deployment_status"}
+        new_sensors = _discover_new_workload_status_sensors(
+            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+        assert new_sensors == []
+
+    def test_discovers_across_multiple_workloads(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test discovery across multiple deployments and statefulsets."""
+        mock_coordinator.data = {
+            "deployments": {
+                "app-a": {"name": "app-a", "namespace": "default"},
+                "app-b": {"name": "app-b", "namespace": "default"},
+            },
+            "statefulsets": {
+                "db-a": {"name": "db-a", "namespace": "default"},
+            },
+        }
+        new_sensors = _discover_new_workload_status_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert len(new_sensors) == 3
+
+    def test_returns_empty_when_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when coordinator has no data."""
+        mock_coordinator.data = None
+        new_sensors = _discover_new_workload_status_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
         )
         assert new_sensors == []

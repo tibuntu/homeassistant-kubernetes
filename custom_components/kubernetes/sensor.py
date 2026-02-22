@@ -110,8 +110,9 @@ async def async_setup_entry(
             sensors.append(daemonset_sensor)
             daemonset_sensors_created += 1
 
-        # Create CPU and memory sensors for deployments and statefulsets
+        # Create status and CPU/memory sensors for deployments and statefulsets
         metric_sensors_created = 0
+        status_sensors_created = 0
         for workload_type in ("deployment", "statefulset"):
             resource_key = f"{workload_type}s"
             for workload_name, workload_data in coordinator.data.get(
@@ -119,6 +120,17 @@ async def async_setup_entry(
             ).items():
                 namespace = workload_data.get("namespace", "default")
                 await get_or_create_namespace_device(hass, config_entry, namespace)
+                sensors.append(
+                    KubernetesWorkloadStatusSensor(
+                        coordinator,
+                        client,
+                        config_entry,
+                        workload_name,
+                        namespace,
+                        workload_type,
+                    )
+                )
+                status_sensors_created += 1
                 for metric in ("cpu", "memory"):
                     sensors.append(
                         KubernetesWorkloadMetricSensor(
@@ -158,11 +170,12 @@ async def async_setup_entry(
         coordinator.async_add_listener(_async_add_new_entities)
 
         _LOGGER.debug(
-            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d daemonset sensors, %d metric sensors)",
+            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d daemonset sensors, %d status sensors, %d metric sensors)",
             len(sensors),
             node_sensors_created,
             pod_sensors_created,
             daemonset_sensors_created,
+            status_sensors_created,
             metric_sensors_created,
         )
     except Exception as ex:
@@ -231,6 +244,41 @@ def _discover_new_daemonset_sensors(
                         coordinator, client, config_entry, daemonset_name, namespace
                     )
                 )
+    return new_entities
+
+
+def _discover_new_workload_status_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesWorkloadStatusSensor]:
+    """Discover new workload status sensors for deployments and statefulsets."""
+    new_entities = []
+    for workload_type in ("deployment", "statefulset"):
+        resource_key = f"{workload_type}s"
+        if coordinator.data and resource_key in coordinator.data:
+            for workload_name, workload_data in coordinator.data[resource_key].items():
+                unique_id = (
+                    f"{config_entry.entry_id}_{workload_name}_{workload_type}_status"
+                )
+                if unique_id not in existing_unique_ids:
+                    namespace = workload_data.get("namespace", "default")
+                    _LOGGER.info(
+                        "Adding new status sensor for %s: %s",
+                        workload_type,
+                        workload_name,
+                    )
+                    new_entities.append(
+                        KubernetesWorkloadStatusSensor(
+                            coordinator,
+                            client,
+                            config_entry,
+                            workload_name,
+                            namespace,
+                            workload_type,
+                        )
+                    )
     return new_entities
 
 
@@ -317,6 +365,15 @@ async def _async_discover_and_add_new_sensors(
         for namespace in pod_namespaces:
             await get_or_create_namespace_device(hass, config_entry, namespace)
         new_entities.extend(pod_sensors)
+
+        # Discover new workload status sensors
+        status_sensors = _discover_new_workload_status_sensors(
+            coordinator, client, config_entry, existing_unique_ids
+        )
+        status_namespaces = {s.namespace for s in status_sensors}
+        for namespace in status_namespaces:
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+        new_entities.extend(status_sensors)
 
         # Discover new daemonset sensors
         daemonset_sensors = _discover_new_daemonset_sensors(
@@ -850,6 +907,77 @@ class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
             return 0.0
         metric_key = "cpu_usage" if self._metric == "cpu" else "memory_usage"
         return round(workload_data.get(metric_key, 0.0), 2)
+
+
+class KubernetesWorkloadStatusSensor(KubernetesBaseSensor):
+    """Sensor for the readiness status of a Kubernetes deployment or statefulset."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client: Any,
+        config_entry: ConfigEntry,
+        workload_name: str,
+        namespace: str,
+        workload_type: str,
+    ) -> None:
+        """Initialize the workload status sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.workload_name = workload_name
+        self.namespace = namespace
+        self._workload_type = workload_type
+        self._attr_name = workload_name
+        self._attr_unique_id = (
+            f"{config_entry.entry_id}_{workload_name}_{workload_type}_status"
+        )
+        self._attr_native_unit_of_measurement = None
+        self._attr_icon = "mdi:kubernetes"
+        self._attr_state_class = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
+
+    @property
+    def native_value(self) -> str:
+        """Return the readiness status of the workload."""
+        if not self.coordinator.data:
+            return "Unknown"
+        workload_data = self.coordinator.data.get(f"{self._workload_type}s", {}).get(
+            self.workload_name
+        )
+        if workload_data is None:
+            return "Unknown"
+
+        replicas = workload_data.get("replicas", 0)
+        ready_replicas = workload_data.get("ready_replicas", 0)
+
+        if replicas == 0:
+            return "Scaled Down"
+        if ready_replicas == replicas:
+            return "Ready"
+        if ready_replicas == 0:
+            return "Not Ready"
+        return "Degraded"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return replica counts as attributes."""
+        if not self.coordinator.data:
+            return {}
+        workload_data = self.coordinator.data.get(f"{self._workload_type}s", {}).get(
+            self.workload_name
+        )
+        if not workload_data:
+            return {}
+
+        return {
+            "namespace": workload_data.get("namespace", "N/A"),
+            "replicas": workload_data.get("replicas", 0),
+            "ready_replicas": workload_data.get("ready_replicas", 0),
+            "available_replicas": workload_data.get("available_replicas", 0),
+        }
 
 
 class KubernetesDaemonSetSensor(KubernetesBaseSensor):

@@ -344,8 +344,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             "Node %s no longer exists, marking entity for removal",
                             resource_name,
                         )
-                elif resource_type in ("cpu", "memory"):
-                    # Format: {workload_name}_{deployment|statefulset}_{cpu|memory}
+                elif resource_type in ("cpu", "memory", "status"):
+                    # Format: {workload_name}_{deployment|statefulset}_{cpu|memory|status}
                     if len(parts) >= 3:
                         parent_type = parts[-2]
                         workload_name = "_".join(parts[:-2])
@@ -353,7 +353,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             if workload_name not in current_data.get("deployments", {}):
                                 should_remove = True
                                 _LOGGER.info(
-                                    "Deployment %s no longer exists, marking %s metric sensor for removal",
+                                    "Deployment %s no longer exists, marking %s sensor for removal",
                                     workload_name,
                                     resource_type,
                                 )
@@ -363,7 +363,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             ):
                                 should_remove = True
                                 _LOGGER.info(
-                                    "StatefulSet %s no longer exists, marking %s metric sensor for removal",
+                                    "StatefulSet %s no longer exists, marking %s sensor for removal",
                                     workload_name,
                                     resource_type,
                                 )
