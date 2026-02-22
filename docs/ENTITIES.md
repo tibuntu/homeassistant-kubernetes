@@ -23,6 +23,33 @@ The integration creates a separate sensor for each Kubernetes node in the cluste
 |--------|-------------|---------------|------|
 | **Node [node-name]** | Individual node status and information | `Ready` / `NotReady` / `Unknown` | - |
 
+### Workload Metric Sensors
+
+The integration creates CPU and memory usage sensors for each deployment and statefulset. These sensors read live data from the [metrics-server](https://github.com/kubernetes-sigs/metrics-server) and require it to be installed in your cluster.
+
+| Sensor | Description | Example Value | Unit |
+|--------|-------------|---------------|------|
+| **[workload-name] CPU Usage** | Aggregated CPU usage across all pods of the workload | `142` | m (millicores) |
+| **[workload-name] Memory Usage** | Aggregated memory usage across all pods of the workload | `256` | MiB |
+
+These sensors expose numeric values with `SensorStateClass.MEASUREMENT`, making them suitable for history tracking and use in automations:
+
+```yaml
+# Scale up a deployment when CPU usage exceeds 800 millicores
+trigger:
+  - platform: numeric_state
+    entity_id: sensor.my_app_cpu_usage
+    above: 800
+action:
+  - service: kubernetes.scale_workload
+    data:
+      workload_name: my-app
+      namespace: default
+      replicas: 3
+```
+
+> **Note:** If metrics-server is not installed, these sensors will report `0`.
+
 ### Individual Pod Sensors
 
 The integration creates a separate sensor for each Kubernetes pod in the monitored namespace(s):
@@ -150,7 +177,9 @@ Cluster Device (e.g., "production-cluster")
 └── Namespace Devices (e.g., "production-cluster: default")
     ├── Pod sensors (all pods in this namespace)
     ├── Deployment switches (all deployments in this namespace)
+    ├── Deployment CPU/memory sensors (one pair per deployment)
     ├── StatefulSet switches (all statefulsets in this namespace)
+    ├── StatefulSet CPU/memory sensors (one pair per statefulset)
     └── CronJob switches (all cronjobs in this namespace)
 ```
 

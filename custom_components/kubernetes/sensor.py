@@ -69,7 +69,7 @@ async def async_setup_entry(
         pods_data = coordinator.get_all_pods_data()
         _LOGGER.debug("Creating pod sensors for pods: %s", list(pods_data.keys()))
 
-        # Ensure namespace devices exist for all pod namespaces
+        # Ensure namespace devices exist for all pod and workload namespaces
         from .device import get_or_create_namespace_device
 
         pod_namespaces = {
@@ -93,6 +93,29 @@ async def async_setup_entry(
                 pod_name,
                 pod_sensor.unique_id,
             )
+
+        # Create CPU and memory sensors for deployments and statefulsets
+        metric_sensors_created = 0
+        for workload_type in ("deployment", "statefulset"):
+            resource_key = f"{workload_type}s"
+            for workload_name, workload_data in coordinator.data.get(
+                resource_key, {}
+            ).items():
+                namespace = workload_data.get("namespace", "default")
+                await get_or_create_namespace_device(hass, config_entry, namespace)
+                for metric in ("cpu", "memory"):
+                    sensors.append(
+                        KubernetesWorkloadMetricSensor(
+                            coordinator,
+                            client,
+                            config_entry,
+                            workload_name,
+                            namespace,
+                            workload_type,
+                            metric,
+                        )
+                    )
+                    metric_sensors_created += 1
 
         async_add_entities(sensors)
 
@@ -119,10 +142,11 @@ async def async_setup_entry(
         coordinator.async_add_listener(_async_add_new_entities)
 
         _LOGGER.debug(
-            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors)",
+            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d metric sensors)",
             len(sensors),
             node_sensors_created,
             pod_sensors_created,
+            metric_sensors_created,
         )
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
@@ -168,6 +192,42 @@ def _discover_new_pod_sensors(
                         coordinator, client, config_entry, namespace, pod_name
                     )
                 )
+    return new_entities
+
+
+def _discover_new_workload_metric_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesWorkloadMetricSensor]:
+    """Discover new workload metric sensors for deployments and statefulsets."""
+    new_entities = []
+    for workload_type in ("deployment", "statefulset"):
+        resource_key = f"{workload_type}s"
+        if coordinator.data and resource_key in coordinator.data:
+            for workload_name, workload_data in coordinator.data[resource_key].items():
+                namespace = workload_data.get("namespace", "default")
+                for metric in ("cpu", "memory"):
+                    unique_id = f"{config_entry.entry_id}_{workload_name}_{workload_type}_{metric}"
+                    if unique_id not in existing_unique_ids:
+                        _LOGGER.info(
+                            "Adding new %s metric sensor for %s: %s",
+                            metric,
+                            workload_type,
+                            workload_name,
+                        )
+                        new_entities.append(
+                            KubernetesWorkloadMetricSensor(
+                                coordinator,
+                                client,
+                                config_entry,
+                                workload_name,
+                                namespace,
+                                workload_type,
+                                metric,
+                            )
+                        )
     return new_entities
 
 
@@ -219,8 +279,14 @@ async def _async_discover_and_add_new_sensors(
             await get_or_create_namespace_device(hass, config_entry, namespace)
         new_entities.extend(pod_sensors)
 
-        # Check for new deployments
-        # Deployment sensors are removed in favor of attributes on the deployment switch
+        # Discover new workload metric sensors
+        metric_sensors = _discover_new_workload_metric_sensors(
+            coordinator, client, config_entry, existing_unique_ids
+        )
+        metric_namespaces = {s.namespace for s in metric_sensors}
+        for namespace in metric_namespaces:
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+        new_entities.extend(metric_sensors)
 
         # Add new entities if any were found
         if new_entities:
@@ -684,3 +750,55 @@ class KubernetesPodSensor(KubernetesBaseSensor):
                 self.pod_name,
                 ex,
             )
+
+
+class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
+    """Sensor for CPU or memory usage of a Kubernetes deployment or statefulset."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client: Any,
+        config_entry: ConfigEntry,
+        workload_name: str,
+        namespace: str,
+        workload_type: str,
+        metric: str,
+    ) -> None:
+        """Initialize the workload metric sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.workload_name = workload_name
+        self.namespace = namespace
+        self._workload_type = workload_type
+        self._metric = metric
+
+        if metric == "cpu":
+            self._attr_name = f"{workload_name} CPU Usage"
+            self._attr_native_unit_of_measurement = "m"
+            self._attr_icon = "mdi:cpu-64-bit"
+        else:
+            self._attr_name = f"{workload_name} Memory Usage"
+            self._attr_native_unit_of_measurement = "MiB"
+            self._attr_icon = "mdi:memory"
+
+        self._attr_unique_id = (
+            f"{config_entry.entry_id}_{workload_name}_{workload_type}_{metric}"
+        )
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
+
+    @property
+    def native_value(self) -> float:
+        """Return the current metric value."""
+        if not self.coordinator.data:
+            return 0.0
+        workload_data = self.coordinator.data.get(f"{self._workload_type}s", {}).get(
+            self.workload_name
+        )
+        if workload_data is None:
+            return 0.0
+        metric_key = "cpu_usage" if self._metric == "cpu" else "memory_usage"
+        return round(workload_data.get(metric_key, 0.0), 2)

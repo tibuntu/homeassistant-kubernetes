@@ -35,6 +35,8 @@ from custom_components.kubernetes.sensor import (
     KubernetesPodSensor,
     KubernetesPodsSensor,
     KubernetesStatefulSetsSensor,
+    KubernetesWorkloadMetricSensor,
+    _discover_new_workload_metric_sensors,
 )
 
 
@@ -1281,3 +1283,371 @@ class TestKubernetesPodSensor:
             ("kubernetes", "test_entry_id_namespace_default")
         }
         assert device_info["name"] == "test-cluster: default"
+
+
+class TestKubernetesWorkloadMetricSensor:
+    """Test CPU/memory metric sensors for deployments and statefulsets."""
+
+    def test_cpu_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CPU metric sensor initialization for a deployment."""
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            workload_name="my-app",
+            namespace="default",
+            workload_type="deployment",
+            metric="cpu",
+        )
+
+        assert sensor.name == "my-app CPU Usage"
+        assert sensor.unique_id == "test_entry_id_my-app_deployment_cpu"
+        assert sensor.native_unit_of_measurement == "m"
+        assert sensor.icon == "mdi:cpu-64-bit"
+        assert sensor.state_class == SensorStateClass.MEASUREMENT
+
+    def test_memory_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test memory metric sensor initialization for a statefulset."""
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            workload_name="my-db",
+            namespace="production",
+            workload_type="statefulset",
+            metric="memory",
+        )
+
+        assert sensor.name == "my-db Memory Usage"
+        assert sensor.unique_id == "test_entry_id_my-db_statefulset_memory"
+        assert sensor.native_unit_of_measurement == "MiB"
+        assert sensor.icon == "mdi:memory"
+
+    def test_unique_ids_are_distinct(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that CPU, memory, deployment, and statefulset sensors have distinct IDs."""
+        dep_cpu = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "cpu",
+        )
+        dep_mem = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "memory",
+        )
+        sts_cpu = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "statefulset",
+            "cpu",
+        )
+
+        assert dep_cpu.unique_id != dep_mem.unique_id
+        assert dep_cpu.unique_id != sts_cpu.unique_id
+        assert dep_mem.unique_id != sts_cpu.unique_id
+
+    def test_device_info_uses_namespace_device(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that metric sensors are attached to their namespace device."""
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "cpu",
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
+
+    def test_native_value_cpu_with_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CPU native value is read from coordinator data."""
+        mock_coordinator.data = {
+            "deployments": {
+                "my-app": {
+                    "name": "my-app",
+                    "namespace": "default",
+                    "cpu_usage": 142.5,
+                    "memory_usage": 256.0,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "cpu",
+        )
+        assert sensor.native_value == 142.5
+
+    def test_native_value_memory_with_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test memory native value is read from coordinator data."""
+        mock_coordinator.data = {
+            "deployments": {
+                "my-app": {
+                    "name": "my-app",
+                    "namespace": "default",
+                    "cpu_usage": 142.5,
+                    "memory_usage": 256.0,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "memory",
+        )
+        assert sensor.native_value == 256.0
+
+    def test_native_value_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value returns 0.0 when coordinator data is None."""
+        mock_coordinator.data = None
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "cpu",
+        )
+        assert sensor.native_value == 0.0
+
+    def test_native_value_workload_not_found(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value returns 0.0 when workload is absent from coordinator data."""
+        mock_coordinator.data = {"deployments": {}}
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "missing-app",
+            "default",
+            "deployment",
+            "cpu",
+        )
+        assert sensor.native_value == 0.0
+
+    def test_native_value_metric_key_missing(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native value returns 0.0 when metric key is absent from workload data."""
+        mock_coordinator.data = {
+            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}}
+        }
+        cpu_sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "cpu",
+        )
+        mem_sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "memory",
+        )
+        assert cpu_sensor.native_value == 0.0
+        assert mem_sensor.native_value == 0.0
+
+    def test_native_value_rounds_to_two_decimals(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that native value is rounded to 2 decimal places."""
+        mock_coordinator.data = {
+            "deployments": {
+                "my-app": {
+                    "name": "my-app",
+                    "namespace": "default",
+                    "cpu_usage": 142.5678,
+                }
+            }
+        }
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            "cpu",
+        )
+        assert sensor.native_value == 142.57
+
+    def test_statefulset_metric_sensor(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test metric sensor reads from the statefulsets key in coordinator data."""
+        mock_coordinator.data = {
+            "statefulsets": {
+                "my-db": {
+                    "name": "my-db",
+                    "namespace": "production",
+                    "cpu_usage": 55.0,
+                    "memory_usage": 512.0,
+                }
+            }
+        }
+        cpu_sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-db",
+            "production",
+            "statefulset",
+            "cpu",
+        )
+        mem_sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-db",
+            "production",
+            "statefulset",
+            "memory",
+        )
+        assert cpu_sensor.native_value == 55.0
+        assert mem_sensor.native_value == 512.0
+
+
+class TestDiscoverWorkloadMetricSensors:
+    """Tests for the _discover_new_workload_metric_sensors helper."""
+
+    def test_discovers_cpu_and_memory_for_new_deployment(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that both CPU and memory sensors are created for a new deployment."""
+        mock_coordinator.data = {
+            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "statefulsets": {},
+        }
+        new_sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        assert len(new_sensors) == 2
+        unique_ids = {s.unique_id for s in new_sensors}
+        assert "test_entry_id_my-app_deployment_cpu" in unique_ids
+        assert "test_entry_id_my-app_deployment_memory" in unique_ids
+
+    def test_skips_already_existing_sensor(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an already-registered sensor unique ID is not duplicated."""
+        mock_coordinator.data = {
+            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "statefulsets": {},
+        }
+        existing_ids = {"test_entry_id_my-app_deployment_cpu"}
+        new_sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+
+        assert len(new_sensors) == 1
+        assert new_sensors[0].unique_id == "test_entry_id_my-app_deployment_memory"
+
+    def test_discovers_sensors_for_statefulsets(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that sensors are discovered for statefulsets."""
+        mock_coordinator.data = {
+            "deployments": {},
+            "statefulsets": {"my-db": {"name": "my-db", "namespace": "production"}},
+        }
+        new_sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        assert len(new_sensors) == 2
+        unique_ids = {s.unique_id for s in new_sensors}
+        assert "test_entry_id_my-db_statefulset_cpu" in unique_ids
+        assert "test_entry_id_my-db_statefulset_memory" in unique_ids
+
+    def test_discovers_sensors_for_multiple_workloads(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test discovery across multiple deployments and statefulsets."""
+        mock_coordinator.data = {
+            "deployments": {
+                "app-a": {"name": "app-a", "namespace": "default"},
+                "app-b": {"name": "app-b", "namespace": "default"},
+            },
+            "statefulsets": {
+                "db-a": {"name": "db-a", "namespace": "default"},
+            },
+        }
+        new_sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        # 2 deployments × 2 metrics + 1 statefulset × 2 metrics = 6
+        assert len(new_sensors) == 6
+
+    def test_returns_empty_when_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when coordinator has no data."""
+        mock_coordinator.data = None
+        new_sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert new_sensors == []
+
+    def test_returns_empty_when_all_sensors_exist(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that nothing is returned when all sensors are already registered."""
+        mock_coordinator.data = {
+            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "statefulsets": {},
+        }
+        existing_ids = {
+            "test_entry_id_my-app_deployment_cpu",
+            "test_entry_id_my-app_deployment_memory",
+        }
+        new_sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+        assert new_sensors == []
