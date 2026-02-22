@@ -4,6 +4,13 @@
     "config:recommended"
   ],
   "semanticCommitType": "build",
+  "packageRules": [
+    {
+      "matchFileNames": ["pyproject.toml"],
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps"
+    }
+  ],
   "customManagers": [
     {
       "customType": "regex",
