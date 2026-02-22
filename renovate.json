@@ -4,16 +4,30 @@
     "config:recommended"
   ],
   "semanticCommitType": "build",
+  "pre-commit": {
+    "enabled": true
+  },
   "packageRules": [
     {
       "matchFileNames": ["pyproject.toml"],
       "semanticCommitType": "build",
-      "semanticCommitScope": "deps"
+      "semanticCommitScope": "deps",
+      "groupName": "dev dependencies"
     },
     {
-      "matchFileNames": ["pyproject.toml"],
       "matchUpdateTypes": ["patch"],
+      "groupName": "patch updates",
       "automerge": true
+    },
+    {
+      "matchPackageNames": ["kubernetes"],
+      "groupName": "kubernetes"
+    },
+    {
+      "matchManagers": ["pre-commit"],
+      "groupName": "pre-commit hooks",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps"
     }
   ],
   "customManagers": [
