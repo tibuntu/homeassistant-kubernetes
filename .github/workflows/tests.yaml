@@ -39,6 +39,14 @@ jobs:
           ruff check .
           ruff format --check .
 
+      - name: Type check with mypy
+        run: |
+          mypy custom_components/
+
+      - name: Security scan with Bandit
+        run: |
+          bandit -c pyproject.toml -r custom_components/
+
       - name: Test with pytest
         run: |
           pytest
