@@ -6,8 +6,19 @@ repo_name: "tibuntu/homeassistant-kubernetes"
 repo_url: "https://github.com/tibuntu/homeassistant-kubernetes"
 nav:
   - Home: index.md
+  - Getting Started:
+      - Setup: SETUP.md
+      - Configuration: CONFIGURATION.md
+      - RBAC: RBAC.md
+  - Features:
+      - Entities: ENTITIES.md
+      - Entity Management: ENTITY_MANAGEMENT.md
+      - Services: SERVICES.md
+      - CronJobs: CRONJOBS.md
+      - Examples: EXAMPLES.md
+  - Reference:
+      - Logging: LOGGING.md
+      - Troubleshooting: TROUBLESHOOTING.md
   - Development: DEVELOPMENT.md
-  - Logging: LOGGING.md
-  - Troubleshooting: TROUBLESHOOTING.md
 theme:
   name: "material"
