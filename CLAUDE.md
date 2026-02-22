@@ -83,4 +83,17 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 ## CI
 
-GitHub Actions runs: pytest + ruff (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build. Releases automated via release-please.
+GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build. Releases automated via release-please.
+
+## Documentation
+
+Whenever changes are implemented, update all relevant documentation to reflect the current state of the code. This includes `README.md`, files in `docs/`, and any other `.md` files in the repository. Do not leave documentation that describes outdated behaviour.
+
+## Version Management
+
+Renovate handles all dependency updates. When making any change that involves version pinning or introduces a new dependency, always check `renovate.json` and ensure the version is tracked and grouped correctly:
+
+- Versions pinned in `pyproject.toml` are managed by Renovate's pip manager.
+- Versions pinned in `custom_components/kubernetes/manifest.json` are tracked via a custom regex manager.
+- Pre-commit hook versions in `.pre-commit-config.yaml` are managed by Renovate's pre-commit manager.
+- When the same package appears in multiple files, add a `groupName` rule in `renovate.json` so updates are batched into a single PR.
