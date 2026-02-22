@@ -9,6 +9,11 @@
       "matchFileNames": ["pyproject.toml"],
       "semanticCommitType": "build",
       "semanticCommitScope": "deps"
+    },
+    {
+      "matchFileNames": ["pyproject.toml"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
     }
   ],
   "customManagers": [
