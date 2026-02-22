@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.8.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.7.2...v0.8.0) (2026-02-22)
+
+
+### Features
+
+* add CPU and memory usage sensors for deployments and statefulsets ([5219a5b](https://github.com/tibuntu/homeassistant-kubernetes/commit/5219a5b7b7b43387044901e29955e9d7360dc5d2))
+* add individual DaemonSet status sensors ([71b05bd](https://github.com/tibuntu/homeassistant-kubernetes/commit/71b05bd181f3b1d7c5e96c78a9e4ecc7bd82f787))
+* add readiness status sensors for deployments and statefulsets ([be8bf2c](https://github.com/tibuntu/homeassistant-kubernetes/commit/be8bf2c56b7d4a671abd60e4e79c0d82ff1d7897))
+
+
+### Bug Fixes
+
+* resolve all mypy type errors ([04a189f](https://github.com/tibuntu/homeassistant-kubernetes/commit/04a189f91a3f176ed1baf67a65ea5863fc015671))
+
+
+### Documentation
+
+* add missing pages to navigation ([e904be3](https://github.com/tibuntu/homeassistant-kubernetes/commit/e904be3d5a4013f355e67712e4bb6ba8e8c6e728))
+* clean up README ([1118f9d](https://github.com/tibuntu/homeassistant-kubernetes/commit/1118f9d4225772a6e2f21e933c1d5dccc3cd16d8))
+
+
+### Other
+
+* add instruction to auto-update CLAUDE.md ([a0be942](https://github.com/tibuntu/homeassistant-kubernetes/commit/a0be942881324298c3a44850a1a94cb86be6d256))
+* add test coverage instruction to CLAUDE.md ([5fb885b](https://github.com/tibuntu/homeassistant-kubernetes/commit/5fb885b05a1d3573bf9cbd8989a0eb26044a99d5))
+* add version management and documentation instructions ([f42c587](https://github.com/tibuntu/homeassistant-kubernetes/commit/f42c5873132d706a9eec4eb902c5206da69bb693))
+* **config:** enable pre-commit manager, group updates ([ae956ee](https://github.com/tibuntu/homeassistant-kubernetes/commit/ae956ee5f5377bddbd651a17e16c92bfdee97761))
+* **deps:** align kubernetes version with manifest.json ([56eb90c](https://github.com/tibuntu/homeassistant-kubernetes/commit/56eb90c6b4ac41b83684f5bcaf07f271a15e9879))
+* **deps:** update dependency homeassistant to v2026.2.3 ([3f335f5](https://github.com/tibuntu/homeassistant-kubernetes/commit/3f335f5303e0363b1e567e03a17b69a2c19907a6))
+* **deps:** update pre-commit hook pre-commit/pre-commit-hooks to v6 ([bbb92f2](https://github.com/tibuntu/homeassistant-kubernetes/commit/bbb92f2e03f6300b0c6b4dd841572c5833f3007d))
+* **deps:** update pre-commit hooks ([58e4e53](https://github.com/tibuntu/homeassistant-kubernetes/commit/58e4e53365425717e9db710b9a8f90a16bd98db5))
+* remove unused flake8 config ([79cae7d](https://github.com/tibuntu/homeassistant-kubernetes/commit/79cae7d0678f643e90b19bddc6f411833b1f8d7b))
+* **Renovate:** automerge patch updates from pyproject.toml ([e861914](https://github.com/tibuntu/homeassistant-kubernetes/commit/e8619144e678bdd51a758d03e5e47a0599825dd5))
+* **Renovate:** enforce build(deps) prefix for pyproject.toml updates ([4173c40](https://github.com/tibuntu/homeassistant-kubernetes/commit/4173c40b83fbd34aa1138c5c5055cee92348e816))
+
 ## [0.7.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.7.1...v0.7.2) (2026-02-20)
 
 
