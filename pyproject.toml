@@ -40,7 +40,7 @@ dev = [
     "mypy==1.19.1",
 
     # Security
-    "bandit[toml]==1.9.3",
+    "bandit[toml]==1.9.4",
 
     # Development tools
     "pre-commit==4.5.1",
