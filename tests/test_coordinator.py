@@ -634,3 +634,236 @@ class TestKubernetesDataCoordinator:
 
             # Should not remove the existing node entity
             mock_registry.async_remove.assert_not_called()
+
+    async def test_get_daemonset_data(self, coordinator):
+        """Test getting DaemonSet data by name."""
+        coordinator.data = {
+            "daemonsets": {
+                "fluentd": {"name": "fluentd", "namespace": "logging"},
+            }
+        }
+        result = coordinator.get_daemonset_data("fluentd")
+        assert result is not None
+        assert result["name"] == "fluentd"
+
+        result = coordinator.get_daemonset_data("non-existent")
+        assert result is None
+
+        coordinator.data = None
+        result = coordinator.get_daemonset_data("fluentd")
+        assert result is None
+
+    async def test_get_job_data(self, coordinator):
+        """Test getting Job data by name."""
+        coordinator.data = {
+            "jobs": {
+                "backup-job": {
+                    "name": "backup-job",
+                    "namespace": "default",
+                    "succeeded": 1,
+                    "completions": 1,
+                }
+            }
+        }
+        result = coordinator.get_job_data("backup-job")
+        assert result is not None
+        assert result["name"] == "backup-job"
+
+        result = coordinator.get_job_data("non-existent")
+        assert result is None
+
+        coordinator.data = None
+        result = coordinator.get_job_data("backup-job")
+        assert result is None
+
+    async def test_get_pod_data(self, coordinator):
+        """Test getting pod data by namespace and name."""
+        coordinator.data = {
+            "pods": {
+                "default_nginx-abc": {
+                    "name": "nginx-abc",
+                    "namespace": "default",
+                    "status": "Running",
+                }
+            }
+        }
+        result = coordinator.get_pod_data("default", "nginx-abc")
+        assert result is not None
+        assert result["name"] == "nginx-abc"
+
+        result = coordinator.get_pod_data("default", "non-existent")
+        assert result is None
+
+        coordinator.data = None
+        result = coordinator.get_pod_data("default", "nginx-abc")
+        assert result is None
+
+    async def test_get_all_pods_data(self, coordinator):
+        """Test getting all pods data."""
+        coordinator.data = {
+            "pods": {
+                "default_nginx": {"name": "nginx", "namespace": "default"},
+                "prod_api": {"name": "api", "namespace": "prod"},
+            }
+        }
+        result = coordinator.get_all_pods_data()
+        assert len(result) == 2
+
+        coordinator.data = None
+        result = coordinator.get_all_pods_data()
+        assert result == {}
+
+    async def test_get_all_namespaces(self, coordinator):
+        """Test getting all unique namespaces from coordinator data."""
+        coordinator.data = {
+            "deployments": {"nginx": {"namespace": "default"}},
+            "pods": {"default_app": {"namespace": "default"}},
+            "statefulsets": {"redis": {"namespace": "production"}},
+        }
+        namespaces = coordinator.get_all_namespaces()
+        assert "default" in namespaces
+        assert "production" in namespaces
+
+    async def test_cleanup_orphaned_entities_removes_daemonset(self, coordinator):
+        """Test cleanup removes orphaned DaemonSet entities."""
+        mock_entity = MagicMock()
+        mock_entity.unique_id = "test-entry-id_fluentd_daemonset"
+        mock_entity.entity_id = "sensor.fluentd"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [
+            mock_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            current_data = {"daemonsets": {}}
+            await coordinator._cleanup_orphaned_entities(current_data)
+            mock_registry.async_remove.assert_called_once_with("sensor.fluentd")
+
+    async def test_cleanup_orphaned_entities_removes_job(self, coordinator):
+        """Test cleanup removes orphaned Job sensor entities."""
+        mock_entity = MagicMock()
+        mock_entity.unique_id = "test-entry-id_job_default_old-job"
+        mock_entity.entity_id = "sensor.old_job"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [
+            mock_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            current_data = {"jobs": {}}
+            await coordinator._cleanup_orphaned_entities(current_data)
+            mock_registry.async_remove.assert_called_once_with("sensor.old_job")
+
+    async def test_cleanup_orphaned_entities_keeps_existing_job(self, coordinator):
+        """Test cleanup keeps existing Job sensor entities."""
+        mock_entity = MagicMock()
+        mock_entity.unique_id = "test-entry-id_job_default_backup-job"
+        mock_entity.entity_id = "sensor.backup_job"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [
+            mock_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            current_data = {"jobs": {"backup-job": {"name": "backup-job"}}}
+            await coordinator._cleanup_orphaned_entities(current_data)
+            mock_registry.async_remove.assert_not_called()
+
+    async def test_cleanup_orphaned_entities_skips_count_sensors(self, coordinator):
+        """Test cleanup does not remove count sensors."""
+        mock_entity = MagicMock()
+        mock_entity.unique_id = "test-entry-id_jobs_count"
+        mock_entity.entity_id = "sensor.jobs_count"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [
+            mock_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            current_data = {"jobs": {}}
+            await coordinator._cleanup_orphaned_entities(current_data)
+            mock_registry.async_remove.assert_not_called()
+
+    async def test_cleanup_orphaned_entities_cpu_memory_status_sensors(
+        self, coordinator
+    ):
+        """Test cleanup removes cpu/memory/status sensors for deleted deployments."""
+        cpu_entity = MagicMock()
+        cpu_entity.unique_id = "test-entry-id_nginx_deployment_cpu"
+        cpu_entity.entity_id = "sensor.nginx_cpu"
+
+        mem_entity = MagicMock()
+        mem_entity.unique_id = "test-entry-id_nginx_deployment_memory"
+        mem_entity.entity_id = "sensor.nginx_memory"
+
+        status_entity = MagicMock()
+        status_entity.unique_id = "test-entry-id_nginx_deployment_status"
+        status_entity.entity_id = "sensor.nginx_status"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [
+            cpu_entity,
+            mem_entity,
+            status_entity,
+        ]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            # Deployment no longer exists
+            current_data = {"deployments": {}}
+            await coordinator._cleanup_orphaned_entities(current_data)
+            assert mock_registry.async_remove.call_count == 3
+
+    async def test_cleanup_orphaned_entities_cpu_sensor_statefulset(self, coordinator):
+        """Test cleanup removes cpu sensor for deleted StatefulSet."""
+        entity = MagicMock()
+        entity.unique_id = "test-entry-id_redis_statefulset_cpu"
+        entity.entity_id = "sensor.redis_cpu"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [entity]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            current_data = {"statefulsets": {}}
+            await coordinator._cleanup_orphaned_entities(current_data)
+            mock_registry.async_remove.assert_called_once_with("sensor.redis_cpu")
+
+    async def test_cleanup_orphaned_entities_cronjob_sensor_format(self, coordinator):
+        """Test cleanup removes orphaned CronJob sensor (sensor format: cronjob_{ns}_{name})."""
+        mock_entity = MagicMock()
+        mock_entity.unique_id = "test-entry-id_cronjob_default_old-backup"
+        mock_entity.entity_id = "sensor.old_backup"
+
+        mock_registry = MagicMock()
+        mock_registry.entities.get_entries_for_config_entry_id.return_value = [
+            mock_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            current_data = {"cronjobs": {}}
+            await coordinator._cleanup_orphaned_entities(current_data)
+            mock_registry.async_remove.assert_called_once_with("sensor.old_backup")

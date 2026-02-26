@@ -1763,3 +1763,1183 @@ class TestKubernetesClientGetPods:
         assert pod["node_name"] == "worker-node-1"
         assert pod["pod_ip"] == "10.244.1.5"
         assert pod["labels"]["app"] == "test-app"
+
+
+# ---------------------------------------------------------------------------
+# Additional tests for uncovered kubernetes_client.py paths
+# ---------------------------------------------------------------------------
+
+
+class TestGetDeploymentsCountAiohttp:
+    """Test _get_deployments_count_aiohttp and _get_deployments_count_all_namespaces_aiohttp."""
+
+    async def test_get_deployments_count_aiohttp_success(self, mock_client):
+        """Test _get_deployments_count_aiohttp returns count on success."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "items": [
+                    {"metadata": {"name": "nginx"}},
+                    {"metadata": {"name": "api"}},
+                ]
+            }
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_deployments_count_aiohttp()
+
+        assert count == 2
+
+    async def test_get_deployments_count_aiohttp_error_status(self, mock_client):
+        """Test _get_deployments_count_aiohttp returns 0 on non-200 status."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_deployments_count_aiohttp()
+
+        assert count == 0
+
+    async def test_get_deployments_count_aiohttp_exception(self, mock_client):
+        """Test _get_deployments_count_aiohttp handles exception per namespace."""
+        mock_client.namespaces = ["default", "production"]
+
+        mock_response_ok = MagicMock()
+        mock_response_ok.status = 200
+        mock_response_ok.json = AsyncMock(
+            return_value={"items": [{"metadata": {"name": "nginx"}}]}
+        )
+        mock_response_ok.__aenter__ = AsyncMock(return_value=mock_response_ok)
+        mock_response_ok.__aexit__ = AsyncMock(return_value=None)
+
+        call_count = 0
+
+        def make_get(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_response_ok
+            raise Exception("Namespace not accessible")
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=make_get)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_deployments_count_aiohttp()
+
+        assert count == 1
+
+    async def test_get_deployments_count_all_namespaces_aiohttp_success(
+        self, mock_client
+    ):
+        """Test _get_deployments_count_all_namespaces_aiohttp on success."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "items": [
+                    {"metadata": {"name": "nginx"}},
+                    {"metadata": {"name": "api"}},
+                    {"metadata": {"name": "worker"}},
+                ]
+            }
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_deployments_count_all_namespaces_aiohttp()
+
+        assert count == 3
+
+    async def test_get_deployments_count_all_namespaces_aiohttp_error_status(
+        self, mock_client
+    ):
+        """Test _get_deployments_count_all_namespaces_aiohttp on non-200 status."""
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_deployments_count_all_namespaces_aiohttp()
+
+        assert count == 0
+
+    async def test_get_deployments_count_all_namespaces_aiohttp_exception(
+        self, mock_client
+    ):
+        """Test _get_deployments_count_all_namespaces_aiohttp on exception."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_deployments_count_all_namespaces_aiohttp()
+
+        assert count == 0
+
+
+class TestCompareAuthenticationMethods:
+    """Test compare_authentication_methods method."""
+
+    async def test_compare_both_succeed(self, mock_client):
+        """Test compare_authentication_methods when both methods succeed."""
+        mock_client.api_token = "test-token-longer-than-10"
+        mock_client.ca_cert = None
+
+        # Mock the kubernetes client call
+        mock_executor = AsyncMock(return_value=None)
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.compare_authentication_methods()
+
+        assert result["kubernetes_client"]["success"] is True
+        assert result["aiohttp_fallback"]["success"] is True
+        assert "token_info" in result
+
+    async def test_compare_k8s_fails_aiohttp_succeeds(self, mock_client):
+        """Test compare_authentication_methods when k8s client fails."""
+        mock_client.api_token = "short"
+        mock_client.ca_cert = "some-cert"
+
+        mock_executor = AsyncMock(side_effect=Exception("K8s client error"))
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.compare_authentication_methods()
+
+        assert result["kubernetes_client"]["success"] is False
+        assert result["aiohttp_fallback"]["success"] is True
+        assert result["kubernetes_client"]["ca_cert"] == "provided"
+
+    async def test_compare_both_fail(self, mock_client):
+        """Test compare_authentication_methods when both methods fail."""
+        mock_client.api_token = "test-token-longer-than-10"
+        mock_client.ca_cert = None
+
+        mock_executor = AsyncMock(side_effect=Exception("K8s error"))
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.compare_authentication_methods()
+
+        assert result["kubernetes_client"]["success"] is False
+        assert result["aiohttp_fallback"]["success"] is False
+
+    async def test_compare_aiohttp_non_200(self, mock_client):
+        """Test compare_authentication_methods when aiohttp returns non-200."""
+        mock_client.api_token = "test-token-longer"
+        mock_client.ca_cert = None
+
+        mock_executor = AsyncMock(return_value=None)
+
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.compare_authentication_methods()
+
+        assert result["kubernetes_client"]["success"] is True
+        assert result["aiohttp_fallback"]["success"] is False
+        assert result["aiohttp_fallback"]["status_code"] == 403
+
+    async def test_token_info_short_token(self, mock_client):
+        """Test compare_authentication_methods token_info for short token."""
+        mock_client.api_token = "short"
+        mock_client.ca_cert = None
+
+        mock_executor = AsyncMock(return_value=None)
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.compare_authentication_methods()
+
+        assert result["token_info"]["length"] == 5
+        assert (
+            result["kubernetes_client"]["headers"]["authorization"] == "Bearer [token]"
+        )
+
+
+class TestTestAuthentication:
+    """Test test_authentication method."""
+
+    async def test_authentication_via_k8s_client_success(self, mock_client):
+        """Test test_authentication succeeds via kubernetes client."""
+        mock_executor = AsyncMock(return_value=MagicMock())
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with patch.object(loop, "run_in_executor", new=mock_executor):
+            result = await mock_client.test_authentication()
+
+        assert result["authenticated"] is True
+        assert result["method"] == "kubernetes_client"
+        assert result["error"] is None
+
+    async def test_authentication_via_api_exception_aiohttp_success(self, mock_client):
+        """Test test_authentication falls back to aiohttp on ApiException."""
+        from kubernetes.client import ApiException
+
+        api_exc = ApiException(status=401, reason="Unauthorized")
+
+        mock_executor = AsyncMock(side_effect=api_exc)
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.test_authentication()
+
+        assert result["authenticated"] is True
+        assert result["method"] == "aiohttp_fallback"
+        assert result["error"] is None
+
+    async def test_authentication_via_generic_exception_aiohttp_success(
+        self, mock_client
+    ):
+        """Test test_authentication falls back to aiohttp on generic exception."""
+        mock_executor = AsyncMock(side_effect=Exception("SSL error"))
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.test_authentication()
+
+        assert result["authenticated"] is True
+        assert result["method"] == "aiohttp_fallback"
+
+    async def test_authentication_both_fail(self, mock_client):
+        """Test test_authentication when both methods fail."""
+        mock_executor = AsyncMock(side_effect=Exception("K8s error"))
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.test_authentication()
+
+        assert result["authenticated"] is False
+        assert result["error"] is not None
+
+    async def test_authentication_aiohttp_non_200(self, mock_client):
+        """Test test_authentication when aiohttp returns non-200."""
+        from kubernetes.client import ApiException
+
+        api_exc = ApiException(status=403, reason="Forbidden")
+        mock_executor = AsyncMock(side_effect=api_exc)
+
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(loop, "run_in_executor", new=mock_executor),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            result = await mock_client.test_authentication()
+
+        assert result["authenticated"] is False
+        assert "403" in result["error"] or result["error"] is not None
+
+
+class TestTriggerCronjobAiohttp:
+    """Test _trigger_cronjob_aiohttp method."""
+
+    async def test_trigger_cronjob_success(self, mock_client):
+        """Test _trigger_cronjob_aiohttp succeeds."""
+        cronjob_data = {
+            "spec": {
+                "jobTemplate": {
+                    "spec": {
+                        "template": {
+                            "spec": {
+                                "containers": [{"name": "job", "image": "busybox"}]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        job_result = {
+            "metadata": {
+                "name": "test-cron-manual-12345",
+                "uid": "abc123",
+            }
+        }
+
+        get_response = MagicMock()
+        get_response.status = 200
+        get_response.json = AsyncMock(return_value=cronjob_data)
+        get_response.__aenter__ = AsyncMock(return_value=get_response)
+        get_response.__aexit__ = AsyncMock(return_value=None)
+
+        post_response = MagicMock()
+        post_response.status = 201
+        post_response.json = AsyncMock(return_value=job_result)
+        post_response.__aenter__ = AsyncMock(return_value=post_response)
+        post_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=get_response)
+        mock_session.post = MagicMock(return_value=post_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
+
+        assert result["success"] is True
+        assert result["cronjob_name"] == "test-cron"
+        assert result["namespace"] == "default"
+        assert "job_name" in result
+
+    async def test_trigger_cronjob_get_fails(self, mock_client):
+        """Test _trigger_cronjob_aiohttp when GET cronjob returns non-200."""
+        get_response = MagicMock()
+        get_response.status = 404
+        get_response.__aenter__ = AsyncMock(return_value=get_response)
+        get_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=get_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._trigger_cronjob_aiohttp(
+                "missing-cron", "default"
+            )
+
+        assert result["success"] is False
+        assert "404" in result["error"]
+
+    async def test_trigger_cronjob_no_job_template(self, mock_client):
+        """Test _trigger_cronjob_aiohttp when cronjob has no job template."""
+        cronjob_data = {"spec": {}}  # No jobTemplate
+
+        get_response = MagicMock()
+        get_response.status = 200
+        get_response.json = AsyncMock(return_value=cronjob_data)
+        get_response.__aenter__ = AsyncMock(return_value=get_response)
+        get_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=get_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
+
+        assert result["success"] is False
+        assert "no job template" in result["error"]
+
+    async def test_trigger_cronjob_post_fails(self, mock_client):
+        """Test _trigger_cronjob_aiohttp when POST job returns non-201."""
+        cronjob_data = {
+            "spec": {
+                "jobTemplate": {"spec": {"template": {"spec": {"containers": []}}}}
+            }
+        }
+
+        get_response = MagicMock()
+        get_response.status = 200
+        get_response.json = AsyncMock(return_value=cronjob_data)
+        get_response.__aenter__ = AsyncMock(return_value=get_response)
+        get_response.__aexit__ = AsyncMock(return_value=None)
+
+        post_response = MagicMock()
+        post_response.status = 409  # Conflict
+        post_response.__aenter__ = AsyncMock(return_value=post_response)
+        post_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=get_response)
+        mock_session.post = MagicMock(return_value=post_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
+
+        assert result["success"] is False
+        assert "409" in result["error"]
+
+    async def test_trigger_cronjob_exception(self, mock_client):
+        """Test _trigger_cronjob_aiohttp handles exceptions."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
+
+        assert result["success"] is False
+        assert "Network error" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# Daemonset aiohttp method tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetDaemonsetsCountAiohttp:
+    """Test _get_daemonsets_count_aiohttp and _get_daemonsets_count_all_namespaces_aiohttp."""
+
+    async def test_get_daemonsets_count_aiohttp_success(self, mock_client):
+        """Test _get_daemonsets_count_aiohttp returns count on success."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "items": [{"metadata": {"name": "ds1"}}, {"metadata": {"name": "ds2"}}]
+            }
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_daemonsets_count_aiohttp()
+
+        assert count == 2
+
+    async def test_get_daemonsets_count_aiohttp_error_status(self, mock_client):
+        """Test _get_daemonsets_count_aiohttp handles non-200 status."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_daemonsets_count_aiohttp()
+
+        assert count == 0
+
+    async def test_get_daemonsets_count_aiohttp_exception(self, mock_client):
+        """Test _get_daemonsets_count_aiohttp handles per-namespace exception."""
+        mock_client.namespaces = ["default"]
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=Exception("Connection refused"))
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_daemonsets_count_aiohttp()
+
+        assert count == 0
+
+    async def test_get_daemonsets_count_all_namespaces_aiohttp_success(
+        self, mock_client
+    ):
+        """Test _get_daemonsets_count_all_namespaces_aiohttp returns count."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"items": [{"metadata": {"name": "ds1"}}]}
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_daemonsets_count_all_namespaces_aiohttp()
+
+        assert count == 1
+
+    async def test_get_daemonsets_count_all_namespaces_aiohttp_error(self, mock_client):
+        """Test _get_daemonsets_count_all_namespaces_aiohttp handles non-200."""
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_daemonsets_count_all_namespaces_aiohttp()
+
+        assert count == 0
+
+    async def test_get_daemonsets_count_all_namespaces_aiohttp_exception(
+        self, mock_client
+    ):
+        """Test _get_daemonsets_count_all_namespaces_aiohttp handles exception."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(side_effect=Exception("Timeout"))
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_daemonsets_count_all_namespaces_aiohttp()
+
+        assert count == 0
+
+
+class TestGetDaemonsetsAiohttp:
+    """Test _get_daemonsets_aiohttp and _get_daemonsets_all_namespaces_aiohttp."""
+
+    def _make_daemonset_item(self, name="ds1", namespace="default"):
+        return {
+            "metadata": {"name": name, "namespace": namespace},
+            "status": {
+                "desiredNumberScheduled": 3,
+                "currentNumberScheduled": 3,
+                "numberReady": 3,
+                "numberAvailable": 3,
+            },
+            "spec": {"selector": {"matchLabels": {"app": name}}},
+        }
+
+    async def test_get_daemonsets_aiohttp_success(self, mock_client):
+        """Test _get_daemonsets_aiohttp returns parsed daemonset list."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"items": [self._make_daemonset_item()]}
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_daemonsets_aiohttp()
+
+        assert len(result) == 1
+        assert result[0]["name"] == "ds1"
+        assert result[0]["is_running"] is True
+
+    async def test_get_daemonsets_aiohttp_error_status(self, mock_client):
+        """Test _get_daemonsets_aiohttp handles non-200 status."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_daemonsets_aiohttp()
+
+        assert result == []
+
+    async def test_get_daemonsets_aiohttp_exception(self, mock_client):
+        """Test _get_daemonsets_aiohttp handles per-namespace exception."""
+        mock_client.namespaces = ["default"]
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_daemonsets_aiohttp()
+
+        assert result == []
+
+    async def test_get_daemonsets_all_namespaces_aiohttp_success(self, mock_client):
+        """Test _get_daemonsets_all_namespaces_aiohttp returns parsed list."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "items": [self._make_daemonset_item("kube-proxy", "kube-system")]
+            }
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_daemonsets_all_namespaces_aiohttp()
+
+        assert len(result) == 1
+        assert result[0]["name"] == "kube-proxy"
+
+    async def test_get_daemonsets_all_namespaces_aiohttp_error(self, mock_client):
+        """Test _get_daemonsets_all_namespaces_aiohttp handles non-200."""
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_daemonsets_all_namespaces_aiohttp()
+
+        assert result == []
+
+    async def test_get_daemonsets_all_namespaces_aiohttp_exception(self, mock_client):
+        """Test _get_daemonsets_all_namespaces_aiohttp handles exception."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(side_effect=Exception("SSL error"))
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_daemonsets_all_namespaces_aiohttp()
+
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# CronJob aiohttp count/list method tests
+# ---------------------------------------------------------------------------
+
+
+class TestGetCronjobsCountAiohttp:
+    """Test _get_cronjobs_count_aiohttp and _get_cronjobs_count_all_namespaces_aiohttp."""
+
+    async def test_get_cronjobs_count_aiohttp_success(self, mock_client):
+        """Test _get_cronjobs_count_aiohttp returns count on success."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={
+                "items": [
+                    {"metadata": {"name": "backup"}},
+                    {"metadata": {"name": "report"}},
+                ]
+            }
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_cronjobs_count_aiohttp()
+
+        assert count == 2
+
+    async def test_get_cronjobs_count_aiohttp_error_status(self, mock_client):
+        """Test _get_cronjobs_count_aiohttp handles non-200 status."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_cronjobs_count_aiohttp()
+
+        assert count == 0
+
+    async def test_get_cronjobs_count_aiohttp_exception(self, mock_client):
+        """Test _get_cronjobs_count_aiohttp handles per-namespace exception."""
+        mock_client.namespaces = ["default"]
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=Exception("Timeout"))
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_cronjobs_count_aiohttp()
+
+        assert count == 0
+
+    async def test_get_cronjobs_count_all_namespaces_aiohttp_success(self, mock_client):
+        """Test _get_cronjobs_count_all_namespaces_aiohttp returns count."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"items": [{"metadata": {"name": "backup"}}]}
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_cronjobs_count_all_namespaces_aiohttp()
+
+        assert count == 1
+
+    async def test_get_cronjobs_count_all_namespaces_aiohttp_error(self, mock_client):
+        """Test _get_cronjobs_count_all_namespaces_aiohttp handles non-200."""
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_cronjobs_count_all_namespaces_aiohttp()
+
+        assert count == 0
+
+    async def test_get_cronjobs_count_all_namespaces_aiohttp_exception(
+        self, mock_client
+    ):
+        """Test _get_cronjobs_count_all_namespaces_aiohttp handles exception."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(side_effect=Exception("SSL error"))
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            count = await mock_client._get_cronjobs_count_all_namespaces_aiohttp()
+
+        assert count == 0
+
+
+class TestGetCronjobsAiohttp:
+    """Test _get_cronjobs_aiohttp and _get_cronjobs_all_namespaces_aiohttp."""
+
+    def _make_cronjob_item(self, name="backup", namespace="default"):
+        return {
+            "metadata": {"name": name, "namespace": namespace, "uid": "uid-123"},
+            "spec": {"schedule": "0 2 * * *", "suspend": False},
+            "status": {},
+        }
+
+    async def test_get_cronjobs_aiohttp_success(self, mock_client):
+        """Test _get_cronjobs_aiohttp returns parsed cronjob list."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"items": [self._make_cronjob_item()]}
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_cronjobs_aiohttp()
+
+        assert len(result) == 1
+        assert result[0]["name"] == "backup"
+
+    async def test_get_cronjobs_aiohttp_error_status(self, mock_client):
+        """Test _get_cronjobs_aiohttp handles non-200 status."""
+        mock_client.namespaces = ["default"]
+
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_cronjobs_aiohttp()
+
+        assert result == []
+
+    async def test_get_cronjobs_aiohttp_exception(self, mock_client):
+        """Test _get_cronjobs_aiohttp handles per-namespace exception."""
+        mock_client.namespaces = ["default"]
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_cronjobs_aiohttp()
+
+        assert result == []
+
+    async def test_get_cronjobs_all_namespaces_aiohttp_success(self, mock_client):
+        """Test _get_cronjobs_all_namespaces_aiohttp returns parsed list."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"items": [self._make_cronjob_item("report", "monitoring")]}
+        )
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_cronjobs_all_namespaces_aiohttp()
+
+        assert len(result) == 1
+        assert result[0]["name"] == "report"
+
+    async def test_get_cronjobs_all_namespaces_aiohttp_error(self, mock_client):
+        """Test _get_cronjobs_all_namespaces_aiohttp handles non-200."""
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_cronjobs_all_namespaces_aiohttp()
+
+        assert result == []
+
+    async def test_get_cronjobs_all_namespaces_aiohttp_exception(self, mock_client):
+        """Test _get_cronjobs_all_namespaces_aiohttp handles exception."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_cronjobs_all_namespaces_aiohttp()
+
+        assert result == []

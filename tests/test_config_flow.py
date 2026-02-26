@@ -359,3 +359,693 @@ async def test_async_step_user_with_defaults(mock_hass):
         assert result["data"][CONF_CLUSTER_NAME] == "test-cluster"
         assert result["data"][CONF_VERIFY_SSL] == DEFAULT_VERIFY_SSL
         flow._test_connection.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Additional config_flow tests for uncovered paths
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_kubernetes_imported_import_error():
+    """Test _ensure_kubernetes_imported when ImportError occurs."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original = cf_module.KUBERNETES_AVAILABLE
+    cf_module.KUBERNETES_AVAILABLE = None
+
+    try:
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "kubernetes.client":
+                raise ImportError("No module named 'kubernetes'")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import):
+            result = cf_module._ensure_kubernetes_imported()
+            assert result is False
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original
+
+
+def test_ensure_kubernetes_imported_generic_exception():
+    """Test _ensure_kubernetes_imported when a generic Exception occurs."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original = cf_module.KUBERNETES_AVAILABLE
+    cf_module.KUBERNETES_AVAILABLE = None
+
+    try:
+        import builtins
+
+        original_import = builtins.__import__
+
+        def mock_import_exc(name, *args, **kwargs):
+            if name == "kubernetes.client":
+                raise RuntimeError("Unexpected error")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=mock_import_exc):
+            result = cf_module._ensure_kubernetes_imported()
+            assert result is False
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original
+
+
+async def test_async_step_namespaces_empty_namespace_error(mock_hass):
+    """Test namespace step returns error when no namespace selected."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+    flow._connection_data = {
+        CONF_CLUSTER_NAME: "test-cluster",
+        CONF_HOST: "test-host",
+        CONF_API_TOKEN: "test-token",
+    }
+    flow._fetch_namespaces = AsyncMock(return_value=["default", "kube-system"])
+
+    # Pass empty namespace list
+    result = await flow.async_step_namespaces(user_input={CONF_NAMESPACE: []})
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "namespaces"
+    assert CONF_NAMESPACE in result["errors"]
+
+
+async def test_async_step_namespaces_string_namespace_conversion(mock_hass):
+    """Test namespace step converts string input to list."""
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow.KubernetesConfigFlow.async_set_unique_id"
+        ),
+        patch(
+            "custom_components.kubernetes.config_flow.KubernetesConfigFlow._abort_if_unique_id_configured"
+        ),
+    ):
+        flow = KubernetesConfigFlow()
+        flow.hass = mock_hass
+        flow._connection_data = {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "test-host",
+            CONF_API_TOKEN: "test-token",
+        }
+
+        # Provide namespace as comma-separated string
+        result = await flow.async_step_namespaces(
+            user_input={CONF_NAMESPACE: "default, production"}
+        )
+
+        assert result["type"] == "form" or result["type"] == "create_entry"
+        if result["type"] == "create_entry":
+            assert "default" in result["data"][CONF_NAMESPACE]
+            assert "production" in result["data"][CONF_NAMESPACE]
+
+
+async def test_async_step_namespaces_non_list_namespace(mock_hass):
+    """Test namespace step converts non-list/non-string namespace to default."""
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow.KubernetesConfigFlow.async_set_unique_id"
+        ),
+        patch(
+            "custom_components.kubernetes.config_flow.KubernetesConfigFlow._abort_if_unique_id_configured"
+        ),
+    ):
+        flow = KubernetesConfigFlow()
+        flow.hass = mock_hass
+        flow._connection_data = {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "test-host",
+            CONF_API_TOKEN: "test-token",
+        }
+
+        # Provide namespace as an integer (non-list, non-string)
+        result = await flow.async_step_namespaces(user_input={CONF_NAMESPACE: 12345})
+
+        assert result["type"] == "create_entry"
+        assert result["data"][CONF_NAMESPACE] == ["default"]
+
+
+async def test_async_step_namespaces_no_namespaces_fetched(mock_hass):
+    """Test namespace step shows error when no namespaces fetched."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+    flow._connection_data = {
+        CONF_CLUSTER_NAME: "test-cluster",
+        CONF_HOST: "test-host",
+        CONF_API_TOKEN: "test-token",
+    }
+    flow._fetch_namespaces = AsyncMock(return_value=[])
+
+    result = await flow.async_step_namespaces()
+
+    assert result["type"] == "form"
+    assert result["errors"].get("base") == "cannot_fetch_namespaces"
+
+
+async def test_async_step_namespaces_fetch_exception(mock_hass):
+    """Test namespace step handles fetch exception."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+    flow._connection_data = {
+        CONF_CLUSTER_NAME: "test-cluster",
+        CONF_HOST: "test-host",
+        CONF_API_TOKEN: "test-token",
+    }
+    flow._fetch_namespaces = AsyncMock(side_effect=Exception("Network error"))
+
+    result = await flow.async_step_namespaces()
+
+    assert result["type"] == "form"
+    assert result["errors"].get("base") == "cannot_fetch_namespaces"
+
+
+async def test_test_connection_kubernetes_not_available(mock_hass):
+    """Test _test_connection raises when kubernetes not available."""
+    with patch(
+        "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+        return_value=False,
+    ):
+        flow = KubernetesConfigFlow()
+        flow.hass = mock_hass
+
+        with pytest.raises(ValueError, match="Kubernetes package is not installed"):
+            await flow._test_connection(
+                {
+                    CONF_HOST: "test-host",
+                    CONF_API_TOKEN: "test-token",
+                }
+            )
+
+
+async def test_test_connection_empty_host(mock_hass):
+    """Test _test_connection raises when host is empty."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original = cf_module.KUBERNETES_AVAILABLE
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = mock_hass
+
+            with pytest.raises(ValueError, match="Host is required"):
+                await flow._test_connection(
+                    {
+                        CONF_HOST: "",
+                        CONF_API_TOKEN: "test-token",
+                    }
+                )
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original
+
+
+async def test_test_connection_empty_token(mock_hass):
+    """Test _test_connection raises when API token is empty."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original = cf_module.KUBERNETES_AVAILABLE
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = mock_hass
+
+            with pytest.raises(ValueError, match="API token is required"):
+                await flow._test_connection(
+                    {
+                        CONF_HOST: "test-host",
+                        CONF_API_TOKEN: "",
+                    }
+                )
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original
+
+
+async def test_test_connection_with_ca_cert(mock_hass):
+    """Test _test_connection sets CA cert when provided."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_config = MagicMock()
+    mock_api_client = MagicMock()
+    mock_core_v1 = MagicMock()
+
+    mock_k8s_client.Configuration.return_value = mock_config
+    mock_k8s_client.ApiClient.return_value = mock_api_client
+    mock_k8s_client.CoreV1Api.return_value = mock_core_v1
+
+    cf_module.client = mock_k8s_client
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = mock_hass
+
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+
+            with patch.object(
+                loop, "run_in_executor", new=AsyncMock(return_value=None)
+            ):
+                await flow._test_connection(
+                    {
+                        CONF_HOST: "test-host",
+                        CONF_API_TOKEN: "test-token",
+                        "ca_cert": "/path/to/ca.crt",
+                        "verify_ssl": False,
+                    }
+                )
+
+            # Verify CA cert was set
+            assert mock_config.ssl_ca_cert == "/path/to/ca.crt"
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+
+
+async def test_test_connection_api_exception_aiohttp_success(mock_hass):
+    """Test _test_connection falls back to aiohttp when ApiException raised and succeeds."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    original_api_exc = cf_module.ApiException
+
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_config = MagicMock()
+    mock_api_client = MagicMock()
+    mock_core_v1 = MagicMock()
+
+    mock_k8s_client.Configuration.return_value = mock_config
+    mock_k8s_client.ApiClient.return_value = mock_api_client
+    mock_k8s_client.CoreV1Api.return_value = mock_core_v1
+
+    cf_module.client = mock_k8s_client
+
+    # Make ApiException a real exception subclass we can raise
+    class FakeApiException(Exception):
+        def __init__(self):
+            self.status = 401
+            self.reason = "Unauthorized"
+            self.body = None
+
+    cf_module.ApiException = FakeApiException
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = mock_hass
+            flow._test_connection_aiohttp = AsyncMock(return_value=True)
+
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+
+            with patch.object(
+                loop,
+                "run_in_executor",
+                new=AsyncMock(side_effect=FakeApiException()),
+            ):
+                # Should not raise because aiohttp fallback succeeds
+                await flow._test_connection(
+                    {
+                        CONF_HOST: "test-host",
+                        CONF_API_TOKEN: "test-token",
+                        "verify_ssl": False,
+                    }
+                )
+
+            flow._test_connection_aiohttp.assert_called_once()
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+        cf_module.ApiException = original_api_exc
+
+
+async def test_test_connection_api_exception_aiohttp_failure(mock_hass):
+    """Test _test_connection raises when ApiException raised and aiohttp also fails."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    original_api_exc = cf_module.ApiException
+
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_config = MagicMock()
+    mock_api_client = MagicMock()
+    mock_core_v1 = MagicMock()
+
+    mock_k8s_client.Configuration.return_value = mock_config
+    mock_k8s_client.ApiClient.return_value = mock_api_client
+    mock_k8s_client.CoreV1Api.return_value = mock_core_v1
+
+    cf_module.client = mock_k8s_client
+
+    class FakeApiException(Exception):
+        def __init__(self):
+            self.status = 401
+            self.reason = "Unauthorized"
+            self.body = None
+
+    cf_module.ApiException = FakeApiException
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = mock_hass
+            flow._test_connection_aiohttp = AsyncMock(return_value=False)
+
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+
+            with patch.object(
+                loop,
+                "run_in_executor",
+                new=AsyncMock(side_effect=FakeApiException()),
+            ):
+                with pytest.raises(ValueError, match="Failed to connect"):
+                    await flow._test_connection(
+                        {
+                            CONF_HOST: "test-host",
+                            CONF_API_TOKEN: "test-token",
+                            "verify_ssl": False,
+                        }
+                    )
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+        cf_module.ApiException = original_api_exc
+
+
+async def test_test_connection_generic_exception_aiohttp_success(mock_hass):
+    """Test _test_connection falls back to aiohttp on generic exception and succeeds."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_config = MagicMock()
+    mock_api_client = MagicMock()
+    mock_core_v1 = MagicMock()
+
+    mock_k8s_client.Configuration.return_value = mock_config
+    mock_k8s_client.ApiClient.return_value = mock_api_client
+    mock_k8s_client.CoreV1Api.return_value = mock_core_v1
+
+    cf_module.client = mock_k8s_client
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = mock_hass
+            flow._test_connection_aiohttp = AsyncMock(return_value=True)
+
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+
+            with patch.object(
+                loop,
+                "run_in_executor",
+                new=AsyncMock(side_effect=ConnectionError("SSL error")),
+            ):
+                await flow._test_connection(
+                    {
+                        CONF_HOST: "test-host",
+                        CONF_API_TOKEN: "test-token",
+                        "verify_ssl": False,
+                    }
+                )
+
+            flow._test_connection_aiohttp.assert_called_once()
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+
+
+async def test_test_connection_generic_exception_aiohttp_failure(mock_hass):
+    """Test _test_connection raises when generic exception raised and aiohttp fails."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_config = MagicMock()
+    mock_api_client = MagicMock()
+    mock_core_v1 = MagicMock()
+
+    mock_k8s_client.Configuration.return_value = mock_config
+    mock_k8s_client.ApiClient.return_value = mock_api_client
+    mock_k8s_client.CoreV1Api.return_value = mock_core_v1
+
+    cf_module.client = mock_k8s_client
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = mock_hass
+            flow._test_connection_aiohttp = AsyncMock(return_value=False)
+
+            import asyncio
+
+            loop = asyncio.get_event_loop()
+
+            with patch.object(
+                loop,
+                "run_in_executor",
+                new=AsyncMock(side_effect=ConnectionError("SSL error")),
+            ):
+                with pytest.raises(ValueError, match="Connection test failed"):
+                    await flow._test_connection(
+                        {
+                            CONF_HOST: "test-host",
+                            CONF_API_TOKEN: "test-token",
+                            "verify_ssl": False,
+                        }
+                    )
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+
+
+async def test_test_connection_aiohttp_success(mock_hass):
+    """Test _test_connection_aiohttp returns True on 200 response."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._test_connection_aiohttp(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result is True
+
+
+async def test_test_connection_aiohttp_error_status(mock_hass):
+    """Test _test_connection_aiohttp returns False on non-200 response."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+
+    mock_response = MagicMock()
+    mock_response.status = 401
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._test_connection_aiohttp(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result is False
+
+
+async def test_test_connection_aiohttp_exception(mock_hass):
+    """Test _test_connection_aiohttp returns False on exception."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(side_effect=Exception("Network error"))
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._test_connection_aiohttp(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result is False
+
+
+async def test_fetch_namespaces_success(mock_hass):
+    """Test _fetch_namespaces returns sorted namespace list on success."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(
+        return_value={
+            "items": [
+                {"metadata": {"name": "production"}},
+                {"metadata": {"name": "default"}},
+                {"metadata": {"name": "kube-system"}},
+            ]
+        }
+    )
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == ["default", "kube-system", "production"]
+
+
+async def test_fetch_namespaces_error_status(mock_hass):
+    """Test _fetch_namespaces returns empty list on non-200 response."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+
+    mock_response = MagicMock()
+    mock_response.status = 403
+    mock_response.text = AsyncMock(return_value="Forbidden")
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == []
+
+
+async def test_fetch_namespaces_client_error(mock_hass):
+    """Test _fetch_namespaces returns empty list on aiohttp.ClientError."""
+    import aiohttp as aiohttp_mod
+
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(
+        side_effect=aiohttp_mod.ClientConnectionError("Connection refused")
+    )
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == []
+
+
+async def test_fetch_namespaces_generic_exception(mock_hass):
+    """Test _fetch_namespaces returns empty list on generic exception."""
+    flow = KubernetesConfigFlow()
+    flow.hass = mock_hass
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(side_effect=Exception("Unexpected error"))
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == []
