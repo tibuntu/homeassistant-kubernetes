@@ -9,6 +9,7 @@ import pytest
 from custom_components.kubernetes.binary_sensor import (
     KubernetesBaseBinarySensor,
     KubernetesClusterHealthSensor,
+    KubernetesNodeConditionBinarySensor,
     async_setup_entry,
 )
 from custom_components.kubernetes.const import DOMAIN
@@ -36,10 +37,28 @@ def mock_client():
 
 
 @pytest.fixture
-def mock_hass():
+def mock_coordinator():
+    """Create a mock coordinator with no nodes."""
+    coordinator = MagicMock()
+    coordinator.data = {"nodes": {}}
+    coordinator.last_update_success = True
+    coordinator.async_config_entry_first_refresh = AsyncMock()
+    coordinator.async_add_listener = MagicMock(return_value=MagicMock())
+    return coordinator
+
+
+@pytest.fixture
+def mock_hass(mock_coordinator, mock_config_entry, mock_client):
     """Create a mock Home Assistant instance."""
     hass = MagicMock()
-    hass.data = {DOMAIN: {}}
+    hass.data = {
+        DOMAIN: {
+            mock_config_entry.entry_id: {
+                "coordinator": mock_coordinator,
+                "client": mock_client,
+            }
+        }
+    }
     hass.config = MagicMock()
     hass.config.config_dir = "/tmp"
     return hass
@@ -51,40 +70,76 @@ class TestKubernetesBinarySensorSetup:
     async def test_async_setup_entry_success(
         self, mock_hass, mock_config_entry, mock_client
     ):
-        """Test successful binary sensor setup."""
-        # Set up hass.data
-        mock_hass.data[DOMAIN][mock_config_entry.entry_id] = {"client": mock_client}
-
-        # Mock device registry
+        """Test successful binary sensor setup with no nodes yields 1 entity."""
         mock_device_registry = MagicMock()
         mock_device_registry.async_get_device = MagicMock(return_value=None)
         mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
 
-        # Mock async_add_entities
         mock_add_entities = MagicMock()
 
-        # Call the setup function
         with patch(
             "custom_components.kubernetes.device.dr.async_get",
             return_value=mock_device_registry,
         ):
             await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
-        # Verify entities were added
         mock_add_entities.assert_called_once()
         added_entities = mock_add_entities.call_args[0][0]
         assert len(added_entities) == 1
         assert isinstance(added_entities[0], KubernetesClusterHealthSensor)
 
-    async def test_async_setup_entry_missing_client(self, mock_hass, mock_config_entry):
-        """Test binary sensor setup when client is missing."""
-        # Set up hass.data without client - this should raise KeyError
-        mock_hass.data[DOMAIN][mock_config_entry.entry_id] = {}
+    async def test_async_setup_entry_with_nodes(
+        self, mock_hass, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test setup creates 4 condition sensors per node."""
+        mock_coordinator.data = {
+            "nodes": {
+                "node-1": {
+                    "memory_pressure": False,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                },
+                "node-2": {
+                    "memory_pressure": False,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                },
+            }
+        }
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
 
-        # Mock async_add_entities
         mock_add_entities = MagicMock()
 
-        # Call the setup function - should raise KeyError
+        with patch(
+            "custom_components.kubernetes.device.dr.async_get",
+            return_value=mock_device_registry,
+        ):
+            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+
+        added_entities = mock_add_entities.call_args[0][0]
+        # 1 cluster health + 2 nodes × 4 conditions = 9
+        assert len(added_entities) == 9
+        condition_sensors = [
+            e
+            for e in added_entities
+            if isinstance(e, KubernetesNodeConditionBinarySensor)
+        ]
+        assert len(condition_sensors) == 8
+
+    async def test_async_setup_entry_missing_client(
+        self, mock_hass, mock_config_entry, mock_coordinator
+    ):
+        """Test binary sensor setup when client is missing."""
+        mock_hass.data[DOMAIN][mock_config_entry.entry_id] = {
+            "coordinator": mock_coordinator
+        }
+
+        mock_add_entities = MagicMock()
+
         with pytest.raises(KeyError, match="'client'"):
             await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
 
@@ -230,3 +285,123 @@ class TestKubernetesClusterHealthSensor:
         assert sensor._attr_unique_id == "test_entry_id_cluster_health"
         assert sensor._attr_device_class == BinarySensorDeviceClass.CONNECTIVITY
         assert sensor._attr_has_entity_name is True
+
+
+class TestKubernetesNodeConditionBinarySensor:
+    """Test node condition binary sensors."""
+
+    def _make_sensor(
+        self, mock_coordinator, mock_config_entry, condition="memory_pressure"
+    ):
+        return KubernetesNodeConditionBinarySensor(
+            mock_coordinator, mock_config_entry, "node-1", condition
+        )
+
+    def test_initialization(self, mock_coordinator, mock_config_entry):
+        """Test name, unique_id, device_class, and has_entity_name."""
+        sensor = self._make_sensor(
+            mock_coordinator, mock_config_entry, "memory_pressure"
+        )
+
+        assert sensor.name == "node-1 Memory Pressure"
+        assert sensor.unique_id == "test_entry_id_node_node-1_memory_pressure"
+        assert sensor.device_class == BinarySensorDeviceClass.PROBLEM
+        assert sensor._attr_has_entity_name is True
+
+    def test_unique_ids_are_distinct_per_condition(
+        self, mock_coordinator, mock_config_entry
+    ):
+        """Test that each condition produces a unique ID."""
+        conditions = [
+            "memory_pressure",
+            "disk_pressure",
+            "pid_pressure",
+            "network_unavailable",
+        ]
+        sensors = [
+            self._make_sensor(mock_coordinator, mock_config_entry, c)
+            for c in conditions
+        ]
+        unique_ids = {s.unique_id for s in sensors}
+        assert len(unique_ids) == 4
+
+    def test_names_for_all_conditions(self, mock_coordinator, mock_config_entry):
+        """Test display names for all four conditions."""
+        expected = {
+            "memory_pressure": "node-1 Memory Pressure",
+            "disk_pressure": "node-1 Disk Pressure",
+            "pid_pressure": "node-1 PID Pressure",
+            "network_unavailable": "node-1 Network Unavailable",
+        }
+        for condition, name in expected.items():
+            sensor = self._make_sensor(mock_coordinator, mock_config_entry, condition)
+            assert sensor.name == name
+
+    def test_device_info_uses_cluster_device(self, mock_coordinator, mock_config_entry):
+        """Test sensor is attached to the cluster device."""
+        sensor = self._make_sensor(mock_coordinator, mock_config_entry)
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+
+    def test_is_on_false_when_no_pressure(self, mock_coordinator, mock_config_entry):
+        """Test is_on is False when the condition is not active."""
+        mock_coordinator.data = {"nodes": {"node-1": {"memory_pressure": False}}}
+        sensor = self._make_sensor(
+            mock_coordinator, mock_config_entry, "memory_pressure"
+        )
+        assert sensor.is_on is False
+
+    def test_is_on_true_when_pressure_active(self, mock_coordinator, mock_config_entry):
+        """Test is_on is True when the condition is active."""
+        mock_coordinator.data = {"nodes": {"node-1": {"memory_pressure": True}}}
+        sensor = self._make_sensor(
+            mock_coordinator, mock_config_entry, "memory_pressure"
+        )
+        assert sensor.is_on is True
+
+    def test_is_on_none_when_no_coordinator_data(
+        self, mock_coordinator, mock_config_entry
+    ):
+        """Test is_on is None when coordinator has no data."""
+        mock_coordinator.data = None
+        sensor = self._make_sensor(mock_coordinator, mock_config_entry)
+        assert sensor.is_on is None
+
+    def test_is_on_none_when_node_missing(self, mock_coordinator, mock_config_entry):
+        """Test is_on is None when the node is absent from coordinator data."""
+        mock_coordinator.data = {"nodes": {}}
+        sensor = self._make_sensor(mock_coordinator, mock_config_entry)
+        assert sensor.is_on is None
+
+    def test_available_reflects_coordinator_success(
+        self, mock_coordinator, mock_config_entry
+    ):
+        """Test availability mirrors coordinator.last_update_success."""
+        mock_coordinator.last_update_success = True
+        sensor = self._make_sensor(mock_coordinator, mock_config_entry)
+        assert sensor.available is True
+
+        mock_coordinator.last_update_success = False
+        assert sensor.available is False
+
+    def test_all_four_conditions_readable(self, mock_coordinator, mock_config_entry):
+        """Test that all four condition fields are read correctly."""
+        mock_coordinator.data = {
+            "nodes": {
+                "node-1": {
+                    "memory_pressure": True,
+                    "disk_pressure": False,
+                    "pid_pressure": True,
+                    "network_unavailable": False,
+                }
+            }
+        }
+        expected = {
+            "memory_pressure": True,
+            "disk_pressure": False,
+            "pid_pressure": True,
+            "network_unavailable": False,
+        }
+        for condition, value in expected.items():
+            sensor = self._make_sensor(mock_coordinator, mock_config_entry, condition)
+            assert sensor.is_on is value

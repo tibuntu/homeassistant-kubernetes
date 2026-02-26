@@ -598,6 +598,27 @@ class KubernetesClient:
                                     else "NotReady"
                                 )
 
+                                # Parse pressure/unavailability conditions
+                                pressure_map = {
+                                    c.get("type"): c.get("status") == "True"
+                                    for c in conditions
+                                    if c.get("type")
+                                    in (
+                                        "MemoryPressure",
+                                        "DiskPressure",
+                                        "PIDPressure",
+                                        "NetworkUnavailable",
+                                    )
+                                }
+                                memory_pressure = pressure_map.get(
+                                    "MemoryPressure", False
+                                )
+                                disk_pressure = pressure_map.get("DiskPressure", False)
+                                pid_pressure = pressure_map.get("PIDPressure", False)
+                                network_unavailable = pressure_map.get(
+                                    "NetworkUnavailable", False
+                                )
+
                                 # Get IP addresses
                                 addresses = status.get("addresses", [])
                                 internal_ip = next(
@@ -664,6 +685,10 @@ class KubernetesClient:
                                     "creation_timestamp": metadata.get(
                                         "creationTimestamp", "N/A"
                                     ),
+                                    "memory_pressure": memory_pressure,
+                                    "disk_pressure": disk_pressure,
+                                    "pid_pressure": pid_pressure,
+                                    "network_unavailable": network_unavailable,
                                 }
 
                                 nodes.append(node_data)
