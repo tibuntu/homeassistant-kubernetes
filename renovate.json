@@ -24,14 +24,26 @@
       "groupName": "kubernetes"
     },
     {
-      "matchPackageNames": ["ruff", "astral-sh/ruff-pre-commit"],
+      "matchManagers": ["pre-commit"],
+      "groupName": "pre-commit hooks",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "matchDepNames": ["ruff", "astral-sh/ruff-pre-commit"],
       "groupName": "ruff",
       "semanticCommitType": "build",
       "semanticCommitScope": "deps"
     },
     {
-      "matchManagers": ["pre-commit"],
-      "groupName": "pre-commit hooks",
+      "matchDepNames": ["mypy", "pre-commit/mirrors-mypy"],
+      "groupName": "mypy",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "matchDepNames": ["bandit", "pycqa/bandit"],
+      "groupName": "bandit",
       "semanticCommitType": "build",
       "semanticCommitScope": "deps"
     }
