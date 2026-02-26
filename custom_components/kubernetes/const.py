@@ -44,6 +44,8 @@ SENSOR_TYPE_DEPLOYMENTS = "deployments"
 SENSOR_TYPE_STATEFULSETS = "statefulsets"
 SENSOR_TYPE_CRONJOB = "cronjob"
 SENSOR_TYPE_CRONJOBS = "cronjobs"
+SENSOR_TYPE_JOB = "job"
+SENSOR_TYPE_JOBS = "jobs"
 
 # Binary sensor types
 BINARY_SENSOR_TYPE_CLUSTER_HEALTH = "cluster_health"
@@ -58,6 +60,7 @@ WORKLOAD_TYPE_DEPLOYMENT = "Deployment"
 WORKLOAD_TYPE_STATEFULSET = "StatefulSet"
 WORKLOAD_TYPE_DAEMONSET = "DaemonSet"
 WORKLOAD_TYPE_CRONJOB = "CronJob"
+WORKLOAD_TYPE_JOB = "Job"
 WORKLOAD_TYPE_POD = "Pod"
 
 # Service names

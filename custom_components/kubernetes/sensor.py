@@ -12,7 +12,13 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
-from .const import ATTR_WORKLOAD_TYPE, DOMAIN, WORKLOAD_TYPE_CRONJOB, WORKLOAD_TYPE_POD
+from .const import (
+    ATTR_WORKLOAD_TYPE,
+    DOMAIN,
+    WORKLOAD_TYPE_CRONJOB,
+    WORKLOAD_TYPE_JOB,
+    WORKLOAD_TYPE_POD,
+)
 from .coordinator import KubernetesDataCoordinator
 from .device import get_cluster_device_info, get_namespace_device_info
 
@@ -38,6 +44,7 @@ async def async_setup_entry(
             KubernetesStatefulSetsSensor(coordinator, client, config_entry),
             KubernetesDaemonSetsSensor(coordinator, client, config_entry),
             KubernetesCronJobsSensor(coordinator, client, config_entry),
+            KubernetesJobsSensor(coordinator, client, config_entry),
         ]
 
         # Wait for the coordinator to have initial data
@@ -157,6 +164,18 @@ async def async_setup_entry(
             )
             cronjob_sensors_created += 1
 
+        # Create individual sensors for each Job
+        job_sensors_created = 0
+        for job_name, job_data in coordinator.data.get("jobs", {}).items():
+            namespace = job_data.get("namespace", "default")
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+            sensors.append(
+                KubernetesJobSensor(
+                    coordinator, client, config_entry, job_name, namespace
+                )
+            )
+            job_sensors_created += 1
+
         async_add_entities(sensors)
 
         # Store the add_entities callback for dynamic entity management
@@ -182,7 +201,7 @@ async def async_setup_entry(
         coordinator.async_add_listener(_async_add_new_entities)
 
         _LOGGER.debug(
-            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d daemonset sensors, %d status sensors, %d metric sensors, %d cronjob sensors)",
+            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d daemonset sensors, %d status sensors, %d metric sensors, %d cronjob sensors, %d job sensors)",
             len(sensors),
             node_sensors_created,
             pod_sensors_created,
@@ -190,6 +209,7 @@ async def async_setup_entry(
             status_sensors_created,
             metric_sensors_created,
             cronjob_sensors_created,
+            job_sensors_created,
         )
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
@@ -353,6 +373,28 @@ def _discover_new_cronjob_sensors(
     return new_entities
 
 
+def _discover_new_job_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesJobSensor]:
+    """Discover new individual Job sensors."""
+    new_entities = []
+    if coordinator.data and "jobs" in coordinator.data:
+        for job_name, job_data in coordinator.data["jobs"].items():
+            namespace = job_data.get("namespace", "default")
+            unique_id = f"{config_entry.entry_id}_job_{namespace}_{job_name}"
+            if unique_id not in existing_unique_ids:
+                _LOGGER.info("Adding new job sensor for: %s", job_name)
+                new_entities.append(
+                    KubernetesJobSensor(
+                        coordinator, client, config_entry, job_name, namespace
+                    )
+                )
+    return new_entities
+
+
 async def _async_discover_and_add_new_sensors(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -436,6 +478,15 @@ async def _async_discover_and_add_new_sensors(
         for namespace in cronjob_namespaces:
             await get_or_create_namespace_device(hass, config_entry, namespace)
         new_entities.extend(cronjob_sensors)
+
+        # Discover new job sensors
+        job_sensors = _discover_new_job_sensors(
+            coordinator, client, config_entry, existing_unique_ids
+        )
+        job_namespaces = {s.namespace for s in job_sensors}
+        for namespace in job_namespaces:
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+        new_entities.extend(job_sensors)
 
         # Add new entities if any were found
         if new_entities:
@@ -1155,4 +1206,106 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
             "next_schedule_time": cronjob_data.get("next_schedule_time"),
             "active_jobs_count": cronjob_data.get("active_jobs_count", 0),
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
+        }
+
+
+class KubernetesJobsSensor(KubernetesBaseSensor):
+    """Sensor for Kubernetes Jobs count."""
+
+    def __init__(
+        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
+    ) -> None:
+        """Initialize the Jobs sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self._attr_name = "Jobs Count"
+        self._attr_unique_id = f"{config_entry.entry_id}_jobs_count"
+        self._attr_native_unit_of_measurement = "jobs"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of jobs."""
+        if not self.coordinator.data:
+            return 0
+        return len(self.coordinator.data.get("jobs", {}))
+
+    async def async_update(self) -> None:
+        """Update the jobs sensor state."""
+        try:
+            await super().async_update()
+            if not self.coordinator.data or "jobs" not in self.coordinator.data:
+                if hasattr(self.client, "get_jobs_count"):
+                    count = await self.client.get_jobs_count()
+                    self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update jobs sensor: %s", ex)
+            self._attr_native_value = 0
+
+
+class KubernetesJobSensor(KubernetesBaseSensor):
+    """Sensor for an individual Kubernetes Job."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client: Any,
+        config_entry: ConfigEntry,
+        job_name: str,
+        namespace: str,
+    ) -> None:
+        """Initialize the Job sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.job_name = job_name
+        self.namespace = namespace
+        self._attr_name = job_name
+        self._attr_unique_id = f"{config_entry.entry_id}_job_{namespace}_{job_name}"
+        self._attr_native_unit_of_measurement = None
+        self._attr_icon = "mdi:briefcase-outline"
+        self._attr_state_class = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
+
+    @property
+    def native_value(self) -> str:
+        """Return the status of the Job."""
+        job_data = self.coordinator.get_job_data(self.job_name)
+        if job_data is None:
+            return "Unknown"
+
+        completions = job_data.get("completions", 1)
+        succeeded = job_data.get("succeeded", 0)
+        active = job_data.get("active", 0)
+        failed = job_data.get("failed", 0)
+
+        if succeeded >= completions:
+            return "Complete"
+        if active > 0:
+            return "Running"
+        if failed > 0:
+            return "Failed"
+        return "Unknown"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes for the Job."""
+        job_data = self.coordinator.get_job_data(self.job_name)
+        if not job_data:
+            return {}
+
+        return {
+            "namespace": job_data.get("namespace", self.namespace),
+            "completions": job_data.get("completions", 1),
+            "succeeded": job_data.get("succeeded", 0),
+            "failed": job_data.get("failed", 0),
+            "active": job_data.get("active", 0),
+            "start_time": job_data.get("start_time"),
+            "completion_time": job_data.get("completion_time"),
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_JOB,
         }

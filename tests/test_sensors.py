@@ -24,6 +24,7 @@ from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSe
 from custom_components.kubernetes.const import (
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
+    WORKLOAD_TYPE_JOB,
     WORKLOAD_TYPE_POD,
 )
 from custom_components.kubernetes.sensor import (
@@ -32,6 +33,8 @@ from custom_components.kubernetes.sensor import (
     KubernetesDaemonSetSensor,
     KubernetesDaemonSetsSensor,
     KubernetesDeploymentsSensor,
+    KubernetesJobSensor,
+    KubernetesJobsSensor,
     KubernetesNodeSensor,
     KubernetesNodesSensor,
     KubernetesPodSensor,
@@ -41,6 +44,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesWorkloadStatusSensor,
     _discover_new_cronjob_sensors,
     _discover_new_daemonset_sensors,
+    _discover_new_job_sensors,
     _discover_new_workload_metric_sensors,
     _discover_new_workload_status_sensors,
 )
@@ -399,8 +403,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 6 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs) + number of node sensors from coordinator
-        expected_count = 6 + len(mock_coordinator.get_all_nodes_data())
+        # 7 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs) + number of node sensors from coordinator
+        expected_count = 7 + len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
@@ -2499,6 +2503,323 @@ class TestDiscoverCronJobSensors:
         """Test that an empty list is returned when there are no cronjobs."""
         mock_coordinator.data = {"cronjobs": {}}
         new_sensors = _discover_new_cronjob_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert new_sensors == []
+
+
+class TestKubernetesJobsSensor:
+    """Test the Jobs count sensor."""
+
+    def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
+        return KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
+
+    def test_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor name, unique_id, and unit of measurement."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        assert sensor.name == "Jobs Count"
+        assert sensor.unique_id == "test_entry_id_jobs_count"
+        assert sensor.native_unit_of_measurement == "jobs"
+
+    def test_native_value_returns_count(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that native_value returns the number of jobs."""
+        mock_coordinator.data = {
+            "jobs": {
+                "backup-job": {"namespace": "default"},
+                "import-job": {"namespace": "production"},
+            }
+        }
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == 2
+
+    def test_native_value_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native_value returns 0 when coordinator has no data."""
+        mock_coordinator.data = None
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == 0
+
+    def test_native_value_empty_jobs(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native_value returns 0 when no jobs exist."""
+        mock_coordinator.data = {"jobs": {}}
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == 0
+
+
+class TestKubernetesJobSensor:
+    """Test individual Job status sensors."""
+
+    def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
+        return KubernetesJobSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "backup-job",
+            "default",
+        )
+
+    def test_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor name, unique_id, icon, and state class."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        assert sensor.name == "backup-job"
+        assert sensor.unique_id == "test_entry_id_job_default_backup-job"
+        assert sensor.native_unit_of_measurement is None
+        assert sensor.icon == "mdi:briefcase-outline"
+        assert sensor.state_class is None
+
+    def test_device_info_uses_namespace_device(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor is attached to the namespace device."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
+
+    def test_native_value_complete(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Complete' when succeeded >= completions."""
+        mock_coordinator.get_job_data = MagicMock(
+            return_value={
+                "completions": 1,
+                "succeeded": 1,
+                "active": 0,
+                "failed": 0,
+                "namespace": "default",
+                "start_time": "2024-01-01T00:00:00Z",
+                "completion_time": "2024-01-01T00:05:00Z",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Complete"
+
+    def test_native_value_running(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Running' when active > 0 and not yet complete."""
+        mock_coordinator.get_job_data = MagicMock(
+            return_value={
+                "completions": 3,
+                "succeeded": 1,
+                "active": 1,
+                "failed": 0,
+                "namespace": "default",
+                "start_time": "2024-01-01T00:00:00Z",
+                "completion_time": None,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Running"
+
+    def test_native_value_failed(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Failed' when failed > 0 and not running or complete."""
+        mock_coordinator.get_job_data = MagicMock(
+            return_value={
+                "completions": 1,
+                "succeeded": 0,
+                "active": 0,
+                "failed": 3,
+                "namespace": "default",
+                "start_time": "2024-01-01T00:00:00Z",
+                "completion_time": None,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Failed"
+
+    def test_native_value_unknown_no_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Unknown' when coordinator returns no data for the job."""
+        mock_coordinator.get_job_data = MagicMock(return_value=None)
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Unknown"
+
+    def test_native_value_unknown_pending(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Unknown' when job has no active, succeeded, or failed pods."""
+        mock_coordinator.get_job_data = MagicMock(
+            return_value={
+                "completions": 1,
+                "succeeded": 0,
+                "active": 0,
+                "failed": 0,
+                "namespace": "default",
+                "start_time": None,
+                "completion_time": None,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Unknown"
+
+    def test_complete_takes_priority_over_failed(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Complete' takes priority when succeeded >= completions even if failed > 0."""
+        mock_coordinator.get_job_data = MagicMock(
+            return_value={
+                "completions": 1,
+                "succeeded": 1,
+                "active": 0,
+                "failed": 2,
+                "namespace": "default",
+                "start_time": "2024-01-01T00:00:00Z",
+                "completion_time": "2024-01-01T00:10:00Z",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Complete"
+
+    def test_extra_state_attributes(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra_state_attributes returns all expected fields."""
+        job_data = {
+            "namespace": "default",
+            "completions": 3,
+            "succeeded": 2,
+            "failed": 1,
+            "active": 0,
+            "start_time": "2024-01-01T00:00:00Z",
+            "completion_time": None,
+        }
+        mock_coordinator.get_job_data = MagicMock(return_value=job_data)
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["namespace"] == "default"
+        assert attrs["completions"] == 3
+        assert attrs["succeeded"] == 2
+        assert attrs["failed"] == 1
+        assert attrs["active"] == 0
+        assert attrs["start_time"] == "2024-01-01T00:00:00Z"
+        assert attrs["completion_time"] is None
+        assert attrs[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_JOB
+
+    def test_extra_state_attributes_no_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra_state_attributes returns empty dict when no data."""
+        mock_coordinator.get_job_data = MagicMock(return_value=None)
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.extra_state_attributes == {}
+
+
+class TestDiscoverJobSensors:
+    """Test the _discover_new_job_sensors function."""
+
+    def test_discovers_sensor_for_new_job(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that a new sensor is created for a job not yet in the registry."""
+        mock_coordinator.data = {
+            "jobs": {
+                "backup-job": {
+                    "namespace": "default",
+                    "completions": 1,
+                    "succeeded": 0,
+                    "active": 1,
+                    "failed": 0,
+                    "start_time": None,
+                    "completion_time": None,
+                }
+            }
+        }
+        new_sensors = _discover_new_job_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert len(new_sensors) == 1
+        assert isinstance(new_sensors[0], KubernetesJobSensor)
+        assert new_sensors[0].job_name == "backup-job"
+        assert new_sensors[0].namespace == "default"
+
+    def test_skips_existing_sensor(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that existing sensors are not duplicated."""
+        mock_coordinator.data = {
+            "jobs": {
+                "backup-job": {
+                    "namespace": "default",
+                    "completions": 1,
+                    "succeeded": 1,
+                    "active": 0,
+                    "failed": 0,
+                    "start_time": None,
+                    "completion_time": None,
+                }
+            }
+        }
+        existing_uid = "test_entry_id_job_default_backup-job"
+        new_sensors = _discover_new_job_sensors(
+            mock_coordinator, mock_client, mock_config_entry, {existing_uid}
+        )
+        assert new_sensors == []
+
+    def test_discovers_multiple_jobs(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test discovery of multiple new job sensors."""
+        mock_coordinator.data = {
+            "jobs": {
+                "backup-job": {
+                    "namespace": "default",
+                    "completions": 1,
+                    "succeeded": 0,
+                    "active": 1,
+                    "failed": 0,
+                    "start_time": None,
+                    "completion_time": None,
+                },
+                "import-job": {
+                    "namespace": "production",
+                    "completions": 1,
+                    "succeeded": 0,
+                    "active": 0,
+                    "failed": 1,
+                    "start_time": None,
+                    "completion_time": None,
+                },
+            }
+        }
+        new_sensors = _discover_new_job_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert len(new_sensors) == 2
+
+    def test_returns_empty_when_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when coordinator has no data."""
+        mock_coordinator.data = None
+        new_sensors = _discover_new_job_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert new_sensors == []
+
+    def test_returns_empty_when_no_jobs(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when there are no jobs."""
+        mock_coordinator.data = {"jobs": {}}
+        new_sensors = _discover_new_job_sensors(
             mock_coordinator, mock_client, mock_config_entry, set()
         )
         assert new_sensors == []

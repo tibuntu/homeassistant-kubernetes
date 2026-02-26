@@ -2688,6 +2688,175 @@ class KubernetesClient:
             "creation_timestamp": metadata.get("creationTimestamp"),
         }
 
+    # Job methods
+    async def get_jobs_count(self) -> int:
+        """Get the count of Jobs in the cluster."""
+        try:
+            if self.monitor_all_namespaces:
+                return await self._get_jobs_count_all_namespaces_aiohttp()
+            else:
+                return await self._get_jobs_count_aiohttp()
+        except Exception as ex:
+            self._log_error("get_jobs_count", ex)
+            return 0
+
+    async def _get_jobs_count_aiohttp(self) -> int:
+        """Get Jobs count using aiohttp for configured namespaces."""
+        total_count = 0
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/jobs"
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        ssl=False,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            total_count += len(data.get("items", []))
+                        else:
+                            _LOGGER.warning(
+                                "Failed to get Jobs count for namespace %s: HTTP %d",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get jobs count failed for namespace %s: %s",
+                        namespace,
+                        ex,
+                    )
+        return total_count
+
+    async def _get_jobs_count_all_namespaces_aiohttp(self) -> int:
+        """Get Jobs count using aiohttp for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/jobs"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    ssl=False,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return len(data.get("items", []))
+                    else:
+                        _LOGGER.error(
+                            "Failed to get Jobs count via aiohttp: HTTP %d",
+                            response.status,
+                        )
+                        return 0
+        except Exception as ex:
+            self._log_error("_get_jobs_count_all_namespaces_aiohttp", ex)
+            return 0
+
+    async def get_jobs(self) -> list[dict[str, Any]]:
+        """Get detailed information about Jobs in the cluster."""
+        try:
+            if self.monitor_all_namespaces:
+                return await self._get_jobs_all_namespaces_aiohttp()
+            else:
+                return await self._get_jobs_aiohttp()
+        except Exception as ex:
+            self._log_error("get_jobs", ex)
+            return []
+
+    async def _get_jobs_aiohttp(self) -> list[dict[str, Any]]:
+        """Get Jobs using aiohttp for configured namespaces."""
+        all_jobs: list[dict[str, Any]] = []
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
+        async with aiohttp.ClientSession() as session:
+            for namespace in self.namespaces:
+                try:
+                    url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/jobs"
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        ssl=self.verify_ssl,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            all_jobs.extend(
+                                self._format_job_from_dict(item)
+                                for item in data.get("items", [])
+                            )
+                        else:
+                            _LOGGER.warning(
+                                "Failed to get Jobs for namespace %s: HTTP %d",
+                                namespace,
+                                response.status,
+                            )
+                except Exception as ex:
+                    _LOGGER.warning(
+                        "aiohttp get jobs failed for namespace %s: %s", namespace, ex
+                    )
+        return all_jobs
+
+    async def _get_jobs_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
+        """Get Jobs using aiohttp for all namespaces."""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/jobs"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return [
+                            self._format_job_from_dict(item)
+                            for item in data.get("items", [])
+                        ]
+                    else:
+                        _LOGGER.error(
+                            "Failed to get Jobs via aiohttp: HTTP %d", response.status
+                        )
+                        return []
+        except Exception as ex:
+            self._log_error("_get_jobs_all_namespaces_aiohttp", ex)
+            return []
+
+    def _format_job_from_dict(self, job_dict: dict[str, Any]) -> dict[str, Any]:
+        """Format a Job API response dict to the internal representation."""
+        metadata = job_dict.get("metadata", {})
+        spec = job_dict.get("spec", {})
+        status = job_dict.get("status", {})
+
+        return {
+            "name": metadata.get("name", ""),
+            "namespace": metadata.get("namespace", ""),
+            "completions": spec.get("completions", 1),
+            "succeeded": status.get("succeeded", 0),
+            "failed": status.get("failed", 0),
+            "active": status.get("active", 0),
+            "start_time": status.get("startTime"),
+            "completion_time": status.get("completionTime"),
+            "uid": metadata.get("uid", ""),
+            "creation_timestamp": metadata.get("creationTimestamp"),
+        }
+
     async def trigger_cronjob(
         self, cronjob_name: str, namespace: str | None = None
     ) -> dict[str, Any]:

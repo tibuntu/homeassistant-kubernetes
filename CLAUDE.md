@@ -59,9 +59,9 @@ KubernetesClient (API calls) → KubernetesDataCoordinator (polling/caching) →
 
 - **`kubernetes_client.py`** — Async wrapper around the k8s Python client. Fetches deployments, statefulsets, daemonsets, cronjobs, pods, nodes. Handles SSL, auth, namespace filtering, and error deduplication (5-min cooldown).
 - **`coordinator.py`** — Extends HA's `DataUpdateCoordinator`. Polls the cluster on an interval, aggregates all resources into lookup dicts, handles orphaned device cleanup.
-- **`sensor.py`** — Aggregate count sensors (pods, nodes, deployments, etc.) and per-resource sensors (individual node/pod metrics).
+- **`sensor.py`** — Aggregate count sensors (pods, nodes, deployments, cronjobs, jobs, etc.) and per-resource sensors (individual node/pod/cronjob/job metrics).
 - **`switch.py`** — Scale control for Deployments/StatefulSets (on=running, off=scaled to 0) and CronJob suspension. Includes verification timeouts and cooldowns.
-- **`binary_sensor.py`** — Cluster health connectivity indicator.
+- **`binary_sensor.py`** — Cluster health connectivity indicator and per-node condition binary sensors (MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable).
 - **`services.py`** — Three HA services: `scale_workload`, `start_workload`, `stop_workload`. Support targeting multiple entities.
 - **`device.py`** — Device registry management. Two grouping modes: `namespace` (entities grouped by namespace) or `cluster` (all under one device).
 - **`config_flow.py`** — UI configuration flow. Validates cluster connectivity. Lazy-imports kubernetes to handle missing dependency gracefully.

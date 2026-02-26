@@ -46,10 +46,12 @@ def mock_client():
     client.get_statefulsets = AsyncMock(return_value=[])
     client.get_daemonsets = AsyncMock(return_value=[])
     client.get_cronjobs = AsyncMock(return_value=[])
+    client.get_jobs = AsyncMock(return_value=[])
     client.get_deployments_count = AsyncMock(return_value=0)
     client.get_statefulsets_count = AsyncMock(return_value=0)
     client.get_daemonsets_count = AsyncMock(return_value=0)
     client.get_cronjobs_count = AsyncMock(return_value=0)
+    client.get_jobs_count = AsyncMock(return_value=0)
     client.get_pods_count = AsyncMock(return_value=0)
     client.get_pods = AsyncMock(return_value=[])
     client.get_nodes_count = AsyncMock(return_value=0)
@@ -157,6 +159,7 @@ class TestKubernetesDataCoordinator:
         assert "deployments" in result
         assert "statefulsets" in result
         assert "cronjobs" in result
+        assert "jobs" in result
         assert "nodes" in result
         assert "pods_count" in result
         assert "nodes_count" in result
@@ -225,6 +228,7 @@ class TestKubernetesDataCoordinator:
         assert result["deployments"] == {}
         assert result["statefulsets"] == {}
         assert result["cronjobs"] == {}
+        assert result["jobs"] == {}
         assert result["pods_count"] == 0
         assert result["nodes_count"] == 0
 

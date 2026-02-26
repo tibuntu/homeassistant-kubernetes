@@ -50,11 +50,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("Updating Kubernetes data for coordinator")
 
-            # Fetch deployments, statefulsets, daemonsets, cronjobs, pods count, nodes count, and detailed nodes info
+            # Fetch deployments, statefulsets, daemonsets, cronjobs, jobs, pods count, nodes count, and detailed nodes info
             deployments = await self.client.get_deployments()
             statefulsets = await self.client.get_statefulsets()
             daemonsets = await self.client.get_daemonsets()
             cronjobs = await self.client.get_cronjobs()
+            jobs = await self.client.get_jobs()
             pods_count = await self.client.get_pods_count()
             nodes_count = await self.client.get_nodes_count()
 
@@ -87,6 +88,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     daemonset["name"]: daemonset for daemonset in daemonsets
                 },
                 "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
+                "jobs": {job["name"]: job for job in jobs},
                 "nodes": {node["name"]: node for node in nodes},
                 "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                 "pods_count": pods_count,
@@ -95,11 +97,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             }
 
             _LOGGER.debug(
-                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d pods (detailed: %d), %d nodes (detailed: %d)",
+                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d jobs, %d pods (detailed: %d), %d nodes (detailed: %d)",
                 len(deployments),
                 len(statefulsets),
                 len(daemonsets),
                 len(cronjobs),
+                len(jobs),
                 pods_count,
                 len(pods),
                 nodes_count,
@@ -144,6 +147,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "cronjobs" not in self.data:
             return None
         return self.data["cronjobs"].get(cronjob_name)
+
+    def get_job_data(self, job_name: str) -> dict[str, Any] | None:
+        """Get job data by name."""
+        if not self.data or "jobs" not in self.data:
+            return None
+        return self.data["jobs"].get(job_name)
 
     def get_node_data(self, node_name: str) -> dict[str, Any] | None:
         """Get node data by name."""
@@ -287,6 +296,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         "Detected cronjob sensor format - cronjob_name: %s",
                         resource_name,
                     )
+                elif len(parts) >= 3 and parts[0] == "job":
+                    # Job sensor format: job_{namespace}_{job_name}
+                    resource_type = "job"
+                    resource_name = "_".join(parts[2:])  # Everything after namespace
+                    _LOGGER.debug(
+                        "Detected job sensor format - job_name: %s",
+                        resource_name,
+                    )
                 elif len(parts) >= 3 and parts[0] == "pod":
                     # Pod format: pod_{namespace}_{pod_name}
                     resource_type = "pod"
@@ -343,6 +360,13 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         should_remove = True
                         _LOGGER.info(
                             "CronJob %s no longer exists, marking entity for removal",
+                            resource_name,
+                        )
+                elif resource_type in ("job", "jobs"):
+                    if resource_name not in current_data.get("jobs", {}):
+                        should_remove = True
+                        _LOGGER.info(
+                            "Job %s no longer exists, marking entity for removal",
                             resource_name,
                         )
                 elif resource_type in ("node", "nodes"):
