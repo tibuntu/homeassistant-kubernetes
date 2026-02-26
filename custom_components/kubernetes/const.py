@@ -42,6 +42,7 @@ SENSOR_TYPE_POD = "pod"
 SENSOR_TYPE_NODES = "nodes"
 SENSOR_TYPE_DEPLOYMENTS = "deployments"
 SENSOR_TYPE_STATEFULSETS = "statefulsets"
+SENSOR_TYPE_CRONJOB = "cronjob"
 SENSOR_TYPE_CRONJOBS = "cronjobs"
 
 # Binary sensor types

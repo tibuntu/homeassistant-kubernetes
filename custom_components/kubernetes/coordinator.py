@@ -279,6 +279,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug(
                         "Detected node entity format - node_name: %s", resource_name
                     )
+                elif len(parts) >= 3 and parts[0] == "cronjob":
+                    # CronJob sensor format: cronjob_{namespace}_{cronjob_name}
+                    resource_type = "cronjob"
+                    resource_name = "_".join(parts[2:])  # Everything after namespace
+                    _LOGGER.debug(
+                        "Detected cronjob sensor format - cronjob_name: %s",
+                        resource_name,
+                    )
                 elif len(parts) >= 3 and parts[0] == "pod":
                     # Pod format: pod_{namespace}_{pod_name}
                     resource_type = "pod"

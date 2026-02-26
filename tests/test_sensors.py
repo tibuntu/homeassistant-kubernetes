@@ -27,6 +27,7 @@ from custom_components.kubernetes.const import (
     WORKLOAD_TYPE_POD,
 )
 from custom_components.kubernetes.sensor import (
+    KubernetesCronJobSensor,
     KubernetesCronJobsSensor,
     KubernetesDaemonSetSensor,
     KubernetesDaemonSetsSensor,
@@ -38,6 +39,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesStatefulSetsSensor,
     KubernetesWorkloadMetricSensor,
     KubernetesWorkloadStatusSensor,
+    _discover_new_cronjob_sensors,
     _discover_new_daemonset_sensors,
     _discover_new_workload_metric_sensors,
     _discover_new_workload_status_sensors,
@@ -2231,6 +2233,272 @@ class TestDiscoverWorkloadStatusSensors:
         """Test that an empty list is returned when coordinator has no data."""
         mock_coordinator.data = None
         new_sensors = _discover_new_workload_status_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert new_sensors == []
+
+
+class TestKubernetesCronJobSensor:
+    """Test individual CronJob status sensors."""
+
+    def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
+        return KubernetesCronJobSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "nightly-backup",
+            "default",
+        )
+
+    def test_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor name, unique_id, icon, and state class."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        assert sensor.name == "nightly-backup"
+        assert sensor.unique_id == "test_entry_id_cronjob_default_nightly-backup"
+        assert sensor.native_unit_of_measurement is None
+        assert sensor.icon == "mdi:clock-outline"
+        assert sensor.state_class is None
+
+    def test_device_info_uses_namespace_device(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor is attached to the namespace device."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
+
+    def test_native_value_scheduled(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Scheduled' when not suspended and no active jobs."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": False,
+                "active_jobs_count": 0,
+                "schedule": "0 2 * * *",
+                "namespace": "default",
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Scheduled"
+
+    def test_native_value_active(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Active' when not suspended and active_jobs_count > 0."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": False,
+                "active_jobs_count": 2,
+                "schedule": "0 2 * * *",
+                "namespace": "default",
+                "last_schedule_time": "2024-01-01T02:00:00Z",
+                "next_schedule_time": "2024-01-02T02:00:00Z",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Active"
+
+    def test_native_value_suspended_bool(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Suspended' when suspend is boolean True."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": True,
+                "active_jobs_count": 0,
+                "schedule": "0 2 * * *",
+                "namespace": "default",
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Suspended"
+
+    def test_native_value_suspended_string(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Suspended' when suspend is string 'true'."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": "true",
+                "active_jobs_count": 0,
+                "schedule": "0 2 * * *",
+                "namespace": "default",
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Suspended"
+
+    def test_native_value_unknown_no_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Unknown' when coordinator returns no data for the cronjob."""
+        mock_coordinator.get_cronjob_data = MagicMock(return_value=None)
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Unknown"
+
+    def test_suspended_takes_priority_over_active(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test 'Suspended' is returned even when active_jobs_count > 0."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": True,
+                "active_jobs_count": 1,
+                "schedule": "0 2 * * *",
+                "namespace": "default",
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Suspended"
+
+    def test_extra_state_attributes(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes contain all required fields."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": False,
+                "active_jobs_count": 1,
+                "schedule": "0 2 * * *",
+                "namespace": "default",
+                "last_schedule_time": "2024-01-01T02:00:00Z",
+                "next_schedule_time": "2024-01-02T02:00:00Z",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["namespace"] == "default"
+        assert attrs["schedule"] == "0 2 * * *"
+        assert attrs["last_schedule_time"] == "2024-01-01T02:00:00Z"
+        assert attrs["next_schedule_time"] == "2024-01-02T02:00:00Z"
+        assert attrs["active_jobs_count"] == 1
+        assert attrs["workload_type"] == "CronJob"
+
+    def test_extra_state_attributes_no_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes return empty dict when no data."""
+        mock_coordinator.get_cronjob_data = MagicMock(return_value=None)
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.extra_state_attributes == {}
+
+
+class TestDiscoverCronJobSensors:
+    """Tests for the _discover_new_cronjob_sensors helper."""
+
+    def test_discovers_sensor_for_new_cronjob(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that a sensor is created for a new cronjob."""
+        mock_coordinator.data = {
+            "cronjobs": {
+                "nightly-backup": {
+                    "name": "nightly-backup",
+                    "namespace": "default",
+                    "schedule": "0 2 * * *",
+                    "suspend": False,
+                    "active_jobs_count": 0,
+                    "last_schedule_time": None,
+                    "next_schedule_time": None,
+                }
+            }
+        }
+        new_sensors = _discover_new_cronjob_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        assert len(new_sensors) == 1
+        assert (
+            new_sensors[0].unique_id == "test_entry_id_cronjob_default_nightly-backup"
+        )
+        assert new_sensors[0].namespace == "default"
+
+    def test_skips_existing_sensor(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an already-registered sensor is not duplicated."""
+        mock_coordinator.data = {
+            "cronjobs": {
+                "nightly-backup": {
+                    "name": "nightly-backup",
+                    "namespace": "default",
+                    "schedule": "0 2 * * *",
+                    "suspend": False,
+                    "active_jobs_count": 0,
+                    "last_schedule_time": None,
+                    "next_schedule_time": None,
+                }
+            }
+        }
+        existing_ids = {"test_entry_id_cronjob_default_nightly-backup"}
+        new_sensors = _discover_new_cronjob_sensors(
+            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+        assert new_sensors == []
+
+    def test_discovers_multiple_cronjobs(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test discovery of multiple CronJobs across namespaces."""
+        mock_coordinator.data = {
+            "cronjobs": {
+                "nightly-backup": {
+                    "name": "nightly-backup",
+                    "namespace": "default",
+                    "schedule": "0 2 * * *",
+                    "suspend": False,
+                    "active_jobs_count": 0,
+                    "last_schedule_time": None,
+                    "next_schedule_time": None,
+                },
+                "weekly-report": {
+                    "name": "weekly-report",
+                    "namespace": "production",
+                    "schedule": "0 9 * * 1",
+                    "suspend": False,
+                    "active_jobs_count": 0,
+                    "last_schedule_time": None,
+                    "next_schedule_time": None,
+                },
+            }
+        }
+        new_sensors = _discover_new_cronjob_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert len(new_sensors) == 2
+
+    def test_returns_empty_when_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when coordinator has no data."""
+        mock_coordinator.data = None
+        new_sensors = _discover_new_cronjob_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert new_sensors == []
+
+    def test_returns_empty_when_no_cronjobs(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when there are no cronjobs."""
+        mock_coordinator.data = {"cronjobs": {}}
+        new_sensors = _discover_new_cronjob_sensors(
             mock_coordinator, mock_client, mock_config_entry, set()
         )
         assert new_sensors == []

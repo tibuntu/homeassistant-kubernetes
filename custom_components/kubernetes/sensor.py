@@ -12,7 +12,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
-from .const import ATTR_WORKLOAD_TYPE, DOMAIN, WORKLOAD_TYPE_POD
+from .const import ATTR_WORKLOAD_TYPE, DOMAIN, WORKLOAD_TYPE_CRONJOB, WORKLOAD_TYPE_POD
 from .coordinator import KubernetesDataCoordinator
 from .device import get_cluster_device_info, get_namespace_device_info
 
@@ -145,6 +145,18 @@ async def async_setup_entry(
                     )
                     metric_sensors_created += 1
 
+        # Create individual sensors for each CronJob
+        cronjob_sensors_created = 0
+        for cronjob_name, cronjob_data in coordinator.data.get("cronjobs", {}).items():
+            namespace = cronjob_data.get("namespace", "default")
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+            sensors.append(
+                KubernetesCronJobSensor(
+                    coordinator, client, config_entry, cronjob_name, namespace
+                )
+            )
+            cronjob_sensors_created += 1
+
         async_add_entities(sensors)
 
         # Store the add_entities callback for dynamic entity management
@@ -170,13 +182,14 @@ async def async_setup_entry(
         coordinator.async_add_listener(_async_add_new_entities)
 
         _LOGGER.debug(
-            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d daemonset sensors, %d status sensors, %d metric sensors)",
+            "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d daemonset sensors, %d status sensors, %d metric sensors, %d cronjob sensors)",
             len(sensors),
             node_sensors_created,
             pod_sensors_created,
             daemonset_sensors_created,
             status_sensors_created,
             metric_sensors_created,
+            cronjob_sensors_created,
         )
     except Exception as ex:
         _LOGGER.error("Failed to set up Kubernetes sensors: %s", ex)
@@ -318,6 +331,28 @@ def _discover_new_workload_metric_sensors(
     return new_entities
 
 
+def _discover_new_cronjob_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesCronJobSensor]:
+    """Discover new individual CronJob sensors."""
+    new_entities = []
+    if coordinator.data and "cronjobs" in coordinator.data:
+        for cronjob_name, cronjob_data in coordinator.data["cronjobs"].items():
+            namespace = cronjob_data.get("namespace", "default")
+            unique_id = f"{config_entry.entry_id}_cronjob_{namespace}_{cronjob_name}"
+            if unique_id not in existing_unique_ids:
+                _LOGGER.info("Adding new cronjob sensor for: %s", cronjob_name)
+                new_entities.append(
+                    KubernetesCronJobSensor(
+                        coordinator, client, config_entry, cronjob_name, namespace
+                    )
+                )
+    return new_entities
+
+
 async def _async_discover_and_add_new_sensors(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -392,6 +427,15 @@ async def _async_discover_and_add_new_sensors(
         for namespace in metric_namespaces:
             await get_or_create_namespace_device(hass, config_entry, namespace)
         new_entities.extend(metric_sensors)
+
+        # Discover new cronjob sensors
+        cronjob_sensors = _discover_new_cronjob_sensors(
+            coordinator, client, config_entry, existing_unique_ids
+        )
+        cronjob_namespaces = {s.namespace for s in cronjob_sensors}
+        for namespace in cronjob_namespaces:
+            await get_or_create_namespace_device(hass, config_entry, namespace)
+        new_entities.extend(cronjob_sensors)
 
         # Add new entities if any were found
         if new_entities:
@@ -1045,4 +1089,70 @@ class KubernetesDaemonSetSensor(KubernetesBaseSensor):
             "current": daemonset_data.get("current_number_scheduled", 0),
             "ready": daemonset_data.get("number_ready", 0),
             "available": daemonset_data.get("number_available", 0),
+        }
+
+
+class KubernetesCronJobSensor(KubernetesBaseSensor):
+    """Sensor for an individual Kubernetes CronJob."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client: Any,
+        config_entry: ConfigEntry,
+        cronjob_name: str,
+        namespace: str,
+    ) -> None:
+        """Initialize the CronJob sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.cronjob_name = cronjob_name
+        self.namespace = namespace
+        self._attr_name = cronjob_name
+        self._attr_unique_id = (
+            f"{config_entry.entry_id}_cronjob_{namespace}_{cronjob_name}"
+        )
+        self._attr_native_unit_of_measurement = None
+        self._attr_icon = "mdi:clock-outline"
+        self._attr_state_class = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_namespace_device_info(self.config_entry, self.namespace)
+
+    @property
+    def native_value(self) -> str:
+        """Return the status of the CronJob."""
+        cronjob_data = self.coordinator.get_cronjob_data(self.cronjob_name)
+        if cronjob_data is None:
+            return "Unknown"
+
+        suspend_value = cronjob_data.get("suspend", False)
+        if isinstance(suspend_value, bool):
+            is_suspended = suspend_value
+        elif isinstance(suspend_value, str):
+            is_suspended = suspend_value.lower() in ("true", "1", "yes", "on")
+        else:
+            is_suspended = False
+
+        if is_suspended:
+            return "Suspended"
+        if cronjob_data.get("active_jobs_count", 0) > 0:
+            return "Active"
+        return "Scheduled"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes for the CronJob."""
+        cronjob_data = self.coordinator.get_cronjob_data(self.cronjob_name)
+        if not cronjob_data:
+            return {}
+
+        return {
+            "namespace": cronjob_data.get("namespace", self.namespace),
+            "schedule": cronjob_data.get("schedule", "N/A"),
+            "last_schedule_time": cronjob_data.get("last_schedule_time"),
+            "next_schedule_time": cronjob_data.get("next_schedule_time"),
+            "active_jobs_count": cronjob_data.get("active_jobs_count", 0),
+            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
         }
