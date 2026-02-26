@@ -24,6 +24,12 @@
       "groupName": "kubernetes"
     },
     {
+      "matchPackageNames": ["ruff", "astral-sh/ruff-pre-commit"],
+      "groupName": "ruff",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps"
+    },
+    {
       "matchManagers": ["pre-commit"],
       "groupName": "pre-commit hooks",
       "semanticCommitType": "build",
