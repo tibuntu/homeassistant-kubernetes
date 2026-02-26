@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.8.0...v0.9.0) (2026-02-26)
+
+
+### Features
+
+* add individual CronJob status sensors ([f37814a](https://github.com/tibuntu/homeassistant-kubernetes/commit/f37814a386a1607738e41df8cdb3eecb70c49939)), closes [#99](https://github.com/tibuntu/homeassistant-kubernetes/issues/99)
+* add Kubernetes Jobs monitoring ([543384f](https://github.com/tibuntu/homeassistant-kubernetes/commit/543384f64cf4dcf37e22ad45d6930d515c9b6e0c)), closes [#100](https://github.com/tibuntu/homeassistant-kubernetes/issues/100)
+* add node condition binary sensors ([2c35999](https://github.com/tibuntu/homeassistant-kubernetes/commit/2c359991149268b23696ce5a03cbf119d4b70c6e)), closes [#101](https://github.com/tibuntu/homeassistant-kubernetes/issues/101)
+
+
+### Other
+
+* boost coverage to 80% threshold ([e7bef57](https://github.com/tibuntu/homeassistant-kubernetes/commit/e7bef5783c7b26ba06bbfb734938106eb3e0dc97))
+* **deps:** fix pre-commit hook grouping for ruff, mypy and bandit ([a4808cd](https://github.com/tibuntu/homeassistant-kubernetes/commit/a4808cdd589f27064496f9d2d3d9d1ddaaf8aa97))
+* **deps:** group ruff pip and pre-commit updates together ([725faa9](https://github.com/tibuntu/homeassistant-kubernetes/commit/725faa99248712dd965bc4ea7ba66d36153cd1f1))
+* **deps:** update dependency bandit to v1.9.4 ([#103](https://github.com/tibuntu/homeassistant-kubernetes/issues/103)) ([6a654be](https://github.com/tibuntu/homeassistant-kubernetes/commit/6a654be8ffc6dc7c0377335080e1e2f7bc24824f))
+* **deps:** update dependency ruff to v0.15.3 ([54a6431](https://github.com/tibuntu/homeassistant-kubernetes/commit/54a643114d4236f1249bfa0b82b129049c798c4f))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.15.3 ([#106](https://github.com/tibuntu/homeassistant-kubernetes/issues/106)) ([b9bb934](https://github.com/tibuntu/homeassistant-kubernetes/commit/b9bb9341376e820eca8d287c47523add8a9be434))
+* **deps:** update pre-commit hook pycqa/bandit to v1.9.4 ([#104](https://github.com/tibuntu/homeassistant-kubernetes/issues/104)) ([74af939](https://github.com/tibuntu/homeassistant-kubernetes/commit/74af939ec371cda5ca138079714748c74c0b11a5))
+* **docs:** migrate from mkdocs to zensical ([6d28093](https://github.com/tibuntu/homeassistant-kubernetes/commit/6d2809302e41d3215262630b648ec69e0287ca0e))
+
 ## [0.8.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.7.2...v0.8.0) (2026-02-22)
 
 
