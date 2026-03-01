@@ -2,128 +2,119 @@
 
 This document provides a comprehensive reference for the Role-Based Access Control (RBAC) permissions required by the Home Assistant Kubernetes Integration.
 
-## Overview
+## Quick Start
 
-The integration requires specific Kubernetes RBAC permissions to monitor cluster resources and control workloads. This document explains each permission, why it's needed, and provides alternatives for different security scenarios.
+The `manifests/` directory contains two ready-to-apply sets of Kubernetes manifests. Pick the one that matches your requirements and apply it:
+
+```bash
+# Full permissions — monitoring + control (switches) + Watch API
+kubectl apply -f manifests/full/
+
+# Minimal permissions — read-only sensors only
+kubectl apply -f manifests/minimal/
+```
+
+Both sets create the same `ServiceAccount` and `ClusterRoleBinding` in the `homeassistant` namespace. Adjust the namespace in `serviceaccount.yaml` and `clusterrolebinding.yaml` if your Home Assistant pod runs elsewhere.
+
+## Manifest Sets
+
+### `manifests/full/` — Recommended
+
+Enables all integration features:
+
+- Sensors and binary sensors (monitoring)
+- Switches (deployment / statefulset scaling, CronJob suspension)
+- Experimental Watch API (real-time updates via `?watch=true`)
+- Legacy API compatibility (Kubernetes < 1.16)
+
+### `manifests/minimal/`
+
+Read-only access to every resource the integration monitors. No write permissions.
+
+**Limitations:**
+
+- No switches (scaling or CronJob control)
+- No Watch API support (`watch` verb not granted)
+- Sensors and binary sensors only
 
 ## Complete Permission Matrix
 
 ### Core API Group (`""`)
 
-| Resource | Verbs | Required | Purpose | Impact if Missing |
-|----------|-------|----------|---------|-------------------|
-| **pods** | `get`, `list`, `watch` | ✅ | Monitor pod counts and status | No pod count sensors |
-| **nodes** | `get`, `list`, `watch` | ✅ | Monitor cluster node count | No node count sensors |
-| **namespaces** | `get`, `list` | ✅ | List available namespaces for monitoring | Cannot discover namespaces |
-| **events** | `get`, `list`, `watch` | ⚠️ | Enhanced troubleshooting and monitoring | Reduced troubleshooting capability |
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **pods** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Pod count and status sensors |
+| **nodes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Node count sensors and binary sensors |
+| **namespaces** | `get`, `list` | ✅ | ✅ | Namespace discovery |
+| **events** | `get`, `list`, `watch` | ✅ | ❌ | Enhanced troubleshooting |
 
 ### Apps API Group (`apps`)
 
-| Resource | Verbs | Required | Purpose | Impact if Missing |
-|----------|-------|----------|---------|-------------------|
-| **deployments** | `get`, `list`, `watch` | ✅ | Monitor deployment status and count | No deployment sensors or switches |
-| **deployments/scale** | `get`, `patch`, `update`, `create`, `delete` | ✅ | Scale deployments up/down | Cannot control deployment switches |
-| **replicasets** | `get`, `list`, `watch` | ⚠️ | Monitor underlying deployment resources | Limited deployment status accuracy |
-| **statefulsets** | `get`, `list`, `watch` | ✅ | Monitor statefulset status and count | No statefulset sensors or switches |
-| **statefulsets/scale** | `get`, `patch`, `update`, `create`, `delete` | ✅ | Scale statefulsets up/down | Cannot control statefulset switches |
-| **statefulsets/status** | `get`, `patch`, `update` | ⚠️ | Accurate statefulset state reporting | Potential state inconsistencies |
-| **daemonsets** | `get`, `list`, `watch` | ✅ | Monitor daemonset status and count | No daemonset sensors |
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **deployments** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Deployment sensors |
+| **deployments/scale** | `get`, `patch`, `update` | ✅ | ❌ | Deployment switches |
+| **replicasets** | `get`, `list`, `watch` | ✅ | ❌ | Deployment status accuracy |
+| **statefulsets** | `get`, `list`, `watch` | ✅ | `get`, `list` only | StatefulSet sensors |
+| **statefulsets/scale** | `get`, `patch`, `update` | ✅ | ❌ | StatefulSet switches |
+| **statefulsets/status** | `get`, `patch`, `update` | ✅ | ❌ | Accurate StatefulSet state |
+| **daemonsets** | `get`, `list`, `watch` | ✅ | `get`, `list` only | DaemonSet sensors |
 
 ### Batch API Group (`batch`)
 
-| Resource | Verbs | Required | Purpose | Impact if Missing |
-|----------|-------|----------|---------|-------------------|
-| **cronjobs** | `get`, `list`, `watch` | ✅ | Monitor CronJob status and count | No CronJob sensors or switches |
-| **cronjobs/status** | `get`, `patch`, `update` | ⚠️ | Accurate CronJob state reporting | Potential state inconsistencies |
-| **jobs** | `get`, `list`, `watch`, `create` | ✅ | Trigger CronJobs and monitor job status | Cannot trigger CronJobs or monitor job execution |
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **cronjobs** | `get`, `list`, `watch` | ✅ | `get`, `list` only | CronJob sensors |
+| **cronjobs/status** | `get`, `patch`, `update` | ✅ | ❌ | CronJob switch (suspend/resume) |
+| **jobs** | `get`, `list`, `watch`, `create` | ✅ | `get`, `list` only | Job sensors + CronJob triggering |
 
 ### Extensions API Group (`extensions`)
 
-| Resource | Verbs | Required | Purpose | Impact if Missing |
-|----------|-------|----------|---------|-------------------|
-| **deployments** | `get`, `list`, `watch` | ⚠️ | Legacy API compatibility (K8s < 1.16) | May not work on older clusters |
-| **deployments/scale** | `get`, `patch`, `update`, `create`, `delete` | ⚠️ | Legacy scaling API compatibility | May not work on older clusters |
-| **replicasets** | `get`, `list`, `watch` | ⚠️ | Legacy API compatibility | May not work on older clusters |
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **deployments** | `get`, `list`, `watch` | ✅ | ❌ | Legacy API (K8s < 1.16) |
+| **deployments/scale** | `get`, `patch`, `update` | ✅ | ❌ | Legacy scaling (K8s < 1.16) |
+| **replicasets** | `get`, `list`, `watch` | ✅ | ❌ | Legacy API (K8s < 1.16) |
 
-**Legend:**
+## Security Considerations
 
-- ✅ **Required**: Essential for core functionality
-- ⚠️ **Recommended**: Enhances functionality or compatibility
-- ❌ **Not Used**: Not required by the integration
+### Principle of Least Privilege
 
-## Permission Scenarios
+1. **Start Minimal**: Begin with `manifests/minimal/` and move to `manifests/full/` only when you need switches or the Watch API
+2. **Namespace Scoping**: For multi-tenant clusters see the namespace-scoped example below
+3. **Regular Audits**: Review permissions periodically
+4. **Monitor Usage**: Track which permissions are actually used
 
-### Scenario 1: Full Cluster Access (Recommended)
+### Risk Assessment
 
-**Use Case**: Complete monitoring and control across all namespaces
-**Security Level**: Medium - requires cluster-wide permissions
+| Manifest Set | Risk Level | Capabilities |
+|--------------|------------|--------------|
+| **full** | Medium | Complete monitoring + control + Watch API |
+| **minimal** | Low | Read-only sensors and binary sensors only |
+
+### Token Security
+
+1. **Secure Storage**: Store tokens securely in Home Assistant secrets
+2. **Regular Rotation**: Rotate service account tokens periodically
+3. **Audit Logs**: Monitor Kubernetes audit logs for token usage
+4. **Network Security**: Ensure secure communication to the API server
+
+## Namespace-Scoped Example
+
+If you want to restrict access to specific namespaces instead of cluster-wide, use a `Role` + `RoleBinding` per namespace and a minimal `ClusterRole` for cluster-scoped resources (nodes, namespaces):
 
 ```yaml
+# Cluster-scoped read access for nodes and namespace discovery
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: homeassistant-kubernetes-integration
-rules:
-# Monitoring permissions
-- apiGroups: [""]
-  resources: ["pods", "nodes", "namespaces", "events"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs", "jobs"]
-  verbs: ["get", "list", "watch"]
-# Control permissions
-- apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale", "statefulsets/status"]
-  verbs: ["get", "patch", "update", "create", "delete"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs", "cronjobs/status", "jobs"]
-  verbs: ["get", "patch", "update", "create"]
-# Legacy compatibility
-- apiGroups: ["extensions"]
-  resources: ["deployments", "deployments/scale", "replicasets"]
-  verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
-```
-
-### Scenario 2: Read-Only Monitoring
-
-**Use Case**: Monitoring only, no control capabilities
-**Security Level**: High - no write permissions
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: homeassistant-kubernetes-integration-readonly
+  name: homeassistant-kubernetes-integration-cluster
 rules:
 - apiGroups: [""]
-  resources: ["pods", "nodes", "namespaces", "events"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs", "jobs"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["extensions"]
-  resources: ["deployments", "replicasets"]
-  verbs: ["get", "list", "watch"]
-```
-
-**Limitations:**
-
-- No switches will be created
-- No scaling services available
-- Sensors and binary sensors only
-
-### Scenario 3: Namespace-Scoped
-
-**Use Case**: Limit access to specific namespaces
-**Security Level**: High - limited scope
-
-```yaml
+  resources: ["nodes", "namespaces"]
+  verbs: ["get", "list"]
+---
+# Namespace-scoped role (repeat per monitored namespace)
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -137,84 +128,12 @@ rules:
   resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale", "statefulsets/status"]
-  verbs: ["get", "patch", "update", "create", "delete"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs", "jobs"]
-  verbs: ["get", "list", "watch"]
+  resources: ["deployments/scale", "statefulsets/scale", "statefulsets/status"]
+  verbs: ["get", "patch", "update"]
 - apiGroups: ["batch"]
   resources: ["cronjobs", "cronjobs/status", "jobs"]
-  verbs: ["get", "patch", "update", "create"]
+  verbs: ["get", "list", "watch", "patch", "update", "create"]
 ```
-
-**Additional Requirements:**
-
-```yaml
-# Minimal cluster permissions for basic functionality
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: homeassistant-kubernetes-integration-minimal
-rules:
-- apiGroups: [""]
-  resources: ["nodes", "namespaces"]
-  verbs: ["get", "list"]
-```
-
-### Scenario 4: Minimal Permissions
-
-**Use Case**: Absolute minimum permissions for basic operation
-**Security Level**: Very High - extremely limited
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: homeassistant-kubernetes-integration-minimal
-rules:
-# Core monitoring only
-- apiGroups: [""]
-  resources: ["pods", "nodes"]
-  verbs: ["get", "list"]
-- apiGroups: ["apps"]
-  resources: ["deployments", "statefulsets", "daemonsets"]
-  verbs: ["get", "list"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs"]
-  verbs: ["get", "list"]
-```
-
-**Severe Limitations:**
-
-- No real-time updates (no `watch`)
-- No control capabilities
-- No event access for troubleshooting
-- Limited sensor accuracy
-
-## Security Considerations
-
-### Principle of Least Privilege
-
-1. **Start Minimal**: Begin with read-only permissions and add as needed
-2. **Namespace Scoping**: Use namespace-scoped roles when possible
-3. **Regular Audits**: Review permissions periodically
-4. **Monitor Usage**: Track which permissions are actually used
-
-### Risk Assessment
-
-| Permission Level | Risk Level | Capabilities | Recommendation |
-|------------------|------------|--------------|----------------|
-| **Full Cluster** | Medium | Complete monitoring + control | Production clusters with dedicated SA |
-| **Read-Only** | Low | Monitoring only | Security-sensitive environments |
-| **Namespace-Scoped** | Low-Medium | Limited scope control | Multi-tenant clusters |
-| **Minimal** | Very Low | Basic monitoring | Proof of concept only |
-
-### Token Security
-
-1. **Secure Storage**: Store tokens securely in Home Assistant secrets
-2. **Regular Rotation**: Rotate service account tokens periodically
-3. **Audit Logs**: Monitor Kubernetes audit logs for token usage
-4. **Network Security**: Ensure secure communication to API server
 
 ## Troubleshooting RBAC Issues
 
@@ -226,7 +145,7 @@ rules:
 # Verify pod permissions
 kubectl auth can-i list pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
-# Fix: Ensure pods are included in the role with 'get', 'list' verbs
+# Fix: Apply manifests/minimal/ or manifests/full/
 ```
 
 #### 2. "Forbidden: User cannot patch deployments/scale"
@@ -235,16 +154,20 @@ kubectl auth can-i list pods --as=system:serviceaccount:homeassistant:homeassist
 # Verify scaling permissions
 kubectl auth can-i patch deployments/scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
-# Fix: Ensure deployments/scale subresource has 'patch' verb
+# Fix: Apply manifests/full/ — the minimal set does not grant write permissions
 ```
 
-#### 3. "Real-time updates not working"
+#### 3. "Real-time updates not working" / Watch API failing
+
+The experimental **Watch API** (enabled via **Configure → Enable Watch API**) uses long-lived HTTP streams and requires the `watch` verb on all monitored resources. The `manifests/minimal/` set does **not** include `watch` verbs.
 
 ```bash
-# Verify watch permissions
+# Verify watch permissions for key resources
 kubectl auth can-i watch pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i watch deployments --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i watch nodes --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
-# Fix: Add 'watch' verb to relevant resources
+# Fix: Apply manifests/full/ to grant the watch verb
 ```
 
 #### 4. "Forbidden: User cannot list cronjobs"
@@ -253,7 +176,7 @@ kubectl auth can-i watch pods --as=system:serviceaccount:homeassistant:homeassis
 # Verify CronJob permissions
 kubectl auth can-i list cronjobs --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
-# Fix: Ensure cronjobs are included in the role with 'get', 'list' verbs
+# Fix: Apply manifests/minimal/ or manifests/full/
 ```
 
 #### 5. "Forbidden: User cannot create jobs"
@@ -262,7 +185,7 @@ kubectl auth can-i list cronjobs --as=system:serviceaccount:homeassistant:homeas
 # Verify job creation permissions (needed for CronJob triggering)
 kubectl auth can-i create jobs --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
-# Fix: Ensure jobs resource has 'create' verb in batch API group
+# Fix: Apply manifests/full/ — the minimal set only grants get and list on jobs
 ```
 
 ### Diagnostic Commands
@@ -271,7 +194,7 @@ kubectl auth can-i create jobs --as=system:serviceaccount:homeassistant:homeassi
 # Check all permissions for the service account
 kubectl auth can-i --list --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
-# Test specific resource access
+# Test specific resource access in a namespace
 kubectl auth can-i get deployments --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration -n your-namespace
 
 # View effective permissions
@@ -281,10 +204,10 @@ kubectl describe clusterrole homeassistant-kubernetes-integration
 
 ## Best Practices
 
-1. **Version Control**: Keep RBAC manifests in version control
-2. **Documentation**: Document why each permission is needed
-3. **Testing**: Test permissions in non-production first
-4. **Monitoring**: Monitor for permission denied errors
-5. **Automation**: Use infrastructure as code for RBAC setup
+1. **Version Control**: Keep RBAC manifests in version control alongside your Home Assistant configuration
+2. **Start Minimal**: Use `manifests/minimal/` first and upgrade to `manifests/full/` only when needed
+3. **Testing**: Test permissions in a non-production cluster first
+4. **Monitoring**: Watch for permission-denied errors in the Home Assistant logs
+5. **Automation**: Manage manifests with your existing GitOps / infrastructure-as-code tooling
 
-For implementation details, see the [Service Account Setup Guide](SETUP.md).
+For setup instructions, see the [Service Account Setup Guide](SETUP.md).

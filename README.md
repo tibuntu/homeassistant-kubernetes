@@ -32,15 +32,17 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 1. **Configure Kubernetes Service Account**:
 
    ```bash
-   # Apply the required manifests
-   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/serviceaccount.yaml
-   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/clusterrole.yaml
-   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/clusterrolebinding.yaml
-   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/serviceaccount-token-secret.yaml
+   # Apply the full RBAC manifests (monitoring + switches + Watch API)
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/serviceaccount.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/clusterrole.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/clusterrolebinding.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/serviceaccount-token-secret.yaml
 
    # Extract the token
    kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -o jsonpath='{.data.token}' | base64 -d
    ```
+
+   > **Minimal permissions:** If you only need read-only sensors and binary sensors (no switches, no Watch API), use the `manifests/minimal/` variants instead — replace `full` with `minimal` in the URLs above. See the [RBAC Reference Guide](docs/RBAC.md) for a full comparison.
 
 2. **Add Integration**:
    - Go to **Settings → Devices & Services**

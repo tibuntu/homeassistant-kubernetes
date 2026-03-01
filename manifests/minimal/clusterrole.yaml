@@ -1,0 +1,25 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homeassistant-kubernetes-integration
+  labels:
+    app.kubernetes.io/name: homeassistant-kubernetes-integration
+    app.kubernetes.io/component: rbac
+  annotations:
+    # Minimal read-only permissions for sensors and binary sensors only.
+    # Switches (deployment/statefulset scaling, cronjob suspension) and the
+    # experimental Watch API are NOT available with this role.
+    # For full functionality use manifests/full/ instead.
+rules:
+  # Core resources — monitoring only
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "namespaces"]
+    verbs: ["get", "list"]
+  # Apps resources — monitoring only
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  # Batch resources — monitoring only
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["get", "list"]
