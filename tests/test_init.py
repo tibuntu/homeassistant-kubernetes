@@ -55,6 +55,7 @@ def mock_config_entry():
         "namespace": "default",
         "verify_ssl": True,
     }
+    entry.options = {}
     entry.state = MagicMock()
     return entry
 
@@ -171,8 +172,12 @@ async def test_async_setup_entry_second_entry(mock_hass, mock_config_entry):
 
 async def test_async_unload_entry_success(mock_hass, mock_config_entry):
     """Test successful async_unload_entry."""
-    # Set up data structure
-    mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
+    # Set up data structure with coordinator for watch task cleanup
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_stop_watch_tasks = AsyncMock()
+    mock_hass.data[DOMAIN] = {
+        mock_config_entry.entry_id: {"coordinator": mock_coordinator}
+    }
 
     with patch(
         "custom_components.kubernetes.async_unload_services"
@@ -187,9 +192,11 @@ async def test_async_unload_entry_success(mock_hass, mock_config_entry):
 
 async def test_async_unload_entry_multiple_entries(mock_hass, mock_config_entry):
     """Test async_unload_entry when multiple entries exist."""
-    # Set up data structure with multiple entries
+    # Set up data structure with multiple entries (coordinator needed for watch task cleanup)
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_stop_watch_tasks = AsyncMock()
     mock_hass.data[DOMAIN] = {
-        mock_config_entry.entry_id: {},
+        mock_config_entry.entry_id: {"coordinator": mock_coordinator},
         "another_entry": {},
     }
 
@@ -207,8 +214,12 @@ async def test_async_unload_entry_multiple_entries(mock_hass, mock_config_entry)
 
 async def test_async_unload_entry_platform_unload_fails(mock_hass, mock_config_entry):
     """Test async_unload_entry when platform unload fails."""
-    # Set up data structure
-    mock_hass.data[DOMAIN] = {mock_config_entry.entry_id: {}}
+    # Set up data structure with coordinator for watch task cleanup
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_stop_watch_tasks = AsyncMock()
+    mock_hass.data[DOMAIN] = {
+        mock_config_entry.entry_id: {"coordinator": mock_coordinator}
+    }
 
     # Mock platform unload to fail
     mock_hass.config_entries.async_unload_platforms.return_value = False
