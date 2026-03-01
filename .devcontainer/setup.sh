@@ -102,7 +102,8 @@ cat > /config/start_ha.sh << 'EOF'
 #!/bin/bash
 echo "🏠 Starting Home Assistant..."
 cd /config
-hass --config /config --log-file /config/logs/home-assistant.log
+hass --config /config --log-file /config/logs/home-assistant.log &
+disown
 EOF
 
 chmod +x /config/start_ha.sh
@@ -118,6 +119,13 @@ echo "✅ Home Assistant restarted"
 EOF
 
 chmod +x /config/restart_ha.sh
+
+cat > /config/logs.sh << 'EOF'
+#!/bin/bash
+tail -f /config/logs/home-assistant.log
+EOF
+
+chmod +x /config/logs.sh
 
 cat > /config/test_integration.py << 'EOF'
 #!/usr/bin/env python3
@@ -259,21 +267,12 @@ except Exception as e:
 echo ""
 echo "✅ Development environment setup complete!"
 echo ""
-echo "🏠 Starting Home Assistant automatically..."
-/config/start_ha.sh &
-
-# Wait a moment for Home Assistant to start
-sleep 3
-
+echo "Home Assistant will start automatically on every container start."
 echo ""
-echo "🎉 Home Assistant is starting up!"
-echo ""
-echo "📖 Home Assistant will be available at http://localhost:8123"
-echo "📁 Your integration is linked to /config/custom_components/kubernetes"
+echo "📖 Home Assistant: http://localhost:8123"
+echo "📁 Integration linked to /config/custom_components/kubernetes"
 echo ""
 echo "🔄 To restart Home Assistant: /config/restart_ha.sh"
 echo "🧪 To test integration: python /config/test_integration.py"
 echo "🔍 To check setup: /config/check_setup.sh"
 echo "📊 To view logs: tail -f /config/logs/home-assistant.log"
-echo ""
-echo "⏳ Please wait a minute for Home Assistant to fully start up..."

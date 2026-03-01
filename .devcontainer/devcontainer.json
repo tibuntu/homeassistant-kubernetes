@@ -17,6 +17,7 @@
     "source=homeassistant-config,target=/config,type=volume"
   ],
   "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postStartCommand": "/config/start_ha.sh",
   "remoteUser": "vscode",
   "runArgs": [
     "--network=host"
