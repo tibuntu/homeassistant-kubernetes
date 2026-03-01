@@ -1,12 +1,21 @@
 # Home Assistant Development Configuration for Kubernetes Integration
 
-# Enable selective default configuration (excluding media components that need ffmpeg)
-# Comment out default_config and use specific components instead
-default_config:
-
-# Disable components that require additional system dependencies
-# stream:  # Requires ffmpeg
-# camera:  # Often requires ffmpeg for recordings
+# Use individual components instead of default_config to avoid pulling in
+# go2rtc, stream, bluetooth, usb, and other integrations that require
+# system binaries or hardware not available in the devcontainer.
+config:
+frontend:
+person:
+sun:
+system_health:
+logbook:
+history:
+my:
+energy:
+map:
+media_source:
+webhook:
+tag:
 
 # Enhanced logging for development
 logger:
@@ -15,9 +24,6 @@ logger:
     custom_components.kubernetes: debug
     homeassistant.components.kubernetes: debug
     kubernetes: debug
-
-# Frontend (no special development options needed)
-# frontend: # Already included above
 
 # HTTP configuration for development
 http:
@@ -28,9 +34,6 @@ http:
 
 # File editor for easy configuration changes
 file_editor:
-
-# System health already included above
-# system_health:
 
 # Configuration for the Kubernetes integration
 # Note: Use the UI to configure the integration instead of YAML
