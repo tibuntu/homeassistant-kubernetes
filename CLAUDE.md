@@ -71,7 +71,7 @@ KubernetesClient.watch_stream() → KubernetesDataCoordinator._run_watch_loop() 
 - **`binary_sensor.py`** — Cluster health connectivity indicator and per-node condition binary sensors (MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable).
 - **`services.py`** — Three HA services: `scale_workload`, `start_workload`, `stop_workload`. Support targeting multiple entities.
 - **`device.py`** — Device registry management. Two grouping modes: `namespace` (entities grouped by namespace) or `cluster` (all under one device).
-- **`config_flow.py`** — UI configuration flow. Validates cluster connectivity. Lazy-imports kubernetes to handle missing dependency gracefully. Also contains `KubernetesOptionsFlow` for configuring the experimental watch API toggle.
+- **`config_flow.py`** — UI configuration flow. Validates cluster connectivity. Lazy-imports kubernetes to handle missing dependency gracefully. Contains `KubernetesOptionsFlow` for configuring the experimental watch API toggle. Also contains a reconfigure flow (`async_step_reconfigure` / `async_step_reconfigure_namespaces`) for modifying existing entries without deleting and re-adding the integration.
 - **`const.py`** — All constants, config keys, defaults, sensor/switch type identifiers. Includes watch-related constants: `CONF_ENABLE_WATCH`, `DEFAULT_WATCH_TIMEOUT_SECONDS`, `DEFAULT_WATCH_RECONNECT_DELAY`, `DEFAULT_FALLBACK_POLL_INTERVAL`.
 
 ### Entity Hierarchy

@@ -42,6 +42,18 @@ The integration uses a two-step configuration process:
    - Select one or more namespaces from the dropdown list
    - You can select multiple namespaces by clicking on them
 
+## Reconfiguring the Integration
+
+To change connection details or settings for an existing integration entry:
+
+1. Go to **Settings → Devices & Services**
+2. Find the Kubernetes integration card
+3. Click the three-dot menu (**...**) and select **Reconfigure**
+4. Update the desired settings (host, port, API token, SSL, namespaces, polling intervals, grouping mode)
+5. If "Monitor All Namespaces" is disabled, you will be prompted to select namespaces in a second step
+
+**Note:** The cluster name cannot be changed during reconfiguration as it serves as the unique identifier for the integration entry. To change the cluster name, remove and re-add the integration.
+
 ## Advanced Configuration
 
 ### Namespace Monitoring

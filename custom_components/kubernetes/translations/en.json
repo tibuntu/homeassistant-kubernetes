@@ -37,6 +37,41 @@
         "data": {
           "namespace": "Select Namespaces"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Kubernetes Connection",
+        "description": "Update your Kubernetes cluster connection details and settings. The cluster name cannot be changed.",
+        "data": {
+          "host": "Cluster API IP address",
+          "port": "Cluster API port",
+          "api_token": "API Token",
+          "ca_cert": "CA Certificate (optional)",
+          "verify_ssl": "Verify SSL",
+          "monitor_all_namespaces": "Monitor All Namespaces",
+          "switch_update_interval": "Switch Update Interval (seconds)",
+          "scale_verification_timeout": "Scale Verification Timeout (seconds)",
+          "scale_cooldown": "Scale Cooldown (seconds)",
+          "device_grouping_mode": "Device Grouping Mode"
+        },
+        "data_description": {
+          "host": "The hostname or IP address of your Kubernetes API server. Do not include the protocol (http:// or https://).",
+          "port": "The port number for the Kubernetes API server.",
+          "api_token": "A valid Kubernetes service account token with appropriate RBAC permissions.",
+          "ca_cert": "Optional path to your cluster's CA certificate file. Leave empty if using standard certificates.",
+          "verify_ssl": "Whether to verify SSL certificates when connecting to the Kubernetes API.",
+          "monitor_all_namespaces": "When enabled, the integration will monitor all namespaces in your cluster. When disabled, you will be prompted to select specific namespaces to monitor.",
+          "switch_update_interval": "How often (in seconds) the integration polls the Kubernetes API to update switch states.",
+          "scale_verification_timeout": "Maximum time (in seconds) to wait for scaling operations to complete before timing out.",
+          "scale_cooldown": "Cooldown period (in seconds) after scaling operations before allowing another scale operation.",
+          "device_grouping_mode": "Choose how entities are organized in Home Assistant."
+        }
+      },
+      "reconfigure_namespaces": {
+        "title": "Select Namespaces to Monitor",
+        "description": "Choose which Kubernetes namespaces you want to monitor. Only resources in the selected namespaces will be monitored.",
+        "data": {
+          "namespace": "Select Namespaces"
+        }
       }
     },
     "error": {
@@ -46,7 +81,8 @@
       "at_least_one_namespace_required": "At least one namespace is required when not monitoring all namespaces"
     },
     "abort": {
-      "already_configured": "Device is already configured"
+      "already_configured": "Device is already configured",
+      "reconfigure_successful": "Configuration updated successfully"
     }
   },
   "options": {

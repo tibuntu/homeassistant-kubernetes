@@ -313,6 +313,238 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             errors=errors,
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration of an existing entry."""
+        errors = {}
+
+        if not _ensure_kubernetes_imported():
+            errors["base"] = "kubernetes_not_installed"
+            _LOGGER.error("Kubernetes package is not installed")
+
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None and KUBERNETES_AVAILABLE:
+            try:
+                await self._test_connection(user_input)
+
+                # Apply defaults for optional fields
+                user_input.setdefault(CONF_PORT, DEFAULT_PORT)
+                user_input.setdefault(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+                user_input.setdefault(
+                    CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
+                )
+                user_input.setdefault(
+                    CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
+                )
+                user_input.setdefault(
+                    CONF_SCALE_VERIFICATION_TIMEOUT,
+                    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+                )
+                user_input.setdefault(CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN)
+                user_input.setdefault(
+                    CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
+                )
+
+                # Inject the immutable cluster_name from the existing entry
+                user_input[CONF_CLUSTER_NAME] = entry.data[CONF_CLUSTER_NAME]
+
+                # Ensure CA cert is explicitly cleared if user removed it
+                if CONF_CA_CERT not in user_input:
+                    user_input[CONF_CA_CERT] = ""
+
+                # Store for potential namespace step
+                self._connection_data = user_input.copy()
+
+                if not user_input.get(
+                    CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
+                ):
+                    return await self.async_step_reconfigure_namespaces()
+
+                # Explicitly clear namespaces so merge overwrites old value
+                user_input[CONF_NAMESPACE] = []
+
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates=user_input,
+                )
+            except AbortFlow:
+                raise
+            except Exception as ex:  # pylint: disable=broad-except
+                _LOGGER.error("Failed to connect to Kubernetes: %s", ex)
+                errors["base"] = "cannot_connect"
+
+        # Build schema pre-filled with current entry data (no cluster_name)
+        current = entry.data
+        schema = {
+            vol.Required(CONF_HOST, default=current.get(CONF_HOST, "")): str,
+            vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): int,
+            vol.Required(CONF_API_TOKEN, default=current.get(CONF_API_TOKEN, "")): str,
+            vol.Optional(
+                CONF_CA_CERT,
+                description={
+                    "suggested_value": current.get(CONF_CA_CERT, ""),
+                },
+            ): str,
+            vol.Optional(
+                CONF_VERIFY_SSL,
+                default=current.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+            ): bool,
+            vol.Optional(
+                CONF_MONITOR_ALL_NAMESPACES,
+                default=current.get(
+                    CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
+                ),
+            ): bool,
+            vol.Optional(
+                CONF_DEVICE_GROUPING_MODE,
+                default=current.get(
+                    CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
+                ),
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        SelectOptionDict(
+                            value=DEVICE_GROUPING_MODE_NAMESPACE,
+                            label="Group by Namespace",
+                        ),
+                        SelectOptionDict(
+                            value=DEVICE_GROUPING_MODE_CLUSTER,
+                            label="Group by Cluster",
+                        ),
+                    ],
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                ),
+            ),
+            vol.Optional(
+                CONF_SWITCH_UPDATE_INTERVAL,
+                default=current.get(
+                    CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
+                ),
+            ): int,
+            vol.Optional(
+                CONF_SCALE_VERIFICATION_TIMEOUT,
+                default=current.get(
+                    CONF_SCALE_VERIFICATION_TIMEOUT,
+                    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+                ),
+            ): int,
+            vol.Optional(
+                CONF_SCALE_COOLDOWN,
+                default=current.get(CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN),
+            ): int,
+        }
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(schema),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure_namespaces(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle namespace selection during reconfigure."""
+        errors: dict[str, str] = {}
+        entry = self._get_reconfigure_entry()
+
+        if user_input is not None:
+            if CONF_NAMESPACE not in user_input or not user_input[CONF_NAMESPACE]:
+                errors[CONF_NAMESPACE] = "at_least_one_namespace_required"
+            else:
+                config_data = {**self._connection_data, **user_input}
+
+                # Ensure namespace is a list
+                if isinstance(config_data[CONF_NAMESPACE], str):
+                    config_data[CONF_NAMESPACE] = [
+                        ns.strip()
+                        for ns in config_data[CONF_NAMESPACE].split(",")
+                        if ns.strip()
+                    ]
+                elif not isinstance(config_data[CONF_NAMESPACE], list):
+                    config_data[CONF_NAMESPACE] = [DEFAULT_NAMESPACE]
+
+                config_data[CONF_NAMESPACE] = [
+                    ns for ns in config_data[CONF_NAMESPACE] if ns
+                ]
+
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates=config_data,
+                )
+
+        # Fetch namespaces, pre-select currently configured ones
+        namespace_options: list[Any] = []
+        schema: dict[Any, Any]
+        current_namespaces = entry.data.get(CONF_NAMESPACE, [])
+        if isinstance(current_namespaces, str):
+            current_namespaces = [current_namespaces]
+        default_selected: list[str] = (
+            list(current_namespaces) if current_namespaces else []
+        )
+
+        try:
+            _LOGGER.info(
+                "Fetching namespaces from cluster at %s:%s...",
+                self._connection_data.get(CONF_HOST),
+                self._connection_data.get(CONF_PORT, DEFAULT_PORT),
+            )
+            fetched_namespaces = await self._fetch_namespaces(self._connection_data)
+
+            if fetched_namespaces:
+                _LOGGER.info(
+                    "Successfully fetched %d namespaces from cluster",
+                    len(fetched_namespaces),
+                )
+                namespace_options = [
+                    SelectOptionDict(value=ns, label=ns) for ns in fetched_namespaces
+                ]
+                # Filter default_selected to only include still-valid namespaces
+                default_selected = [
+                    ns for ns in default_selected if ns in fetched_namespaces
+                ]
+            else:
+                _LOGGER.warning(
+                    "No namespaces were fetched from cluster. "
+                    "This might indicate a connection or permissions issue."
+                )
+                errors["base"] = "cannot_fetch_namespaces"
+        except Exception as ex:
+            _LOGGER.error("Exception while fetching namespaces: %s", ex, exc_info=True)
+            errors["base"] = "cannot_fetch_namespaces"
+
+        if not namespace_options:
+            schema = {
+                vol.Required(
+                    CONF_NAMESPACE,
+                    default=(
+                        ", ".join(default_selected)
+                        if default_selected
+                        else DEFAULT_NAMESPACE
+                    ),
+                ): str,
+            }
+        else:
+            schema = {
+                vol.Optional(
+                    CONF_NAMESPACE,
+                    default=default_selected,
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=namespace_options,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        multiple=True,
+                    ),
+                ),
+            }
+
+        return self.async_show_form(
+            step_id="reconfigure_namespaces",
+            data_schema=vol.Schema(schema),
+            errors=errors,
+        )
+
     async def _test_connection(self, user_input: dict[str, Any]) -> None:  # noqa: C901
         """Test the connection to Kubernetes."""
         import asyncio
