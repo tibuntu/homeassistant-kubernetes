@@ -2,6 +2,9 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: homeassistant-kubernetes-integration
+  labels:
+    app.kubernetes.io/name: homeassistant-kubernetes-integration
+    app.kubernetes.io/component: rbac
 subjects:
   - kind: ServiceAccount
     name: homeassistant-kubernetes-integration

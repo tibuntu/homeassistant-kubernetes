@@ -62,3 +62,19 @@ For self-signed certificates or custom CA:
 - **Switch Update Interval**: Lower values provide more responsive switches but increase API load
 - **Scale Verification Timeout**: Increase for slow clusters or large deployments
 - **Scale Cooldown**: Prevents rapid successive scaling operations
+
+## Options (post-setup)
+
+After the integration is set up, you can configure additional options by clicking **Configure** on the integration card in **Settings → Devices & Services**.
+
+### Watch API (Experimental)
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| **Enable Watch API (Experimental)** | Use the Kubernetes watch API for real-time updates instead of polling | `false` |
+
+When enabled, the integration establishes long-lived HTTP streams to the Kubernetes API server and receives `ADDED`, `MODIFIED`, and `DELETED` events as they happen. Pod and resource state changes typically appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback.
+
+> ⚠️ **Experimental**: The watch feature requires the service account to have `watch` permission on all monitored resources. See the [RBAC guide](RBAC.md) for details.
+
+Changing this option reloads the integration automatically.

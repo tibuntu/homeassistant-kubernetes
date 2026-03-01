@@ -1,0 +1,45 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homeassistant-kubernetes-integration
+  labels:
+    app.kubernetes.io/name: homeassistant-kubernetes-integration
+    app.kubernetes.io/component: rbac
+  annotations:
+    # Full permissions for all integration features:
+    #   - Sensors and binary sensors (monitoring)
+    #   - Switches (deployment/statefulset scaling, cronjob suspension)
+    #   - Experimental Watch API (real-time updates via ?watch=true)
+    #   - Legacy API compatibility (Kubernetes < 1.16)
+    # For a read-only setup use manifests/minimal/ instead.
+rules:
+  # Core resources — monitoring + watch
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "namespaces", "events"]
+    verbs: ["get", "list", "watch"]
+
+  # Apps resources — monitoring + watch
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+
+  # Apps resources — scaling control
+  - apiGroups: ["apps"]
+    resources:
+      - deployments/scale
+      - statefulsets/scale
+      - statefulsets/status
+    verbs: ["get", "patch", "update"]
+
+  # Batch resources — monitoring + watch + cronjob triggering
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "cronjobs/status", "jobs"]
+    verbs: ["get", "list", "watch", "patch", "update", "create"]
+
+  # Legacy API compatibility (Kubernetes < 1.16)
+  - apiGroups: ["extensions"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "patch", "update"]
