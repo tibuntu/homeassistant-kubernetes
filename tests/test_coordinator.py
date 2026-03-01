@@ -1,5 +1,6 @@
 """Tests for the Kubernetes coordinator."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntry
@@ -8,7 +9,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 
+from custom_components.kubernetes.const import (
+    CONF_ENABLE_WATCH,
+    DEFAULT_FALLBACK_POLL_INTERVAL,
+    DEFAULT_SWITCH_UPDATE_INTERVAL,
+)
 from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
+from custom_components.kubernetes.kubernetes_client import ResourceVersionExpired
 
 
 @pytest.fixture
@@ -867,3 +874,397 @@ class TestKubernetesDataCoordinator:
             current_data = {"cronjobs": {}}
             await coordinator._cleanup_orphaned_entities(current_data)
             mock_registry.async_remove.assert_called_once_with("sensor.old_backup")
+
+
+class TestWatchSupport:
+    """Tests for the experimental Kubernetes watch API support."""
+
+    @pytest.fixture
+    def mock_hass(self):
+        """Mock Home Assistant instance."""
+        hass = MagicMock(spec=HomeAssistant)
+        hass.data = {}
+        hass.config = MagicMock()
+        hass.config.config_dir = "/tmp"
+        hass.async_create_background_task = MagicMock(
+            return_value=MagicMock(cancel=MagicMock())
+        )
+        hass.async_create_task = MagicMock()
+        return hass
+
+    @pytest.fixture
+    def mock_config_entry_watch_disabled(self):
+        """Mock config entry with watch disabled (default)."""
+        entry = MagicMock(spec=ConfigEntry)
+        entry.entry_id = "test-entry-id"
+        entry.options = {}  # watch disabled by default
+        entry.data = {
+            CONF_NAME: "Test Cluster",
+            "host": "test-cluster.example.com",
+            "port": 6443,
+            "api_token": "test-token",
+            "switch_update_interval": DEFAULT_SWITCH_UPDATE_INTERVAL,
+        }
+        return entry
+
+    @pytest.fixture
+    def mock_config_entry_watch_enabled(self):
+        """Mock config entry with watch enabled."""
+        entry = MagicMock(spec=ConfigEntry)
+        entry.entry_id = "test-entry-id"
+        entry.options = {CONF_ENABLE_WATCH: True}
+        entry.data = {
+            CONF_NAME: "Test Cluster",
+            "host": "test-cluster.example.com",
+            "port": 6443,
+            "api_token": "test-token",
+        }
+        return entry
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client."""
+        client = MagicMock()
+        client.host = "test-cluster.example.com"
+        client.port = 6443
+        client.monitor_all_namespaces = True
+        client.namespaces = ["default"]
+        client._parse_pod_item = MagicMock(
+            return_value={"name": "pod", "namespace": "default"}
+        )
+        client._parse_node_item = MagicMock(return_value={"name": "node"})
+        client._parse_deployment_item = MagicMock(
+            return_value={"name": "deploy", "namespace": "default"}
+        )
+        client._parse_statefulset_item = MagicMock(
+            return_value={"name": "sts", "namespace": "default"}
+        )
+        client._parse_daemonset_item = MagicMock(
+            return_value={"name": "ds", "namespace": "default"}
+        )
+        client._format_cronjob_from_dict = MagicMock(
+            return_value={"name": "cj", "namespace": "default"}
+        )
+        client._format_job_from_dict = MagicMock(
+            return_value={"name": "job", "namespace": "default"}
+        )
+        client.list_resource_with_version = AsyncMock(return_value=([], "123"))
+        client.watch_stream = MagicMock()
+        return client
+
+    @pytest.fixture
+    def coordinator_watch_disabled(
+        self, mock_hass, mock_config_entry_watch_disabled, mock_client
+    ):
+        """Coordinator with watch disabled."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            return KubernetesDataCoordinator(
+                mock_hass, mock_config_entry_watch_disabled, mock_client
+            )
+
+    @pytest.fixture
+    def coordinator_watch_enabled(
+        self, mock_hass, mock_config_entry_watch_enabled, mock_client
+    ):
+        """Coordinator with watch enabled."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            return KubernetesDataCoordinator(
+                mock_hass, mock_config_entry_watch_enabled, mock_client
+            )
+
+    # ------------------------------------------------------------------
+    # Poll interval tests
+    # ------------------------------------------------------------------
+
+    async def test_coordinator_uses_normal_poll_interval_when_watch_disabled(
+        self, coordinator_watch_disabled
+    ):
+        """Coordinator should use the standard poll interval when watch is disabled."""
+        assert (
+            coordinator_watch_disabled.update_interval.total_seconds()
+            == DEFAULT_SWITCH_UPDATE_INTERVAL
+        )
+
+    async def test_coordinator_uses_fallback_poll_interval_when_watch_enabled(
+        self, coordinator_watch_enabled
+    ):
+        """Coordinator should use the long fallback poll interval when watch is enabled."""
+        assert (
+            coordinator_watch_enabled.update_interval.total_seconds()
+            == DEFAULT_FALLBACK_POLL_INTERVAL
+        )
+
+    # ------------------------------------------------------------------
+    # Task start / stop
+    # ------------------------------------------------------------------
+
+    async def test_async_start_watch_tasks_creates_tasks(
+        self, coordinator_watch_enabled, mock_hass
+    ):
+        """async_start_watch_tasks should create one background task per resource URL."""
+        await coordinator_watch_enabled.async_start_watch_tasks()
+        assert mock_hass.async_create_background_task.called
+        assert len(coordinator_watch_enabled._watch_tasks) > 0
+
+    async def test_async_stop_watch_tasks_cancels_all(
+        self, coordinator_watch_enabled, mock_hass
+    ):
+        """async_stop_watch_tasks should cancel all tasks and clear the list."""
+        mock_task = MagicMock()
+        mock_task.cancel = MagicMock()
+        coordinator_watch_enabled._watch_tasks = [mock_task]
+
+        with patch("asyncio.gather", new=AsyncMock()):
+            await coordinator_watch_enabled.async_stop_watch_tasks()
+
+        mock_task.cancel.assert_called_once()
+        assert coordinator_watch_enabled._watch_tasks == []
+
+    async def test_async_stop_watch_tasks_noop_when_empty(
+        self, coordinator_watch_enabled
+    ):
+        """async_stop_watch_tasks should do nothing if no tasks are running."""
+        # Should not raise
+        await coordinator_watch_enabled.async_stop_watch_tasks()
+
+    # ------------------------------------------------------------------
+    # _apply_watch_event tests
+    # ------------------------------------------------------------------
+
+    async def test_apply_watch_event_noop_when_no_data(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """_apply_watch_event should be safe when coordinator.data is None."""
+        coordinator_watch_enabled.data = None
+        # Should not raise
+        coordinator_watch_enabled._apply_watch_event(
+            "pods",
+            "ADDED",
+            {"metadata": {"name": "x", "namespace": "default"}},
+            mock_client._parse_pod_item,
+        )
+
+    async def test_apply_watch_event_added(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """ADDED event should insert the parsed object into coordinator.data."""
+        coordinator_watch_enabled.data = {
+            "pods": {},
+            "pods_count": 0,
+        }
+        coordinator_watch_enabled.async_update_listeners = MagicMock()
+
+        obj = {
+            "metadata": {
+                "name": "nginx",
+                "namespace": "default",
+                "resourceVersion": "1",
+            }
+        }
+        mock_client._parse_pod_item.return_value = {
+            "name": "nginx",
+            "namespace": "default",
+        }
+
+        coordinator_watch_enabled._apply_watch_event(
+            "pods", "ADDED", obj, mock_client._parse_pod_item
+        )
+
+        assert "default_nginx" in coordinator_watch_enabled.data["pods"]
+        assert coordinator_watch_enabled.data["pods_count"] == 1
+        coordinator_watch_enabled.async_update_listeners.assert_called_once()
+
+    async def test_apply_watch_event_modified(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """MODIFIED event should update an existing entry in coordinator.data."""
+        coordinator_watch_enabled.data = {
+            "pods": {
+                "default_nginx": {
+                    "name": "nginx",
+                    "namespace": "default",
+                    "phase": "Pending",
+                }
+            },
+            "pods_count": 1,
+        }
+        coordinator_watch_enabled.async_update_listeners = MagicMock()
+
+        obj = {
+            "metadata": {
+                "name": "nginx",
+                "namespace": "default",
+                "resourceVersion": "2",
+            }
+        }
+        mock_client._parse_pod_item.return_value = {
+            "name": "nginx",
+            "namespace": "default",
+            "phase": "Running",
+        }
+
+        coordinator_watch_enabled._apply_watch_event(
+            "pods", "MODIFIED", obj, mock_client._parse_pod_item
+        )
+
+        assert (
+            coordinator_watch_enabled.data["pods"]["default_nginx"]["phase"]
+            == "Running"
+        )
+
+    async def test_apply_watch_event_deleted(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """DELETED event should remove the object from coordinator.data."""
+        coordinator_watch_enabled.data = {
+            "pods": {"default_nginx": {"name": "nginx", "namespace": "default"}},
+            "pods_count": 1,
+        }
+        coordinator_watch_enabled.async_update_listeners = MagicMock()
+        coordinator_watch_enabled.hass.async_create_task = MagicMock()
+
+        obj = {
+            "metadata": {
+                "name": "nginx",
+                "namespace": "default",
+                "resourceVersion": "3",
+            }
+        }
+
+        coordinator_watch_enabled._apply_watch_event(
+            "pods", "DELETED", obj, mock_client._parse_pod_item
+        )
+
+        assert "default_nginx" not in coordinator_watch_enabled.data["pods"]
+        assert coordinator_watch_enabled.data["pods_count"] == 0
+        coordinator_watch_enabled.async_update_listeners.assert_called_once()
+
+    async def test_apply_watch_event_nodes_count_synced(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """nodes_count should be updated when node events arrive."""
+        coordinator_watch_enabled.data = {"nodes": {}, "nodes_count": 0}
+        coordinator_watch_enabled.async_update_listeners = MagicMock()
+
+        mock_client._parse_node_item.return_value = {"name": "node1"}
+        obj = {"metadata": {"name": "node1", "resourceVersion": "1"}}
+
+        coordinator_watch_enabled._apply_watch_event(
+            "nodes", "ADDED", obj, mock_client._parse_node_item
+        )
+
+        assert coordinator_watch_enabled.data["nodes_count"] == 1
+
+    # ------------------------------------------------------------------
+    # _run_watch_loop tests
+    # ------------------------------------------------------------------
+
+    async def test_run_watch_loop_handles_cancel(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """CancelledError should exit the loop cleanly."""
+
+        async def _raise_cancel():
+            raise asyncio.CancelledError
+
+        mock_client.list_resource_with_version.side_effect = _raise_cancel
+
+        # Should return without raising
+        await coordinator_watch_enabled._run_watch_loop(
+            "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+        )
+
+    async def test_run_watch_loop_handles_resource_version_expired(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """ResourceVersionExpired during listing should trigger a relist (rv reset to '0')."""
+        call_count = 0
+
+        async def _side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ResourceVersionExpired("gone")
+            # Second call succeeds; stop the loop after
+            coordinator_watch_enabled._watch_stop_event.set()
+            return [], "456"
+
+        mock_client.list_resource_with_version.side_effect = _side_effect
+
+        coordinator_watch_enabled.data = {
+            "pods": {},
+            "pods_count": 0,
+            "nodes": {},
+            "nodes_count": 0,
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "cronjobs": {},
+            "jobs": {},
+        }
+        coordinator_watch_enabled.async_update_listeners = MagicMock()
+
+        await coordinator_watch_enabled._run_watch_loop(
+            "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+        )
+
+        assert call_count == 2
+
+    async def test_run_watch_loop_stops_on_stop_event(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """Setting the stop event after the initial list should exit the loop."""
+        coordinator_watch_enabled.data = {
+            "pods": {},
+            "pods_count": 0,
+        }
+        coordinator_watch_enabled.async_update_listeners = MagicMock()
+
+        async def _stop_after_list(url):
+            coordinator_watch_enabled._watch_stop_event.set()
+            return [], "789"
+
+        mock_client.list_resource_with_version.side_effect = _stop_after_list
+
+        # watch_stream should not be called because stop_event is set before it
+        async def _empty_stream(url, rv):
+            return
+            yield  # make it a generator
+
+        mock_client.watch_stream = _empty_stream
+
+        await coordinator_watch_enabled._run_watch_loop(
+            "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+        )
+
+    async def test_populate_from_list_merges_across_namespaces(
+        self, coordinator_watch_enabled, mock_client
+    ):
+        """_populate_from_list should merge into existing data, not replace it.
+
+        When watch tasks for multiple namespaces both call _populate_from_list
+        for the same resource_type, the second call must not discard the data
+        written by the first.
+        """
+        coordinator_watch_enabled.data = {
+            "pods": {
+                "ns1_existing": {"name": "existing", "namespace": "ns1"},
+            },
+            "pods_count": 1,
+        }
+
+        mock_client._parse_pod_item.return_value = {
+            "name": "new-pod",
+            "namespace": "ns2",
+        }
+
+        coordinator_watch_enabled._populate_from_list(
+            "pods",
+            [{"metadata": {"name": "new-pod", "namespace": "ns2"}}],
+            mock_client._parse_pod_item,
+        )
+
+        # Both namespaces' pods must be present after the merge
+        assert "ns1_existing" in coordinator_watch_enabled.data["pods"]
+        assert "ns2_new-pod" in coordinator_watch_enabled.data["pods"]
+        assert coordinator_watch_enabled.data["pods_count"] == 2

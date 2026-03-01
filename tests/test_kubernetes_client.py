@@ -6,7 +6,10 @@ import aiohttp
 from kubernetes.client import ApiException
 import pytest
 
-from custom_components.kubernetes.kubernetes_client import KubernetesClient
+from custom_components.kubernetes.kubernetes_client import (
+    KubernetesClient,
+    ResourceVersionExpired,
+)
 
 
 @pytest.fixture
@@ -2943,3 +2946,297 @@ class TestGetCronjobsAiohttp:
             result = await mock_client._get_cronjobs_all_namespaces_aiohttp()
 
         assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Watch API tests
+# ---------------------------------------------------------------------------
+
+
+def _make_aiohttp_stream_mock(lines: list[bytes], status: int = 200):
+    """Return a mock aiohttp ClientSession that streams the given byte lines."""
+    mock_response = MagicMock()
+    mock_response.status = status
+    mock_response.raise_for_status = MagicMock()
+
+    async def _async_iter_lines():
+        for line in lines:
+            yield line
+
+    mock_response.content.__aiter__ = _async_iter_lines
+
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.get = MagicMock(return_value=mock_cm)
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    return mock_session
+
+
+class TestListResourceWithVersion:
+    """Tests for KubernetesClient.list_resource_with_version."""
+
+    async def test_returns_items_and_resource_version(self, mock_client):
+        """list_resource_with_version should return (items, resourceVersion)."""
+        payload = {
+            "metadata": {"resourceVersion": "42"},
+            "items": [{"metadata": {"name": "pod1"}}, {"metadata": {"name": "pod2"}}],
+        }
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = AsyncMock(return_value=payload)
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_cm)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            items, rv = await mock_client.list_resource_with_version(
+                "https://host/api/v1/pods"
+            )
+
+        assert rv == "42"
+        assert len(items) == 2
+        assert items[0]["metadata"]["name"] == "pod1"
+
+    async def test_returns_zero_resource_version_when_missing(self, mock_client):
+        """If metadata.resourceVersion is absent, '0' should be returned."""
+        payload = {"metadata": {}, "items": []}
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = AsyncMock(return_value=payload)
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_cm)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            items, rv = await mock_client.list_resource_with_version(
+                "https://host/api/v1/pods"
+            )
+
+        assert rv == "0"
+        assert items == []
+
+
+class TestWatchStream:
+    """Tests for KubernetesClient.watch_stream."""
+
+    async def test_watch_stream_yields_events(self, mock_client):
+        """watch_stream should yield parsed JSON objects from the streaming response."""
+        import json as _json
+
+        events = [
+            {"type": "ADDED", "object": {"metadata": {"name": "pod1"}}},
+            {"type": "MODIFIED", "object": {"metadata": {"name": "pod1"}}},
+        ]
+        lines = [_json.dumps(e).encode() for e in events]
+
+        mock_session = _make_aiohttp_stream_mock(lines)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            collected = []
+            async for event in mock_client.watch_stream(
+                "https://host/api/v1/pods", "0"
+            ):
+                collected.append(event)
+
+        assert len(collected) == 2
+        assert collected[0]["type"] == "ADDED"
+        assert collected[1]["type"] == "MODIFIED"
+
+    async def test_watch_stream_raises_on_410(self, mock_client):
+        """watch_stream should raise ResourceVersionExpired when the server returns 410."""
+        mock_response = MagicMock()
+        mock_response.status = 410
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_cm)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            with pytest.raises(ResourceVersionExpired):
+                async for _ in mock_client.watch_stream(
+                    "https://host/api/v1/pods", "old-rv"
+                ):
+                    pass
+
+    async def test_watch_stream_skips_empty_lines(self, mock_client):
+        """Empty lines in the stream should be silently ignored."""
+        import json as _json
+
+        events = [{"type": "ADDED", "object": {"metadata": {"name": "pod1"}}}]
+        lines = [b"", b"   ", _json.dumps(events[0]).encode(), b""]
+
+        mock_session = _make_aiohttp_stream_mock(lines)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            collected = []
+            async for event in mock_client.watch_stream(
+                "https://host/api/v1/pods", "1"
+            ):
+                collected.append(event)
+
+        assert len(collected) == 1
+
+
+class TestParseHelpers:
+    """Tests for the single-item parse methods used by the watch loop."""
+
+    async def test_parse_pod_item(self, mock_client):
+        """_parse_pod_item should return a dict with standard pod fields."""
+        raw = {
+            "metadata": {
+                "name": "nginx-abc",
+                "namespace": "default",
+                "creationTimestamp": "2024-01-01T00:00:00Z",
+                "labels": {},
+                "ownerReferences": [],
+                "uid": "uid-1",
+            },
+            "spec": {"nodeName": "node1"},
+            "status": {
+                "phase": "Running",
+                "podIP": "10.0.0.1",
+                "containerStatuses": [{"ready": True, "restartCount": 0}],
+            },
+        }
+        result = mock_client._parse_pod_item(raw)
+        assert result is not None
+        assert result["name"] == "nginx-abc"
+        assert result["namespace"] == "default"
+        assert result["phase"] == "Running"
+        assert result["ready_containers"] == 1
+
+    async def test_parse_pod_item_returns_none_for_empty(self, mock_client):
+        """_parse_pod_item should return None for an empty dict."""
+        result = mock_client._parse_pod_item({})
+        assert result is None
+
+    async def test_parse_node_item(self, mock_client):
+        """_parse_node_item should return a dict with standard node fields."""
+        raw = {
+            "metadata": {
+                "name": "worker-1",
+                "creationTimestamp": "2024-01-01T00:00:00Z",
+            },
+            "spec": {},
+            "status": {
+                "conditions": [{"type": "Ready", "status": "True"}],
+                "addresses": [{"type": "InternalIP", "address": "10.0.0.5"}],
+                "capacity": {"memory": "16Gi", "cpu": "4"},
+                "allocatable": {"memory": "14Gi"},
+                "nodeInfo": {
+                    "osImage": "Ubuntu 22.04",
+                    "kernelVersion": "5.15",
+                    "containerRuntimeVersion": "containerd://1.6",
+                    "kubeletVersion": "v1.28",
+                },
+            },
+        }
+        result = mock_client._parse_node_item(raw)
+        assert result is not None
+        assert result["name"] == "worker-1"
+        assert result["status"] == "Ready"
+        assert result["internal_ip"] == "10.0.0.5"
+        assert result["cpu_cores"] == 4
+
+    async def test_parse_node_item_not_ready(self, mock_client):
+        """_parse_node_item should return NotReady when the Ready condition is False."""
+        raw = {
+            "metadata": {
+                "name": "worker-2",
+                "creationTimestamp": "2024-01-01T00:00:00Z",
+            },
+            "spec": {},
+            "status": {
+                "conditions": [{"type": "Ready", "status": "False"}],
+                "addresses": [],
+                "capacity": {"memory": "8Gi", "cpu": "2"},
+                "allocatable": {"memory": "7Gi"},
+                "nodeInfo": {},
+            },
+        }
+        result = mock_client._parse_node_item(raw)
+        assert result is not None
+        assert result["status"] == "NotReady"
+
+    async def test_parse_deployment_item(self, mock_client):
+        """_parse_deployment_item should return a dict with standard deployment fields."""
+        raw = {
+            "metadata": {"name": "nginx", "namespace": "default"},
+            "spec": {"replicas": 3, "selector": {"matchLabels": {"app": "nginx"}}},
+            "status": {"availableReplicas": 3, "readyReplicas": 3},
+        }
+        result = mock_client._parse_deployment_item(raw)
+        assert result is not None
+        assert result["name"] == "nginx"
+        assert result["replicas"] == 3
+        assert result["is_running"] is True
+
+    async def test_parse_statefulset_item(self, mock_client):
+        """_parse_statefulset_item should return a dict with standard statefulset fields."""
+        raw = {
+            "metadata": {"name": "redis", "namespace": "default"},
+            "spec": {"replicas": 1, "selector": {"matchLabels": {"app": "redis"}}},
+            "status": {"availableReplicas": 1, "readyReplicas": 1},
+        }
+        result = mock_client._parse_statefulset_item(raw)
+        assert result is not None
+        assert result["name"] == "redis"
+        assert result["is_running"] is True
+
+    async def test_parse_daemonset_item(self, mock_client):
+        """_parse_daemonset_item should return a dict with standard daemonset fields."""
+        raw = {
+            "metadata": {"name": "fluentd", "namespace": "logging"},
+            "spec": {"selector": {"matchLabels": {"app": "fluentd"}}},
+            "status": {
+                "desiredNumberScheduled": 3,
+                "currentNumberScheduled": 3,
+                "numberReady": 3,
+                "numberAvailable": 3,
+            },
+        }
+        result = mock_client._parse_daemonset_item(raw)
+        assert result is not None
+        assert result["name"] == "fluentd"
+        assert result["number_ready"] == 3
+        assert result["is_running"] is True
