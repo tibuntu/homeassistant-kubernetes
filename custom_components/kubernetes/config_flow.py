@@ -25,6 +25,7 @@ from .const import (  # noqa: E402
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
+    CONF_ENABLE_WATCH,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_SCALE_COOLDOWN,
@@ -33,6 +34,7 @@ from .const import (  # noqa: E402
     CONF_VERIFY_SSL,
     DEFAULT_CLUSTER_NAME,
     DEFAULT_DEVICE_GROUPING_MODE,
+    DEFAULT_ENABLE_WATCH,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
@@ -80,6 +82,14 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
     """Handle a config flow for Kubernetes."""
 
     VERSION = 1
+
+    @staticmethod
+    @config_entries.callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> KubernetesOptionsFlow:
+        """Return the options flow handler."""
+        return KubernetesOptionsFlow()
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -465,3 +475,25 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         except Exception as ex:
             _LOGGER.warning("Failed to fetch namespaces: %s", ex, exc_info=True)
             return []
+
+
+class KubernetesOptionsFlow(config_entries.OptionsFlow):
+    """Handle Kubernetes integration options."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the options form."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current = self.config_entry.options
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_ENABLE_WATCH,
+                    default=current.get(CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH),
+                ): bool,
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

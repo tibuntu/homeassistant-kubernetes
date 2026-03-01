@@ -36,6 +36,13 @@ CONF_SWITCH_UPDATE_INTERVAL = "switch_update_interval"
 CONF_SCALE_VERIFICATION_TIMEOUT = "scale_verification_timeout"
 CONF_SCALE_COOLDOWN = "scale_cooldown"
 
+# Watch API (experimental)
+CONF_ENABLE_WATCH = "enable_watch"
+DEFAULT_ENABLE_WATCH = False
+DEFAULT_WATCH_TIMEOUT_SECONDS = 300  # ?timeoutSeconds for each watch stream
+DEFAULT_WATCH_RECONNECT_DELAY = 5  # initial reconnect backoff in seconds
+DEFAULT_FALLBACK_POLL_INTERVAL = 300  # coordinator poll interval when watch is active
+
 # Sensor types
 SENSOR_TYPE_PODS = "pods"
 SENSOR_TYPE_POD = "pod"

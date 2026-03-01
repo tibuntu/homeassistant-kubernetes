@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncIterator
+import json
 import logging
 import ssl
 import time
@@ -31,9 +33,14 @@ from .const import (
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
     DEFAULT_VERIFY_SSL,
+    DEFAULT_WATCH_TIMEOUT_SECONDS,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class ResourceVersionExpired(Exception):
+    """Raised when Kubernetes returns HTTP 410 for a watch (resourceVersion too old)."""
 
 
 class KubernetesClient:
@@ -500,6 +507,11 @@ class KubernetesClient:
 
         return parsed_pods
 
+    def _parse_pod_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw pod API object into the internal representation."""
+        result = self._parse_pods_data([item])
+        return result[0] if result else None
+
     async def get_nodes_count(self) -> int:
         """Get the count of nodes in the cluster."""
         try:
@@ -819,6 +831,134 @@ class KubernetesClient:
         except (ValueError, IndexError):
             _LOGGER.warning("Failed to parse CPU string: %s", cpu_str)
             return 0.0
+
+    def _parse_node_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw node API object into the internal representation."""
+        try:
+            metadata = item.get("metadata", {})
+            status = item.get("status", {})
+            spec = item.get("spec", {})
+
+            node_name = metadata.get("name", "unknown")
+            conditions = status.get("conditions", [])
+            ready_condition: dict[str, Any] = next(
+                (c for c in conditions if c.get("type") == "Ready"), {}
+            )
+            node_status = (
+                "Ready" if ready_condition.get("status") == "True" else "NotReady"
+            )
+
+            pressure_map = {
+                c.get("type"): c.get("status") == "True"
+                for c in conditions
+                if c.get("type")
+                in (
+                    "MemoryPressure",
+                    "DiskPressure",
+                    "PIDPressure",
+                    "NetworkUnavailable",
+                )
+            }
+
+            addresses = status.get("addresses", [])
+            internal_ip = next(
+                (a["address"] for a in addresses if a.get("type") == "InternalIP"),
+                "N/A",
+            )
+            external_ip = next(
+                (a["address"] for a in addresses if a.get("type") == "ExternalIP"),
+                "N/A",
+            )
+
+            capacity = status.get("capacity", {})
+            allocatable = status.get("allocatable", {})
+            node_info = status.get("nodeInfo", {})
+
+            return {
+                "name": node_name,
+                "status": node_status,
+                "internal_ip": internal_ip,
+                "external_ip": external_ip,
+                "memory_capacity_gib": self._parse_memory(
+                    capacity.get("memory", "0Ki"), "GiB"
+                ),
+                "memory_allocatable_gib": self._parse_memory(
+                    allocatable.get("memory", "0Ki"), "GiB"
+                ),
+                "cpu_cores": self._parse_cpu(capacity.get("cpu", "0"), "cores"),
+                "os_image": node_info.get("osImage", "N/A"),
+                "kernel_version": node_info.get("kernelVersion", "N/A"),
+                "container_runtime": node_info.get("containerRuntimeVersion", "N/A"),
+                "kubelet_version": node_info.get("kubeletVersion", "N/A"),
+                "schedulable": not spec.get("unschedulable", False),
+                "creation_timestamp": metadata.get("creationTimestamp", "N/A"),
+                "memory_pressure": pressure_map.get("MemoryPressure", False),
+                "disk_pressure": pressure_map.get("DiskPressure", False),
+                "pid_pressure": pressure_map.get("PIDPressure", False),
+                "network_unavailable": pressure_map.get("NetworkUnavailable", False),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse node item: %s", ex)
+            return None
+
+    def _parse_deployment_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw deployment API object into the internal representation."""
+        try:
+            return {
+                "name": item["metadata"]["name"],
+                "namespace": item["metadata"]["namespace"],
+                "replicas": item["spec"].get("replicas", 0),
+                "available_replicas": item["status"].get("availableReplicas", 0),
+                "ready_replicas": item["status"].get("readyReplicas", 0),
+                "is_running": item["status"].get("availableReplicas", 0) > 0,
+                "selector": item.get("spec", {})
+                .get("selector", {})
+                .get("matchLabels", {}),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse deployment item: %s", ex)
+            return None
+
+    def _parse_statefulset_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw StatefulSet API object into the internal representation."""
+        try:
+            return {
+                "name": item["metadata"]["name"],
+                "namespace": item["metadata"]["namespace"],
+                "replicas": item["spec"].get("replicas", 0),
+                "available_replicas": item["status"].get("availableReplicas", 0),
+                "ready_replicas": item["status"].get("readyReplicas", 0),
+                "is_running": item["status"].get("availableReplicas", 0) > 0,
+                "selector": item.get("spec", {})
+                .get("selector", {})
+                .get("matchLabels", {}),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse statefulset item: %s", ex)
+            return None
+
+    def _parse_daemonset_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw DaemonSet API object into the internal representation."""
+        try:
+            return {
+                "name": item["metadata"]["name"],
+                "namespace": item["metadata"]["namespace"],
+                "desired_number_scheduled": item["status"].get(
+                    "desiredNumberScheduled", 0
+                ),
+                "current_number_scheduled": item["status"].get(
+                    "currentNumberScheduled", 0
+                ),
+                "number_ready": item["status"].get("numberReady", 0),
+                "number_available": item["status"].get("numberAvailable", 0),
+                "is_running": item["status"].get("numberReady", 0) > 0,
+                "selector": item.get("spec", {})
+                .get("selector", {})
+                .get("matchLabels", {}),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse daemonset item: %s", ex)
+            return None
 
     async def get_deployments_count(self) -> int:
         """Get the count of deployments in the namespace(s)."""
@@ -3094,3 +3234,76 @@ class KubernetesClient:
                     "cronjob_name": cronjob_name,
                     "namespace": target_namespace,
                 }
+
+    # -------------------------------------------------------------------------
+    # Watch API helpers (used by the coordinator watch loop)
+    # -------------------------------------------------------------------------
+
+    async def list_resource_with_version(
+        self, url: str
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Fetch a resource list and return (items, resourceVersion).
+
+        The resourceVersion from the list metadata is used to start a watch
+        that picks up only events that occurred after the list was fetched.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url,
+                headers=headers,
+                ssl=self.verify_ssl,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+                resource_version = (
+                    data.get("metadata", {}).get("resourceVersion", "0") or "0"
+                )
+                return data.get("items", []), resource_version
+
+    async def watch_stream(
+        self, url: str, resource_version: str
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Async generator that yields raw watch events from the Kubernetes API.
+
+        The caller is responsible for handling ResourceVersionExpired (HTTP 410)
+        by re-listing and restarting the watch.
+        """
+        params = {
+            "watch": "true",
+            "resourceVersion": resource_version,
+            "timeoutSeconds": str(DEFAULT_WATCH_TIMEOUT_SECONDS),
+            "allowWatchBookmarks": "true",
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url,
+                params=params,
+                headers=headers,
+                ssl=self.verify_ssl,
+                timeout=aiohttp.ClientTimeout(
+                    total=None,
+                    connect=10,
+                    # Guard against stale TCP connections that never close.
+                    # The server's ?timeoutSeconds forces a clean close within
+                    # DEFAULT_WATCH_TIMEOUT_SECONDS; give a 30-second grace period.
+                    sock_read=DEFAULT_WATCH_TIMEOUT_SECONDS + 30,
+                ),
+            ) as resp:
+                if resp.status == 410:
+                    raise ResourceVersionExpired(
+                        f"Watch resource version {resource_version!r} expired (HTTP 410)"
+                    )
+                resp.raise_for_status()
+                async for raw_line in resp.content:
+                    line = raw_line.strip()
+                    if line:
+                        yield json.loads(line)
