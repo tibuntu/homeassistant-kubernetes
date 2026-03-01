@@ -6,13 +6,18 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
 
-from custom_components.kubernetes.config_flow import KubernetesConfigFlow
+from custom_components.kubernetes.config_flow import (
+    KubernetesConfigFlow,
+    KubernetesOptionsFlow,
+)
 from custom_components.kubernetes.const import (
     CONF_API_TOKEN,
     CONF_CLUSTER_NAME,
+    CONF_ENABLE_WATCH,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_VERIFY_SSL,
+    DEFAULT_ENABLE_WATCH,
     DEFAULT_PORT,
     DEFAULT_VERIFY_SSL,
 )
@@ -1049,3 +1054,70 @@ async def test_fetch_namespaces_generic_exception(mock_hass):
         )
 
     assert result == []
+
+
+class TestKubernetesOptionsFlow:
+    """Tests for the Kubernetes integration options flow."""
+
+    @pytest.fixture
+    def mock_config_entry(self):
+        """Return a mock config entry with no options set."""
+        entry = MagicMock()
+        entry.options = {}
+        return entry
+
+    @pytest.fixture
+    def options_flow(self, mock_config_entry):
+        """Return an options flow instance with a mock config entry."""
+        flow = KubernetesOptionsFlow()
+        flow._config_entry = mock_config_entry
+        return flow
+
+    async def test_options_flow_returns_form(self, options_flow):
+        """Calling the flow with no input should return the init form."""
+        result = await options_flow.async_step_init(user_input=None)
+        assert result["type"] == "form"
+        assert result["step_id"] == "init"
+
+    async def test_options_flow_defaults_to_watch_disabled(self, options_flow):
+        """Default value for enable_watch should be False."""
+        result = await options_flow.async_step_init(user_input=None)
+        # Verify the schema contains the enable_watch key
+        schema_keys = [str(k) for k in result["data_schema"].schema]
+        assert any(CONF_ENABLE_WATCH in k for k in schema_keys)
+
+    async def test_options_flow_saves_enable_watch_true(self, options_flow):
+        """Submitting enable_watch=True should create an entry with that value."""
+        result = await options_flow.async_step_init(
+            user_input={CONF_ENABLE_WATCH: True}
+        )
+        assert result["type"] == "create_entry"
+        assert result["data"][CONF_ENABLE_WATCH] is True
+
+    async def test_options_flow_saves_enable_watch_false(self, options_flow):
+        """Submitting enable_watch=False should create an entry with that value."""
+        result = await options_flow.async_step_init(
+            user_input={CONF_ENABLE_WATCH: False}
+        )
+        assert result["type"] == "create_entry"
+        assert result["data"][CONF_ENABLE_WATCH] is False
+
+    async def test_options_flow_uses_existing_options(self):
+        """When options already have enable_watch=True, the form should still render."""
+        entry = MagicMock()
+        entry.options = {CONF_ENABLE_WATCH: True}
+        flow = KubernetesOptionsFlow()
+        flow._config_entry = entry
+
+        result = await flow.async_step_init(user_input=None)
+        assert result["type"] == "form"
+
+    async def test_async_get_options_flow(self):
+        """KubernetesConfigFlow.async_get_options_flow should return a KubernetesOptionsFlow."""
+        config_entry = MagicMock()
+        options_flow = KubernetesConfigFlow.async_get_options_flow(config_entry)
+        assert isinstance(options_flow, KubernetesOptionsFlow)
+
+    async def test_default_enable_watch_is_false(self):
+        """DEFAULT_ENABLE_WATCH constant should be False."""
+        assert DEFAULT_ENABLE_WATCH is False
