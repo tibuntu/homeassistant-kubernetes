@@ -1,6 +1,6 @@
 """Tests for the Kubernetes integration config flow."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.data_entry_flow import AbortFlow, FlowResultType
@@ -1079,8 +1079,13 @@ class TestKubernetesOptionsFlow:
     def options_flow(self, mock_config_entry):
         """Return an options flow instance with a mock config entry."""
         flow = KubernetesOptionsFlow()
-        flow._config_entry = mock_config_entry
-        return flow
+        with patch.object(
+            KubernetesOptionsFlow,
+            "config_entry",
+            new_callable=PropertyMock,
+            return_value=mock_config_entry,
+        ):
+            yield flow
 
     async def test_options_flow_returns_form(self, options_flow):
         """Calling the flow with no input should return the init form."""
@@ -1116,9 +1121,13 @@ class TestKubernetesOptionsFlow:
         entry = MagicMock()
         entry.options = {CONF_ENABLE_WATCH: True}
         flow = KubernetesOptionsFlow()
-        flow._config_entry = entry
-
-        result = await flow.async_step_init(user_input=None)
+        with patch.object(
+            KubernetesOptionsFlow,
+            "config_entry",
+            new_callable=PropertyMock,
+            return_value=entry,
+        ):
+            result = await flow.async_step_init(user_input=None)
         assert result["type"] == "form"
 
     async def test_async_get_options_flow(self):

@@ -42,6 +42,7 @@ def mock_config_entry():
         "namespace": "default",
         "verify_ssl": True,
     }
+    entry.options = {}
     return entry
 
 
@@ -949,7 +950,12 @@ class TestWatchSupport:
             return_value={"name": "job", "namespace": "default"}
         )
         client.list_resource_with_version = AsyncMock(return_value=([], "123"))
-        client.watch_stream = MagicMock()
+
+        async def _default_empty_stream(url, rv):
+            return
+            yield  # make it an async generator
+
+        client.watch_stream = _default_empty_stream
         return client
 
     @pytest.fixture
@@ -1164,7 +1170,7 @@ class TestWatchSupport:
     ):
         """CancelledError should exit the loop cleanly."""
 
-        async def _raise_cancel():
+        async def _raise_cancel(url):
             raise asyncio.CancelledError
 
         mock_client.list_resource_with_version.side_effect = _raise_cancel
@@ -1190,6 +1196,13 @@ class TestWatchSupport:
             return [], "456"
 
         mock_client.list_resource_with_version.side_effect = _side_effect
+
+        # Provide a proper async generator so async-for doesn't hang on MagicMock
+        async def _empty_stream(url, rv):
+            return
+            yield  # make it an async generator
+
+        mock_client.watch_stream = _empty_stream
 
         coordinator_watch_enabled.data = {
             "pods": {},

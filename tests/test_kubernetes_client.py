@@ -2959,7 +2959,7 @@ def _make_aiohttp_stream_mock(lines: list[bytes], status: int = 200):
     mock_response.status = status
     mock_response.raise_for_status = MagicMock()
 
-    async def _async_iter_lines():
+    async def _async_iter_lines(self):
         for line in lines:
             yield line
 
@@ -3145,10 +3145,12 @@ class TestParseHelpers:
         assert result["phase"] == "Running"
         assert result["ready_containers"] == 1
 
-    async def test_parse_pod_item_returns_none_for_empty(self, mock_client):
-        """_parse_pod_item should return None for an empty dict."""
+    async def test_parse_pod_item_returns_defaults_for_empty(self, mock_client):
+        """_parse_pod_item should return a dict with default values for an empty dict."""
         result = mock_client._parse_pod_item({})
-        assert result is None
+        assert result is not None
+        assert result["name"] == "Unknown"
+        assert result["namespace"] == "default"
 
     async def test_parse_node_item(self, mock_client):
         """_parse_node_item should return a dict with standard node fields."""
