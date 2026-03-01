@@ -49,6 +49,20 @@
       "already_configured": "Device is already configured"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Kubernetes Options",
+        "description": "Configure advanced options for the Kubernetes integration.",
+        "data": {
+          "enable_watch": "Enable Watch API (Experimental)"
+        },
+        "data_description": {
+          "enable_watch": "⚠️ Experimental: Use the Kubernetes watch API for real-time state updates instead of polling. When enabled, pod and resource state changes appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback. Requires the service account to have 'watch' permission on all monitored resources."
+        }
+      }
+    }
+  },
   "selector": {
     "device_grouping_mode": {
       "options": {

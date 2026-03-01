@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import timedelta
 import logging
 from typing import Any
@@ -12,9 +13,17 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL, DOMAIN
+from .const import (
+    CONF_ENABLE_WATCH,
+    CONF_SWITCH_UPDATE_INTERVAL,
+    DEFAULT_ENABLE_WATCH,
+    DEFAULT_FALLBACK_POLL_INTERVAL,
+    DEFAULT_SWITCH_UPDATE_INTERVAL,
+    DEFAULT_WATCH_RECONNECT_DELAY,
+    DOMAIN,
+)
 from .device import cleanup_orphaned_namespace_devices, get_all_namespaces
-from .kubernetes_client import KubernetesClient
+from .kubernetes_client import KubernetesClient, ResourceVersionExpired
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,10 +38,16 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         client: KubernetesClient,
     ) -> None:
         """Initialize the coordinator."""
-        # Get update interval from config, with fallback to default
-        update_interval = config_entry.data.get(
-            CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
+        # When watch is enabled, polling becomes a long-interval fallback.
+        watch_enabled = config_entry.options.get(
+            CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH
         )
+        if watch_enabled:
+            update_interval = DEFAULT_FALLBACK_POLL_INTERVAL
+        else:
+            update_interval = config_entry.data.get(
+                CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
+            )
 
         super().__init__(
             hass,
@@ -44,6 +59,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Set attributes after super().__init__() to ensure they're not overridden
         self.config_entry = config_entry
         self.client = client
+
+        # Watch API state
+        self._watch_tasks: list[asyncio.Task] = []
+        self._watch_stop_event: asyncio.Event = asyncio.Event()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via Kubernetes client."""
@@ -93,7 +112,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                 "pods_count": pods_count,
                 "nodes_count": nodes_count,
-                "last_update": asyncio.get_event_loop().time(),
+                "last_update": asyncio.get_running_loop().time(),
             }
 
             _LOGGER.debug(
@@ -451,3 +470,275 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
         except Exception as ex:
             _LOGGER.error("Failed to cleanup orphaned entities: %s", ex)
+
+    # -------------------------------------------------------------------------
+    # Watch API support (experimental)
+    # -------------------------------------------------------------------------
+
+    def _build_watch_configs(
+        self, base_url: str
+    ) -> list[tuple[str, str, Callable[..., Any]]]:
+        """Return a list of (resource_type, url, parse_fn) tuples for watch tasks."""
+        configs: list[tuple[str, str, Callable[..., Any]]] = []
+        client = self.client
+
+        # Cluster-scoped: nodes always use the cluster-wide endpoint
+        configs.append(("nodes", f"{base_url}/api/v1/nodes", client._parse_node_item))
+
+        # Namespace-scoped resources
+        if client.monitor_all_namespaces:
+            configs.extend(
+                [
+                    ("pods", f"{base_url}/api/v1/pods", client._parse_pod_item),
+                    (
+                        "deployments",
+                        f"{base_url}/apis/apps/v1/deployments",
+                        client._parse_deployment_item,
+                    ),
+                    (
+                        "statefulsets",
+                        f"{base_url}/apis/apps/v1/statefulsets",
+                        client._parse_statefulset_item,
+                    ),
+                    (
+                        "daemonsets",
+                        f"{base_url}/apis/apps/v1/daemonsets",
+                        client._parse_daemonset_item,
+                    ),
+                    (
+                        "cronjobs",
+                        f"{base_url}/apis/batch/v1/cronjobs",
+                        client._format_cronjob_from_dict,
+                    ),
+                    (
+                        "jobs",
+                        f"{base_url}/apis/batch/v1/jobs",
+                        client._format_job_from_dict,
+                    ),
+                ]
+            )
+        else:
+            # One watch per namespace for each namespace-scoped resource
+            for namespace in client.namespaces:
+                ns = namespace
+                configs.extend(
+                    [
+                        (
+                            "pods",
+                            f"{base_url}/api/v1/namespaces/{ns}/pods",
+                            client._parse_pod_item,
+                        ),
+                        (
+                            "deployments",
+                            f"{base_url}/apis/apps/v1/namespaces/{ns}/deployments",
+                            client._parse_deployment_item,
+                        ),
+                        (
+                            "statefulsets",
+                            f"{base_url}/apis/apps/v1/namespaces/{ns}/statefulsets",
+                            client._parse_statefulset_item,
+                        ),
+                        (
+                            "daemonsets",
+                            f"{base_url}/apis/apps/v1/namespaces/{ns}/daemonsets",
+                            client._parse_daemonset_item,
+                        ),
+                        (
+                            "cronjobs",
+                            f"{base_url}/apis/batch/v1/namespaces/{ns}/cronjobs",
+                            client._format_cronjob_from_dict,
+                        ),
+                        (
+                            "jobs",
+                            f"{base_url}/apis/batch/v1/namespaces/{ns}/jobs",
+                            client._format_job_from_dict,
+                        ),
+                    ]
+                )
+
+        return configs
+
+    async def async_start_watch_tasks(self) -> None:
+        """Start background watch tasks for all resource types."""
+        self._watch_stop_event.clear()
+        base_url = f"https://{self.client.host}:{self.client.port}"
+        configs = self._build_watch_configs(base_url)
+        for resource_type, url, parse_fn in configs:
+            task = self.hass.async_create_background_task(
+                self._run_watch_loop(resource_type, url, parse_fn),
+                f"k8s_watch_{resource_type}_{url}",
+            )
+            self._watch_tasks.append(task)
+        _LOGGER.debug(
+            "Started %d watch tasks for coordinator %s",
+            len(self._watch_tasks),
+            self.name,
+        )
+
+    async def async_stop_watch_tasks(self) -> None:
+        """Cancel all active watch tasks and wait for them to finish."""
+        if not self._watch_tasks:
+            return
+        self._watch_stop_event.set()
+        for task in self._watch_tasks:
+            task.cancel()
+        await asyncio.gather(*self._watch_tasks, return_exceptions=True)
+        self._watch_tasks.clear()
+        self._watch_stop_event.clear()
+        _LOGGER.debug("Stopped all watch tasks for coordinator %s", self.name)
+
+    def _populate_from_list(
+        self,
+        resource_type: str,
+        items: list[dict[str, Any]],
+        parse_fn: Any,
+    ) -> None:
+        """Merge parsed items from a list response into coordinator.data[resource_type]."""
+        if self.data is None:
+            return
+        parsed: dict[str, dict[str, Any]] = {}
+        for item in items:
+            try:
+                result = parse_fn(item)
+                if result:
+                    if resource_type == "pods":
+                        key = f"{result['namespace']}_{result['name']}"
+                    else:
+                        key = result["name"]
+                    parsed[key] = result
+            except Exception as ex:
+                _LOGGER.warning(
+                    "Failed to parse %s item during list: %s", resource_type, ex
+                )
+        # Merge into the existing dict so that tasks watching different namespaces
+        # for the same resource type don't overwrite each other's initial data.
+        self.data[resource_type].update(parsed)
+        # Sync derived counts
+        if resource_type == "pods":
+            self.data["pods_count"] = len(self.data["pods"])
+        elif resource_type == "nodes":
+            self.data["nodes_count"] = len(self.data["nodes"])
+
+    def _apply_watch_event(
+        self,
+        resource_type: str,
+        event_type: str,
+        obj: dict[str, Any],
+        parse_fn: Any,
+    ) -> None:
+        """Apply a single watch event (ADDED/MODIFIED/DELETED) to coordinator.data."""
+        if self.data is None:
+            return
+
+        metadata = obj.get("metadata", {})
+        name = metadata.get("name", "")
+        namespace = metadata.get("namespace", "")
+        key = f"{namespace}_{name}" if resource_type == "pods" else name
+
+        if event_type in ("ADDED", "MODIFIED"):
+            try:
+                parsed = parse_fn(obj)
+                if parsed:
+                    self.data[resource_type][key] = parsed
+            except Exception as ex:
+                _LOGGER.warning(
+                    "Failed to parse %s %s event for %r: %s",
+                    resource_type,
+                    event_type,
+                    key,
+                    ex,
+                )
+                return
+        elif event_type == "DELETED":
+            self.data[resource_type].pop(key, None)
+            self.hass.async_create_task(self._cleanup_orphaned_entities(self.data))
+        else:
+            return
+
+        # Sync derived counts
+        if resource_type == "pods":
+            self.data["pods_count"] = len(self.data["pods"])
+        elif resource_type == "nodes":
+            self.data["nodes_count"] = len(self.data["nodes"])
+
+        self.data["last_update"] = asyncio.get_running_loop().time()
+        self.async_update_listeners()
+
+    async def _run_watch_loop(
+        self,
+        resource_type: str,
+        url: str,
+        parse_fn: Any,
+    ) -> None:
+        """Run the watch loop for a single resource type with reconnect logic."""
+        resource_version = "0"
+        reconnect_delay = DEFAULT_WATCH_RECONNECT_DELAY
+
+        while not self._watch_stop_event.is_set():
+            try:
+                if resource_version == "0":
+                    # Full list + extract resourceVersion to anchor the watch
+                    (
+                        items,
+                        resource_version,
+                    ) = await self.client.list_resource_with_version(url)
+                    self._populate_from_list(resource_type, items, parse_fn)
+                    self.async_update_listeners()
+                    _LOGGER.debug(
+                        "Watch %s: initial list fetched (%d items, rv=%s)",
+                        resource_type,
+                        len(items),
+                        resource_version,
+                    )
+
+                async for event in self.client.watch_stream(url, resource_version):
+                    if self._watch_stop_event.is_set():
+                        return
+
+                    event_type = event.get("type", "")
+                    obj = event.get("object", {})
+
+                    # Keep resource_version up to date so we can resume after reconnect
+                    new_rv = obj.get("metadata", {}).get("resourceVersion")
+                    if new_rv:
+                        resource_version = new_rv
+
+                    if event_type == "BOOKMARK":
+                        continue
+
+                    self._apply_watch_event(resource_type, event_type, obj, parse_fn)
+
+                # Stream ended cleanly (timeoutSeconds expired); reconnect immediately
+                reconnect_delay = DEFAULT_WATCH_RECONNECT_DELAY
+                _LOGGER.debug(
+                    "Watch %s: stream ended cleanly, reconnecting", resource_type
+                )
+
+            except ResourceVersionExpired:
+                _LOGGER.info(
+                    "Watch %s: resource version %r expired (HTTP 410), relisting",
+                    resource_type,
+                    resource_version,
+                )
+                resource_version = "0"
+                reconnect_delay = DEFAULT_WATCH_RECONNECT_DELAY
+
+            except asyncio.CancelledError:
+                return
+
+            except Exception as ex:
+                _LOGGER.warning(
+                    "Watch %s error: %s — reconnecting in %d s",
+                    resource_type,
+                    ex,
+                    reconnect_delay,
+                )
+                try:
+                    await asyncio.wait_for(
+                        self._watch_stop_event.wait(), timeout=reconnect_delay
+                    )
+                    # stop_event was set — exit gracefully
+                    return
+                except TimeoutError:
+                    pass
+                reconnect_delay = min(reconnect_delay * 2, 60)

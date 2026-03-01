@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 
 from .config_flow import KubernetesConfigFlow  # noqa: F401
+from .const import CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH
 from .coordinator import KubernetesDataCoordinator
 from .kubernetes_client import KubernetesClient
 from .services import async_setup_services, async_unload_services
@@ -61,11 +62,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
+    # Start watch tasks after platforms are set up so that the first watch events
+    # are delivered to already-registered entity listeners.
+    if entry.options.get(CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH):
+        await coordinator.async_start_watch_tasks()
+
+    # Reload the config entry when the user changes options so that the watch
+    # tasks (or lack thereof) are correctly started/stopped.
+    entry.async_on_unload(entry.add_update_listener(_async_update_options))
+
     return True
+
+
+async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options updates by reloading the config entry."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    coordinator: KubernetesDataCoordinator = hass.data[DOMAIN][entry.entry_id][
+        "coordinator"
+    ]
+    await coordinator.async_stop_watch_tasks()
+
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         # Clean up data
         hass.data[DOMAIN].pop(entry.entry_id)
