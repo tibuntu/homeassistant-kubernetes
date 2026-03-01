@@ -12,13 +12,22 @@ from custom_components.kubernetes.config_flow import (
 )
 from custom_components.kubernetes.const import (
     CONF_API_TOKEN,
+    CONF_CA_CERT,
     CONF_CLUSTER_NAME,
+    CONF_DEVICE_GROUPING_MODE,
     CONF_ENABLE_WATCH,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
+    CONF_SCALE_COOLDOWN,
+    CONF_SCALE_VERIFICATION_TIMEOUT,
+    CONF_SWITCH_UPDATE_INTERVAL,
     CONF_VERIFY_SSL,
+    DEFAULT_DEVICE_GROUPING_MODE,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_PORT,
+    DEFAULT_SCALE_COOLDOWN,
+    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
 )
 
@@ -1121,3 +1130,486 @@ class TestKubernetesOptionsFlow:
     async def test_default_enable_watch_is_false(self):
         """DEFAULT_ENABLE_WATCH constant should be False."""
         assert DEFAULT_ENABLE_WATCH is False
+
+
+# ---------------------------------------------------------------------------
+# Reconfigure flow tests
+# ---------------------------------------------------------------------------
+
+
+class TestReconfigureFlow:
+    """Tests for the Kubernetes integration reconfigure flow."""
+
+    @pytest.fixture
+    def existing_entry_data(self):
+        """Return typical existing config entry data."""
+        return {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "old-host.example.com",
+            CONF_PORT: 6443,
+            CONF_API_TOKEN: "old-token",
+            CONF_CA_CERT: "/old/ca.crt",
+            CONF_VERIFY_SSL: False,
+            CONF_MONITOR_ALL_NAMESPACES: True,
+            CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
+            CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
+            CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+            CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
+        }
+
+    @pytest.fixture
+    def reconfigure_flow(self, mock_hass, existing_entry_data):
+        """Return a config flow with a mock reconfigure entry."""
+        flow = KubernetesConfigFlow()
+        flow.hass = mock_hass
+
+        entry = MagicMock()
+        entry.data = existing_entry_data
+        entry.unique_id = "test-cluster"
+        flow._get_reconfigure_entry = MagicMock(return_value=entry)
+        flow.async_update_reload_and_abort = MagicMock(
+            return_value={"type": "abort", "reason": "reconfigure_successful"}
+        )
+        return flow
+
+    async def test_reconfigure_shows_form_with_current_values(self, reconfigure_flow):
+        """Test reconfigure step shows form pre-filled with current entry data."""
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            result = await reconfigure_flow.async_step_reconfigure()
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reconfigure"
+        # cluster_name should NOT be in the schema
+        schema_keys = [str(k) for k in result["data_schema"].schema]
+        assert not any(CONF_CLUSTER_NAME in k for k in schema_keys)
+        # host should be in the schema
+        assert any(CONF_HOST in k for k in schema_keys)
+
+    async def test_reconfigure_kubernetes_not_available(self, reconfigure_flow):
+        """Test reconfigure shows error when kubernetes is not available."""
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=False,
+        ):
+            result = await reconfigure_flow.async_step_reconfigure()
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"]["base"] == "kubernetes_not_installed"
+
+    async def test_reconfigure_successful_monitor_all_namespaces(
+        self, reconfigure_flow
+    ):
+        """Test successful reconfigure with monitor_all_namespaces=True."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+        ):
+            reconfigure_flow._test_connection = AsyncMock()
+
+            user_input = {
+                CONF_HOST: "new-host.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "new-token",
+                CONF_VERIFY_SSL: True,
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            }
+
+            result = await reconfigure_flow.async_step_reconfigure(
+                user_input=user_input
+            )
+
+        assert result == {"type": "abort", "reason": "reconfigure_successful"}
+        reconfigure_flow.async_update_reload_and_abort.assert_called_once()
+        call_kwargs = reconfigure_flow.async_update_reload_and_abort.call_args
+        data_updates = call_kwargs[1]["data_updates"]
+        assert data_updates[CONF_HOST] == "new-host.example.com"
+        assert data_updates[CONF_CLUSTER_NAME] == "test-cluster"
+        assert data_updates[CONF_NAMESPACE] == []
+
+    async def test_reconfigure_proceeds_to_namespace_step(self, reconfigure_flow):
+        """Test reconfigure proceeds to namespace step when monitor_all=False."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+        ):
+            reconfigure_flow._test_connection = AsyncMock()
+            reconfigure_flow.async_step_reconfigure_namespaces = AsyncMock(
+                return_value={"type": "form", "step_id": "reconfigure_namespaces"}
+            )
+
+            user_input = {
+                CONF_HOST: "new-host.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "new-token",
+                CONF_MONITOR_ALL_NAMESPACES: False,
+            }
+
+            result = await reconfigure_flow.async_step_reconfigure(
+                user_input=user_input
+            )
+
+        assert result["step_id"] == "reconfigure_namespaces"
+        reconfigure_flow.async_step_reconfigure_namespaces.assert_called_once()
+
+    async def test_reconfigure_connection_failure(self, reconfigure_flow):
+        """Test reconfigure shows error on connection failure."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+        ):
+            reconfigure_flow._test_connection = AsyncMock(
+                side_effect=Exception("Connection refused")
+            )
+
+            user_input = {
+                CONF_HOST: "bad-host.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "test-token",
+            }
+
+            result = await reconfigure_flow.async_step_reconfigure(
+                user_input=user_input
+            )
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"]["base"] == "cannot_connect"
+
+    async def test_reconfigure_preserves_cluster_name(self, reconfigure_flow):
+        """Test that cluster_name is always injected from existing entry."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+        ):
+            reconfigure_flow._test_connection = AsyncMock()
+
+            user_input = {
+                CONF_HOST: "new-host.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "new-token",
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            }
+
+            await reconfigure_flow.async_step_reconfigure(user_input=user_input)
+
+        call_kwargs = reconfigure_flow.async_update_reload_and_abort.call_args
+        data_updates = call_kwargs[1]["data_updates"]
+        assert data_updates[CONF_CLUSTER_NAME] == "test-cluster"
+
+    async def test_reconfigure_updates_connection_fields(self, reconfigure_flow):
+        """Test that updated host/port/token values are passed through."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+        ):
+            reconfigure_flow._test_connection = AsyncMock()
+
+            user_input = {
+                CONF_HOST: "updated-host.example.com",
+                CONF_PORT: 8443,
+                CONF_API_TOKEN: "updated-token",
+                CONF_VERIFY_SSL: True,
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            }
+
+            await reconfigure_flow.async_step_reconfigure(user_input=user_input)
+
+        call_kwargs = reconfigure_flow.async_update_reload_and_abort.call_args
+        data_updates = call_kwargs[1]["data_updates"]
+        assert data_updates[CONF_HOST] == "updated-host.example.com"
+        assert data_updates[CONF_PORT] == 8443
+        assert data_updates[CONF_API_TOKEN] == "updated-token"
+        assert data_updates[CONF_VERIFY_SSL] is True
+
+    async def test_reconfigure_clears_namespaces_when_switching_to_all(self, mock_hass):
+        """Test switching from specific namespaces to all clears CONF_NAMESPACE."""
+        entry = MagicMock()
+        entry.data = {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "old-host.example.com",
+            CONF_PORT: 6443,
+            CONF_API_TOKEN: "old-token",
+            CONF_VERIFY_SSL: False,
+            CONF_MONITOR_ALL_NAMESPACES: False,
+            CONF_NAMESPACE: ["production", "staging"],
+            CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
+            CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
+            CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+            CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
+        }
+        entry.unique_id = "test-cluster"
+
+        flow = KubernetesConfigFlow()
+        flow.hass = mock_hass
+        flow._get_reconfigure_entry = MagicMock(return_value=entry)
+        flow.async_update_reload_and_abort = MagicMock(
+            return_value={"type": "abort", "reason": "reconfigure_successful"}
+        )
+
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+        ):
+            flow._test_connection = AsyncMock()
+
+            user_input = {
+                CONF_HOST: "old-host.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "old-token",
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            }
+
+            await flow.async_step_reconfigure(user_input=user_input)
+
+        call_kwargs = flow.async_update_reload_and_abort.call_args
+        data_updates = call_kwargs[1]["data_updates"]
+        assert data_updates[CONF_NAMESPACE] == []
+
+    async def test_reconfigure_clears_ca_cert_when_removed(self, reconfigure_flow):
+        """Test that CA cert is cleared when user removes it from the form."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+        ):
+            reconfigure_flow._test_connection = AsyncMock()
+
+            # user_input without CONF_CA_CERT means user cleared the field
+            user_input = {
+                CONF_HOST: "new-host.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "new-token",
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            }
+
+            await reconfigure_flow.async_step_reconfigure(user_input=user_input)
+
+        call_kwargs = reconfigure_flow.async_update_reload_and_abort.call_args
+        data_updates = call_kwargs[1]["data_updates"]
+        assert data_updates[CONF_CA_CERT] == ""
+
+
+class TestReconfigureNamespacesFlow:
+    """Tests for the reconfigure namespaces step."""
+
+    @pytest.fixture
+    def existing_entry_data(self):
+        """Return typical existing config entry data with specific namespaces."""
+        return {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "host.example.com",
+            CONF_PORT: 6443,
+            CONF_API_TOKEN: "test-token",
+            CONF_VERIFY_SSL: False,
+            CONF_MONITOR_ALL_NAMESPACES: False,
+            CONF_NAMESPACE: ["production", "staging"],
+            CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
+            CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
+            CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+            CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
+        }
+
+    @pytest.fixture
+    def reconfigure_ns_flow(self, mock_hass, existing_entry_data):
+        """Return a config flow ready for the reconfigure namespaces step."""
+        flow = KubernetesConfigFlow()
+        flow.hass = mock_hass
+
+        entry = MagicMock()
+        entry.data = existing_entry_data
+        entry.unique_id = "test-cluster"
+        flow._get_reconfigure_entry = MagicMock(return_value=entry)
+        flow.async_update_reload_and_abort = MagicMock(
+            return_value={"type": "abort", "reason": "reconfigure_successful"}
+        )
+        flow._connection_data = {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "host.example.com",
+            CONF_PORT: 6443,
+            CONF_API_TOKEN: "test-token",
+            CONF_MONITOR_ALL_NAMESPACES: False,
+        }
+        return flow
+
+    async def test_reconfigure_namespaces_shows_form(self, reconfigure_ns_flow):
+        """Test namespace step shows form with fetched namespaces."""
+        reconfigure_ns_flow._fetch_namespaces = AsyncMock(
+            return_value=["default", "kube-system", "production", "staging"]
+        )
+
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces()
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["step_id"] == "reconfigure_namespaces"
+
+    async def test_reconfigure_namespaces_preselects_current(self, reconfigure_ns_flow):
+        """Test that currently configured namespaces are pre-selected."""
+        reconfigure_ns_flow._fetch_namespaces = AsyncMock(
+            return_value=["default", "kube-system", "production", "staging"]
+        )
+
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces()
+
+        # Check the default values in the schema
+        for key in result["data_schema"].schema:
+            if str(key) == CONF_NAMESPACE or (
+                hasattr(key, "schema") and key.schema == CONF_NAMESPACE
+            ):
+                assert key.default() == ["production", "staging"]
+                break
+
+    async def test_reconfigure_namespaces_filters_stale(self, reconfigure_ns_flow):
+        """Test that stale namespaces are filtered from defaults."""
+        # "staging" was configured but no longer exists on the cluster
+        reconfigure_ns_flow._fetch_namespaces = AsyncMock(
+            return_value=["default", "kube-system", "production"]
+        )
+
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces()
+
+        for key in result["data_schema"].schema:
+            if str(key) == CONF_NAMESPACE or (
+                hasattr(key, "schema") and key.schema == CONF_NAMESPACE
+            ):
+                defaults = key.default()
+                assert "production" in defaults
+                assert "staging" not in defaults
+                break
+
+    async def test_reconfigure_namespaces_all_stale_leaves_empty(
+        self, reconfigure_ns_flow
+    ):
+        """Test that no namespace is auto-selected when all previous ones are gone."""
+        # Both "production" and "staging" no longer exist on the cluster
+        reconfigure_ns_flow._fetch_namespaces = AsyncMock(
+            return_value=["default", "kube-system", "new-ns"]
+        )
+
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces()
+
+        for key in result["data_schema"].schema:
+            if str(key) == CONF_NAMESPACE or (
+                hasattr(key, "schema") and key.schema == CONF_NAMESPACE
+            ):
+                assert key.default() == []
+                break
+
+    async def test_reconfigure_namespaces_successful_submission(
+        self, reconfigure_ns_flow
+    ):
+        """Test successful namespace selection during reconfigure."""
+        reconfigure_ns_flow._fetch_namespaces = AsyncMock(
+            return_value=["default", "production"]
+        )
+
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces(
+            user_input={CONF_NAMESPACE: ["default", "production"]}
+        )
+
+        assert result == {"type": "abort", "reason": "reconfigure_successful"}
+        reconfigure_ns_flow.async_update_reload_and_abort.assert_called_once()
+        call_kwargs = reconfigure_ns_flow.async_update_reload_and_abort.call_args
+        data_updates = call_kwargs[1]["data_updates"]
+        assert data_updates[CONF_NAMESPACE] == ["default", "production"]
+        assert data_updates[CONF_CLUSTER_NAME] == "test-cluster"
+
+    async def test_reconfigure_namespaces_empty_selection_error(
+        self, reconfigure_ns_flow
+    ):
+        """Test error when no namespace selected."""
+        reconfigure_ns_flow._fetch_namespaces = AsyncMock(
+            return_value=["default", "production"]
+        )
+
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces(
+            user_input={CONF_NAMESPACE: []}
+        )
+
+        assert result["type"] == FlowResultType.FORM
+        assert CONF_NAMESPACE in result["errors"]
+
+    async def test_reconfigure_namespaces_string_conversion(self, reconfigure_ns_flow):
+        """Test that comma-separated string is converted to list."""
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces(
+            user_input={CONF_NAMESPACE: "default, production"}
+        )
+
+        assert result == {"type": "abort", "reason": "reconfigure_successful"}
+        call_kwargs = reconfigure_ns_flow.async_update_reload_and_abort.call_args
+        data_updates = call_kwargs[1]["data_updates"]
+        assert "default" in data_updates[CONF_NAMESPACE]
+        assert "production" in data_updates[CONF_NAMESPACE]
+
+    async def test_reconfigure_namespaces_fetch_failure(self, reconfigure_ns_flow):
+        """Test error and text fallback when namespace fetch returns empty."""
+        reconfigure_ns_flow._fetch_namespaces = AsyncMock(return_value=[])
+
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces()
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"].get("base") == "cannot_fetch_namespaces"
+
+    async def test_reconfigure_namespaces_fetch_exception(self, reconfigure_ns_flow):
+        """Test error when namespace fetch raises an exception."""
+        reconfigure_ns_flow._fetch_namespaces = AsyncMock(
+            side_effect=Exception("connection reset")
+        )
+
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces()
+
+        assert result["type"] == FlowResultType.FORM
+        assert result["errors"].get("base") == "cannot_fetch_namespaces"
+
+    async def test_reconfigure_namespaces_non_list_default(self, reconfigure_ns_flow):
+        """Test non-list/non-string namespace input defaults to ['default']."""
+        result = await reconfigure_ns_flow.async_step_reconfigure_namespaces(
+            user_input={CONF_NAMESPACE: 12345}
+        )
+
+        assert result == {"type": "abort", "reason": "reconfigure_successful"}
+        call_kwargs = reconfigure_ns_flow.async_update_reload_and_abort.call_args
+        data_updates = call_kwargs[1]["data_updates"]
+        assert data_updates[CONF_NAMESPACE] == ["default"]
