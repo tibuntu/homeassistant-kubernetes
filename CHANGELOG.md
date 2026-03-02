@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.10.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.9.0...v0.10.0) (2026-03-02)
+
+
+### Features
+
+* add experimental Watch API with opt-in options flow ([55e1528](https://github.com/tibuntu/homeassistant-kubernetes/commit/55e1528483d50213aa7c724ad81f01a2203b6fdd))
+* add reconfigure flow for modifying existing integration entries ([82f4d4b](https://github.com/tibuntu/homeassistant-kubernetes/commit/82f4d4b20f6b8363655861c8cd9d5fbc8411615c))
+
+
+### Bug Fixes
+
+* **devcontainer:** replace default_config with individual components in devcontainer ([5cdc802](https://github.com/tibuntu/homeassistant-kubernetes/commit/5cdc80241b416b18bb9fdeb0a2bb37392c25395b))
+* **tests:** resolve options flow and coordinator test fixtures ([6743343](https://github.com/tibuntu/homeassistant-kubernetes/commit/6743343152506cecb1c0ed6e1dc916529dc0c858))
+
+
+### Other
+
+* add Watch API coverage ([ac90d46](https://github.com/tibuntu/homeassistant-kubernetes/commit/ac90d46cdb93bf455778d4b0e2b72be7807b0534))
+* **deps:** update ruff to v0.15.4 ([#108](https://github.com/tibuntu/homeassistant-kubernetes/issues/108)) ([6fbb137](https://github.com/tibuntu/homeassistant-kubernetes/commit/6fbb1379541512d08647d3387d9de9a554d999c6))
+* restructure manifests and update docs ([ac13d41](https://github.com/tibuntu/homeassistant-kubernetes/commit/ac13d413a8d74af27092d0e5e2c3fff620aa1b72))
+
 ## [0.9.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.8.0...v0.9.0) (2026-02-26)
 
 
