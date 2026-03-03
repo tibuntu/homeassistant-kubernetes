@@ -15,8 +15,11 @@ Never add yourself as a git co-author. Do not include `Co-Authored-By` trailers 
 ## Commands
 
 ```bash
-# Install dev dependencies
+# Install Python dev dependencies
 pip install -e ".[dev]"
+
+# Install frontend dependencies and build
+cd frontend && npm install && npm run build
 
 # Run all tests (includes coverage)
 pytest
@@ -60,7 +63,12 @@ When the experimental **Watch API** is enabled:
 KubernetesClient.watch_stream() → KubernetesDataCoordinator._run_watch_loop() → coordinator.data updated + async_update_listeners()
 ```
 
-**Entry point:** `__init__.py` sets up the integration lifecycle. On config entry setup, it creates a `KubernetesClient`, wraps it in a `KubernetesDataCoordinator`, then forwards setup to three platforms: `sensor`, `switch`, `binary_sensor`. If the `enable_watch` option is set, watch tasks are also started after the first refresh.
+**Sidebar panel:**
+```
+Browser (kubernetes-panel) → hass.callWS() → websocket_api.py → KubernetesDataCoordinator
+```
+
+**Entry point:** `__init__.py` sets up the integration lifecycle. On config entry setup, it creates a `KubernetesClient`, wraps it in a `KubernetesDataCoordinator`, then forwards setup to three platforms: `sensor`, `switch`, `binary_sensor`. On the first config entry, it also registers HA services, WebSocket commands (via `async_setup`), and the sidebar panel. If the `enable_watch` option is set, watch tasks are also started after the first refresh.
 
 ### Key Modules
 
@@ -72,7 +80,9 @@ KubernetesClient.watch_stream() → KubernetesDataCoordinator._run_watch_loop() 
 - **`services.py`** — Three HA services: `scale_workload`, `start_workload`, `stop_workload`. Support targeting multiple entities.
 - **`device.py`** — Device registry management. Two grouping modes: `namespace` (entities grouped by namespace) or `cluster` (all under one device).
 - **`config_flow.py`** — UI configuration flow. Validates cluster connectivity. Lazy-imports kubernetes to handle missing dependency gracefully. Contains `KubernetesOptionsFlow` for configuring the experimental watch API toggle. Also contains a reconfigure flow (`async_step_reconfigure` / `async_step_reconfigure_namespaces`) for modifying existing entries without deleting and re-adding the integration.
-- **`const.py`** — All constants, config keys, defaults, sensor/switch type identifiers. Includes watch-related constants: `CONF_ENABLE_WATCH`, `DEFAULT_WATCH_TIMEOUT_SECONDS`, `DEFAULT_WATCH_RECONNECT_DELAY`, `DEFAULT_FALLBACK_POLL_INTERVAL`.
+- **`websocket_api.py`** — WebSocket API for the sidebar panel. Registers `kubernetes/cluster/overview` command that aggregates coordinator data across all config entries. Returns cluster health, resource counts, namespace breakdown, and alerts (node pressure, degraded workloads, failed pods).
+- **`const.py`** — All constants, config keys, defaults, sensor/switch type identifiers. Includes watch-related constants: `CONF_ENABLE_WATCH`, `DEFAULT_WATCH_TIMEOUT_SECONDS`, `DEFAULT_WATCH_RECONNECT_DELAY`, `DEFAULT_FALLBACK_POLL_INTERVAL`. Panel constants: `PANEL_TITLE`, `PANEL_ICON`, `PANEL_URL`, `PANEL_FILENAME`. `DOMAIN_META_KEYS` for filtering non-entry keys from `hass.data[DOMAIN]`.
+- **`frontend/`** — Built sidebar panel JS bundle (`kubernetes-panel.js`). Source lives in `frontend/` at project root (Lit 3 + TypeScript + Vite).
 
 ### Entity Hierarchy
 
@@ -97,7 +107,7 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 ## CI
 
-GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build. Releases automated via release-please.
+GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + build (ESLint, Prettier, Vite). Releases automated via release-please.
 
 ## Tests
 

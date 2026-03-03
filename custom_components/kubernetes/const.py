@@ -86,3 +86,12 @@ ATTR_RESUME_TIME = "resume_time"
 
 # Workload attributes
 ATTR_WORKLOAD_TYPE = "workload_type"
+
+# Panel configuration
+PANEL_TITLE = "Kubernetes"
+PANEL_ICON = "mdi:kubernetes"
+PANEL_URL = "/kubernetes_panel"
+PANEL_FILENAME = "kubernetes-panel.js"
+
+# Metadata keys in hass.data[DOMAIN] that are not config entry IDs
+DOMAIN_META_KEYS = frozenset({"panel_registered", "switch_add_entities"})

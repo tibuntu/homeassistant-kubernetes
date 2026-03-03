@@ -41,6 +41,7 @@ kubeconfig
 
 # Node.js
 node_modules/
+frontend/dist/
 
 # AI
 .claude/

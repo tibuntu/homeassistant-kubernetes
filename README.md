@@ -13,6 +13,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **Workload Control**: Scale, start, and stop deployments and statefulsets from Home Assistant
 - **CronJob Management**: Control CronJob suspension state and trigger jobs manually via service calls
 - **Dynamic Entity Management**: Automatic entity creation and cleanup as cluster resources change
+- **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts
 
 ## Installation
 

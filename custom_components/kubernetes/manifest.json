@@ -5,7 +5,7 @@
     "@tibuntu"
   ],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": ["http", "frontend"],
   "documentation": "https://github.com/tibuntu/homeassistant-kubernetes",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/tibuntu/homeassistant-kubernetes/issues",

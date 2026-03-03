@@ -1,0 +1,26 @@
+{
+  "name": "homeassistant-kubernetes-panel",
+  "version": "0.10.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write 'src/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.ts'"
+  },
+  "dependencies": {
+    "lit": "^3.2.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-lit": "^1.15.0",
+    "prettier": "^3.4.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}
