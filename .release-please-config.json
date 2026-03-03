@@ -46,6 +46,16 @@
           "type": "json",
           "path": "custom_components/kubernetes/manifest.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "frontend/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "frontend/package-lock.json",
+          "jsonpath": "$.version"
         }
       ]
     }

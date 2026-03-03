@@ -125,23 +125,71 @@ ln -sf "$(pwd)/custom_components/kubernetes" "config/custom_components/kubernete
 homeassistant-kubernetes/
 ├── custom_components/
 │   └── kubernetes/
-│       ├── __init__.py              # Main integration file
+│       ├── __init__.py              # Main integration file (panel registration, WS setup)
 │       ├── manifest.json            # Integration metadata
 │       ├── config_flow.py           # Configuration flow
 │       ├── const.py                 # Constants and configuration keys
+│       ├── coordinator.py           # Data coordinator (polling + Watch API)
 │       ├── sensor.py                # Sensor platform
 │       ├── binary_sensor.py         # Binary sensor platform
+│       ├── switch.py                # Switch platform (workload control)
+│       ├── services.py              # HA services (scale, start, stop)
+│       ├── device.py                # Device registry management
 │       ├── kubernetes_client.py     # Kubernetes API client
+│       ├── websocket_api.py         # WebSocket API for the sidebar panel
+│       ├── frontend/
+│       │   └── kubernetes-panel.js  # Built panel JS bundle (committed)
 │       └── translations/
 │           └── en.json              # English translations
+├── frontend/                        # Panel source (Lit + TypeScript + Vite)
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vite.config.ts
+│   ├── eslint.config.js
+│   ├── .prettierrc
+│   └── src/
+│       ├── kubernetes-panel.ts      # Root panel element with tab navigation
+│       ├── views/
+│       │   └── k8s-overview.ts      # Overview tab
+│       └── utils/
+│           └── load-ha-elements.ts  # HA element lazy loader
 ├── tests/
-│   └── test_kubernetes_integration.py
-├── scripts/
-│   └── setup_dev_environment.sh
+│   ├── conftest.py
+│   ├── test_init.py
+│   ├── test_websocket_api.py
+│   └── ...
 ├── docs/
-│   └── DEVELOPMENT.md
 ├── pyproject.toml
 └── README.md
+```
+
+## Frontend Development
+
+The sidebar panel is built with [Lit](https://lit.dev/) 3 (TypeScript) and bundled with [Vite](https://vite.dev/) into a single IIFE file.
+
+### Setup
+
+```bash
+cd frontend
+npm install
+```
+
+### Build
+
+```bash
+npm run build    # One-time build → custom_components/kubernetes/frontend/kubernetes-panel.js
+npm run dev      # Watch mode for development
+```
+
+The built `kubernetes-panel.js` is committed to the repository so HACS users get a working panel without needing Node.js.
+
+### Lint & Format
+
+```bash
+npm run lint          # ESLint check
+npm run lint:fix      # ESLint auto-fix
+npm run format:check  # Prettier check
+npm run format        # Prettier auto-fix
 ```
 
 ## Testing

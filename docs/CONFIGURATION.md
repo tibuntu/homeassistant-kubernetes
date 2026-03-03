@@ -54,6 +54,20 @@ To change connection details or settings for an existing integration entry:
 
 **Note:** The cluster name cannot be changed during reconfiguration as it serves as the unique identifier for the integration entry. To change the cluster name, remove and re-add the integration.
 
+## Dashboard Panel
+
+Once the integration is set up, a **Kubernetes** entry appears in the Home Assistant sidebar. The panel provides a built-in cluster dashboard with:
+
+- **Cluster health** badge (Healthy / Unhealthy / Unknown)
+- **Resource count cards** — Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs
+- **Namespace breakdown** — expandable table showing resource counts per namespace
+- **Watch API status** — indicates whether real-time updates are active or polling
+- **Alerts** — nodes with pressure conditions, degraded workloads, and failed pods
+
+The panel updates automatically every 30 seconds. Use the refresh button for on-demand updates.
+
+> **Note:** The panel is registered automatically and requires no additional configuration. It supports multiple clusters — each configured cluster appears as a separate section in the overview.
+
 ## Advanced Configuration
 
 ### Namespace Monitoring

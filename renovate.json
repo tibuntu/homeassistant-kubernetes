@@ -46,6 +46,12 @@
       "groupName": "bandit",
       "semanticCommitType": "build",
       "semanticCommitScope": "deps"
+    },
+    {
+      "matchFileNames": ["frontend/package.json"],
+      "groupName": "frontend dependencies",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps-frontend"
     }
   ],
   "customManagers": [
