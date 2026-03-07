@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.11.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.10.0...v0.11.0) (2026-03-07)
+
+
+### Features
+
+* add WebSocket API and sidebar panel with overview tab ([132fea3](https://github.com/tibuntu/homeassistant-kubernetes/commit/132fea34872026f70c38d19414100c827ca43eee)), closes [#112](https://github.com/tibuntu/homeassistant-kubernetes/issues/112)
+* **panel:** add nodes and pods tabs ([38a578a](https://github.com/tibuntu/homeassistant-kubernetes/commit/38a578a993ec381605779f92e01bd0c2720ab764)), closes [#112](https://github.com/tibuntu/homeassistant-kubernetes/issues/112)
+* **panel:** add settings tab and enable_panel toggle ([a7e5a88](https://github.com/tibuntu/homeassistant-kubernetes/commit/a7e5a88ae50d73a32668d5b5ef2ce651000563b6)), closes [#112](https://github.com/tibuntu/homeassistant-kubernetes/issues/112)
+* **panel:** add workloads tab with management controls ([512edcd](https://github.com/tibuntu/homeassistant-kubernetes/commit/512edcdefe668d1756f0fed7a619378c73d54eb8)), closes [#112](https://github.com/tibuntu/homeassistant-kubernetes/issues/112)
+
+
+### Bug Fixes
+
+* **panel:** polish UI, fix timestamps, and address review feedback ([343e936](https://github.com/tibuntu/homeassistant-kubernetes/commit/343e9362f0d072bbde2fa3bd6d686073418d9f7e)), closes [#112](https://github.com/tibuntu/homeassistant-kubernetes/issues/112)
+
+
+### Other
+
+* **deps-frontend:** update dependency eslint to v9.39.4 ([#125](https://github.com/tibuntu/homeassistant-kubernetes/issues/125)) ([1b6a047](https://github.com/tibuntu/homeassistant-kubernetes/commit/1b6a0478b213f99a106e96e0e5965cda165f6807))
+* **deps-frontend:** update frontend dependencies ([ce75f27](https://github.com/tibuntu/homeassistant-kubernetes/commit/ce75f273334a5145bf8250658cc1220b713cecee))
+* **deps:** update actions/setup-node action to v6 ([ab9f9ae](https://github.com/tibuntu/homeassistant-kubernetes/commit/ab9f9ae54b59a6279a49a87349dd2164574f2e00))
+* **deps:** update dependency homeassistant to v2026.3.1 ([95f5290](https://github.com/tibuntu/homeassistant-kubernetes/commit/95f529070c5e795521612d95bdd2d99a1a29a360))
+* **deps:** update dependency node to v24 ([88e1440](https://github.com/tibuntu/homeassistant-kubernetes/commit/88e1440398ecad22e2af9e0c1f15e9a550bc96b8))
+* **deps:** update ruff to v0.15.5 ([#121](https://github.com/tibuntu/homeassistant-kubernetes/issues/121)) ([f6a71c1](https://github.com/tibuntu/homeassistant-kubernetes/commit/f6a71c1ef96640ceeed16d257fa7b19fca9e5bb0))
+* **frontend:** rebuild panel bundle with vite 7.3.1 ([31a1f01](https://github.com/tibuntu/homeassistant-kubernetes/commit/31a1f012c06ab9f174cdbc8ac39ad3a08de90892))
+
 ## [0.10.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.9.0...v0.10.0) (2026-03-02)
 
 
