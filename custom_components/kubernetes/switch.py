@@ -94,6 +94,9 @@ async def async_setup_entry(
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
     hass.data[DOMAIN]["switch_add_entities"] = async_add_entities
+    if config_entry.entry_id not in hass.data[DOMAIN]:
+        hass.data[DOMAIN][config_entry.entry_id] = {}
+    hass.data[DOMAIN][config_entry.entry_id]["switch_pending_unique_ids"] = set()
 
     # Set up listener for adding new entities dynamically
     @callback
@@ -127,13 +130,19 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
             )
             return
 
-        # Get existing entities for this config entry
+        # Get existing entities for this config entry, plus any that were already
+        # passed to add_entities_callback but may not be in the registry yet.
         existing_entities = entity_registry.entities.get_entries_for_config_entry_id(
             config_entry.entry_id
         )
         existing_unique_ids = {
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
+        entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+        pending_ids: set[str] = entry_data.get("switch_pending_unique_ids", set())
+        # Prune IDs that are now in the registry — keeps the set bounded
+        pending_ids -= existing_unique_ids
+        existing_unique_ids |= pending_ids
 
         new_entities: list[SwitchEntity] = []
 
@@ -204,6 +213,7 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
         # Add new entities if any were found
         if new_entities:
             _LOGGER.info("Adding %d new entities", len(new_entities))
+            pending_ids.update(e.unique_id for e in new_entities if e.unique_id)
             add_entities_callback(new_entities)
         else:
             _LOGGER.debug("No new entities to add")
