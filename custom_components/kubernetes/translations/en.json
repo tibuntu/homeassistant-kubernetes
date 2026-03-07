@@ -91,9 +91,11 @@
         "title": "Kubernetes Options",
         "description": "Configure advanced options for the Kubernetes integration.",
         "data": {
+          "enable_panel": "Enable Sidebar Panel",
           "enable_watch": "Enable Watch API (Experimental)"
         },
         "data_description": {
+          "enable_panel": "Show the Kubernetes dashboard panel in the Home Assistant sidebar. The panel provides an overview of your cluster, nodes, pods, workloads, and integration settings. Disable this if you prefer to use only the standard Home Assistant entities and services.",
           "enable_watch": "⚠️ Experimental: Use the Kubernetes watch API for real-time state updates instead of polling. When enabled, pod and resource state changes appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback. Requires the service account to have 'watch' permission on all monitored resources."
         }
       }

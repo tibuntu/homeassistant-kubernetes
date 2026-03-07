@@ -26,6 +26,7 @@ from custom_components.kubernetes.services import (
     _get_workload_info_from_entity,
     _log_no_workloads_found,
     _normalize_entity_id_list,
+    _resolve_raw_workload_name,
     _validate_entity_workload_type,
     async_setup_services,
     async_unload_services,
@@ -1215,3 +1216,165 @@ class TestServiceHandlerEdgeCases:
             mock_call.data = {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 1}
             await func(mock_call)
         mock_client.start_deployment.assert_not_called()
+
+
+class TestResolveRawWorkloadName:
+    """Tests for _resolve_raw_workload_name."""
+
+    def _make_coordinator_with_data(self, data):
+        """Create a mock coordinator with the given data."""
+        coordinator = MagicMock()
+        coordinator.data = data
+        return coordinator
+
+    def test_resolves_deployment(self, mock_hass):
+        """Test resolves a deployment name to its type."""
+        coordinator = self._make_coordinator_with_data(
+            {
+                "deployments": {
+                    "nginx": {"name": "nginx", "namespace": "default"},
+                },
+                "statefulsets": {},
+                "cronjobs": {},
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {"coordinator": coordinator},
+            }
+        }
+
+        result = _resolve_raw_workload_name(mock_hass, "nginx", None)
+        assert result == ("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)
+
+    def test_resolves_statefulset(self, mock_hass):
+        """Test resolves a statefulset name to its type."""
+        coordinator = self._make_coordinator_with_data(
+            {
+                "deployments": {},
+                "statefulsets": {
+                    "redis": {"name": "redis", "namespace": "cache"},
+                },
+                "cronjobs": {},
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {"coordinator": coordinator},
+            }
+        }
+
+        result = _resolve_raw_workload_name(mock_hass, "redis", None)
+        assert result == ("redis", "cache", WORKLOAD_TYPE_STATEFULSET)
+
+    def test_resolves_cronjob(self, mock_hass):
+        """Test resolves a cronjob name to its type."""
+        coordinator = self._make_coordinator_with_data(
+            {
+                "deployments": {},
+                "statefulsets": {},
+                "cronjobs": {
+                    "backup": {"name": "backup", "namespace": "default"},
+                },
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {"coordinator": coordinator},
+            }
+        }
+
+        result = _resolve_raw_workload_name(mock_hass, "backup", None)
+        assert result == ("backup", "default", WORKLOAD_TYPE_CRONJOB)
+
+    def test_filters_by_namespace(self, mock_hass):
+        """Test namespace filtering when provided."""
+        coordinator = self._make_coordinator_with_data(
+            {
+                "deployments": {
+                    "nginx-default": {"name": "nginx", "namespace": "default"},
+                    "nginx-prod": {"name": "nginx", "namespace": "production"},
+                },
+                "statefulsets": {},
+                "cronjobs": {},
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {"coordinator": coordinator},
+            }
+        }
+
+        result = _resolve_raw_workload_name(mock_hass, "nginx", "production")
+        assert result is not None
+        assert result[1] == "production"
+
+    def test_returns_none_when_not_found(self, mock_hass):
+        """Test returns None when workload name doesn't match."""
+        coordinator = self._make_coordinator_with_data(
+            {
+                "deployments": {},
+                "statefulsets": {},
+                "cronjobs": {},
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {"coordinator": coordinator},
+            }
+        }
+
+        result = _resolve_raw_workload_name(mock_hass, "nonexistent", None)
+        assert result is None
+
+    def test_returns_none_when_no_domain_data(self, mock_hass):
+        """Test returns None when no DOMAIN data exists."""
+        mock_hass.data = {}
+
+        result = _resolve_raw_workload_name(mock_hass, "nginx", None)
+        assert result is None
+
+    def test_skips_metadata_keys(self, mock_hass):
+        """Test skips panel_registered and other metadata keys."""
+        coordinator = self._make_coordinator_with_data(
+            {
+                "deployments": {
+                    "nginx": {"name": "nginx", "namespace": "default"},
+                },
+                "statefulsets": {},
+                "cronjobs": {},
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "panel_registered": True,
+                "switch_add_entities": MagicMock(),
+                "entry_1": {"coordinator": coordinator},
+            }
+        }
+
+        result = _resolve_raw_workload_name(mock_hass, "nginx", None)
+        assert result == ("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)
+
+    def test_skips_entries_without_coordinator(self, mock_hass):
+        """Test skips entries that have no coordinator."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {"config": {}},
+            }
+        }
+
+        result = _resolve_raw_workload_name(mock_hass, "nginx", None)
+        assert result is None
+
+    def test_skips_coordinator_with_none_data(self, mock_hass):
+        """Test skips coordinator with None data."""
+        coordinator = self._make_coordinator_with_data(None)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {"coordinator": coordinator},
+            }
+        }
+
+        result = _resolve_raw_workload_name(mock_hass, "nginx", None)
+        assert result is None

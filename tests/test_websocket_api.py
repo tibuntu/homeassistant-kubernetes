@@ -10,6 +10,7 @@ from custom_components.kubernetes.websocket_api import (
     _build_cluster_overview,
     _build_namespace_breakdown,
     _get_cluster_overview_data,
+    _get_config_list_data,
     _get_nodes_list_data,
     _get_pods_list_data,
     _get_workloads_list_data,
@@ -132,7 +133,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 4
+            assert mock_ws_api.async_register_command.call_count == 5
 
 
 class TestWebsocketClusterOverview:
@@ -1026,3 +1027,151 @@ class TestWebsocketWorkloadsList:
         assert cj["suspend"] is False
         assert cj["active_jobs_count"] == 0
         assert cj["concurrency_policy"] == "Forbid"
+
+
+class TestWebsocketConfigList:
+    """Tests for the kubernetes/config/list command logic."""
+
+    def test_returns_empty_when_no_domain_data(self, mock_hass):
+        """Test returns empty entries list when no DOMAIN data."""
+        mock_hass.data = {}
+        result = _get_config_list_data(mock_hass)
+        assert result == {"entries": []}
+
+    def test_returns_config_for_entry(self, mock_hass, sample_coordinator_data):
+        """Test returns sanitized config for a cluster entry."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {
+                        "cluster_name": "test-cluster",
+                        "host": "192.168.1.100",
+                        "port": 6443,
+                        "api_token": "secret-token-should-not-appear",
+                        "verify_ssl": True,
+                        "monitor_all_namespaces": False,
+                        "namespace": ["default", "production"],
+                        "device_grouping_mode": "namespace",
+                        "switch_update_interval": 60,
+                        "scale_verification_timeout": 30,
+                        "scale_cooldown": 10,
+                    },
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_config_list_data(mock_hass)
+
+        assert len(result["entries"]) == 1
+        entry = result["entries"][0]
+        assert entry["entry_id"] == "entry_1"
+        assert entry["cluster_name"] == "test-cluster"
+        assert entry["host"] == "192.168.1.100"
+        assert entry["port"] == 6443
+        assert entry["verify_ssl"] is True
+        assert entry["monitor_all_namespaces"] is False
+        assert entry["namespaces"] == ["default", "production"]
+        assert entry["device_grouping_mode"] == "namespace"
+        assert entry["switch_update_interval"] == 60
+        assert entry["scale_verification_timeout"] == 30
+        assert entry["scale_cooldown"] == 10
+        assert entry["watch_enabled"] is False
+        assert entry["healthy"] is True
+        # Ensure secret is NOT exposed
+        assert "api_token" not in entry
+
+    def test_watch_enabled_from_options(self, mock_hass, sample_coordinator_data):
+        """Test watch_enabled reflects config entry options."""
+        coordinator = _make_coordinator(
+            sample_coordinator_data, options={"enable_watch": True}
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["watch_enabled"] is True
+
+    def test_namespace_string_converted_to_list(
+        self, mock_hass, sample_coordinator_data
+    ):
+        """Test namespace string is converted to a list."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {
+                        "cluster_name": "test",
+                        "namespace": "default",
+                    },
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["namespaces"] == ["default"]
+
+    def test_defaults_applied_for_missing_config(
+        self, mock_hass, sample_coordinator_data
+    ):
+        """Test default values are used when config keys are missing."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_config_list_data(mock_hass)
+        entry = result["entries"][0]
+        assert entry["cluster_name"] == "default"
+        assert entry["host"] == ""
+        assert entry["port"] == 6443
+        assert entry["verify_ssl"] is False
+        assert entry["monitor_all_namespaces"] is True
+        assert entry["namespaces"] == []
+        assert entry["device_grouping_mode"] == "namespace"
+        assert entry["switch_update_interval"] == 60
+        assert entry["scale_verification_timeout"] == 30
+        assert entry["scale_cooldown"] == 10
+
+    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
+        """Test skips panel_registered and switch_add_entities keys."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "panel_registered": True,
+                "switch_add_entities": MagicMock(),
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_config_list_data(mock_hass)
+        assert len(result["entries"]) == 1
+
+    def test_skips_entries_without_coordinator(self, mock_hass):
+        """Test skips entries that have no coordinator."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                },
+            }
+        }
+
+        result = _get_config_list_data(mock_hass)
+        assert len(result["entries"]) == 0

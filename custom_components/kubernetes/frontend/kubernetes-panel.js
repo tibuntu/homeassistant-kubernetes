@@ -618,14 +618,14 @@ const loadHaElements = async () => {
     await customElements.whenDefined("ha-card");
   }
 };
-var __defProp$4 = Object.defineProperty;
-var __getOwnPropDesc$4 = Object.getOwnPropertyDescriptor;
-var __decorateClass$4 = (decorators, target, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$4(target, key) : target;
+var __defProp$5 = Object.defineProperty;
+var __getOwnPropDesc$5 = Object.getOwnPropertyDescriptor;
+var __decorateClass$5 = (decorators, target, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$5(target, key) : target;
   for (var i2 = decorators.length - 1, decorator; i2 >= 0; i2--)
     if (decorator = decorators[i2])
       result = (kind ? decorator(target, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp$4(target, key, result);
+  if (kind && result) __defProp$5(target, key, result);
   return result;
 };
 const RESOURCE_ICONS = {
@@ -1141,32 +1141,32 @@ K8sOverview.styles = i$3`
       --mdc-icon-size: 20px;
     }
   `;
-__decorateClass$4([
+__decorateClass$5([
   n2({ attribute: false })
 ], K8sOverview.prototype, "hass", 2);
-__decorateClass$4([
+__decorateClass$5([
   r()
 ], K8sOverview.prototype, "_data", 2);
-__decorateClass$4([
+__decorateClass$5([
   r()
 ], K8sOverview.prototype, "_loading", 2);
-__decorateClass$4([
+__decorateClass$5([
   r()
 ], K8sOverview.prototype, "_error", 2);
-__decorateClass$4([
+__decorateClass$5([
   r()
 ], K8sOverview.prototype, "_expandedNamespaces", 2);
-K8sOverview = __decorateClass$4([
+K8sOverview = __decorateClass$5([
   t("k8s-overview")
 ], K8sOverview);
-var __defProp$3 = Object.defineProperty;
-var __getOwnPropDesc$3 = Object.getOwnPropertyDescriptor;
-var __decorateClass$3 = (decorators, target, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$3(target, key) : target;
+var __defProp$4 = Object.defineProperty;
+var __getOwnPropDesc$4 = Object.getOwnPropertyDescriptor;
+var __decorateClass$4 = (decorators, target, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$4(target, key) : target;
   for (var i2 = decorators.length - 1, decorator; i2 >= 0; i2--)
     if (decorator = decorators[i2])
       result = (kind ? decorator(target, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp$3(target, key, result);
+  if (kind && result) __defProp$4(target, key, result);
   return result;
 };
 const CONDITION_LABELS = {
@@ -1691,38 +1691,38 @@ K8sNodesTable.styles = i$3`
       }
     }
   `;
-__decorateClass$3([
+__decorateClass$4([
   n2({ attribute: false })
 ], K8sNodesTable.prototype, "hass", 2);
-__decorateClass$3([
+__decorateClass$4([
   r()
 ], K8sNodesTable.prototype, "_data", 2);
-__decorateClass$3([
+__decorateClass$4([
   r()
 ], K8sNodesTable.prototype, "_loading", 2);
-__decorateClass$3([
+__decorateClass$4([
   r()
 ], K8sNodesTable.prototype, "_error", 2);
-__decorateClass$3([
+__decorateClass$4([
   r()
 ], K8sNodesTable.prototype, "_expandedNodes", 2);
-__decorateClass$3([
+__decorateClass$4([
   r()
 ], K8sNodesTable.prototype, "_statusFilter", 2);
-__decorateClass$3([
+__decorateClass$4([
   r()
 ], K8sNodesTable.prototype, "_searchQuery", 2);
-K8sNodesTable = __decorateClass$3([
+K8sNodesTable = __decorateClass$4([
   t("k8s-nodes-table")
 ], K8sNodesTable);
-var __defProp$2 = Object.defineProperty;
-var __getOwnPropDesc$2 = Object.getOwnPropertyDescriptor;
-var __decorateClass$2 = (decorators, target, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$2(target, key) : target;
+var __defProp$3 = Object.defineProperty;
+var __getOwnPropDesc$3 = Object.getOwnPropertyDescriptor;
+var __decorateClass$3 = (decorators, target, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$3(target, key) : target;
   for (var i2 = decorators.length - 1, decorator; i2 >= 0; i2--)
     if (decorator = decorators[i2])
       result = (kind ? decorator(target, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp$2(target, key, result);
+  if (kind && result) __defProp$3(target, key, result);
   return result;
 };
 const PHASE_CLASSES = {
@@ -2214,44 +2214,44 @@ K8sPodsTable.styles = i$3`
       }
     }
   `;
-__decorateClass$2([
+__decorateClass$3([
   n2({ attribute: false })
 ], K8sPodsTable.prototype, "hass", 2);
-__decorateClass$2([
+__decorateClass$3([
   r()
 ], K8sPodsTable.prototype, "_data", 2);
-__decorateClass$2([
+__decorateClass$3([
   r()
 ], K8sPodsTable.prototype, "_loading", 2);
-__decorateClass$2([
+__decorateClass$3([
   r()
 ], K8sPodsTable.prototype, "_error", 2);
-__decorateClass$2([
+__decorateClass$3([
   r()
 ], K8sPodsTable.prototype, "_searchQuery", 2);
-__decorateClass$2([
+__decorateClass$3([
   r()
 ], K8sPodsTable.prototype, "_phaseFilter", 2);
-__decorateClass$2([
+__decorateClass$3([
   r()
 ], K8sPodsTable.prototype, "_namespaceFilter", 2);
-__decorateClass$2([
+__decorateClass$3([
   r()
 ], K8sPodsTable.prototype, "_sortField", 2);
-__decorateClass$2([
+__decorateClass$3([
   r()
 ], K8sPodsTable.prototype, "_sortAsc", 2);
-K8sPodsTable = __decorateClass$2([
+K8sPodsTable = __decorateClass$3([
   t("k8s-pods-table")
 ], K8sPodsTable);
-var __defProp$1 = Object.defineProperty;
-var __getOwnPropDesc$1 = Object.getOwnPropertyDescriptor;
-var __decorateClass$1 = (decorators, target, key, kind) => {
-  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$1(target, key) : target;
+var __defProp$2 = Object.defineProperty;
+var __getOwnPropDesc$2 = Object.getOwnPropertyDescriptor;
+var __decorateClass$2 = (decorators, target, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$2(target, key) : target;
   for (var i2 = decorators.length - 1, decorator; i2 >= 0; i2--)
     if (decorator = decorators[i2])
       result = (kind ? decorator(target, key, result) : decorator(result)) || result;
-  if (kind && result) __defProp$1(target, key, result);
+  if (kind && result) __defProp$2(target, key, result);
   return result;
 };
 let K8sWorkloads = class extends i {
@@ -3040,36 +3040,457 @@ K8sWorkloads.styles = i$3`
       }
     }
   `;
-__decorateClass$1([
+__decorateClass$2([
   n2({ attribute: false })
 ], K8sWorkloads.prototype, "hass", 2);
-__decorateClass$1([
+__decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_data", 2);
-__decorateClass$1([
+__decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_loading", 2);
-__decorateClass$1([
+__decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_error", 2);
-__decorateClass$1([
+__decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_namespaceFilter", 2);
-__decorateClass$1([
+__decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_categoryFilter", 2);
-__decorateClass$1([
+__decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_statusFilter", 2);
-__decorateClass$1([
+__decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_searchQuery", 2);
-__decorateClass$1([
+__decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_actionInProgress", 2);
-K8sWorkloads = __decorateClass$1([
+K8sWorkloads = __decorateClass$2([
   t("k8s-workloads")
 ], K8sWorkloads);
+var __defProp$1 = Object.defineProperty;
+var __getOwnPropDesc$1 = Object.getOwnPropertyDescriptor;
+var __decorateClass$1 = (decorators, target, key, kind) => {
+  var result = kind > 1 ? void 0 : kind ? __getOwnPropDesc$1(target, key) : target;
+  for (var i2 = decorators.length - 1, decorator; i2 >= 0; i2--)
+    if (decorator = decorators[i2])
+      result = (kind ? decorator(target, key, result) : decorator(result)) || result;
+  if (kind && result) __defProp$1(target, key, result);
+  return result;
+};
+let K8sSettings = class extends i {
+  constructor() {
+    super(...arguments);
+    this._data = null;
+    this._loading = true;
+    this._error = null;
+  }
+  firstUpdated(_changedProps) {
+    this._loadData();
+  }
+  async _loadData() {
+    this._loading = true;
+    this._error = null;
+    try {
+      const result = await this.hass.callWS({
+        type: "kubernetes/config/list"
+      });
+      this._data = result;
+    } catch (err) {
+      this._error = err.message || "Failed to load configuration";
+    } finally {
+      this._loading = false;
+    }
+  }
+  _navigateToIntegration() {
+    window.open("/config/integrations/integration/kubernetes", "_blank");
+  }
+  render() {
+    var _a2;
+    if (this._loading) {
+      return b`
+        <div class="loading">
+          <ha-circular-progress indeterminate></ha-circular-progress>
+        </div>
+      `;
+    }
+    if (this._error) {
+      return b`
+        <ha-card>
+          <div class="error-card">
+            <ha-icon icon="mdi:alert-circle"></ha-icon>
+            <p>${this._error}</p>
+            <button class="retry-btn" @click=${this._loadData}>Retry</button>
+          </div>
+        </ha-card>
+      `;
+    }
+    if (!((_a2 = this._data) == null ? void 0 : _a2.entries.length)) {
+      return b`<div class="empty">No Kubernetes entries configured.</div>`;
+    }
+    return b`${this._data.entries.map((e2) => this._renderEntry(e2))}`;
+  }
+  _renderEntry(entry) {
+    return b`
+      <div class="entry-section">
+        <div class="entry-header">
+          <span class="entry-name">${entry.cluster_name}</span>
+          ${this._renderHealthBadge(entry.healthy)}
+        </div>
+
+        <div class="cards-grid">
+          ${this._renderConnectionCard(entry)} ${this._renderNamespaceCard(entry)}
+          ${this._renderTimingCard(entry)} ${this._renderFeaturesCard(entry)}
+        </div>
+
+        <div class="actions-bar">
+          <button class="action-btn" @click=${this._navigateToIntegration}>
+            <ha-icon icon="mdi:cog"></ha-icon>
+            Configure Integration
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  _renderHealthBadge(healthy) {
+    if (healthy === true) {
+      return b`<span class="badge badge-healthy">Connected</span>`;
+    }
+    if (healthy === false) {
+      return b`<span class="badge badge-unhealthy">Disconnected</span>`;
+    }
+    return b`<span class="badge badge-unknown">Unknown</span>`;
+  }
+  _renderConnectionCard(entry) {
+    return b`
+      <ha-card class="settings-card">
+        <div class="card-title">
+          <ha-icon icon="mdi:connection"></ha-icon>
+          Connection
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Host</span>
+          <span class="setting-value">${entry.host}</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Port</span>
+          <span class="setting-value">${entry.port}</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Verify SSL</span>
+          <span class="setting-value">${this._renderBool(entry.verify_ssl)}</span>
+        </div>
+      </ha-card>
+    `;
+  }
+  _renderNamespaceCard(entry) {
+    return b`
+      <ha-card class="settings-card">
+        <div class="card-title">
+          <ha-icon icon="mdi:folder-multiple"></ha-icon>
+          Namespaces
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Monitor All</span>
+          <span class="setting-value"
+            >${this._renderBool(entry.monitor_all_namespaces)}</span
+          >
+        </div>
+        ${!entry.monitor_all_namespaces && entry.namespaces.length > 0 ? b`
+              <div class="setting-row">
+                <span class="setting-label">Selected</span>
+                <span class="setting-value">
+                  <div class="namespace-tags">
+                    ${entry.namespaces.map(
+      (ns) => b`<span class="ns-tag">${ns}</span>`
+    )}
+                  </div>
+                </span>
+              </div>
+            ` : A}
+        <div class="setting-row">
+          <span class="setting-label">Device Grouping</span>
+          <span class="setting-value"
+            >${entry.device_grouping_mode === "namespace" ? "By Namespace" : "By Cluster"}</span
+          >
+        </div>
+      </ha-card>
+    `;
+  }
+  _renderTimingCard(entry) {
+    return b`
+      <ha-card class="settings-card">
+        <div class="card-title">
+          <ha-icon icon="mdi:timer-cog"></ha-icon>
+          Timing
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Poll Interval</span>
+          <span class="setting-value">${entry.switch_update_interval}s</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Scale Timeout</span>
+          <span class="setting-value">${entry.scale_verification_timeout}s</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Scale Cooldown</span>
+          <span class="setting-value">${entry.scale_cooldown}s</span>
+        </div>
+      </ha-card>
+    `;
+  }
+  _renderFeaturesCard(entry) {
+    return b`
+      <ha-card class="settings-card">
+        <div class="card-title">
+          <ha-icon icon="mdi:flask"></ha-icon>
+          Features
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Sidebar Panel</span>
+          <span class="setting-value">${this._renderBool(entry.panel_enabled)}</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Watch API</span>
+          <span class="setting-value">${this._renderBool(entry.watch_enabled)}</span>
+        </div>
+      </ha-card>
+    `;
+  }
+  _renderBool(value) {
+    if (value) {
+      return b`
+        <span class="setting-value-bool bool-true">
+          <ha-icon icon="mdi:check-circle"></ha-icon> Enabled
+        </span>
+      `;
+    }
+    return b`
+      <span class="setting-value-bool bool-false">
+        <ha-icon icon="mdi:close-circle-outline"></ha-icon> Disabled
+      </span>
+    `;
+  }
+};
+K8sSettings.styles = i$3`
+    :host {
+      display: block;
+    }
+
+    .loading {
+      display: flex;
+      justify-content: center;
+      padding: 64px 0;
+    }
+
+    .error-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px;
+      text-align: center;
+      color: var(--error-color, #db4437);
+      --mdc-icon-size: 48px;
+    }
+
+    .error-card p {
+      margin: 16px 0;
+    }
+
+    .retry-btn {
+      cursor: pointer;
+      padding: 8px 24px;
+      border: 1px solid var(--primary-color);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--primary-color);
+      font-size: 14px;
+    }
+
+    .retry-btn:hover {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 64px 16px;
+      color: var(--secondary-text-color);
+      font-size: 16px;
+    }
+
+    .entry-section {
+      margin-bottom: 24px;
+    }
+
+    .entry-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .entry-name {
+      font-size: 24px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .badge-healthy {
+      background: rgba(76, 175, 80, 0.15);
+      color: #4caf50;
+    }
+
+    .badge-unhealthy {
+      background: rgba(244, 67, 54, 0.15);
+      color: #f44336;
+    }
+
+    .badge-unknown {
+      background: rgba(158, 158, 158, 0.15);
+      color: #9e9e9e;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .settings-card {
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+      margin-bottom: 16px;
+      --mdc-icon-size: 20px;
+    }
+
+    .card-title ha-icon {
+      color: var(--primary-color);
+    }
+
+    .setting-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--divider-color);
+      font-size: 14px;
+    }
+
+    .setting-row:last-child {
+      border-bottom: none;
+    }
+
+    .setting-label {
+      color: var(--secondary-text-color);
+    }
+
+    .setting-value {
+      color: var(--primary-text-color);
+      font-weight: 500;
+      text-align: right;
+      max-width: 60%;
+      word-break: break-all;
+    }
+
+    .setting-value-bool {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      --mdc-icon-size: 16px;
+    }
+
+    .bool-true {
+      color: #4caf50;
+    }
+
+    .bool-false {
+      color: var(--secondary-text-color);
+    }
+
+    .namespace-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+
+    .ns-tag {
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+      color: var(--primary-color);
+      font-size: 12px;
+    }
+
+    .actions-bar {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      padding: 8px 20px;
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--primary-text-color);
+      font-size: 14px;
+      transition:
+        background 0.2s,
+        border-color 0.2s;
+      --mdc-icon-size: 18px;
+    }
+
+    .action-btn:hover {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+    }
+  `;
+__decorateClass$1([
+  n2({ attribute: false })
+], K8sSettings.prototype, "hass", 2);
+__decorateClass$1([
+  r()
+], K8sSettings.prototype, "_data", 2);
+__decorateClass$1([
+  r()
+], K8sSettings.prototype, "_loading", 2);
+__decorateClass$1([
+  r()
+], K8sSettings.prototype, "_error", 2);
+K8sSettings = __decorateClass$1([
+  t("k8s-settings")
+], K8sSettings);
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __decorateClass = (decorators, target, key, kind) => {
@@ -3139,6 +3560,8 @@ let KubernetesPanel = class extends i {
         return b`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
       case "workloads":
         return b`<k8s-workloads .hass=${this.hass}></k8s-workloads>`;
+      case "settings":
+        return b`<k8s-settings .hass=${this.hass}></k8s-settings>`;
       default:
         return b`
           <div class="coming-soon">

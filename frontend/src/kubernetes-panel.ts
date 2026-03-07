@@ -5,6 +5,7 @@ import "./views/k8s-overview";
 import "./views/k8s-nodes-table";
 import "./views/k8s-pods-table";
 import "./views/k8s-workloads";
+import "./views/k8s-settings";
 
 type Tab = "overview" | "nodes" | "workloads" | "pods" | "settings";
 
@@ -180,6 +181,8 @@ export class KubernetesPanel extends LitElement {
         return html`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
       case "workloads":
         return html`<k8s-workloads .hass=${this.hass}></k8s-workloads>`;
+      case "settings":
+        return html`<k8s-settings .hass=${this.hass}></k8s-settings>`;
       default:
         return html`
           <div class="coming-soon">

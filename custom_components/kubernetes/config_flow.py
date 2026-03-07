@@ -25,6 +25,7 @@ from .const import (  # noqa: E402
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
+    CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
@@ -34,6 +35,7 @@ from .const import (  # noqa: E402
     CONF_VERIFY_SSL,
     DEFAULT_CLUSTER_NAME,
     DEFAULT_DEVICE_GROUPING_MODE,
+    DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
@@ -722,6 +724,10 @@ class KubernetesOptionsFlow(config_entries.OptionsFlow):
         current = self.config_entry.options
         schema = vol.Schema(
             {
+                vol.Optional(
+                    CONF_ENABLE_PANEL,
+                    default=current.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL),
+                ): bool,
                 vol.Optional(
                     CONF_ENABLE_WATCH,
                     default=current.get(CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH),

@@ -17,7 +17,9 @@ from homeassistant.helpers import config_validation as cv
 
 from .config_flow import KubernetesConfigFlow  # noqa: F401
 from .const import (
+    CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
+    DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DOMAIN_META_KEYS,
     PANEL_FILENAME,
@@ -69,10 +71,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
     }
 
-    # Set up services and panel if this is the first config entry
+    # Set up services if this is the first config entry
     if _count_config_entries(hass) == 1:
         await async_setup_services(hass)
-        await _async_register_panel(hass)
+
+    # Register or remove the sidebar panel based on the enable_panel option
+    await _async_sync_panel(hass, entry)
 
     # Start the coordinator
     await coordinator.async_config_entry_first_refresh()
@@ -91,6 +95,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
+async def _async_sync_panel(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Register or remove the sidebar panel based on the enable_panel option."""
+    panel_wanted = entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL)
+    panel_registered = hass.data.get(DOMAIN, {}).get("panel_registered", False)
+
+    if panel_wanted and not panel_registered:
+        await _async_register_panel(hass)
+    elif not panel_wanted and panel_registered:
+        # Only remove if no other entry still wants the panel
+        if not _any_entry_wants_panel(hass, exclude_entry_id=entry.entry_id):
+            _async_remove_panel(hass)
+
+
+def _any_entry_wants_panel(
+    hass: HomeAssistant, exclude_entry_id: str | None = None
+) -> bool:
+    """Check if any config entry (except excluded) has the panel enabled."""
+    domain_data = hass.data.get(DOMAIN, {})
+    for entry_id, entry_data in domain_data.items():
+        if entry_id in DOMAIN_META_KEYS or not isinstance(entry_data, dict):
+            continue
+        if entry_id == exclude_entry_id:
+            continue
+        coordinator = entry_data.get("coordinator")
+        if coordinator is None:
+            continue
+        if coordinator.config_entry.options.get(
+            CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL
+        ):
+            return True
+    return False
+
+
 async def _async_register_panel(hass: HomeAssistant) -> None:
     """Register the Kubernetes sidebar panel."""
     if hass.data.get(DOMAIN, {}).get("panel_registered"):
@@ -106,9 +143,15 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         )
         return
 
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(PANEL_URL, str(panel_dir), False)]
-    )
+    # Static paths persist in HA's HTTP server across panel remove/register
+    # cycles and across config entry reloads. Attempting to re-register the
+    # same path raises, so we catch and ignore.
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(PANEL_URL, str(panel_dir), False)]
+        )
+    except Exception:  # noqa: BLE001
+        _LOGGER.debug("Static path %s already registered, skipping", PANEL_URL)
 
     async_register_built_in_panel(
         hass,
@@ -131,6 +174,15 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     _LOGGER.info("Registered Kubernetes sidebar panel")
 
 
+def _async_remove_panel(hass: HomeAssistant) -> None:
+    """Remove the Kubernetes sidebar panel."""
+    if not hass.data.get(DOMAIN, {}).get("panel_registered"):
+        return
+    async_remove_panel(hass, DOMAIN)
+    hass.data[DOMAIN]["panel_registered"] = False
+    _LOGGER.info("Removed Kubernetes sidebar panel")
+
+
 async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Handle options updates by reloading the config entry."""
     await hass.config_entries.async_reload(entry.entry_id)
@@ -148,11 +200,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Clean up when the last config entry is removed
         if _count_config_entries(hass) == 0:
-            if hass.data[DOMAIN].get("panel_registered"):
-                async_remove_panel(hass, DOMAIN)
-                _LOGGER.info("Removed Kubernetes sidebar panel")
+            _async_remove_panel(hass)
             await async_unload_services(hass)
             hass.data.pop(DOMAIN, None)
+        elif not _any_entry_wants_panel(hass):
+            # Remove panel if no remaining entries want it
+            _async_remove_panel(hass)
 
     return unload_ok
 

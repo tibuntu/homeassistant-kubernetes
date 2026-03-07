@@ -11,9 +11,27 @@ import voluptuous as vol
 
 from .const import (
     CONF_CLUSTER_NAME,
+    CONF_DEVICE_GROUPING_MODE,
+    CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
+    CONF_HOST,
+    CONF_MONITOR_ALL_NAMESPACES,
+    CONF_NAMESPACE,
+    CONF_PORT,
+    CONF_SCALE_COOLDOWN,
+    CONF_SCALE_VERIFICATION_TIMEOUT,
+    CONF_SWITCH_UPDATE_INTERVAL,
+    CONF_VERIFY_SSL,
     DEFAULT_CLUSTER_NAME,
+    DEFAULT_DEVICE_GROUPING_MODE,
+    DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
+    DEFAULT_MONITOR_ALL_NAMESPACES,
+    DEFAULT_PORT,
+    DEFAULT_SCALE_COOLDOWN,
+    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    DEFAULT_SWITCH_UPDATE_INTERVAL,
+    DEFAULT_VERIFY_SSL,
     DOMAIN,
     DOMAIN_META_KEYS,
 )
@@ -29,6 +47,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_nodes_list)
     websocket_api.async_register_command(hass, websocket_pods_list)
     websocket_api.async_register_command(hass, websocket_workloads_list)
+    websocket_api.async_register_command(hass, websocket_config_list)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/cluster/overview"})
@@ -414,3 +433,76 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
         )
 
     return {"clusters": clusters}
+
+
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/config/list"})
+@websocket_api.async_response
+async def websocket_config_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return sanitized config entry data (no secrets)."""
+    result = _get_config_list_data(hass)
+    connection.send_result(msg["id"], result)
+
+
+def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
+    """Gather config entry data from all entries, excluding secrets."""
+    domain_data = hass.data.get(DOMAIN, {})
+    entries: list[dict[str, Any]] = []
+
+    for entry_id, entry_data in domain_data.items():
+        if entry_id in DOMAIN_META_KEYS:
+            continue
+        if not isinstance(entry_data, dict):
+            continue
+
+        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+        config: dict[str, Any] = entry_data.get("config", {})
+
+        if coordinator is None:
+            continue
+
+        panel_enabled = coordinator.config_entry.options.get(
+            CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL
+        )
+        watch_enabled = coordinator.config_entry.options.get(
+            CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH
+        )
+
+        namespaces = config.get(CONF_NAMESPACE, [])
+        if isinstance(namespaces, str):
+            namespaces = [namespaces]
+
+        entries.append(
+            {
+                "entry_id": entry_id,
+                "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
+                "host": config.get(CONF_HOST, ""),
+                "port": config.get(CONF_PORT, DEFAULT_PORT),
+                "verify_ssl": config.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+                "monitor_all_namespaces": config.get(
+                    CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
+                ),
+                "namespaces": namespaces,
+                "device_grouping_mode": config.get(
+                    CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
+                ),
+                "switch_update_interval": config.get(
+                    CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
+                ),
+                "scale_verification_timeout": config.get(
+                    CONF_SCALE_VERIFICATION_TIMEOUT,
+                    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+                ),
+                "scale_cooldown": config.get(
+                    CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN
+                ),
+                "panel_enabled": panel_enabled,
+                "watch_enabled": watch_enabled,
+                "healthy": coordinator.last_update_success,
+            }
+        )
+
+    return {"entries": entries}
