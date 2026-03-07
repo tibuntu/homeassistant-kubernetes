@@ -79,7 +79,8 @@
         "/\\.github/workflows/.*\\.ya?ml$/"
       ],
       "matchStrings": [
-        "python-version:\\s*[\"'](?<currentValue>[0-9.]+)[\"']"
+        "python-version:\\s*[\"'](?<currentValue>[0-9.]+)[\"']",
+        "PYTHON_VERSION:\\s*[\"'](?<currentValue>[0-9.]+)[\"']"
       ],
       "depNameTemplate": "python",
       "datasourceTemplate": "python-version"
