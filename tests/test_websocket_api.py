@@ -10,6 +10,8 @@ from custom_components.kubernetes.websocket_api import (
     _build_cluster_overview,
     _build_namespace_breakdown,
     _get_cluster_overview_data,
+    _get_nodes_list_data,
+    _get_pods_list_data,
     async_register_websocket_commands,
 )
 
@@ -129,7 +131,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            mock_ws_api.async_register_command.assert_called_once()
+            assert mock_ws_api.async_register_command.call_count == 3
 
 
 class TestWebsocketClusterOverview:
@@ -530,3 +532,297 @@ class TestBuildAlerts:
         assert "memory_pressure" in conditions
         assert "disk_pressure" in conditions
         assert len(conditions) == 2
+
+
+class TestWebsocketNodesList:
+    """Tests for the kubernetes/nodes/list command logic."""
+
+    def test_returns_empty_when_no_domain_data(self, mock_hass):
+        """Test returns empty clusters list when no DOMAIN data."""
+        mock_hass.data = {}
+        result = _get_nodes_list_data(mock_hass)
+        assert result == {"clusters": []}
+
+    def test_returns_nodes_for_cluster(self, mock_hass, sample_coordinator_data):
+        """Test returns all nodes for a cluster."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test-cluster"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_nodes_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+        cluster = result["clusters"][0]
+        assert cluster["entry_id"] == "entry_1"
+        assert cluster["cluster_name"] == "test-cluster"
+        assert len(cluster["nodes"]) == 2
+
+        node_names = {n["name"] for n in cluster["nodes"]}
+        assert node_names == {"node-1", "node-2"}
+
+    def test_handles_none_coordinator_data(self, mock_hass):
+        """Test handles coordinator with None data gracefully."""
+        coordinator = _make_coordinator(None)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_nodes_list_data(mock_hass)
+
+        cluster = result["clusters"][0]
+        assert cluster["nodes"] == []
+
+    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
+        """Test skips panel_registered and switch_add_entities keys."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "panel_registered": True,
+                "switch_add_entities": MagicMock(),
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_nodes_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+
+    def test_skips_entries_without_coordinator(self, mock_hass):
+        """Test skips entries that have no coordinator."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                },
+            }
+        }
+
+        result = _get_nodes_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 0
+
+    def test_multi_cluster(self, mock_hass, sample_coordinator_data):
+        """Test returns nodes from multiple clusters."""
+        coordinator_1 = _make_coordinator(sample_coordinator_data)
+        coordinator_2 = _make_coordinator(
+            {
+                "nodes": {
+                    "worker-1": {"name": "worker-1", "status": "Ready"},
+                },
+                "pods": {},
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {},
+                "jobs": {},
+                "pods_count": 0,
+                "nodes_count": 1,
+                "last_update": 0.0,
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "cluster-a"},
+                    "coordinator": coordinator_1,
+                },
+                "entry_2": {
+                    "config": {"cluster_name": "cluster-b"},
+                    "coordinator": coordinator_2,
+                },
+            }
+        }
+
+        result = _get_nodes_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 2
+        total_nodes = sum(len(c["nodes"]) for c in result["clusters"])
+        assert total_nodes == 3
+
+
+class TestWebsocketPodsList:
+    """Tests for the kubernetes/pods/list command logic."""
+
+    def test_returns_empty_when_no_domain_data(self, mock_hass):
+        """Test returns empty clusters list when no DOMAIN data."""
+        mock_hass.data = {}
+        result = _get_pods_list_data(mock_hass)
+        assert result == {"clusters": []}
+
+    def test_returns_pods_for_cluster(self, mock_hass, sample_coordinator_data):
+        """Test returns all pods for a cluster."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test-cluster"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_pods_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+        cluster = result["clusters"][0]
+        assert cluster["entry_id"] == "entry_1"
+        assert cluster["cluster_name"] == "test-cluster"
+        assert len(cluster["pods"]) == 3
+
+        pod_names = {p["name"] for p in cluster["pods"]}
+        assert pod_names == {"nginx-abc123", "nginx-def456", "api-xyz789"}
+
+    def test_handles_none_coordinator_data(self, mock_hass):
+        """Test handles coordinator with None data gracefully."""
+        coordinator = _make_coordinator(None)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_pods_list_data(mock_hass)
+
+        cluster = result["clusters"][0]
+        assert cluster["pods"] == []
+
+    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
+        """Test skips panel_registered and switch_add_entities keys."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "panel_registered": True,
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_pods_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+
+    def test_skips_entries_without_coordinator(self, mock_hass):
+        """Test skips entries that have no coordinator."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                },
+            }
+        }
+
+        result = _get_pods_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 0
+
+    def test_multi_cluster(self, mock_hass, sample_coordinator_data):
+        """Test returns pods from multiple clusters."""
+        coordinator_1 = _make_coordinator(sample_coordinator_data)
+        coordinator_2 = _make_coordinator(
+            {
+                "nodes": {},
+                "pods": {
+                    "staging_app-1": {
+                        "name": "app-1",
+                        "namespace": "staging",
+                        "phase": "Running",
+                    },
+                },
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {},
+                "jobs": {},
+                "pods_count": 1,
+                "nodes_count": 0,
+                "last_update": 0.0,
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "cluster-a"},
+                    "coordinator": coordinator_1,
+                },
+                "entry_2": {
+                    "config": {"cluster_name": "cluster-b"},
+                    "coordinator": coordinator_2,
+                },
+            }
+        }
+
+        result = _get_pods_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 2
+        total_pods = sum(len(c["pods"]) for c in result["clusters"])
+        assert total_pods == 4
+
+    def test_pods_include_all_fields(self, mock_hass):
+        """Test that pod data includes expected fields."""
+        pod_data = {
+            "name": "web-abc",
+            "namespace": "prod",
+            "phase": "Running",
+            "ready_containers": 1,
+            "total_containers": 1,
+            "restart_count": 3,
+            "node_name": "worker-1",
+            "pod_ip": "10.0.0.5",
+            "creation_timestamp": "2024-01-01T00:00:00Z",
+            "owner_kind": "ReplicaSet",
+            "owner_name": "web-abc123",
+            "uid": "test-uid",
+            "labels": {},
+        }
+        coordinator = _make_coordinator(
+            {
+                "pods": {"prod_web-abc": pod_data},
+                "nodes": {},
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {},
+                "jobs": {},
+                "pods_count": 1,
+                "nodes_count": 0,
+                "last_update": 0.0,
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_pods_list_data(mock_hass)
+        pod = result["clusters"][0]["pods"][0]
+        assert pod["name"] == "web-abc"
+        assert pod["namespace"] == "prod"
+        assert pod["phase"] == "Running"
+        assert pod["ready_containers"] == 1
+        assert pod["restart_count"] == 3
+        assert pod["node_name"] == "worker-1"
+        assert pod["pod_ip"] == "10.0.0.5"
+        assert pod["owner_kind"] == "ReplicaSet"
