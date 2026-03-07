@@ -92,7 +92,7 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 - All entities read cached data from the coordinator, never calling the K8s API directly.
 - `asyncio_mode = "auto"` in pytest — test functions are automatically treated as async. `asyncio_default_fixture_loop_scope = "function"` is set for compatibility with `pytest-homeassistant-custom-component`.
-- Tests use `pytest-homeassistant-custom-component` for real HA test fixtures. `test_init.py` and `test_device.py` have been migrated to use the real `hass` fixture and `MockConfigEntry`. Remaining test files still use legacy `mock_hass`/`mock_config_entry` from `conftest.py` (migration in progress, see #115). K8s-specific mock fixtures (`mock_client`, `mock_coordinator`, `mock_kubernetes_client`, `mock_kubernetes_api`) remain in `conftest.py`.
+- Tests use `pytest-homeassistant-custom-component` for real HA test fixtures. `test_init.py`, `test_device.py`, and `test_config_flow.py` have been migrated to use the real `hass` fixture and `MockConfigEntry`. Config flow tests register the handler via `HANDLERS` + `DATA_COMPONENTS` fixture (see `register_config_flow` in `test_config_flow.py`). Remaining test files still use legacy `mock_hass`/`mock_config_entry` from `conftest.py` (migration in progress, see #115). K8s-specific mock fixtures (`mock_client`, `mock_coordinator`, `mock_kubernetes_client`, `mock_kubernetes_api`) remain in `conftest.py`.
 - The kubernetes package is lazy-imported in config_flow and checked at setup to handle missing dependency.
 
 ## Code Style
@@ -117,6 +117,10 @@ Whenever changes are implemented to any integration code, always add or update t
 - Each new module-level helper function gets a `TestDiscover<Name>` or similar test class.
 - Cover the happy path, edge cases (missing data, `None` coordinator data), and all distinct return values.
 - Use the shared fixtures from `conftest.py` (`mock_hass`, `mock_config_entry`, `mock_client`, `mock_coordinator`) rather than creating new ones where possible.
+
+### Future: test directory structure
+
+`test_kubernetes_client.py` is the only test file with no HA dependency — it tests the pure k8s API wrapper. Consider moving it to `tests/unit/` to clearly separate HA-integrated tests from pure unit tests. This would require updating `testpaths` and coverage config in `pyproject.toml`.
 - Do not attempt to run tests locally — the CI pipeline handles test execution.
 
 ## Documentation
