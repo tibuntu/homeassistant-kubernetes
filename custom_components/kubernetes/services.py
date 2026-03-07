@@ -469,10 +469,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             return
 
         config_data = entry_data["config"]
-
-        from .kubernetes_client import KubernetesClient
-
-        client = KubernetesClient(config_data)
+        client = entry_data["coordinator"].client
 
         for workload_name, namespace, workload_type in workloads:
             namespace = namespace or config_data.get("namespace", "default")
@@ -536,10 +533,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             return
 
         config_data = entry_data["config"]
-
-        from .kubernetes_client import KubernetesClient
-
-        client = KubernetesClient(config_data)
+        client = entry_data["coordinator"].client
 
         for workload_name, namespace, workload_type in workloads:
             namespace = namespace or config_data.get("namespace", "default")
@@ -616,10 +610,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             return
 
         config_data = entry_data["config"]
-
-        from .kubernetes_client import KubernetesClient
-
-        client = KubernetesClient(config_data)
+        client = entry_data["coordinator"].client
 
         for workload_name, namespace, workload_type in workloads:
             namespace = namespace or config_data.get("namespace", "default")
