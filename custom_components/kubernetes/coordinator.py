@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import timedelta
 import logging
+import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -112,7 +113,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                 "pods_count": pods_count,
                 "nodes_count": nodes_count,
-                "last_update": asyncio.get_running_loop().time(),
+                "last_update": time.time(),
             }
 
             _LOGGER.debug(
@@ -661,7 +662,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         elif resource_type == "nodes":
             self.data["nodes_count"] = len(self.data["nodes"])
 
-        self.data["last_update"] = asyncio.get_running_loop().time()
+        self.data["last_update"] = time.time()
         self.async_update_listeners()
 
     async def _run_watch_loop(

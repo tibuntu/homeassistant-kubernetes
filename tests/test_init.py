@@ -16,7 +16,6 @@ except ImportError:
         SWITCH = "switch"
 
 
-from homeassistant.core import HomeAssistant
 import pytest
 
 from custom_components.kubernetes import (
@@ -30,23 +29,6 @@ from custom_components.kubernetes import (
     async_setup_entry,
     async_unload_entry,
 )
-
-
-@pytest.fixture
-def mock_hass():
-    """Mock Home Assistant instance."""
-    hass = MagicMock(spec=HomeAssistant)
-    hass.data = {}
-    hass.config_entries = MagicMock()
-    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
-    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
-    hass.services = MagicMock()
-    hass.services.async_register = AsyncMock()
-    hass.services.async_remove = AsyncMock()
-    hass.state = MagicMock()
-    hass.http = MagicMock()
-    hass.http.async_register_static_paths = AsyncMock()
-    return hass
 
 
 @pytest.fixture

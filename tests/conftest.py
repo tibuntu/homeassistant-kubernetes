@@ -46,6 +46,8 @@ def mock_hass():
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     # Add state attribute
     hass.state = MagicMock()
+    hass.http = MagicMock()
+    hass.http.async_register_static_paths = AsyncMock()
     return hass
 
 

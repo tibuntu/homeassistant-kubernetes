@@ -47,14 +47,37 @@ export class K8sPodsTable extends LitElement {
   @state() private _sortAsc: boolean = true;
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
+  private _loadingInFlight = false;
+  private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     this._loadData();
-    this._refreshInterval = setInterval(() => this._loadData(), 30000);
+    this._startPolling();
+    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._stopPolling();
+    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+  }
+
+  private _handleVisibilityChange(): void {
+    if (document.hidden) {
+      this._stopPolling();
+    } else {
+      this._loadData();
+      this._startPolling();
+    }
+  }
+
+  private _startPolling(): void {
+    if (!this._refreshInterval) {
+      this._refreshInterval = setInterval(() => this._loadData(), 30000);
+    }
+  }
+
+  private _stopPolling(): void {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = undefined;
@@ -62,6 +85,8 @@ export class K8sPodsTable extends LitElement {
   }
 
   private async _loadData(): Promise<void> {
+    if (this._loadingInFlight) return;
+    this._loadingInFlight = true;
     if (!this._data) {
       this._loading = true;
     }
@@ -75,6 +100,7 @@ export class K8sPodsTable extends LitElement {
       this._error = err.message || "Failed to load pods data";
     } finally {
       this._loading = false;
+      this._loadingInFlight = false;
     }
   }
 
@@ -324,28 +350,28 @@ export class K8sPodsTable extends LitElement {
     }
 
     .badge-running {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-succeeded {
-      background: rgba(33, 150, 243, 0.15);
-      color: #2196f3;
+      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
+      color: var(--info-color, #2196f3);
     }
 
     .badge-pending {
-      background: rgba(255, 152, 0, 0.15);
-      color: #ff9800;
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+      color: var(--warning-color, #ff9800);
     }
 
     .badge-failed {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-unknown {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .mono {
@@ -363,7 +389,7 @@ export class K8sPodsTable extends LitElement {
     }
 
     .restart-warn {
-      color: #ff9800;
+      color: var(--warning-color, #ff9800);
       font-weight: 500;
     }
 

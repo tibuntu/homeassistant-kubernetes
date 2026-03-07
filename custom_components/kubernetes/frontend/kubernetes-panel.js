@@ -600,22 +600,43 @@ function n2(t2) {
 function r(r2) {
   return n2({ ...r2, state: true, attribute: false });
 }
+const LOAD_TIMEOUT_MS = 1e4;
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise(
+      (_2, reject) => setTimeout(() => reject(new Error(`Timeout waiting for ${label} (${ms}ms)`)), ms)
+    )
+  ]);
+}
 const loadHaElements = async () => {
   if (customElements.get("ha-card")) return;
-  await customElements.whenDefined("partial-panel-resolver");
-  const ppr = document.createElement("partial-panel-resolver");
-  ppr.hass = {
-    panels: [
-      {
-        url_path: "tmp",
-        component_name: "config"
-      }
-    ]
-  };
-  ppr._updateRoutes();
-  await ppr.routerOptions.routes.tmp.load();
-  if (!customElements.get("ha-card")) {
-    await customElements.whenDefined("ha-card");
+  try {
+    await withTimeout(
+      customElements.whenDefined("partial-panel-resolver"),
+      LOAD_TIMEOUT_MS,
+      "partial-panel-resolver"
+    );
+    const ppr = document.createElement("partial-panel-resolver");
+    ppr.hass = {
+      panels: [
+        {
+          url_path: "tmp",
+          component_name: "config"
+        }
+      ]
+    };
+    ppr._updateRoutes();
+    await ppr.routerOptions.routes.tmp.load();
+    if (!customElements.get("ha-card")) {
+      await withTimeout(
+        customElements.whenDefined("ha-card"),
+        LOAD_TIMEOUT_MS,
+        "ha-card"
+      );
+    }
+  } catch (err) {
+    console.warn("[kubernetes-panel] Failed to load HA elements:", err);
   }
 };
 var __defProp$5 = Object.defineProperty;
@@ -659,19 +680,41 @@ let K8sOverview = class extends i {
     this._loading = true;
     this._error = null;
     this._expandedNamespaces = /* @__PURE__ */ new Set();
+    this._loadingInFlight = false;
+    this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
   }
   firstUpdated(_changedProps) {
     this._loadData();
-    this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+    this._startPolling();
+    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._stopPolling();
+    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+  }
+  _handleVisibilityChange() {
+    if (document.hidden) {
+      this._stopPolling();
+    } else {
+      this._loadData();
+      this._startPolling();
+    }
+  }
+  _startPolling() {
+    if (!this._refreshInterval) {
+      this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+    }
+  }
+  _stopPolling() {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = void 0;
     }
   }
   async _loadData() {
+    if (this._loadingInFlight) return;
+    this._loadingInFlight = true;
     if (!this._data) {
       this._loading = true;
     }
@@ -685,6 +728,7 @@ let K8sOverview = class extends i {
       this._error = err.message || "Failed to load cluster data";
     } finally {
       this._loading = false;
+      this._loadingInFlight = false;
     }
   }
   _toggleNamespaces(clusterId) {
@@ -762,16 +806,33 @@ let K8sOverview = class extends i {
     )}
         </div>
 
-        ${this._renderNamespaceSection(cluster)}
-
         <div class="alerts-section">
+          <div class="alerts-header">
+            <ha-icon icon="mdi:bell-outline"></ha-icon>
+            <span>Alerts${totalAlerts > 0 ? ` (${totalAlerts})` : ""}</span>
+            <span class="alerts-info-icon">
+              <ha-icon icon="mdi:information-outline"></ha-icon>
+              <div class="alerts-tooltip">
+                Alerts monitor your cluster for issues that may need attention: nodes
+                experiencing memory, disk, or PID pressure; workloads with fewer ready
+                replicas than desired; and pods in a failed state.
+              </div>
+            </span>
+          </div>
           ${totalAlerts > 0 ? this._renderAlerts(cluster.alerts) : b`
                 <div class="no-alerts">
                   <ha-icon icon="mdi:check-circle"></ha-icon>
-                  <span>No active alerts</span>
+                  <div class="no-alerts-text">
+                    <div class="no-alerts-title">No active alerts</div>
+                    <div class="no-alerts-detail">
+                      All nodes, workloads, and pods are operating normally.
+                    </div>
+                  </div>
                 </div>
               `}
         </div>
+
+        ${this._renderNamespaceSection(cluster)}
       </div>
     `;
   }
@@ -959,27 +1020,27 @@ K8sOverview.styles = i$3`
     }
 
     .badge-healthy {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-unhealthy {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-unknown {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .badge-watch {
-      background: rgba(33, 150, 243, 0.15);
-      color: #2196f3;
+      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
+      color: var(--info-color, #2196f3);
     }
 
     .badge-watch-off {
-      background: rgba(158, 158, 158, 0.1);
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.1);
       color: var(--secondary-text-color);
     }
 
@@ -1104,21 +1165,21 @@ K8sOverview.styles = i$3`
     }
 
     .alert-warning {
-      background: rgba(255, 152, 0, 0.1);
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
       color: var(--primary-text-color);
     }
 
     .alert-warning ha-icon {
-      color: #ff9800;
+      color: var(--warning-color, #ff9800);
     }
 
     .alert-error {
-      background: rgba(244, 67, 54, 0.1);
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
       color: var(--primary-text-color);
     }
 
     .alert-error ha-icon {
-      color: #f44336;
+      color: var(--error-color, #f44336);
     }
 
     .alert-title {
@@ -1134,11 +1195,76 @@ K8sOverview.styles = i$3`
     .no-alerts {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 12px 0;
-      color: #4caf50;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 8px;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.08);
       font-size: 14px;
+      --mdc-icon-size: 24px;
+    }
+
+    .no-alerts ha-icon {
+      color: var(--success-color, #4caf50);
+      flex-shrink: 0;
+    }
+
+    .no-alerts-text {
+      flex: 1;
+    }
+
+    .no-alerts-title {
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+
+    .no-alerts-detail {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      margin-top: 2px;
+    }
+
+    .alerts-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--primary-text-color);
       --mdc-icon-size: 20px;
+    }
+
+    .alerts-info-icon {
+      color: var(--secondary-text-color);
+      cursor: help;
+      --mdc-icon-size: 18px;
+      position: relative;
+    }
+
+    .alerts-info-icon:hover {
+      color: var(--primary-color);
+    }
+
+    .alerts-tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 0;
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--secondary-text-color);
+      width: 280px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      z-index: 10;
+      line-height: 1.5;
+    }
+
+    .alerts-info-icon:hover .alerts-tooltip {
+      display: block;
     }
   `;
 __decorateClass$5([
@@ -1184,19 +1310,41 @@ let K8sNodesTable = class extends i {
     this._expandedNodes = /* @__PURE__ */ new Set();
     this._statusFilter = "all";
     this._searchQuery = "";
+    this._loadingInFlight = false;
+    this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
   }
   firstUpdated(_changedProps) {
     this._loadData();
-    this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+    this._startPolling();
+    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._stopPolling();
+    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+  }
+  _handleVisibilityChange() {
+    if (document.hidden) {
+      this._stopPolling();
+    } else {
+      this._loadData();
+      this._startPolling();
+    }
+  }
+  _startPolling() {
+    if (!this._refreshInterval) {
+      this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+    }
+  }
+  _stopPolling() {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = void 0;
     }
   }
   async _loadData() {
+    if (this._loadingInFlight) return;
+    this._loadingInFlight = true;
     if (!this._data) {
       this._loading = true;
     }
@@ -1210,6 +1358,7 @@ let K8sNodesTable = class extends i {
       this._error = err.message || "Failed to load nodes data";
     } finally {
       this._loading = false;
+      this._loadingInFlight = false;
     }
   }
   _toggleNode(nodeKey) {
@@ -1574,23 +1723,23 @@ K8sNodesTable.styles = i$3`
     }
 
     .badge-ready {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-not-ready {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-unschedulable {
-      background: rgba(255, 152, 0, 0.15);
-      color: #ff9800;
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+      color: var(--warning-color, #ff9800);
     }
 
     .badge-condition {
-      background: rgba(255, 152, 0, 0.15);
-      color: #ff9800;
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+      color: var(--warning-color, #ff9800);
     }
 
     .node-ip {
@@ -1743,19 +1892,41 @@ let K8sPodsTable = class extends i {
     this._namespaceFilter = "all";
     this._sortField = "name";
     this._sortAsc = true;
+    this._loadingInFlight = false;
+    this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
   }
   firstUpdated(_changedProps) {
     this._loadData();
-    this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+    this._startPolling();
+    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._stopPolling();
+    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+  }
+  _handleVisibilityChange() {
+    if (document.hidden) {
+      this._stopPolling();
+    } else {
+      this._loadData();
+      this._startPolling();
+    }
+  }
+  _startPolling() {
+    if (!this._refreshInterval) {
+      this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+    }
+  }
+  _stopPolling() {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = void 0;
     }
   }
   async _loadData() {
+    if (this._loadingInFlight) return;
+    this._loadingInFlight = true;
     if (!this._data) {
       this._loading = true;
     }
@@ -1769,6 +1940,7 @@ let K8sPodsTable = class extends i {
       this._error = err.message || "Failed to load pods data";
     } finally {
       this._loading = false;
+      this._loadingInFlight = false;
     }
   }
   _formatAge(timestamp) {
@@ -2159,28 +2331,28 @@ K8sPodsTable.styles = i$3`
     }
 
     .badge-running {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-succeeded {
-      background: rgba(33, 150, 243, 0.15);
-      color: #2196f3;
+      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
+      color: var(--info-color, #2196f3);
     }
 
     .badge-pending {
-      background: rgba(255, 152, 0, 0.15);
-      color: #ff9800;
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+      color: var(--warning-color, #ff9800);
     }
 
     .badge-failed {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-unknown {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .mono {
@@ -2198,7 +2370,7 @@ K8sPodsTable.styles = i$3`
     }
 
     .restart-warn {
-      color: #ff9800;
+      color: var(--warning-color, #ff9800);
       font-weight: 500;
     }
 
@@ -2265,19 +2437,42 @@ let K8sWorkloads = class extends i {
     this._statusFilter = "all";
     this._searchQuery = "";
     this._actionInProgress = /* @__PURE__ */ new Set();
+    this._actionError = null;
+    this._loadingInFlight = false;
+    this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
   }
   firstUpdated(_changedProps) {
     this._loadData();
-    this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+    this._startPolling();
+    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this._stopPolling();
+    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+  }
+  _handleVisibilityChange() {
+    if (document.hidden) {
+      this._stopPolling();
+    } else {
+      this._loadData();
+      this._startPolling();
+    }
+  }
+  _startPolling() {
+    if (!this._refreshInterval) {
+      this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+    }
+  }
+  _stopPolling() {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = void 0;
     }
   }
   async _loadData() {
+    if (this._loadingInFlight) return;
+    this._loadingInFlight = true;
     if (!this._data) {
       this._loading = true;
     }
@@ -2291,6 +2486,7 @@ let K8sWorkloads = class extends i {
       this._error = err.message || "Failed to load workloads data";
     } finally {
       this._loading = false;
+      this._loadingInFlight = false;
     }
   }
   _getNamespaces(cluster) {
@@ -2326,7 +2522,10 @@ let K8sWorkloads = class extends i {
     try {
       await this.hass.callService("kubernetes", service, data);
       setTimeout(() => this._loadData(), 2e3);
-    } catch {
+    } catch (err) {
+      const message = (err == null ? void 0 : err.message) || "Service call failed";
+      this._actionError = `Action failed: ${message}`;
+      console.error("[k8s-workloads] Service call failed:", err);
     } finally {
       const done = new Set(this._actionInProgress);
       done.delete(actionKey);
@@ -2356,7 +2555,23 @@ let K8sWorkloads = class extends i {
     if (!((_a2 = this._data) == null ? void 0 : _a2.clusters.length)) {
       return b`<div class="empty">No Kubernetes clusters configured.</div>`;
     }
-    return b`${this._data.clusters.map((c2) => this._renderCluster(c2))}`;
+    return b`
+      ${this._actionError ? b`
+            <div class="action-error">
+              <span>${this._actionError}</span>
+              <button
+                class="dismiss-btn"
+                @click=${() => {
+      this._actionError = null;
+    }}
+                title="Dismiss"
+              >
+                <ha-icon icon="mdi:close"></ha-icon>
+              </button>
+            </div>
+          ` : A}
+      ${this._data.clusters.map((c2) => this._renderCluster(c2))}
+    `;
   }
   _renderCluster(cluster) {
     const namespaces = this._getNamespaces(cluster);
@@ -2416,10 +2631,10 @@ let K8sWorkloads = class extends i {
     )}
         </div>
 
-        ${this._shouldShowCategory("deployments") ? this._renderDeployments(cluster.deployments) : A}
-        ${this._shouldShowCategory("statefulsets") ? this._renderStatefulSets(cluster.statefulsets) : A}
+        ${this._shouldShowCategory("deployments") ? this._renderDeployments(cluster.deployments, cluster.entry_id) : A}
+        ${this._shouldShowCategory("statefulsets") ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id) : A}
         ${this._shouldShowCategory("daemonsets") ? this._renderDaemonSets(cluster.daemonsets) : A}
-        ${this._shouldShowCategory("cronjobs") ? this._renderCronJobs(cluster.cronjobs) : A}
+        ${this._shouldShowCategory("cronjobs") ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id) : A}
         ${this._shouldShowCategory("jobs") ? this._renderJobs(cluster.jobs) : A}
       </div>
     `;
@@ -2463,7 +2678,7 @@ let K8sWorkloads = class extends i {
     };
     return map[status] || "";
   }
-  _renderDeployments(deployments) {
+  _renderDeployments(deployments, entryId) {
     const filtered = deployments.filter(
       (d2) => this._matchesNamespace(d2.namespace) && this._matchesSearch(d2.name) && this._matchesStatusFilter(this._getDeploymentStatus(d2))
     );
@@ -2478,11 +2693,11 @@ let K8sWorkloads = class extends i {
           Deployments
           <span class="category-count">(${filtered.length})</span>
         </div>
-        ${filtered.map((d2) => this._renderDeploymentCard(d2))}
+        ${filtered.map((d2) => this._renderDeploymentCard(d2, entryId))}
       </div>
     `;
   }
-  _renderDeploymentCard(d2) {
+  _renderDeploymentCard(d2, entryId) {
     const status = this._getDeploymentStatus(d2);
     const actionKey = `deploy_${d2.namespace}_${d2.name}`;
     const busy = this._actionInProgress.has(actionKey);
@@ -2507,7 +2722,11 @@ let K8sWorkloads = class extends i {
                     ?disabled=${busy}
                     @click=${() => this._callService(
       "start_workload",
-      { workload_name: d2.name, namespace: d2.namespace },
+      {
+        workload_name: d2.name,
+        namespace: d2.namespace,
+        entry_id: entryId
+      },
       actionKey
     )}
                   >
@@ -2520,7 +2739,11 @@ let K8sWorkloads = class extends i {
                     ?disabled=${busy}
                     @click=${() => this._callService(
       "stop_workload",
-      { workload_name: d2.name, namespace: d2.namespace },
+      {
+        workload_name: d2.name,
+        namespace: d2.namespace,
+        entry_id: entryId
+      },
       actionKey
     )}
                   >
@@ -2532,7 +2755,7 @@ let K8sWorkloads = class extends i {
       </ha-card>
     `;
   }
-  _renderStatefulSets(statefulsets) {
+  _renderStatefulSets(statefulsets, entryId) {
     const filtered = statefulsets.filter(
       (s2) => this._matchesNamespace(s2.namespace) && this._matchesSearch(s2.name) && this._matchesStatusFilter(this._getStatefulSetStatus(s2))
     );
@@ -2547,11 +2770,11 @@ let K8sWorkloads = class extends i {
           StatefulSets
           <span class="category-count">(${filtered.length})</span>
         </div>
-        ${filtered.map((s2) => this._renderStatefulSetCard(s2))}
+        ${filtered.map((s2) => this._renderStatefulSetCard(s2, entryId))}
       </div>
     `;
   }
-  _renderStatefulSetCard(s2) {
+  _renderStatefulSetCard(s2, entryId) {
     const status = this._getStatefulSetStatus(s2);
     const actionKey = `sts_${s2.namespace}_${s2.name}`;
     const busy = this._actionInProgress.has(actionKey);
@@ -2576,7 +2799,11 @@ let K8sWorkloads = class extends i {
                     ?disabled=${busy}
                     @click=${() => this._callService(
       "start_workload",
-      { workload_name: s2.name, namespace: s2.namespace },
+      {
+        workload_name: s2.name,
+        namespace: s2.namespace,
+        entry_id: entryId
+      },
       actionKey
     )}
                   >
@@ -2589,7 +2816,11 @@ let K8sWorkloads = class extends i {
                     ?disabled=${busy}
                     @click=${() => this._callService(
       "stop_workload",
-      { workload_name: s2.name, namespace: s2.namespace },
+      {
+        workload_name: s2.name,
+        namespace: s2.namespace,
+        entry_id: entryId
+      },
       actionKey
     )}
                   >
@@ -2639,7 +2870,7 @@ let K8sWorkloads = class extends i {
       </ha-card>
     `;
   }
-  _renderCronJobs(cronjobs) {
+  _renderCronJobs(cronjobs, entryId) {
     const filtered = cronjobs.filter(
       (cj) => this._matchesNamespace(cj.namespace) && this._matchesSearch(cj.name)
     );
@@ -2659,11 +2890,11 @@ let K8sWorkloads = class extends i {
           CronJobs
           <span class="category-count">(${statusFiltered.length})</span>
         </div>
-        ${statusFiltered.map((cj) => this._renderCronJobCard(cj))}
+        ${statusFiltered.map((cj) => this._renderCronJobCard(cj, entryId))}
       </div>
     `;
   }
-  _renderCronJobCard(cj) {
+  _renderCronJobCard(cj, entryId) {
     const actionKey = `cj_${cj.namespace}_${cj.name}`;
     const busy = this._actionInProgress.has(actionKey);
     return b`
@@ -2688,7 +2919,11 @@ let K8sWorkloads = class extends i {
               ?disabled=${busy}
               @click=${() => this._callService(
       "start_workload",
-      { workload_name: cj.name, namespace: cj.namespace },
+      {
+        workload_name: cj.name,
+        namespace: cj.namespace,
+        entry_id: entryId
+      },
       actionKey
     )}
             >
@@ -2934,38 +3169,38 @@ K8sWorkloads.styles = i$3`
     }
 
     .badge-healthy {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-degraded {
-      background: rgba(255, 152, 0, 0.15);
-      color: #ff9800;
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+      color: var(--warning-color, #ff9800);
     }
 
     .badge-stopped {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .badge-failed {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-active {
-      background: rgba(33, 150, 243, 0.15);
-      color: #2196f3;
+      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
+      color: var(--info-color, #2196f3);
     }
 
     .badge-suspended {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .badge-complete {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .replica-info {
@@ -3014,18 +3249,50 @@ K8sWorkloads.styles = i$3`
     }
 
     .action-btn.stop:hover {
-      background: rgba(244, 67, 54, 0.1);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+      color: var(--error-color, #f44336);
     }
 
     .action-btn.start:hover {
-      background: rgba(76, 175, 80, 0.1);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.1);
+      color: var(--success-color, #4caf50);
     }
 
     .last-schedule {
       font-size: 12px;
       color: var(--secondary-text-color);
+    }
+
+    .action-error {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 16px;
+      margin-bottom: 16px;
+      border-radius: 8px;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+      color: var(--error-color, #f44336);
+      font-size: 14px;
+    }
+
+    .action-error .dismiss-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      cursor: pointer;
+      color: var(--error-color, #f44336);
+      --mdc-icon-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .action-error .dismiss-btn:hover {
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
     }
 
     @media (max-width: 768px) {
@@ -3067,6 +3334,9 @@ __decorateClass$2([
 __decorateClass$2([
   r()
 ], K8sWorkloads.prototype, "_actionInProgress", 2);
+__decorateClass$2([
+  r()
+], K8sWorkloads.prototype, "_actionError", 2);
 K8sWorkloads = __decorateClass$2([
   t("k8s-workloads")
 ], K8sWorkloads);
@@ -3350,18 +3620,18 @@ K8sSettings.styles = i$3`
     }
 
     .badge-healthy {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-unhealthy {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-unknown {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .cards-grid {
@@ -3424,7 +3694,7 @@ K8sSettings.styles = i$3`
     }
 
     .bool-true {
-      color: #4caf50;
+      color: var(--success-color, #4caf50);
     }
 
     .bool-false {
@@ -3574,7 +3844,8 @@ let KubernetesPanel = class extends i {
 };
 KubernetesPanel.styles = i$3`
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
       height: 100%;
       background: var(--primary-background-color);
       color: var(--primary-text-color);
@@ -3650,7 +3921,7 @@ KubernetesPanel.styles = i$3`
     .content {
       padding: 16px;
       overflow-y: auto;
-      height: calc(100% - 56px - 49px);
+      flex: 1;
       box-sizing: border-box;
     }
 

@@ -379,6 +379,7 @@ SCALE_WORKLOAD_SCHEMA = vol.Schema(
             ),
             vol.Required(ATTR_REPLICAS): vol.All(vol.Coerce(int), vol.Range(min=0)),
             vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
     )
@@ -398,6 +399,7 @@ START_WORKLOAD_SCHEMA = vol.Schema(
                 vol.Coerce(int), vol.Range(min=1)
             ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
     )
@@ -414,10 +416,37 @@ STOP_WORKLOAD_SCHEMA = vol.Schema(
                 dict,
             ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
     )
 )
+
+
+def _get_entry_data(
+    hass: HomeAssistant, call_data: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Get the config entry data for a service call.
+
+    If ``entry_id`` is provided in *call_data* and matches a loaded config
+    entry, that entry is used.  Otherwise falls back to the first entry.
+    """
+    kubernetes_data = hass.data.get(DOMAIN)
+    if not kubernetes_data:
+        _LOGGER.error("No Kubernetes integration configured")
+        return None
+
+    from .const import DOMAIN_META_KEYS
+
+    entry_id = call_data.get("entry_id")
+    if entry_id and entry_id in kubernetes_data and entry_id not in DOMAIN_META_KEYS:
+        return kubernetes_data[entry_id]
+
+    # Fallback: first real config entry
+    for eid, edata in kubernetes_data.items():
+        if eid not in DOMAIN_META_KEYS and isinstance(edata, dict):
+            return edata
+    return None
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
@@ -435,14 +464,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
 
         replicas = call.data[ATTR_REPLICAS]
 
-        # Get the Kubernetes client from the first config entry
-        kubernetes_data = hass.data.get(DOMAIN)
-        if not kubernetes_data:
-            _LOGGER.error("No Kubernetes integration configured")
+        entry_data = _get_entry_data(hass, call.data)
+        if not entry_data:
             return
 
-        config_entry_id = next(iter(kubernetes_data.keys()))
-        config_data = kubernetes_data[config_entry_id]["config"]
+        config_data = entry_data["config"]
 
         from .kubernetes_client import KubernetesClient
 
@@ -505,14 +531,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
 
         replicas = call.data.get(ATTR_REPLICAS, 1)
 
-        # Get the Kubernetes client from the first config entry
-        kubernetes_data = hass.data.get(DOMAIN)
-        if not kubernetes_data:
-            _LOGGER.error("No Kubernetes integration configured")
+        entry_data = _get_entry_data(hass, call.data)
+        if not entry_data:
             return
 
-        config_entry_id = next(iter(kubernetes_data.keys()))
-        config_data = kubernetes_data[config_entry_id]["config"]
+        config_data = entry_data["config"]
 
         from .kubernetes_client import KubernetesClient
 
@@ -588,14 +611,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             _log_no_workloads_found(call.data, "stop_workload")
             return
 
-        # Get the Kubernetes client from the first config entry
-        kubernetes_data = hass.data.get(DOMAIN)
-        if not kubernetes_data:
-            _LOGGER.error("No Kubernetes integration configured")
+        entry_data = _get_entry_data(hass, call.data)
+        if not entry_data:
             return
 
-        config_entry_id = next(iter(kubernetes_data.keys()))
-        config_data = kubernetes_data[config_entry_id]["config"]
+        config_data = entry_data["config"]
 
         from .kubernetes_client import KubernetesClient
 

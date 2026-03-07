@@ -85,16 +85,40 @@ export class K8sWorkloads extends LitElement {
   @state() private _statusFilter: StatusFilter = "all";
   @state() private _searchQuery: string = "";
   @state() private _actionInProgress: Set<string> = new Set();
+  @state() private _actionError: string | null = null;
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
+  private _loadingInFlight = false;
+  private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     this._loadData();
-    this._refreshInterval = setInterval(() => this._loadData(), 30000);
+    this._startPolling();
+    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._stopPolling();
+    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+  }
+
+  private _handleVisibilityChange(): void {
+    if (document.hidden) {
+      this._stopPolling();
+    } else {
+      this._loadData();
+      this._startPolling();
+    }
+  }
+
+  private _startPolling(): void {
+    if (!this._refreshInterval) {
+      this._refreshInterval = setInterval(() => this._loadData(), 30000);
+    }
+  }
+
+  private _stopPolling(): void {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = undefined;
@@ -102,6 +126,8 @@ export class K8sWorkloads extends LitElement {
   }
 
   private async _loadData(): Promise<void> {
+    if (this._loadingInFlight) return;
+    this._loadingInFlight = true;
     if (!this._data) {
       this._loading = true;
     }
@@ -115,6 +141,7 @@ export class K8sWorkloads extends LitElement {
       this._error = err.message || "Failed to load workloads data";
     } finally {
       this._loading = false;
+      this._loadingInFlight = false;
     }
   }
 
@@ -160,8 +187,10 @@ export class K8sWorkloads extends LitElement {
       await this.hass.callService("kubernetes", service, data);
       // Reload data after action
       setTimeout(() => this._loadData(), 2000);
-    } catch {
-      // Service call failed — UI will reflect stale state until next refresh
+    } catch (err: any) {
+      const message = err?.message || "Service call failed";
+      this._actionError = `Action failed: ${message}`;
+      console.error("[k8s-workloads] Service call failed:", err);
     } finally {
       const done = new Set(this._actionInProgress);
       done.delete(actionKey);
@@ -356,38 +385,38 @@ export class K8sWorkloads extends LitElement {
     }
 
     .badge-healthy {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-degraded {
-      background: rgba(255, 152, 0, 0.15);
-      color: #ff9800;
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+      color: var(--warning-color, #ff9800);
     }
 
     .badge-stopped {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .badge-failed {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-active {
-      background: rgba(33, 150, 243, 0.15);
-      color: #2196f3;
+      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
+      color: var(--info-color, #2196f3);
     }
 
     .badge-suspended {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .badge-complete {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .replica-info {
@@ -436,18 +465,50 @@ export class K8sWorkloads extends LitElement {
     }
 
     .action-btn.stop:hover {
-      background: rgba(244, 67, 54, 0.1);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+      color: var(--error-color, #f44336);
     }
 
     .action-btn.start:hover {
-      background: rgba(76, 175, 80, 0.1);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.1);
+      color: var(--success-color, #4caf50);
     }
 
     .last-schedule {
       font-size: 12px;
       color: var(--secondary-text-color);
+    }
+
+    .action-error {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 16px;
+      margin-bottom: 16px;
+      border-radius: 8px;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+      color: var(--error-color, #f44336);
+      font-size: 14px;
+    }
+
+    .action-error .dismiss-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      cursor: pointer;
+      color: var(--error-color, #f44336);
+      --mdc-icon-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .action-error .dismiss-btn:hover {
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
     }
 
     @media (max-width: 768px) {
@@ -488,7 +549,25 @@ export class K8sWorkloads extends LitElement {
       return html`<div class="empty">No Kubernetes clusters configured.</div>`;
     }
 
-    return html`${this._data.clusters.map((c) => this._renderCluster(c))}`;
+    return html`
+      ${this._actionError
+        ? html`
+            <div class="action-error">
+              <span>${this._actionError}</span>
+              <button
+                class="dismiss-btn"
+                @click=${() => {
+                  this._actionError = null;
+                }}
+                title="Dismiss"
+              >
+                <ha-icon icon="mdi:close"></ha-icon>
+              </button>
+            </div>
+          `
+        : nothing}
+      ${this._data.clusters.map((c) => this._renderCluster(c))}
+    `;
   }
 
   private _renderCluster(cluster: ClusterWorkloads) {
@@ -554,16 +633,16 @@ export class K8sWorkloads extends LitElement {
         </div>
 
         ${this._shouldShowCategory("deployments")
-          ? this._renderDeployments(cluster.deployments)
+          ? this._renderDeployments(cluster.deployments, cluster.entry_id)
           : nothing}
         ${this._shouldShowCategory("statefulsets")
-          ? this._renderStatefulSets(cluster.statefulsets)
+          ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id)
           : nothing}
         ${this._shouldShowCategory("daemonsets")
           ? this._renderDaemonSets(cluster.daemonsets)
           : nothing}
         ${this._shouldShowCategory("cronjobs")
-          ? this._renderCronJobs(cluster.cronjobs)
+          ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id)
           : nothing}
         ${this._shouldShowCategory("jobs") ? this._renderJobs(cluster.jobs) : nothing}
       </div>
@@ -616,7 +695,7 @@ export class K8sWorkloads extends LitElement {
     return map[status] || "";
   }
 
-  private _renderDeployments(deployments: DeploymentData[]) {
+  private _renderDeployments(deployments: DeploymentData[], entryId: string) {
     const filtered = deployments.filter(
       (d) =>
         this._matchesNamespace(d.namespace) &&
@@ -636,12 +715,12 @@ export class K8sWorkloads extends LitElement {
           Deployments
           <span class="category-count">(${filtered.length})</span>
         </div>
-        ${filtered.map((d) => this._renderDeploymentCard(d))}
+        ${filtered.map((d) => this._renderDeploymentCard(d, entryId))}
       </div>
     `;
   }
 
-  private _renderDeploymentCard(d: DeploymentData) {
+  private _renderDeploymentCard(d: DeploymentData, entryId: string) {
     const status = this._getDeploymentStatus(d);
     const actionKey = `deploy_${d.namespace}_${d.name}`;
     const busy = this._actionInProgress.has(actionKey);
@@ -669,7 +748,11 @@ export class K8sWorkloads extends LitElement {
                     @click=${() =>
                       this._callService(
                         "start_workload",
-                        { workload_name: d.name, namespace: d.namespace },
+                        {
+                          workload_name: d.name,
+                          namespace: d.namespace,
+                          entry_id: entryId,
+                        },
                         actionKey,
                       )}
                   >
@@ -684,7 +767,11 @@ export class K8sWorkloads extends LitElement {
                     @click=${() =>
                       this._callService(
                         "stop_workload",
-                        { workload_name: d.name, namespace: d.namespace },
+                        {
+                          workload_name: d.name,
+                          namespace: d.namespace,
+                          entry_id: entryId,
+                        },
                         actionKey,
                       )}
                   >
@@ -697,7 +784,7 @@ export class K8sWorkloads extends LitElement {
     `;
   }
 
-  private _renderStatefulSets(statefulsets: StatefulSetData[]) {
+  private _renderStatefulSets(statefulsets: StatefulSetData[], entryId: string) {
     const filtered = statefulsets.filter(
       (s) =>
         this._matchesNamespace(s.namespace) &&
@@ -717,12 +804,12 @@ export class K8sWorkloads extends LitElement {
           StatefulSets
           <span class="category-count">(${filtered.length})</span>
         </div>
-        ${filtered.map((s) => this._renderStatefulSetCard(s))}
+        ${filtered.map((s) => this._renderStatefulSetCard(s, entryId))}
       </div>
     `;
   }
 
-  private _renderStatefulSetCard(s: StatefulSetData) {
+  private _renderStatefulSetCard(s: StatefulSetData, entryId: string) {
     const status = this._getStatefulSetStatus(s);
     const actionKey = `sts_${s.namespace}_${s.name}`;
     const busy = this._actionInProgress.has(actionKey);
@@ -750,7 +837,11 @@ export class K8sWorkloads extends LitElement {
                     @click=${() =>
                       this._callService(
                         "start_workload",
-                        { workload_name: s.name, namespace: s.namespace },
+                        {
+                          workload_name: s.name,
+                          namespace: s.namespace,
+                          entry_id: entryId,
+                        },
                         actionKey,
                       )}
                   >
@@ -765,7 +856,11 @@ export class K8sWorkloads extends LitElement {
                     @click=${() =>
                       this._callService(
                         "stop_workload",
-                        { workload_name: s.name, namespace: s.namespace },
+                        {
+                          workload_name: s.name,
+                          namespace: s.namespace,
+                          entry_id: entryId,
+                        },
                         actionKey,
                       )}
                   >
@@ -824,7 +919,7 @@ export class K8sWorkloads extends LitElement {
     `;
   }
 
-  private _renderCronJobs(cronjobs: CronJobData[]) {
+  private _renderCronJobs(cronjobs: CronJobData[], entryId: string) {
     const filtered = cronjobs.filter(
       (cj) => this._matchesNamespace(cj.namespace) && this._matchesSearch(cj.name),
     );
@@ -851,12 +946,12 @@ export class K8sWorkloads extends LitElement {
           CronJobs
           <span class="category-count">(${statusFiltered.length})</span>
         </div>
-        ${statusFiltered.map((cj) => this._renderCronJobCard(cj))}
+        ${statusFiltered.map((cj) => this._renderCronJobCard(cj, entryId))}
       </div>
     `;
   }
 
-  private _renderCronJobCard(cj: CronJobData) {
+  private _renderCronJobCard(cj: CronJobData, entryId: string) {
     const actionKey = `cj_${cj.namespace}_${cj.name}`;
     const busy = this._actionInProgress.has(actionKey);
 
@@ -889,7 +984,11 @@ export class K8sWorkloads extends LitElement {
               @click=${() =>
                 this._callService(
                   "start_workload",
-                  { workload_name: cj.name, namespace: cj.namespace },
+                  {
+                    workload_name: cj.name,
+                    namespace: cj.namespace,
+                    entry_id: entryId,
+                  },
                   actionKey,
                 )}
             >

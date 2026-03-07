@@ -14,6 +14,7 @@ The integration provides the following sensors to monitor your Kubernetes cluste
 | **StatefulSets Count** | Number of statefulsets in the monitored namespace(s) | `2` | statefulsets |
 | **DaemonSets Count** | Number of daemonsets in the monitored namespace(s) | `3` | daemonsets |
 | **CronJobs Count** | Number of cronjobs in the monitored namespace(s) | `5` | cronjobs |
+| **Jobs Count** | Number of jobs in the monitored namespace(s) | `3` | jobs |
 
 ### Individual Node Sensors
 
@@ -136,6 +137,34 @@ Each pod sensor provides comprehensive information about the pod:
 | **owner_kind** | Type of resource that owns this pod | `ReplicaSet` |
 | **owner_name** | Name of the resource that owns this pod | `my-app-7d4b8c9f6b` |
 
+### Individual Job Sensors
+
+The integration creates a separate sensor for each Kubernetes Job in the monitored namespace(s):
+
+| Sensor | Description | Example Value |
+|--------|-------------|---------------|
+| **[job-name]** | Individual Job status | `Complete` / `Running` / `Failed` / `Unknown` |
+
+Status values:
+- `Complete` — all completions have succeeded (`succeeded >= completions`)
+- `Running` — the job has active pods (`active > 0`)
+- `Failed` — the job has failed pods and no active ones
+- `Unknown` — data is unavailable
+
+#### Job Sensor Attributes
+
+Each Job sensor provides execution details:
+
+| Attribute | Description | Example Value |
+|-----------|-------------|---------------|
+| **namespace** | Kubernetes namespace of the Job | `default` |
+| **completions** | Number of completions required | `1` |
+| **succeeded** | Number of successfully completed pods | `1` |
+| **failed** | Number of failed pods | `0` |
+| **active** | Number of currently active pods | `0` |
+| **start_time** | When the Job started | `2025-01-01T00:00:00Z` |
+| **completion_time** | When the Job completed | `2025-01-01T00:05:00Z` |
+
 ### Sensor Attributes
 
 Each sensor includes additional attributes with detailed information:
@@ -150,6 +179,20 @@ Each sensor includes additional attributes with detailed information:
 | Binary Sensor | Description | States |
 |---------------|-------------|--------|
 | **Cluster Health** | Indicates if the cluster is reachable and responding | `on` (healthy) / `off` (unhealthy) |
+
+### Node Condition Binary Sensors
+
+The integration creates binary sensors for each node condition on every node in the cluster:
+
+| Binary Sensor | Description | Device Class |
+|---------------|-------------|--------------|
+| **[node-name] Memory Pressure** | Node is running low on memory | `problem` |
+| **[node-name] Disk Pressure** | Node is running low on disk space | `problem` |
+| **[node-name] PID Pressure** | Node is running too many processes | `problem` |
+| **[node-name] Network Unavailable** | Node network is not correctly configured | `problem` |
+
+- **States**: `on` means the condition is active (problem detected), `off` means normal operation
+- **Device assignment**: Assigned to the cluster device alongside individual node sensors
 
 ### Binary Sensor Attributes
 
@@ -215,7 +258,9 @@ Cluster Device (e.g., "production-cluster")
 │   ├── StatefulSets Count (sensor)
 │   ├── DaemonSets Count (sensor)
 │   ├── CronJobs Count (sensor)
-│   └── Individual Node sensors (one per node)
+│   ├── Jobs Count (sensor)
+│   ├── Individual Node sensors (one per node)
+│   └── Node condition binary sensors (4 per node: Memory/Disk/PID Pressure, Network Unavailable)
 │
 └── Namespace Devices (e.g., "production-cluster: default")
     ├── Pod sensors (all pods in this namespace)
@@ -226,7 +271,8 @@ Cluster Device (e.g., "production-cluster")
     ├── StatefulSet status sensors (one per statefulset)
     ├── StatefulSet CPU/memory sensors (one pair per statefulset)
     ├── DaemonSet sensors (all daemonsets in this namespace)
-    └── CronJob switches (all cronjobs in this namespace)
+    ├── CronJob switches (all cronjobs in this namespace)
+    └── Job sensors (all jobs in this namespace)
 ```
 
 ### Benefits of Device Organization
@@ -259,13 +305,15 @@ The device hierarchy ensures that entity names include cluster and namespace con
 
 The integration automatically discovers and creates entities for:
 
-- All deployments in monitored namespaces (switch + CPU/memory sensors)
-- All statefulsets in monitored namespaces (switch + CPU/memory sensors)
+- All deployments in monitored namespaces (switch + status sensor + CPU/memory sensors)
+- All statefulsets in monitored namespaces (switch + status sensor + CPU/memory sensors)
 - All daemonsets in monitored namespaces (status sensor)
 - All cronjobs in monitored namespaces (switch)
+- All jobs in monitored namespaces (status sensor)
 - Individual Kubernetes pods in monitored namespaces
 - Individual Kubernetes nodes in the cluster
-- Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs count)
+- Node condition binary sensors (4 per node: Memory Pressure, Disk Pressure, PID Pressure, Network Unavailable)
+- Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs, jobs count)
 - Overall cluster health
 
 Entities are automatically added when new resources are created and removed when resources are deleted from the cluster.
