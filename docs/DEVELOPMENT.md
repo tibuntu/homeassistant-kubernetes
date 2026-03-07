@@ -150,7 +150,11 @@ homeassistant-kubernetes/
 │   └── src/
 │       ├── kubernetes-panel.ts      # Root panel element with tab navigation
 │       ├── views/
-│       │   └── k8s-overview.ts      # Overview tab
+│       │   ├── k8s-overview.ts      # Overview tab
+│       │   ├── k8s-nodes-table.ts   # Nodes tab
+│       │   ├── k8s-pods-table.ts    # Pods tab
+│       │   ├── k8s-workloads.ts     # Workloads tab
+│       │   └── k8s-settings.ts      # Settings tab
 │       └── utils/
 │           └── load-ha-elements.ts  # HA element lazy loader
 ├── tests/
@@ -165,7 +169,7 @@ homeassistant-kubernetes/
 
 ## Frontend Development
 
-The sidebar panel is built with [Lit](https://lit.dev/) 3 (TypeScript) and bundled with [Vite](https://vite.dev/) into a single IIFE file.
+The sidebar panel is built with [Lit](https://lit.dev/) 3 (TypeScript) and bundled with [Vite](https://vite.dev/) into a single ES module. Minification is disabled because esbuild's variable mangling breaks Lit's tagged template literals.
 
 ### Setup
 

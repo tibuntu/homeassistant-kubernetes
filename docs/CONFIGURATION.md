@@ -56,17 +56,15 @@ To change connection details or settings for an existing integration entry:
 
 ## Dashboard Panel
 
-Once the integration is set up, a **Kubernetes** entry appears in the Home Assistant sidebar. The panel provides a built-in cluster dashboard with:
+Once the integration is set up, a **Kubernetes** entry appears in the Home Assistant sidebar. The panel provides a built-in cluster dashboard with five tabs:
 
-- **Cluster health** badge (Healthy / Unhealthy / Unknown)
-- **Resource count cards** — Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs
-- **Namespace breakdown** — expandable table showing resource counts per namespace
-- **Watch API status** — indicates whether real-time updates are active or polling
-- **Alerts** — nodes with pressure conditions, degraded workloads, and failed pods
+- **Overview** — Cluster health badge, resource count cards, namespace breakdown, Watch API status, and alerts (nodes with pressure, degraded workloads, failed pods). Auto-refreshes every 30 seconds.
+- **Nodes** — Sortable table of all cluster nodes with status, roles, OS/kernel info, resource capacity, and conditions. Filterable by name, status, and role.
+- **Pods** — Sortable table of all pods with phase, containers, restarts, node, IP, and age. Filterable by name, namespace, phase, and node.
+- **Workloads** — Management view for Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. Start/stop/scale controls for deployments and statefulsets, suspend/resume for cronjobs. Filterable by type, namespace, and status.
+- **Settings** — Read-only view of current integration configuration (connection, namespaces, timing, features). Links to the HA integration page for editing settings.
 
-The panel updates automatically every 30 seconds. Use the refresh button for on-demand updates.
-
-> **Note:** The panel is registered automatically and requires no additional configuration. It supports multiple clusters — each configured cluster appears as a separate section in the overview.
+The panel is registered automatically by default. To disable it, go to **Settings > Devices & Services > Kubernetes > Configure** and set **Enable Panel** to off. The panel is shown if any configured cluster entry has it enabled.
 
 ## Advanced Configuration
 

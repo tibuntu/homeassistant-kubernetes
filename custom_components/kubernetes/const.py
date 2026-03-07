@@ -36,6 +36,10 @@ CONF_SWITCH_UPDATE_INTERVAL = "switch_update_interval"
 CONF_SCALE_VERIFICATION_TIMEOUT = "scale_verification_timeout"
 CONF_SCALE_COOLDOWN = "scale_cooldown"
 
+# Panel
+CONF_ENABLE_PANEL = "enable_panel"
+DEFAULT_ENABLE_PANEL = True
+
 # Watch API (experimental)
 CONF_ENABLE_WATCH = "enable_watch"
 DEFAULT_ENABLE_WATCH = False

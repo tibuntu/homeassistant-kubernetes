@@ -15,6 +15,7 @@ from custom_components.kubernetes.const import (
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
+    CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
@@ -23,6 +24,7 @@ from custom_components.kubernetes.const import (
     CONF_SWITCH_UPDATE_INTERVAL,
     CONF_VERIFY_SSL,
     DEFAULT_DEVICE_GROUPING_MODE,
+    DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_PORT,
     DEFAULT_SCALE_COOLDOWN,
@@ -1139,6 +1141,24 @@ class TestKubernetesOptionsFlow:
     async def test_default_enable_watch_is_false(self):
         """DEFAULT_ENABLE_WATCH constant should be False."""
         assert DEFAULT_ENABLE_WATCH is False
+
+    async def test_options_flow_includes_enable_panel(self, options_flow):
+        """Options form should include the enable_panel field."""
+        result = await options_flow.async_step_init(user_input=None)
+        schema_keys = [str(k) for k in result["data_schema"].schema]
+        assert any(CONF_ENABLE_PANEL in k for k in schema_keys)
+
+    async def test_options_flow_defaults_panel_enabled(self, options_flow):
+        """Default value for enable_panel should be True."""
+        assert DEFAULT_ENABLE_PANEL is True
+
+    async def test_options_flow_saves_panel_disabled(self, options_flow):
+        """Submitting enable_panel=False should create an entry with that value."""
+        result = await options_flow.async_step_init(
+            user_input={CONF_ENABLE_PANEL: False, CONF_ENABLE_WATCH: False}
+        )
+        assert result["type"] == "create_entry"
+        assert result["data"][CONF_ENABLE_PANEL] is False
 
 
 # ---------------------------------------------------------------------------
