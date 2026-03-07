@@ -1,7 +1,7 @@
 """Tests for the Kubernetes services."""
 
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
 import pytest
@@ -53,8 +53,10 @@ def mock_client():
 
 
 @pytest.fixture
-def setup_domain_data(hass: HomeAssistant) -> None:
+def setup_domain_data(hass: HomeAssistant, mock_client) -> None:
     """Set up hass.data with kubernetes domain data."""
+    mock_coordinator = MagicMock()
+    mock_coordinator.client = mock_client
     hass.data[DOMAIN] = {
         "test-entry-id": {
             "config": {
@@ -63,7 +65,8 @@ def setup_domain_data(hass: HomeAssistant) -> None:
                 "api_token": "test-token",
                 "namespace": "default",
                 "verify_ssl": True,
-            }
+            },
+            "coordinator": mock_coordinator,
         }
     }
 
@@ -105,21 +108,17 @@ class TestGenericWorkloadServices:
                 "deployment_name": "test-deployment",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_SCALE_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.test_deployment",
-                    ATTR_REPLICAS: 3,
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_deployment",
+                ATTR_REPLICAS: 3,
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
 
         mock_client.scale_deployment.assert_called_once_with(
             "test-deployment", 3, "default"
@@ -142,20 +141,16 @@ class TestGenericWorkloadServices:
                 "cronjob_name": "test-cronjob",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_START_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.test_cronjob",
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_cronjob",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
 
         mock_client.trigger_cronjob.assert_called_once_with("test-cronjob", "default")
 
@@ -172,20 +167,16 @@ class TestGenericWorkloadServices:
                 "statefulset_name": "test-statefulset",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.test_statefulset",
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_statefulset",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
 
         mock_client.stop_statefulset.assert_called_once_with(
             "test-statefulset", "default"
@@ -204,20 +195,16 @@ class TestGenericWorkloadServices:
                 "cronjob_name": "test-cronjob",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.test_cronjob",
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_cronjob",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
 
         mock_client.suspend_cronjob.assert_not_called()
         mock_client.stop_deployment.assert_not_called()
@@ -245,26 +232,22 @@ class TestGenericWorkloadServices:
                 "deployment_name": "cert-manager",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAMES: [
-                        {
-                            "entity_id": [
-                                "switch.default_audiobookshelf_audiobookshelf",
-                                "switch.default_cert_manager_cert_manager",
-                            ]
-                        }
-                    ],
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAMES: [
+                    {
+                        "entity_id": [
+                            "switch.default_audiobookshelf_audiobookshelf",
+                            "switch.default_cert_manager_cert_manager",
+                        ]
+                    }
+                ],
+            },
+            blocking=True,
+        )
 
         assert mock_client.stop_deployment.call_count == 2
         mock_client.stop_deployment.assert_any_call("audiobookshelf", "audiobookshelf")
@@ -683,17 +666,13 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test scale_workload logs error when no workloads found."""
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_SCALE_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.missing", ATTR_REPLICAS: 2},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.missing", ATTR_REPLICAS: 2},
+            blocking=True,
+        )
         mock_client.scale_deployment.assert_not_called()
 
     async def test_scale_workload_statefulset(
@@ -709,21 +688,17 @@ class TestServiceHandlerEdgeCases:
                 "statefulset_name": "redis",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_SCALE_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.redis",
-                    ATTR_REPLICAS: 2,
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.redis",
+                ATTR_REPLICAS: 2,
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
         mock_client.scale_statefulset.assert_called_once_with("redis", 2, "default")
 
     async def test_scale_workload_unsupported_type(
@@ -739,17 +714,13 @@ class TestServiceHandlerEdgeCases:
                 "cronjob_name": "backup",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_SCALE_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.backup", ATTR_REPLICAS: 1},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.backup", ATTR_REPLICAS: 1},
+            blocking=True,
+        )
         mock_client.scale_deployment.assert_not_called()
         mock_client.scale_statefulset.assert_not_called()
 
@@ -767,21 +738,17 @@ class TestServiceHandlerEdgeCases:
                 "deployment_name": "nginx",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_SCALE_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.nginx",
-                    ATTR_REPLICAS: 3,
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.nginx",
+                ATTR_REPLICAS: 3,
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
         mock_client.scale_deployment.assert_called_once()
 
     async def test_scale_workload_no_kubernetes_data(
@@ -797,18 +764,14 @@ class TestServiceHandlerEdgeCases:
                 "deployment_name": "nginx",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            hass.data.pop(DOMAIN, None)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_SCALE_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 2},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        hass.data.pop(DOMAIN, None)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 2},
+            blocking=True,
+        )
         mock_client.scale_deployment.assert_not_called()
 
     async def test_scale_multiple_workloads_logs_completion(
@@ -833,20 +796,16 @@ class TestServiceHandlerEdgeCases:
                 "deployment_name": "b",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_SCALE_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAMES: ["switch.a", "switch.b"],
-                    ATTR_REPLICAS: 1,
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAMES: ["switch.a", "switch.b"],
+                ATTR_REPLICAS: 1,
+            },
+            blocking=True,
+        )
         assert mock_client.scale_deployment.call_count == 2
 
     async def test_start_workload_deployment(
@@ -862,21 +821,17 @@ class TestServiceHandlerEdgeCases:
                 "deployment_name": "nginx",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_START_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.nginx",
-                    ATTR_REPLICAS: 2,
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.nginx",
+                ATTR_REPLICAS: 2,
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
         mock_client.start_deployment.assert_called_once_with("nginx", 2, "default")
 
     async def test_start_workload_statefulset(
@@ -892,21 +847,17 @@ class TestServiceHandlerEdgeCases:
                 "statefulset_name": "redis",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_START_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.redis",
-                    ATTR_REPLICAS: 1,
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.redis",
+                ATTR_REPLICAS: 1,
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
         mock_client.start_statefulset.assert_called_once_with("redis", 1, "default")
 
     async def test_start_workload_cronjob_failure(
@@ -926,20 +877,16 @@ class TestServiceHandlerEdgeCases:
                 "cronjob_name": "backup",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_START_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.backup",
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.backup",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
         mock_client.trigger_cronjob.assert_called_once_with("backup", "default")
 
     async def test_start_workload_unsupported_type(
@@ -954,17 +901,13 @@ class TestServiceHandlerEdgeCases:
                 "namespace": "default",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_START_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.ds", ATTR_REPLICAS: 1},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.ds", ATTR_REPLICAS: 1},
+            blocking=True,
+        )
         mock_client.start_deployment.assert_not_called()
         mock_client.start_statefulset.assert_not_called()
 
@@ -972,17 +915,13 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test start_workload logs error when no workloads found."""
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_START_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.missing"},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.missing"},
+            blocking=True,
+        )
         mock_client.start_deployment.assert_not_called()
 
     async def test_stop_workload_deployment(
@@ -998,20 +937,16 @@ class TestServiceHandlerEdgeCases:
                 "deployment_name": "nginx",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.nginx",
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.nginx",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
         mock_client.stop_deployment.assert_called_once_with("nginx", "default")
 
     async def test_stop_workload_deployment_failure(
@@ -1028,20 +963,16 @@ class TestServiceHandlerEdgeCases:
                 "deployment_name": "nginx",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.nginx",
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.nginx",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
         mock_client.stop_deployment.assert_called_once()
 
     async def test_stop_workload_statefulset_failure(
@@ -1058,20 +989,16 @@ class TestServiceHandlerEdgeCases:
                 "statefulset_name": "redis",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {
-                    ATTR_WORKLOAD_NAME: "switch.redis",
-                    ATTR_NAMESPACE: "default",
-                },
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.redis",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
         mock_client.stop_statefulset.assert_called_once_with("redis", "default")
 
     async def test_stop_workload_unsupported_type(
@@ -1086,34 +1013,26 @@ class TestServiceHandlerEdgeCases:
                 "namespace": "default",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.ds"},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.ds"},
+            blocking=True,
+        )
         mock_client.stop_deployment.assert_not_called()
 
     async def test_stop_workload_no_workloads(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test stop_workload logs error when no workloads found."""
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.missing"},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.missing"},
+            blocking=True,
+        )
         mock_client.stop_deployment.assert_not_called()
 
     async def test_stop_workload_no_kubernetes_data(
@@ -1129,18 +1048,14 @@ class TestServiceHandlerEdgeCases:
                 "deployment_name": "nginx",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            hass.data.pop(DOMAIN, None)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_STOP_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.nginx"},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        hass.data.pop(DOMAIN, None)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_STOP_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.nginx"},
+            blocking=True,
+        )
         mock_client.stop_deployment.assert_not_called()
 
     async def test_start_workload_no_kubernetes_data(
@@ -1156,18 +1071,14 @@ class TestServiceHandlerEdgeCases:
                 "deployment_name": "nginx",
             },
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.KubernetesClient",
-            return_value=mock_client,
-        ):
-            await async_setup_services(hass)
-            hass.data.pop(DOMAIN, None)
-            await hass.services.async_call(
-                DOMAIN,
-                SERVICE_START_WORKLOAD,
-                {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 1},
-                blocking=True,
-            )
+        await async_setup_services(hass)
+        hass.data.pop(DOMAIN, None)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 1},
+            blocking=True,
+        )
         mock_client.start_deployment.assert_not_called()
 
 
