@@ -1,5 +1,6 @@
 import { LitElement, html, css, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import type { HomeAssistant } from "./types/homeassistant";
 import { loadHaElements } from "./utils/load-ha-elements";
 import "./views/k8s-overview";
 import "./views/k8s-nodes-table";
@@ -17,10 +18,10 @@ interface TabDef {
 
 @customElement("kubernetes-panel")
 export class KubernetesPanel extends LitElement {
-  @property({ attribute: false }) public hass!: any;
+  @property({ attribute: false }) public hass!: HomeAssistant;
   @property({ type: Boolean, reflect: true }) public narrow = false;
-  @property({ attribute: false }) public route!: any;
-  @property({ attribute: false }) public panel!: any;
+  @property({ attribute: false }) public route!: Record<string, unknown>;
+  @property({ attribute: false }) public panel!: Record<string, unknown>;
 
   @state() private _activeTab: Tab = "overview";
 

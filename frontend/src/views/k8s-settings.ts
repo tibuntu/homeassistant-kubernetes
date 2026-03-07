@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import type { HomeAssistant } from "../types/homeassistant";
 
 interface ConfigEntry {
   entry_id: string;
@@ -24,7 +25,7 @@ interface ConfigResponse {
 
 @customElement("k8s-settings")
 export class K8sSettings extends LitElement {
-  @property({ attribute: false }) public hass!: any;
+  @property({ attribute: false }) public hass!: HomeAssistant;
 
   @state() private _data: ConfigResponse | null = null;
   @state() private _loading = true;

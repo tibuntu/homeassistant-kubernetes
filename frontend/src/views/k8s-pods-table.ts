@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import type { HomeAssistant } from "../types/homeassistant";
 
 interface PodData {
   name: string;
@@ -35,7 +36,7 @@ const PHASE_CLASSES: Record<string, string> = {
 
 @customElement("k8s-pods-table")
 export class K8sPodsTable extends LitElement {
-  @property({ attribute: false }) public hass!: any;
+  @property({ attribute: false }) public hass!: HomeAssistant;
 
   @state() private _data: PodsResponse | null = null;
   @state() private _loading = true;

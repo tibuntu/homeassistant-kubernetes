@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import type { HomeAssistant } from "../types/homeassistant";
 
 interface DeploymentData {
   name: string;
@@ -75,7 +76,7 @@ type StatusFilter = "all" | "healthy" | "degraded" | "stopped";
 
 @customElement("k8s-workloads")
 export class K8sWorkloads extends LitElement {
-  @property({ attribute: false }) public hass!: any;
+  @property({ attribute: false }) public hass!: HomeAssistant;
 
   @state() private _data: WorkloadsResponse | null = null;
   @state() private _loading = true;
