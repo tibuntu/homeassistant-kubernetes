@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import type { HomeAssistant } from "../types/homeassistant";
 
 interface NodeData {
   name: string;
@@ -40,7 +41,7 @@ const CONDITION_LABELS: Record<string, string> = {
 
 @customElement("k8s-nodes-table")
 export class K8sNodesTable extends LitElement {
-  @property({ attribute: false }) public hass!: any;
+  @property({ attribute: false }) public hass!: HomeAssistant;
 
   @state() private _data: NodesResponse | null = null;
   @state() private _loading = true;
