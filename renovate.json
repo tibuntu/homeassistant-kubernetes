@@ -52,6 +52,12 @@
       "groupName": "frontend dependencies",
       "semanticCommitType": "build",
       "semanticCommitScope": "deps-frontend"
+    },
+    {
+      "matchDepNames": ["pytest-homeassistant-custom-component", "homeassistant", "pytest", "pytest-asyncio"],
+      "groupName": "homeassistant",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps"
     }
   ],
   "customManagers": [
