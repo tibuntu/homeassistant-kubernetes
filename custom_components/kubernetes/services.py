@@ -114,6 +114,50 @@ def _get_workload_info_from_entity(
         return None, None, None
 
 
+def _resolve_raw_workload_name(
+    hass: HomeAssistant, name: str, namespace: str | None
+) -> tuple[str, str | None, str] | None:
+    """Resolve a raw workload name to (name, namespace, workload_type) via coordinator data.
+
+    Searches all coordinator data for a matching workload by name and optional namespace.
+    """
+    from .coordinator import KubernetesDataCoordinator
+
+    domain_data = hass.data.get(DOMAIN, {})
+    from .const import DOMAIN_META_KEYS
+
+    resource_type_map = {
+        "deployments": WORKLOAD_TYPE_DEPLOYMENT,
+        "statefulsets": WORKLOAD_TYPE_STATEFULSET,
+        "cronjobs": WORKLOAD_TYPE_CRONJOB,
+    }
+
+    for entry_id, entry_data in domain_data.items():
+        if entry_id in DOMAIN_META_KEYS or not isinstance(entry_data, dict):
+            continue
+        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+        if coordinator is None or not coordinator.data:
+            continue
+
+        for resource_key, workload_type in resource_type_map.items():
+            for _wl_name, wl_data in coordinator.data.get(resource_key, {}).items():
+                if wl_data.get("name") != name:
+                    continue
+                wl_ns = wl_data.get("namespace")
+                if namespace and wl_ns != namespace:
+                    continue
+                _LOGGER.debug(
+                    "Resolved raw workload name '%s' to type %s in namespace %s",
+                    name,
+                    workload_type,
+                    wl_ns,
+                )
+                return (name, wl_ns, workload_type)
+
+    _LOGGER.debug("Could not resolve raw workload name '%s' in coordinator data", name)
+    return None
+
+
 def _normalize_entity_id_list(entity_ids_raw: Any) -> list[str]:
     """Normalize entity_id from service call to a list of non-empty strings.
 
@@ -251,13 +295,19 @@ def _extract_workload_info(  # noqa: C901
             if workload_name and workload_type:
                 workloads.append((workload_name, namespace, workload_type))
             else:
-                _LOGGER.warning(
-                    "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
-                    name,
-                    namespace,
-                    workload_name,
-                    workload_type,
-                )
+                # Try resolving as a raw workload name via coordinator data
+                provided_ns = call_data.get(ATTR_NAMESPACE)
+                resolved = _resolve_raw_workload_name(hass, name, provided_ns)
+                if resolved:
+                    workloads.append(resolved)
+                else:
+                    _LOGGER.warning(
+                        "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
+                        name,
+                        namespace,
+                        workload_name,
+                        workload_type,
+                    )
         elif isinstance(name, dict) and "entity_id" in name:
             entity_id = name["entity_id"]
             if isinstance(entity_id, str) and entity_id.startswith("switch."):

@@ -12,6 +12,7 @@ from custom_components.kubernetes.websocket_api import (
     _get_cluster_overview_data,
     _get_nodes_list_data,
     _get_pods_list_data,
+    _get_workloads_list_data,
     async_register_websocket_commands,
 )
 
@@ -131,7 +132,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 3
+            assert mock_ws_api.async_register_command.call_count == 4
 
 
 class TestWebsocketClusterOverview:
@@ -826,3 +827,202 @@ class TestWebsocketPodsList:
         assert pod["node_name"] == "worker-1"
         assert pod["pod_ip"] == "10.0.0.5"
         assert pod["owner_kind"] == "ReplicaSet"
+
+
+class TestWebsocketWorkloadsList:
+    """Tests for the kubernetes/workloads/list command logic."""
+
+    def test_returns_empty_when_no_domain_data(self, mock_hass):
+        """Test returns empty clusters list when no DOMAIN data."""
+        mock_hass.data = {}
+        result = _get_workloads_list_data(mock_hass)
+        assert result == {"clusters": []}
+
+    def test_returns_workloads_for_cluster(self, mock_hass, sample_coordinator_data):
+        """Test returns all workload types for a cluster."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test-cluster"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_workloads_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+        cluster = result["clusters"][0]
+        assert cluster["entry_id"] == "entry_1"
+        assert cluster["cluster_name"] == "test-cluster"
+        assert len(cluster["deployments"]) == 2
+        assert len(cluster["statefulsets"]) == 1
+        assert len(cluster["daemonsets"]) == 1
+        assert len(cluster["cronjobs"]) == 1
+        assert len(cluster["jobs"]) == 1
+
+    def test_handles_none_coordinator_data(self, mock_hass):
+        """Test handles coordinator with None data gracefully."""
+        coordinator = _make_coordinator(None)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_workloads_list_data(mock_hass)
+
+        cluster = result["clusters"][0]
+        assert cluster["deployments"] == []
+        assert cluster["statefulsets"] == []
+        assert cluster["daemonsets"] == []
+        assert cluster["cronjobs"] == []
+        assert cluster["jobs"] == []
+
+    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
+        """Test skips panel_registered and switch_add_entities keys."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "panel_registered": True,
+                "switch_add_entities": MagicMock(),
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_workloads_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+
+    def test_skips_entries_without_coordinator(self, mock_hass):
+        """Test skips entries that have no coordinator."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                },
+            }
+        }
+
+        result = _get_workloads_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 0
+
+    def test_multi_cluster(self, mock_hass, sample_coordinator_data):
+        """Test returns workloads from multiple clusters."""
+        coordinator_1 = _make_coordinator(sample_coordinator_data)
+        coordinator_2 = _make_coordinator(
+            {
+                "nodes": {},
+                "pods": {},
+                "deployments": {
+                    "web": {
+                        "name": "web",
+                        "namespace": "staging",
+                        "replicas": 1,
+                        "available_replicas": 1,
+                        "ready_replicas": 1,
+                        "is_running": True,
+                    },
+                },
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {},
+                "jobs": {},
+                "pods_count": 0,
+                "nodes_count": 0,
+                "last_update": 0.0,
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "cluster-a"},
+                    "coordinator": coordinator_1,
+                },
+                "entry_2": {
+                    "config": {"cluster_name": "cluster-b"},
+                    "coordinator": coordinator_2,
+                },
+            }
+        }
+
+        result = _get_workloads_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 2
+        total_deploys = sum(len(c["deployments"]) for c in result["clusters"])
+        assert total_deploys == 3
+
+    def test_deployment_fields(self, mock_hass, sample_coordinator_data):
+        """Test that deployment data includes expected fields."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_workloads_list_data(mock_hass)
+        deploys = result["clusters"][0]["deployments"]
+        nginx = next(d for d in deploys if d["name"] == "nginx")
+        assert nginx["namespace"] == "default"
+        assert nginx["replicas"] == 3
+        assert nginx["available_replicas"] == 3
+        assert nginx["is_running"] is True
+
+    def test_cronjob_fields(self, mock_hass):
+        """Test that cronjob data includes expected fields."""
+        cronjob_data = {
+            "name": "nightly-backup",
+            "namespace": "prod",
+            "schedule": "0 2 * * *",
+            "suspend": False,
+            "last_schedule_time": "2024-01-01T02:00:00Z",
+            "next_schedule_time": "2024-01-02T02:00:00Z",
+            "active_jobs_count": 0,
+            "successful_jobs_history_limit": 3,
+            "failed_jobs_history_limit": 1,
+            "concurrency_policy": "Forbid",
+            "uid": "cj-uid",
+            "creation_timestamp": "2023-01-01T00:00:00Z",
+        }
+        coordinator = _make_coordinator(
+            {
+                "pods": {},
+                "nodes": {},
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {"nightly-backup": cronjob_data},
+                "jobs": {},
+                "pods_count": 0,
+                "nodes_count": 0,
+                "last_update": 0.0,
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        result = _get_workloads_list_data(mock_hass)
+        cj = result["clusters"][0]["cronjobs"][0]
+        assert cj["name"] == "nightly-backup"
+        assert cj["schedule"] == "0 2 * * *"
+        assert cj["suspend"] is False
+        assert cj["active_jobs_count"] == 0
+        assert cj["concurrency_policy"] == "Forbid"

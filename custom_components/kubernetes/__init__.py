@@ -121,7 +121,7 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
                 "name": "kubernetes-panel",
                 "embed_iframe": False,
                 "trust_external": False,
-                "js_url": f"{PANEL_URL}/{PANEL_FILENAME}",
+                "module_url": f"{PANEL_URL}/{PANEL_FILENAME}",
             }
         },
         require_admin=False,
