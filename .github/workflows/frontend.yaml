@@ -52,3 +52,11 @@ jobs:
 
       - name: Verify bundle exists
         run: test -f custom_components/kubernetes/frontend/kubernetes-panel.js
+
+      - name: Verify committed bundle is up to date
+        run: |
+          if ! git diff --quiet custom_components/kubernetes/frontend/kubernetes-panel.js; then
+            echo "::error::The committed kubernetes-panel.js is out of date. Run 'cd frontend && npm run build' and commit the result."
+            git diff --stat custom_components/kubernetes/frontend/kubernetes-panel.js
+            exit 1
+          fi
