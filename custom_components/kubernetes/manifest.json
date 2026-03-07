@@ -5,12 +5,15 @@
     "@tibuntu"
   ],
   "config_flow": true,
-  "dependencies": ["http", "frontend"],
+  "dependencies": [
+    "http",
+    "frontend"
+  ],
   "documentation": "https://github.com/tibuntu/homeassistant-kubernetes",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/tibuntu/homeassistant-kubernetes/issues",
   "requirements": [
     "kubernetes==35.0.0"
   ],
-  "version": "0.10.0"
+  "version": "0.11.0"
 }
