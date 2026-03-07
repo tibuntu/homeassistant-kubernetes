@@ -30,7 +30,7 @@ dependencies = [
 dev = [
     # Testing (pytest-homeassistant-custom-component pins homeassistant + pytest-asyncio)
     "pytest-homeassistant-custom-component==0.13.317",
-    "pytest==9.0.0",
+    "pytest==9.0.2",
     "pytest-cov==7.0.0",
 
     # Linting and formatting
