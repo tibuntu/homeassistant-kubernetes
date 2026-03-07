@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.12.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.11.0...v0.12.0) (2026-03-07)
+
+
+### Features
+
+* add real-time node CPU/memory usage to sidebar panel ([9dd0f01](https://github.com/tibuntu/homeassistant-kubernetes/commit/9dd0f01895634f996d750870e7486b4e39691764))
+
+
+### Bug Fixes
+
+* **frontend:** type hass as HomeAssistant instead of any ([#124](https://github.com/tibuntu/homeassistant-kubernetes/issues/124)) ([178202c](https://github.com/tibuntu/homeassistant-kubernetes/commit/178202cf2025f6641519e6b6f87d4148bf11d530))
+* prevent duplicate entity registration on coordinator updates ([7b49b43](https://github.com/tibuntu/homeassistant-kubernetes/commit/7b49b43186424ef3ebc80398d3471119c276f9cb))
+* reuse coordinator's KubernetesClient in service handlers ([#135](https://github.com/tibuntu/homeassistant-kubernetes/issues/135)) ([504d8a1](https://github.com/tibuntu/homeassistant-kubernetes/commit/504d8a15c186ddfc10f94abcae52cc9012360f0f))
+
+
+### Documentation
+
+* document future test directory structure and update migration status ([6f26a62](https://github.com/tibuntu/homeassistant-kubernetes/commit/6f26a62c1eb18adf8406ec1c41925e029f8b604e))
+
+
+### Other
+
+* add pytest-homeassistant-custom-component and clean up conftest ([3b93b3a](https://github.com/tibuntu/homeassistant-kubernetes/commit/3b93b3ad38b51b903f5368a066a60a1287233551)), closes [#116](https://github.com/tibuntu/homeassistant-kubernetes/issues/116)
+* **deps:** drop redundant pytest pin ([f643634](https://github.com/tibuntu/homeassistant-kubernetes/commit/f6436347f6cb0e0a320180e0dd81d9c2a9e5bc14))
+* **deps:** update actions/cache action to v5 ([daba3fb](https://github.com/tibuntu/homeassistant-kubernetes/commit/daba3fb62f0e8e048368165e1d8d3b7a814a5ba9))
+* migrate entity platform tests to real HA fixtures ([#120](https://github.com/tibuntu/homeassistant-kubernetes/issues/120)) ([6eb2fee](https://github.com/tibuntu/homeassistant-kubernetes/commit/6eb2fee60496419d1e2c438f3b67ed73e1793b98))
+* migrate test_config_flow.py to real HA config flow fixtures ([80d808e](https://github.com/tibuntu/homeassistant-kubernetes/commit/80d808e1c575da609378c9b8af82d4dc9e4883ea)), closes [#118](https://github.com/tibuntu/homeassistant-kubernetes/issues/118)
+* migrate test_coordinator.py and test_services.py to real HA fixtures ([5d60568](https://github.com/tibuntu/homeassistant-kubernetes/commit/5d605685fef1117b0bb8b6f86dae1918e198ae86))
+* migrate test_init.py and test_device.py to real HA fixtures ([19a0dc5](https://github.com/tibuntu/homeassistant-kubernetes/commit/19a0dc58b9ac049989c8cd93dc24209c430aa5d9)), closes [#117](https://github.com/tibuntu/homeassistant-kubernetes/issues/117)
+
 ## [0.11.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.10.0...v0.11.0) (2026-03-07)
 
 
