@@ -92,7 +92,7 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 - All entities read cached data from the coordinator, never calling the K8s API directly.
 - `asyncio_mode = "auto"` in pytest — test functions are automatically treated as async. `asyncio_default_fixture_loop_scope = "function"` is set for compatibility with `pytest-homeassistant-custom-component`.
-- Tests use `pytest-homeassistant-custom-component` for real HA test fixtures. `test_init.py`, `test_device.py`, and `test_config_flow.py` have been migrated to use the real `hass` fixture and `MockConfigEntry`. Config flow tests register the handler via `HANDLERS` + `DATA_COMPONENTS` fixture (see `register_config_flow` in `test_config_flow.py`). Remaining test files still use legacy `mock_hass`/`mock_config_entry` from `conftest.py` (migration in progress, see #115). K8s-specific mock fixtures (`mock_client`, `mock_coordinator`, `mock_kubernetes_client`, `mock_kubernetes_api`) remain in `conftest.py`.
+- Tests use `pytest-homeassistant-custom-component` for real HA test fixtures. Most test files (`test_init.py`, `test_device.py`, `test_config_flow.py`, `test_coordinator.py`, `test_services.py`, `test_binary_sensor.py`, `test_switch.py`, `test_sensors.py`, `test_kubernetes_integration.py`) use the real `hass` fixture and `MockConfigEntry`. Config flow tests register the handler via `HANDLERS` + `DATA_COMPONENTS` fixture (see `register_config_flow` in `test_config_flow.py`). `test_switch_platform.py` has been merged into `test_switch.py`. Only `test_websocket_api.py` still uses `mock_hass` from `conftest.py`. K8s-specific mock fixtures (`mock_client`, `mock_coordinator`, `mock_kubernetes_client`, `mock_kubernetes_api`) remain in `conftest.py`.
 - The kubernetes package is lazy-imported in config_flow and checked at setup to handle missing dependency.
 
 ## Code Style
@@ -116,7 +116,7 @@ Whenever changes are implemented to any integration code, always add or update t
 - Each new class gets a corresponding `Test<ClassName>` test class.
 - Each new module-level helper function gets a `TestDiscover<Name>` or similar test class.
 - Cover the happy path, edge cases (missing data, `None` coordinator data), and all distinct return values.
-- Use the shared fixtures from `conftest.py` (`mock_hass`, `mock_config_entry`, `mock_client`, `mock_coordinator`) rather than creating new ones where possible.
+- Use `MockConfigEntry` from `pytest_homeassistant_custom_component.common` and the real `hass` fixture for platform setup tests. Entity unit tests (testing properties, state, edge cases) can directly instantiate entities with `MockConfigEntry` + mock coordinator/client. Use the shared K8s-specific fixtures from `conftest.py` (`mock_client`, `mock_coordinator`) rather than creating new ones where possible.
 
 ### Future: test directory structure
 

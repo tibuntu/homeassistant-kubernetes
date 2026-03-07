@@ -1,11 +1,12 @@
 """Tests for the Kubernetes switch platform."""
 
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
+from homeassistant.core import HomeAssistant
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.const import (
     ATTR_WORKLOAD_TYPE,
@@ -19,28 +20,28 @@ from custom_components.kubernetes.switch import (
     KubernetesDeploymentSwitch,
     KubernetesStatefulSetSwitch,
     _async_discover_and_add_new_entities,
+    async_setup_entry,
 )
 
-
-@pytest.fixture
-def mock_hass():
-    """Mock Home Assistant instance."""
-    return MagicMock(spec=HomeAssistant)
+# ---------------------------------------------------------------------------
+# Shared fixtures
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def mock_config_entry():
-    """Mock config entry."""
-    entry = MagicMock(spec=ConfigEntry)
-    entry.entry_id = "test-entry-id"
-    entry.data = {
-        CONF_NAME: "Test Cluster",
-        "host": "test-cluster.example.com",
-        "port": 6443,
-        "api_token": "test-token",
-        "namespace": "default",
-        "verify_ssl": True,
-    }
+def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
+    """Create a MockConfigEntry and add it to hass."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="test_entry_id",
+        data={
+            CONF_HOST: "https://kubernetes.example.com",
+            CONF_PORT: 443,
+            CONF_VERIFY_SSL: True,
+            "cluster_name": "test-cluster",
+        },
+    )
+    entry.add_to_hass(hass)
     return entry
 
 
@@ -75,11 +76,122 @@ def mock_client():
 
 
 @pytest.fixture
-def cronjob_switch(mock_hass, mock_config_entry, mock_coordinator):
+def cronjob_switch(mock_config_entry, mock_coordinator):
     """Create a CronJob switch instance."""
     return KubernetesCronJobSwitch(
         mock_coordinator, mock_config_entry, "test-cronjob", "default"
     )
+
+
+# ---------------------------------------------------------------------------
+# Platform setup tests (merged from test_switch_platform.py)
+# ---------------------------------------------------------------------------
+
+
+class TestSwitchSetup:
+    """Test switch platform setup."""
+
+    async def test_async_setup_entry_success(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
+        """Test successful switch setup."""
+        client = MagicMock()
+        client.get_deployments = AsyncMock(
+            return_value=[{"name": "test-deployment", "namespace": "default"}]
+        )
+        client.get_statefulsets = AsyncMock(
+            return_value=[{"name": "test-statefulset", "namespace": "default"}]
+        )
+        client.get_cronjobs = AsyncMock(
+            return_value=[{"name": "test-cronjob", "namespace": "default"}]
+        )
+
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        coordinator.data = {
+            "deployments": {
+                "test-deployment": {
+                    "name": "test-deployment",
+                    "namespace": "default",
+                    "replicas": 1,
+                    "is_running": True,
+                }
+            },
+            "statefulsets": {
+                "test-statefulset": {
+                    "name": "test-statefulset",
+                    "namespace": "default",
+                    "replicas": 1,
+                    "is_running": True,
+                }
+            },
+            "cronjobs": {
+                "test-cronjob": {
+                    "name": "test-cronjob",
+                    "namespace": "default",
+                    "suspend": False,
+                }
+            },
+        }
+        coordinator.client = client
+
+        # Populate hass.data
+        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+            "coordinator": coordinator,
+            "client": client,
+        }
+
+        mock_add_entities = MagicMock()
+
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        # Verify entities were added
+        mock_add_entities.assert_called_once()
+        added_entities = mock_add_entities.call_args[0][0]
+        assert len(added_entities) == 3  # deployment, statefulset, cronjob
+
+        # Verify entity types
+        entity_types = [type(entity) for entity in added_entities]
+        assert KubernetesDeploymentSwitch in entity_types
+        assert KubernetesStatefulSetSwitch in entity_types
+        assert KubernetesCronJobSwitch in entity_types
+
+    async def test_async_setup_entry_empty_resources(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
+        """Test switch setup with no resources."""
+        client = MagicMock()
+        client.get_deployments = AsyncMock(return_value=[])
+        client.get_statefulsets = AsyncMock(return_value=[])
+        client.get_cronjobs = AsyncMock(return_value=[])
+
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        coordinator.data = {
+            "deployments": {},
+            "statefulsets": {},
+            "cronjobs": {},
+        }
+
+        # Populate hass.data
+        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+            "coordinator": coordinator,
+            "client": client,
+        }
+
+        mock_add_entities = MagicMock()
+
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        # Verify entities were added (should be empty list)
+        mock_add_entities.assert_called_once()
+        added_entities = mock_add_entities.call_args[0][0]
+        assert len(added_entities) == 0
+
+
+# ---------------------------------------------------------------------------
+# KubernetesCronJobSwitch tests
+# ---------------------------------------------------------------------------
 
 
 class TestKubernetesCronJobSwitch:
@@ -92,7 +204,7 @@ class TestKubernetesCronJobSwitch:
         assert cronjob_switch._attr_name == "test-cronjob"
         assert (
             cronjob_switch._attr_unique_id
-            == "test-entry-id_default_test-cronjob_cronjob"
+            == "test_entry_id_default_test-cronjob_cronjob"
         )
         assert cronjob_switch._attr_icon == "mdi:clock-outline"
         assert cronjob_switch._is_on is False
@@ -144,13 +256,15 @@ class TestKubernetesCronJobSwitch:
         assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_CRONJOB
 
     async def test_async_turn_on_success(
-        self, cronjob_switch, mock_hass, mock_config_entry, mock_client
+        self, cronjob_switch, mock_config_entry, mock_client
     ):
         """Test successful turn on (resume CronJob)."""
         # Setup
-        cronjob_switch.hass = mock_hass
+        cronjob_switch.hass = MagicMock()
+        cronjob_switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
+        }
         cronjob_switch.config_entry = mock_config_entry
-        mock_hass.data = {DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}}
         cronjob_switch._is_on = False
         cronjob_switch._suspend = True
 
@@ -164,13 +278,15 @@ class TestKubernetesCronJobSwitch:
         assert cronjob_switch._last_resume_time is not None
 
     async def test_async_turn_on_failure(
-        self, cronjob_switch, mock_hass, mock_config_entry, mock_client
+        self, cronjob_switch, mock_config_entry, mock_client
     ):
         """Test failed turn on (resume CronJob)."""
         # Setup
-        cronjob_switch.hass = mock_hass
+        cronjob_switch.hass = MagicMock()
+        cronjob_switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
+        }
         cronjob_switch.config_entry = mock_config_entry
-        mock_hass.data = {DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}}
         mock_client.resume_cronjob.return_value = {
             "success": False,
             "error": "Permission denied",
@@ -187,13 +303,15 @@ class TestKubernetesCronJobSwitch:
         assert cronjob_switch._suspend is True
 
     async def test_async_turn_off_success(
-        self, cronjob_switch, mock_hass, mock_config_entry, mock_client
+        self, cronjob_switch, mock_config_entry, mock_client
     ):
         """Test successful turn off (suspend CronJob)."""
         # Setup
-        cronjob_switch.hass = mock_hass
+        cronjob_switch.hass = MagicMock()
+        cronjob_switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
+        }
         cronjob_switch.config_entry = mock_config_entry
-        mock_hass.data = {DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}}
         cronjob_switch._is_on = True
         cronjob_switch._suspend = False
 
@@ -207,13 +325,15 @@ class TestKubernetesCronJobSwitch:
         assert cronjob_switch._last_suspend_time is not None
 
     async def test_async_turn_off_failure(
-        self, cronjob_switch, mock_hass, mock_config_entry, mock_client
+        self, cronjob_switch, mock_config_entry, mock_client
     ):
         """Test failed turn off (suspend CronJob)."""
         # Setup
-        cronjob_switch.hass = mock_hass
+        cronjob_switch.hass = MagicMock()
+        cronjob_switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
+        }
         cronjob_switch.config_entry = mock_config_entry
-        mock_hass.data = {DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}}
         mock_client.suspend_cronjob.return_value = {
             "success": False,
             "error": "CronJob not found",
@@ -384,7 +504,6 @@ class TestKubernetesCronJobSwitch:
         # Verify
         cronjob_switch.async_on_remove.assert_called_once()
 
-    @callback
     def test_handle_coordinator_update(self, cronjob_switch):
         """Test _handle_coordinator_update callback."""
         # Setup
@@ -496,6 +615,38 @@ class TestKubernetesDeploymentSwitch:
         assert attrs["namespace"] == "default"
         assert attrs["replicas"] == 3
         assert attrs[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_DEPLOYMENT
+
+    def test_extra_state_attributes_with_metrics(self, mock_config_entry):
+        """Test extra state attributes include CPU and memory metrics."""
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        switch = KubernetesDeploymentSwitch(
+            coordinator, mock_config_entry, "test-deployment", "default"
+        )
+        switch._cpu_usage = 500.0
+        switch._memory_usage = 256.0
+
+        attributes = switch.extra_state_attributes
+        assert attributes["deployment_name"] == "test-deployment"
+        assert attributes["namespace"] == "default"
+        assert attributes["replicas"] == 0
+        assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_DEPLOYMENT
+        assert attributes["last_scale_attempt_failed"] is False
+        assert attributes["cpu_usage_(millicores)"] == "500"
+        assert attributes["memory_usage_(MiB)"] == "256"
+
+    def test_device_info(self, mock_config_entry):
+        """Test deployment switch device info."""
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        switch = KubernetesDeploymentSwitch(
+            coordinator, mock_config_entry, "test-deployment", "default"
+        )
+        device_info = switch.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
 
     async def test_async_added_to_hass(self, deployment_switch, deployment_coordinator):
         """Test async_added_to_hass registers listener."""
@@ -634,8 +785,6 @@ class TestKubernetesDeploymentSwitch:
         self, deployment_switch, deployment_coordinator
     ):
         """Test async_update skips during cooldown period."""
-        import time
-
         deployment_switch._last_scale_time = time.time()
         deployment_switch._scale_cooldown = 100
         await deployment_switch.async_update()
@@ -835,6 +984,38 @@ class TestKubernetesStatefulSetSwitch:
         assert attrs["replicas"] == 2
         assert attrs[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_STATEFULSET
 
+    def test_extra_state_attributes_with_metrics(self, mock_config_entry):
+        """Test extra state attributes include CPU and memory metrics."""
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        switch = KubernetesStatefulSetSwitch(
+            coordinator, mock_config_entry, "test-statefulset", "default"
+        )
+        switch._cpu_usage = 500.0
+        switch._memory_usage = 256.0
+
+        attributes = switch.extra_state_attributes
+        assert attributes["statefulset_name"] == "test-statefulset"
+        assert attributes["namespace"] == "default"
+        assert attributes["replicas"] == 0
+        assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_STATEFULSET
+        assert attributes["last_scale_attempt_failed"] is False
+        assert attributes["cpu_usage_(millicores)"] == "500"
+        assert attributes["memory_usage_(MiB)"] == "256"
+
+    def test_device_info(self, mock_config_entry):
+        """Test StatefulSet switch device info."""
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        switch = KubernetesStatefulSetSwitch(
+            coordinator, mock_config_entry, "test-statefulset", "default"
+        )
+        device_info = switch.device_info
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["name"] == "test-cluster: default"
+
     async def test_async_added_to_hass(
         self, statefulset_switch, statefulset_coordinator
     ):
@@ -971,8 +1152,6 @@ class TestKubernetesStatefulSetSwitch:
         self, statefulset_switch, statefulset_coordinator
     ):
         """Test async_update skips during cooldown period."""
-        import time
-
         statefulset_switch._last_scale_time = time.time()
         statefulset_switch._scale_cooldown = 100
         await statefulset_switch.async_update()
