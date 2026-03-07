@@ -1370,6 +1370,102 @@ async def test_enrich_statefulsets_with_metrics(mock_client):
     assert statefulsets[0]["memory_usage"] == 128.0
 
 
+async def test_get_node_metrics(mock_client):
+    """Test get_node_metrics delegates to aiohttp method."""
+    mock_client._get_node_metrics_aiohttp = AsyncMock(
+        return_value={
+            "node1": {"cpu": 410.0, "memory": 2015.0},
+            "node2": {"cpu": 483.0, "memory": 2325.0},
+        }
+    )
+    result = await mock_client.get_node_metrics()
+    assert len(result) == 2
+    assert result["node1"]["cpu"] == 410.0
+    assert result["node2"]["memory"] == 2325.0
+
+
+async def test_get_node_metrics_aiohttp_success(mock_client):
+    """Test _get_node_metrics_aiohttp parses API response correctly."""
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(
+        return_value={
+            "items": [
+                {
+                    "metadata": {"name": "node1"},
+                    "usage": {"cpu": "410m", "memory": "2063352Ki"},
+                },
+                {
+                    "metadata": {"name": "node2"},
+                    "usage": {"cpu": "1200000000n", "memory": "3Gi"},
+                },
+                {
+                    "metadata": {},
+                    "usage": {"cpu": "100m", "memory": "512Mi"},
+                },
+            ]
+        }
+    )
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with (
+        patch("aiohttp.TCPConnector"),
+        patch("aiohttp.ClientSession", return_value=mock_session),
+    ):
+        result = await mock_client._get_node_metrics_aiohttp()
+
+    assert len(result) == 2
+    assert "node1" in result
+    assert "node2" in result
+    assert result["node1"]["cpu"] == 410.0
+    assert result["node1"]["memory"] == pytest.approx(2015.0, abs=1)
+    assert result["node2"]["cpu"] == 1200.0
+    assert result["node2"]["memory"] == pytest.approx(3072.0, abs=1)
+
+
+async def test_get_node_metrics_aiohttp_403(mock_client):
+    """Test _get_node_metrics_aiohttp returns empty on 403."""
+    mock_response = MagicMock()
+    mock_response.status = 403
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with (
+        patch("aiohttp.TCPConnector"),
+        patch("aiohttp.ClientSession", return_value=mock_session),
+    ):
+        result = await mock_client._get_node_metrics_aiohttp()
+
+    assert result == {}
+
+
+async def test_get_node_metrics_aiohttp_exception(mock_client):
+    """Test _get_node_metrics_aiohttp returns empty on exception."""
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(side_effect=Exception("Connection refused"))
+
+    with (
+        patch("aiohttp.TCPConnector"),
+        patch("aiohttp.ClientSession", return_value=mock_session),
+    ):
+        result = await mock_client._get_node_metrics_aiohttp()
+
+    assert result == {}
+
+
 @pytest.fixture
 def extended_client(mock_config):
     """Create a Kubernetes client instance for extended tests."""

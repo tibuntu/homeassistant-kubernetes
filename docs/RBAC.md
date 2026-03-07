@@ -68,6 +68,15 @@ Read-only access to every resource the integration monitors. No write permission
 | **cronjobs/status** | `get`, `patch`, `update` | ✅ | ❌ | CronJob switch (suspend/resume) |
 | **jobs** | `get`, `list`, `watch`, `create` | ✅ | `get`, `list` only | Job sensors + CronJob triggering |
 
+### Metrics API Group (`metrics.k8s.io`)
+
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **nodes** | `get`, `list` | ✅ | ✅ | Real-time node CPU and memory usage in the sidebar panel |
+| **pods** | `get`, `list` | ✅ | ✅ | Workload CPU and memory usage sensors |
+
+> **Note:** Requires [metrics-server](https://github.com/kubernetes-sigs/metrics-server) to be installed in your cluster. If unavailable, the integration gracefully falls back to showing capacity only.
+
 ### Extensions API Group (`extensions`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
@@ -170,7 +179,21 @@ kubectl auth can-i watch nodes --as=system:serviceaccount:homeassistant:homeassi
 # Fix: Apply manifests/full/ to grant the watch verb
 ```
 
-#### 4. "Forbidden: User cannot list cronjobs"
+#### 4. Node CPU/memory usage not showing in sidebar panel
+
+The sidebar panel shows node capacity but no real-time usage data. This requires [metrics-server](https://github.com/kubernetes-sigs/metrics-server) and `metrics.k8s.io` RBAC permissions.
+
+```bash
+# Verify metrics-server is running
+kubectl get pods -n kube-system -l k8s-app=metrics-server
+
+# Verify node metrics permissions
+kubectl auth can-i list nodes.metrics.k8s.io --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+
+# Fix: Apply manifests/full/ or manifests/minimal/ (both include metrics permissions)
+```
+
+#### 5. "Forbidden: User cannot list cronjobs"
 
 ```bash
 # Verify CronJob permissions
@@ -179,7 +202,7 @@ kubectl auth can-i list cronjobs --as=system:serviceaccount:homeassistant:homeas
 # Fix: Apply manifests/minimal/ or manifests/full/
 ```
 
-#### 5. "Forbidden: User cannot create jobs"
+#### 6. "Forbidden: User cannot create jobs"
 
 ```bash
 # Verify job creation permissions (needed for CronJob triggering)

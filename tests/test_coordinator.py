@@ -57,6 +57,7 @@ def mock_client():
     client.get_pods = AsyncMock(return_value=[])
     client.get_nodes_count = AsyncMock(return_value=0)
     client.get_nodes = AsyncMock(return_value=[])
+    client.get_node_metrics = AsyncMock(return_value={})
     client._test_connection = AsyncMock(return_value=True)
     return client
 
@@ -205,6 +206,68 @@ class TestKubernetesDataCoordinator:
 
         assert result["pods_count"] == 0
         assert result["nodes_count"] == 0
+
+    async def test_async_update_data_merges_node_metrics(
+        self, hass: HomeAssistant, coordinator, mock_client
+    ):
+        """Test that node metrics are merged into node data."""
+        mock_client.get_nodes.return_value = [
+            {"name": "node1", "status": "Ready", "internal_ip": "10.0.0.1"},
+            {"name": "node2", "status": "Ready", "internal_ip": "10.0.0.2"},
+        ]
+        mock_client.get_node_metrics.return_value = {
+            "node1": {"cpu": 410.0, "memory": 2015.0},
+            "node2": {"cpu": 483.0, "memory": 2325.0},
+        }
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            result = await coordinator._async_update_data()
+
+        assert result["nodes"]["node1"]["cpu_usage_millicores"] == 410.0
+        assert result["nodes"]["node1"]["memory_usage_mib"] == 2015.0
+        assert result["nodes"]["node2"]["cpu_usage_millicores"] == 483.0
+        assert result["nodes"]["node2"]["memory_usage_mib"] == 2325.0
+
+    async def test_async_update_data_node_metrics_unavailable(
+        self, hass: HomeAssistant, coordinator, mock_client
+    ):
+        """Test that missing node metrics don't break the update."""
+        mock_client.get_nodes.return_value = [
+            {"name": "node1", "status": "Ready", "internal_ip": "10.0.0.1"},
+        ]
+        mock_client.get_node_metrics.return_value = {}
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            result = await coordinator._async_update_data()
+
+        assert "cpu_usage_millicores" not in result["nodes"]["node1"]
+        assert "memory_usage_mib" not in result["nodes"]["node1"]
 
     async def test_async_update_data_with_cleanup(
         self, hass: HomeAssistant, coordinator, mock_client

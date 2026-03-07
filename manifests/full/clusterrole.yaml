@@ -36,6 +36,11 @@ rules:
     resources: ["cronjobs", "cronjobs/status", "jobs"]
     verbs: ["get", "list", "watch", "patch", "update", "create"]
 
+  # Metrics API — real-time CPU and memory usage (requires metrics-server)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+
   # Legacy API compatibility (Kubernetes < 1.16)
   - apiGroups: ["extensions"]
     resources: ["deployments", "replicasets"]

@@ -8,8 +8,10 @@ interface NodeData {
   internal_ip: string;
   external_ip: string;
   cpu_cores: number;
+  cpu_usage_millicores?: number;
   memory_capacity_gib: number;
   memory_allocatable_gib: number;
+  memory_usage_mib?: number;
   os_image: string;
   kernel_version: string;
   container_runtime: string;
@@ -389,7 +391,14 @@ export class K8sNodesTable extends LitElement {
     .resource-bar-container {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
+    }
+
+    .resource-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--secondary-text-color);
+      min-width: 28px;
     }
 
     .resource-bar {
@@ -404,6 +413,10 @@ export class K8sNodesTable extends LitElement {
       height: 100%;
       border-radius: 3px;
       background: var(--primary-color);
+    }
+
+    .resource-bar-fill.bar-warn {
+      background: var(--warning-color, #ff9800);
     }
 
     .node-count {
@@ -507,10 +520,17 @@ export class K8sNodesTable extends LitElement {
     const nodeKey = `${entryId}_${node.name}`;
     const expanded = this._expandedNodes.has(nodeKey);
     const conditions = this._getConditions(node);
-    const memPercent =
-      node.memory_capacity_gib > 0
-        ? Math.round((node.memory_allocatable_gib / node.memory_capacity_gib) * 100)
-        : 0;
+
+    const hasMetrics =
+      node.cpu_usage_millicores != null && node.memory_usage_mib != null;
+    const cpuCapacityMillicores = node.cpu_cores * 1000;
+    const cpuPercent = hasMetrics
+      ? Math.round((node.cpu_usage_millicores! / cpuCapacityMillicores) * 100)
+      : 0;
+    const memUsageGib = hasMetrics ? node.memory_usage_mib! / 1024 : 0;
+    const memPercent = hasMetrics
+      ? Math.round((memUsageGib / node.memory_capacity_gib) * 100)
+      : 0;
 
     return html`
       <ha-card class="node-card">
@@ -537,15 +557,32 @@ export class K8sNodesTable extends LitElement {
           </span>
           <span class="node-ip">${node.internal_ip}</span>
           <div class="node-resources">
-            <span>${node.cpu_cores} CPU</span>
-            <div class="resource-bar-container">
-              <div class="resource-bar">
-                <div class="resource-bar-fill" style="width: ${memPercent}%"></div>
-              </div>
-              <span
-                >${node.memory_allocatable_gib}/${node.memory_capacity_gib} GiB</span
-              >
-            </div>
+            ${hasMetrics
+              ? html`
+                  <div class="resource-bar-container" title="CPU usage">
+                    <span class="resource-label">CPU</span>
+                    <div class="resource-bar">
+                      <div
+                        class="resource-bar-fill ${cpuPercent > 80 ? "bar-warn" : ""}"
+                        style="width: ${Math.min(cpuPercent, 100)}%"
+                      ></div>
+                    </div>
+                    <span>${cpuPercent}%</span>
+                  </div>
+                  <div class="resource-bar-container" title="Memory usage">
+                    <span class="resource-label">MEM</span>
+                    <div class="resource-bar">
+                      <div
+                        class="resource-bar-fill ${memPercent > 80 ? "bar-warn" : ""}"
+                        style="width: ${Math.min(memPercent, 100)}%"
+                      ></div>
+                    </div>
+                    <span>${memPercent}%</span>
+                  </div>
+                `
+              : html`<span
+                  >${node.cpu_cores} CPU &middot; ${node.memory_capacity_gib} GiB</span
+                >`}
           </div>
           <span class="node-age">${this._formatAge(node.creation_timestamp)}</span>
         </div>
@@ -555,6 +592,12 @@ export class K8sNodesTable extends LitElement {
   }
 
   private _renderNodeDetails(node: NodeData, conditions: string[]) {
+    const hasMetrics =
+      node.cpu_usage_millicores != null && node.memory_usage_mib != null;
+    const memUsageGib = hasMetrics
+      ? Math.round((node.memory_usage_mib! / 1024) * 100) / 100
+      : null;
+
     return html`
       <div class="node-details">
         <div class="details-grid">
@@ -570,6 +613,16 @@ export class K8sNodesTable extends LitElement {
             <span class="detail-label">CPU Cores</span>
             <span class="detail-value">${node.cpu_cores}</span>
           </div>
+          ${hasMetrics
+            ? html`
+                <div class="detail-item">
+                  <span class="detail-label">CPU Usage</span>
+                  <span class="detail-value"
+                    >${node.cpu_usage_millicores}m / ${node.cpu_cores * 1000}m</span
+                  >
+                </div>
+              `
+            : nothing}
           <div class="detail-item">
             <span class="detail-label">Memory Capacity</span>
             <span class="detail-value">${node.memory_capacity_gib} GiB</span>
@@ -578,6 +631,16 @@ export class K8sNodesTable extends LitElement {
             <span class="detail-label">Memory Allocatable</span>
             <span class="detail-value">${node.memory_allocatable_gib} GiB</span>
           </div>
+          ${hasMetrics
+            ? html`
+                <div class="detail-item">
+                  <span class="detail-label">Memory Usage</span>
+                  <span class="detail-value"
+                    >${memUsageGib} / ${node.memory_capacity_gib} GiB</span
+                  >
+                </div>
+              `
+            : nothing}
           <div class="detail-item">
             <span class="detail-label">OS Image</span>
             <span class="detail-value">${node.os_image}</span>

@@ -1863,6 +1863,62 @@ class KubernetesClient:
             _LOGGER.warning("Exception in _get_pod_metrics_aiohttp: %s", ex)
             return {}
 
+    async def get_node_metrics(self) -> dict[str, dict[str, float]]:
+        """Get node metrics (CPU and memory usage) from the Metrics API."""
+        return await self._get_node_metrics_aiohttp()
+
+    async def _get_node_metrics_aiohttp(self) -> dict[str, dict[str, float]]:
+        """Get node metrics using aiohttp."""
+        try:
+            headers = {"Authorization": f"Bearer {self.api_token}"}
+            url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/nodes"
+
+            ssl_context: ssl.SSLContext | Literal[False] = False
+            if self.verify_ssl:
+                ssl_context = ssl.create_default_context(cafile=self.ca_cert)
+
+            connector = aiohttp.TCPConnector(ssl=ssl_context)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                async with session.get(
+                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        metrics: dict[str, dict[str, float]] = {}
+                        for item in data.get("items", []):
+                            name = item.get("metadata", {}).get("name")
+                            if not name:
+                                continue
+                            usage = item.get("usage", {})
+                            cpu_str = usage.get("cpu", "0")
+                            memory_str = usage.get("memory", "0")
+
+                            metrics[name] = {
+                                "cpu": self._parse_cpu(cpu_str, "m"),
+                                "memory": self._parse_memory(memory_str, "MiB"),
+                            }
+                        _LOGGER.debug(
+                            "Successfully fetched metrics for %d nodes", len(metrics)
+                        )
+                        return metrics
+                    elif response.status == 403:
+                        _LOGGER.warning(
+                            "Failed to fetch node metrics: 403 Forbidden. "
+                            "The service account does not have permission to access the metrics API. "
+                            "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
+                            "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']"
+                        )
+                        return {}
+                    else:
+                        _LOGGER.warning(
+                            "Failed to fetch node metrics: %s. Metrics API might not be available.",
+                            response.status,
+                        )
+                        return {}
+        except Exception as ex:
+            _LOGGER.warning("Exception in _get_node_metrics_aiohttp: %s", ex)
+            return {}
+
     def _pod_matches_selector(
         self, pod_labels: dict[str, Any], selector: dict[str, Any]
     ) -> bool:

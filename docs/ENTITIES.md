@@ -117,6 +117,8 @@ Each node sensor provides comprehensive information about the node:
 | **kernel_version** | Kernel version | `5.15.0-56-generic` |
 | **container_runtime** | Container runtime version | `containerd://1.6.6` |
 | **kubelet_version** | Kubelet version | `v1.25.4` |
+| **cpu_usage_millicores** | Real-time CPU usage (requires metrics-server) | `410.0` |
+| **memory_usage_mib** | Real-time memory usage in MiB (requires metrics-server) | `2015.0` |
 | **schedulable** | Whether the node can schedule new pods | `true` / `false` |
 | **creation_timestamp** | When the node was created | `2023-01-01T00:00:00Z` |
 
