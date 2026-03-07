@@ -59,7 +59,7 @@ To change connection details or settings for an existing integration entry:
 Once the integration is set up, a **Kubernetes** entry appears in the Home Assistant sidebar. The panel provides a built-in cluster dashboard with five tabs:
 
 - **Overview** — Cluster health badge, resource count cards, namespace breakdown, Watch API status, and alerts (nodes with pressure, degraded workloads, failed pods). Auto-refreshes every 30 seconds.
-- **Nodes** — Sortable table of all cluster nodes with status, roles, OS/kernel info, resource capacity, and conditions. Filterable by name, status, and role.
+- **Nodes** — Sortable table of all cluster nodes with status, roles, OS/kernel info, real-time CPU/memory usage (requires metrics-server), resource capacity, and conditions. Filterable by name, status, and role.
 - **Pods** — Sortable table of all pods with phase, containers, restarts, node, IP, and age. Filterable by name, namespace, phase, and node.
 - **Workloads** — Management view for Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. Start/stop/scale controls for deployments and statefulsets, suspend/resume for cronjobs. Filterable by type, namespace, and status.
 - **Settings** — Read-only view of current integration configuration (connection, namespaces, timing, features). Links to the HA integration page for editing settings.

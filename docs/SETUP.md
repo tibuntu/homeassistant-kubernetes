@@ -109,6 +109,10 @@ rules:
 - apiGroups: ["batch"]
   resources: ["cronjobs", "cronjobs/status", "jobs"]
   verbs: ["get", "patch", "update", "create"]
+# Metrics API for real-time CPU and memory usage
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["nodes", "pods"]
+  verbs: ["get", "list"]
 ```
 
 ### Permission Breakdown
@@ -129,6 +133,8 @@ rules:
 | **batch** | **cronjobs** | `get`, `list`, `watch` | Monitor CronJob status and metadata |
 | **batch** | **cronjobs/status** | `get`, `patch`, `update` | Update and monitor CronJob status |
 | **batch** | **jobs** | `get`, `list`, `watch`, `create` | Monitor and create jobs (for CronJob triggering) |
+| **metrics.k8s.io** | **nodes** | `get`, `list` | Real-time node CPU and memory usage |
+| **metrics.k8s.io** | **pods** | `get`, `list` | Workload CPU and memory usage sensors |
 | **extensions** | **deployments** | `get`, `list`, `watch` | Legacy API compatibility for older clusters |
 | **extensions** | **deployments/scale** | `patch`, `update`, `get`, `create`, `delete` | Legacy scaling API compatibility |
 

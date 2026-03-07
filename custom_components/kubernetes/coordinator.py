@@ -91,6 +91,16 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 "Successfully fetched %d pods with detailed information", len(pods)
             )
 
+            # Fetch node metrics (CPU/memory usage) — best-effort
+            node_metrics = await self.client.get_node_metrics()
+            if node_metrics:
+                _LOGGER.debug("Fetched metrics for %d nodes", len(node_metrics))
+                for node in nodes:
+                    name = node.get("name")
+                    if name and name in node_metrics:
+                        node["cpu_usage_millicores"] = node_metrics[name]["cpu"]
+                        node["memory_usage_mib"] = node_metrics[name]["memory"]
+
             # Log node names for debugging
             if nodes:
                 node_names = [node.get("name", "Unknown") for node in nodes]

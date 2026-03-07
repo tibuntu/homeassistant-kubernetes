@@ -247,7 +247,7 @@ let y$1 = class y extends HTMLElement {
   }
 };
 y$1.elementStyles = [], y$1.shadowRootOptions = { mode: "open" }, y$1[d$1("elementProperties")] = /* @__PURE__ */ new Map(), y$1[d$1("finalized")] = /* @__PURE__ */ new Map(), p$1?.({ ReactiveElement: y$1 }), (a$1.reactiveElementVersions ??= []).push("2.1.2");
-const t$1 = globalThis, i$1 = (t2) => t2, s$1 = t$1.trustedTypes, e = s$1 ? s$1.createPolicy("lit-html", { createHTML: (t2) => t2 }) : void 0, h = "$lit$", o$2 = `lit$${Math.random().toFixed(9).slice(2)}$`, n$1 = "?" + o$2, r$2 = `<${n$1}>`, l = document, c = () => l.createComment(""), a = (t2) => null === t2 || "object" != typeof t2 && "function" != typeof t2, u = Array.isArray, d = (t2) => u(t2) || "function" == typeof t2?.[Symbol.iterator], f = "[ 	\n\f\r]", v = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, _ = /-->/g, m = />/g, p = RegExp(`>|${f}(?:([^\\s"'>=/]+)(${f}*=${f}*(?:[^
+const t$1 = globalThis, i$1 = (t2) => t2, s$1 = t$1.trustedTypes, e = s$1 ? s$1.createPolicy("lit-html", { createHTML: (t2) => t2 }) : void 0, h = "$lit$", o$2 = `lit$${Math.random().toFixed(9).slice(2)}$`, n$1 = "?" + o$2, r$2 = `<${n$1}>`, l = document, c = () => l.createComment(""), a = (t2) => null === t2 || "object" != typeof t2 && "function" != typeof t2, u = Array.isArray, d = (t2) => u(t2) || "function" == typeof t2?.[Symbol.iterator], f = "[ 	\n\f\r]", v = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, _ = /-->/g, m = />/g, p = RegExp(`>|${f}(?:([^\\s"'>=/]+)(${f}*=${f}*(?:[^ 	
 \f\r"'\`<>=]|("|')|))|$)`, "g"), g = /'/g, $ = /"/g, y2 = /^(?:script|style|textarea|title)$/i, x = (t2) => (i2, ...s2) => ({ _$litType$: t2, strings: i2, values: s2 }), b = x(1), E = /* @__PURE__ */ Symbol.for("lit-noChange"), A = /* @__PURE__ */ Symbol.for("lit-nothing"), C = /* @__PURE__ */ new WeakMap(), P = l.createTreeWalker(l, 129);
 function V(t2, i2) {
   if (!u(t2) || !t2.hasOwnProperty("raw")) throw Error("invalid template strings array");
@@ -1404,7 +1404,11 @@ let K8sNodesTable = class extends i {
     const nodeKey = `${entryId}_${node.name}`;
     const expanded = this._expandedNodes.has(nodeKey);
     const conditions = this._getConditions(node);
-    const memPercent = node.memory_capacity_gib > 0 ? Math.round(node.memory_allocatable_gib / node.memory_capacity_gib * 100) : 0;
+    const hasMetrics = node.cpu_usage_millicores != null && node.memory_usage_mib != null;
+    const cpuCapacityMillicores = node.cpu_cores * 1e3;
+    const cpuPercent = hasMetrics ? Math.round(node.cpu_usage_millicores / cpuCapacityMillicores * 100) : 0;
+    const memUsageGib = hasMetrics ? node.memory_usage_mib / 1024 : 0;
+    const memPercent = hasMetrics ? Math.round(memUsageGib / node.memory_capacity_gib * 100) : 0;
     return b`
       <ha-card class="node-card">
         <div class="node-row" @click=${() => this._toggleNode(nodeKey)}>
@@ -1426,15 +1430,30 @@ let K8sNodesTable = class extends i {
           </span>
           <span class="node-ip">${node.internal_ip}</span>
           <div class="node-resources">
-            <span>${node.cpu_cores} CPU</span>
-            <div class="resource-bar-container">
-              <div class="resource-bar">
-                <div class="resource-bar-fill" style="width: ${memPercent}%"></div>
-              </div>
-              <span
-                >${node.memory_allocatable_gib}/${node.memory_capacity_gib} GiB</span
-              >
-            </div>
+            ${hasMetrics ? b`
+                  <div class="resource-bar-container" title="CPU usage">
+                    <span class="resource-label">CPU</span>
+                    <div class="resource-bar">
+                      <div
+                        class="resource-bar-fill ${cpuPercent > 80 ? "bar-warn" : ""}"
+                        style="width: ${Math.min(cpuPercent, 100)}%"
+                      ></div>
+                    </div>
+                    <span>${cpuPercent}%</span>
+                  </div>
+                  <div class="resource-bar-container" title="Memory usage">
+                    <span class="resource-label">MEM</span>
+                    <div class="resource-bar">
+                      <div
+                        class="resource-bar-fill ${memPercent > 80 ? "bar-warn" : ""}"
+                        style="width: ${Math.min(memPercent, 100)}%"
+                      ></div>
+                    </div>
+                    <span>${memPercent}%</span>
+                  </div>
+                ` : b`<span
+                  >${node.cpu_cores} CPU &middot; ${node.memory_capacity_gib} GiB</span
+                >`}
           </div>
           <span class="node-age">${this._formatAge(node.creation_timestamp)}</span>
         </div>
@@ -1443,6 +1462,8 @@ let K8sNodesTable = class extends i {
     `;
   }
   _renderNodeDetails(node, conditions) {
+    const hasMetrics = node.cpu_usage_millicores != null && node.memory_usage_mib != null;
+    const memUsageGib = hasMetrics ? Math.round(node.memory_usage_mib / 1024 * 100) / 100 : null;
     return b`
       <div class="node-details">
         <div class="details-grid">
@@ -1458,6 +1479,14 @@ let K8sNodesTable = class extends i {
             <span class="detail-label">CPU Cores</span>
             <span class="detail-value">${node.cpu_cores}</span>
           </div>
+          ${hasMetrics ? b`
+                <div class="detail-item">
+                  <span class="detail-label">CPU Usage</span>
+                  <span class="detail-value"
+                    >${node.cpu_usage_millicores}m / ${node.cpu_cores * 1e3}m</span
+                  >
+                </div>
+              ` : A}
           <div class="detail-item">
             <span class="detail-label">Memory Capacity</span>
             <span class="detail-value">${node.memory_capacity_gib} GiB</span>
@@ -1466,6 +1495,14 @@ let K8sNodesTable = class extends i {
             <span class="detail-label">Memory Allocatable</span>
             <span class="detail-value">${node.memory_allocatable_gib} GiB</span>
           </div>
+          ${hasMetrics ? b`
+                <div class="detail-item">
+                  <span class="detail-label">Memory Usage</span>
+                  <span class="detail-value"
+                    >${memUsageGib} / ${node.memory_capacity_gib} GiB</span
+                  >
+                </div>
+              ` : A}
           <div class="detail-item">
             <span class="detail-label">OS Image</span>
             <span class="detail-value">${node.os_image}</span>
@@ -1735,7 +1772,14 @@ K8sNodesTable.styles = i$3`
     .resource-bar-container {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
+    }
+
+    .resource-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--secondary-text-color);
+      min-width: 28px;
     }
 
     .resource-bar {
@@ -1750,6 +1794,10 @@ K8sNodesTable.styles = i$3`
       height: 100%;
       border-radius: 3px;
       background: var(--primary-color);
+    }
+
+    .resource-bar-fill.bar-warn {
+      background: var(--warning-color, #ff9800);
     }
 
     .node-count {
