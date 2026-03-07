@@ -28,6 +28,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_cluster_overview)
     websocket_api.async_register_command(hass, websocket_nodes_list)
     websocket_api.async_register_command(hass, websocket_pods_list)
+    websocket_api.async_register_command(hass, websocket_workloads_list)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/cluster/overview"})
@@ -63,6 +64,18 @@ async def websocket_pods_list(
 ) -> None:
     """Return all pods from all config entries."""
     result = _get_pods_list_data(hass)
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/workloads/list"})
+@websocket_api.async_response
+async def websocket_workloads_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all workloads from all config entries."""
+    result = _get_workloads_list_data(hass)
     connection.send_result(msg["id"], result)
 
 
@@ -350,6 +363,53 @@ def _get_pods_list_data(hass: HomeAssistant) -> dict[str, Any]:
                 "entry_id": entry_id,
                 "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
                 "pods": pods_list,
+            }
+        )
+
+    return {"clusters": clusters}
+
+
+def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
+    """Gather workload data from all config entries."""
+    domain_data = hass.data.get(DOMAIN, {})
+    clusters: list[dict[str, Any]] = []
+
+    for entry_id, entry_data in domain_data.items():
+        if entry_id in DOMAIN_META_KEYS:
+            continue
+        if not isinstance(entry_data, dict):
+            continue
+
+        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+        config: dict[str, Any] = entry_data.get("config", {})
+
+        if coordinator is None:
+            continue
+
+        data = coordinator.data
+
+        if data:
+            deployments = list(data.get("deployments", {}).values())
+            statefulsets = list(data.get("statefulsets", {}).values())
+            daemonsets = list(data.get("daemonsets", {}).values())
+            cronjobs = list(data.get("cronjobs", {}).values())
+            jobs = list(data.get("jobs", {}).values())
+        else:
+            deployments = []
+            statefulsets = []
+            daemonsets = []
+            cronjobs = []
+            jobs = []
+
+        clusters.append(
+            {
+                "entry_id": entry_id,
+                "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
+                "deployments": deployments,
+                "statefulsets": statefulsets,
+                "daemonsets": daemonsets,
+                "cronjobs": cronjobs,
+                "jobs": jobs,
             }
         )
 

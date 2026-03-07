@@ -7,8 +7,7 @@ export default defineConfig({
     emptyOutDir: true,
     lib: {
       entry: resolve(__dirname, "src/kubernetes-panel.ts"),
-      name: "KubernetesPanel",
-      formats: ["iife"],
+      formats: ["es"],
       fileName: () => "kubernetes-panel.js",
     },
     rollupOptions: {
@@ -17,6 +16,6 @@ export default defineConfig({
       },
     },
     sourcemap: false,
-    minify: "esbuild",
+    minify: false,
   },
 });
