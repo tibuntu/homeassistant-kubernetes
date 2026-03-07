@@ -1506,3 +1506,71 @@ class TestDiscoverAndAddNewEntities:
             await _async_discover_and_add_new_entities(
                 hass, mock_config_entry, coordinator, MagicMock()
             )
+
+    async def test_does_not_readd_pending_entities(self, mock_config_entry):
+        """Test that entities added in a previous cycle are not re-added."""
+        add_entities_callback = MagicMock()
+        pending_ids: set[str] = set()
+        hass = MagicMock()
+        hass.data = {
+            DOMAIN: {
+                "switch_add_entities": add_entities_callback,
+                mock_config_entry.entry_id: {
+                    "switch_pending_unique_ids": pending_ids,
+                },
+            }
+        }
+
+        coordinator = MagicMock()
+        coordinator.data = {
+            "deployments": {
+                "my-deploy": {
+                    "name": "my-deploy",
+                    "namespace": "default",
+                    "replicas": 1,
+                    "is_running": True,
+                }
+            },
+            "statefulsets": {},
+            "cronjobs": {},
+        }
+
+        entity_registry = MagicMock()
+        entity_registry.entities.get_entries_for_config_entry_id.return_value = []
+
+        with (
+            patch(
+                "custom_components.kubernetes.switch.async_get_entity_registry",
+                return_value=entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.get_or_create_namespace_device",
+                new_callable=AsyncMock,
+            ),
+        ):
+            # First call: discovers the deployment
+            await _async_discover_and_add_new_entities(
+                hass, mock_config_entry, coordinator, MagicMock()
+            )
+
+        add_entities_callback.assert_called_once()
+        assert len(pending_ids) == 1
+
+        add_entities_callback.reset_mock()
+
+        with (
+            patch(
+                "custom_components.kubernetes.switch.async_get_entity_registry",
+                return_value=entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.get_or_create_namespace_device",
+                new_callable=AsyncMock,
+            ),
+        ):
+            # Second call: entity registry still empty, but pending_ids prevents re-add
+            await _async_discover_and_add_new_entities(
+                hass, mock_config_entry, coordinator, MagicMock()
+            )
+
+        add_entities_callback.assert_not_called()

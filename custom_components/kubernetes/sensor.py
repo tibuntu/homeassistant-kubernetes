@@ -186,6 +186,9 @@ async def async_setup_entry(
         hass.data[DOMAIN][config_entry.entry_id]["sensor_add_entities"] = (
             async_add_entities
         )
+        # Track unique_ids we've already passed to add_entities_callback to avoid
+        # re-adding entities that haven't been registered in the entity registry yet.
+        hass.data[DOMAIN][config_entry.entry_id]["sensor_pending_unique_ids"] = set()
 
         # Set up listener for adding new entities dynamically
         @callback
@@ -414,13 +417,18 @@ async def _async_discover_and_add_new_sensors(
             )
             return
 
-        # Get existing entities for this config entry
+        # Get existing entities for this config entry, plus any that were already
+        # passed to add_entities_callback but may not be in the registry yet.
         existing_entities = entity_registry.entities.get_entries_for_config_entry_id(
             config_entry.entry_id
         )
         existing_unique_ids = {
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
+        pending_ids: set[str] = sensor_data.get("sensor_pending_unique_ids", set())
+        # Prune IDs that are now in the registry — keeps the set bounded
+        pending_ids -= existing_unique_ids
+        existing_unique_ids |= pending_ids
 
         # Ensure cluster device exists
         from .device import get_or_create_cluster_device, get_or_create_namespace_device
@@ -491,6 +499,9 @@ async def _async_discover_and_add_new_sensors(
         # Add new entities if any were found
         if new_entities:
             _LOGGER.info("Adding %d new sensors", len(new_entities))
+            # Track these unique_ids so they aren't re-added before the entity
+            # registry picks them up.
+            pending_ids.update(e.unique_id for e in new_entities if e.unique_id)
             add_entities_callback(new_entities)
         else:
             _LOGGER.debug("No new sensors to add")

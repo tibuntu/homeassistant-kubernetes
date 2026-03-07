@@ -1021,6 +1021,85 @@ class TestDynamicNodeSensorDiscovery:
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
+    async def test_discover_does_not_readd_pending_entities(
+        self, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test that entities added in a previous cycle are not re-added."""
+        from custom_components.kubernetes.sensor import (
+            _async_discover_and_add_new_sensors,
+        )
+
+        mock_hass = MagicMock()
+        pending_ids: set[str] = set()
+
+        mock_hass.data = {
+            DOMAIN: {
+                mock_config_entry.entry_id: {
+                    "sensor_add_entities": MagicMock(),
+                    "sensor_pending_unique_ids": pending_ids,
+                }
+            }
+        }
+
+        mock_coordinator.data = {
+            "nodes": {
+                "node1": {"status": "Ready"},
+            }
+        }
+
+        mock_entity_registry = MagicMock()
+        mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = []
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.sensor.async_get_entity_registry",
+                return_value=mock_entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+        ):
+            # First call: should discover and add 1 node sensor
+            await _async_discover_and_add_new_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
+
+        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
+            "sensor_add_entities"
+        ]
+        callback.assert_called_once()
+        assert len(callback.call_args[0][0]) == 1
+
+        # pending_ids should now contain the new entity's unique_id
+        assert len(pending_ids) == 1
+
+        # Reset mock for second call
+        callback.reset_mock()
+
+        with (
+            patch(
+                "custom_components.kubernetes.sensor.async_get_entity_registry",
+                return_value=mock_entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+        ):
+            # Second call: entity registry still empty (async add not processed),
+            # but pending_ids prevents re-add
+            await _async_discover_and_add_new_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
+
+        # Should NOT have been called again — entity already pending
+        callback.assert_not_called()
+
 
 class TestKubernetesPodSensor:
     """Test cases for KubernetesPodSensor."""
