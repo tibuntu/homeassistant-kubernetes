@@ -92,7 +92,7 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 - All entities read cached data from the coordinator, never calling the K8s API directly.
 - `asyncio_mode = "auto"` in pytest — test functions are automatically treated as async. `asyncio_default_fixture_loop_scope = "function"` is set for compatibility with `pytest-homeassistant-custom-component`.
-- Tests use `pytest-homeassistant-custom-component` for real HA test fixtures. Legacy mock fixtures (`mock_hass`, `mock_config_entry`) in `conftest.py` are being migrated to real HA fixtures in phases (see #115). K8s-specific mock fixtures (`mock_client`, `mock_coordinator`, `mock_kubernetes_client`, `mock_kubernetes_api`) remain in `conftest.py`.
+- Tests use `pytest-homeassistant-custom-component` for real HA test fixtures. `test_init.py` and `test_device.py` have been migrated to use the real `hass` fixture and `MockConfigEntry`. Remaining test files still use legacy `mock_hass`/`mock_config_entry` from `conftest.py` (migration in progress, see #115). K8s-specific mock fixtures (`mock_client`, `mock_coordinator`, `mock_kubernetes_client`, `mock_kubernetes_api`) remain in `conftest.py`.
 - The kubernetes package is lazy-imported in config_flow and checked at setup to handle missing dependency.
 
 ## Code Style
