@@ -2,6 +2,8 @@ import { LitElement, html, css, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { loadHaElements } from "./utils/load-ha-elements";
 import "./views/k8s-overview";
+import "./views/k8s-nodes-table";
+import "./views/k8s-pods-table";
 
 type Tab = "overview" | "nodes" | "workloads" | "pods" | "settings";
 
@@ -168,14 +170,20 @@ export class KubernetesPanel extends LitElement {
   }
 
   private _renderActiveTab() {
-    if (this._activeTab === "overview") {
-      return html`<k8s-overview .hass=${this.hass}></k8s-overview>`;
+    switch (this._activeTab) {
+      case "overview":
+        return html`<k8s-overview .hass=${this.hass}></k8s-overview>`;
+      case "nodes":
+        return html`<k8s-nodes-table .hass=${this.hass}></k8s-nodes-table>`;
+      case "pods":
+        return html`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
+      default:
+        return html`
+          <div class="coming-soon">
+            <ha-icon icon="mdi:hammer-wrench"></ha-icon>
+            <p>This tab is coming in a future release.</p>
+          </div>
+        `;
     }
-    return html`
-      <div class="coming-soon">
-        <ha-icon icon="mdi:hammer-wrench"></ha-icon>
-        <p>This tab is coming in a future release.</p>
-      </div>
-    `;
   }
 }

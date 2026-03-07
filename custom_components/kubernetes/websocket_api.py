@@ -26,6 +26,8 @@ _LOGGER = logging.getLogger(__name__)
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register all Kubernetes WebSocket commands."""
     websocket_api.async_register_command(hass, websocket_cluster_overview)
+    websocket_api.async_register_command(hass, websocket_nodes_list)
+    websocket_api.async_register_command(hass, websocket_pods_list)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/cluster/overview"})
@@ -37,6 +39,30 @@ async def websocket_cluster_overview(
 ) -> None:
     """Return aggregated cluster overview data from all config entries."""
     result = _get_cluster_overview_data(hass)
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/nodes/list"})
+@websocket_api.async_response
+async def websocket_nodes_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all nodes from all config entries."""
+    result = _get_nodes_list_data(hass)
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/pods/list"})
+@websocket_api.async_response
+async def websocket_pods_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all pods from all config entries."""
+    result = _get_pods_list_data(hass)
     connection.send_result(msg["id"], result)
 
 
@@ -262,3 +288,69 @@ def _empty_alerts() -> dict[str, list]:
         "degraded_workloads": [],
         "failed_pods": [],
     }
+
+
+def _get_nodes_list_data(hass: HomeAssistant) -> dict[str, Any]:
+    """Gather node data from all config entries."""
+    domain_data = hass.data.get(DOMAIN, {})
+    clusters: list[dict[str, Any]] = []
+
+    for entry_id, entry_data in domain_data.items():
+        if entry_id in DOMAIN_META_KEYS:
+            continue
+        if not isinstance(entry_data, dict):
+            continue
+
+        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+        config: dict[str, Any] = entry_data.get("config", {})
+
+        if coordinator is None:
+            continue
+
+        data = coordinator.data
+        nodes_list: list[dict[str, Any]] = []
+        if data:
+            nodes_list = list(data.get("nodes", {}).values())
+
+        clusters.append(
+            {
+                "entry_id": entry_id,
+                "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
+                "nodes": nodes_list,
+            }
+        )
+
+    return {"clusters": clusters}
+
+
+def _get_pods_list_data(hass: HomeAssistant) -> dict[str, Any]:
+    """Gather pod data from all config entries."""
+    domain_data = hass.data.get(DOMAIN, {})
+    clusters: list[dict[str, Any]] = []
+
+    for entry_id, entry_data in domain_data.items():
+        if entry_id in DOMAIN_META_KEYS:
+            continue
+        if not isinstance(entry_data, dict):
+            continue
+
+        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+        config: dict[str, Any] = entry_data.get("config", {})
+
+        if coordinator is None:
+            continue
+
+        data = coordinator.data
+        pods_list: list[dict[str, Any]] = []
+        if data:
+            pods_list = list(data.get("pods", {}).values())
+
+        clusters.append(
+            {
+                "entry_id": entry_id,
+                "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
+                "pods": pods_list,
+            }
+        )
+
+    return {"clusters": clusters}
