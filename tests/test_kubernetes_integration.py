@@ -2,7 +2,10 @@
 
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
+from homeassistant.core import HomeAssistant
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 # Import from the custom component directly
 from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
@@ -40,6 +43,24 @@ def mock_config():
         "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
         "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     }
+
+
+@pytest.fixture
+def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
+    """Mock config entry."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="test_entry_id",
+        data={
+            CONF_HOST: "https://test-cluster.example.com",
+            CONF_PORT: 6443,
+            CONF_VERIFY_SSL: True,
+            "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
+            "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+        },
+    )
+    entry.add_to_hass(hass)
+    return entry
 
 
 @pytest.fixture
@@ -181,12 +202,10 @@ async def test_kubernetes_client_initialization(mock_config):
     assert mock_config["api_token"] == "test-token"
 
 
-async def test_pods_sensor_update(mock_kubernetes_client, mock_coordinator):
+async def test_pods_sensor_update(
+    mock_kubernetes_client, mock_coordinator, mock_config_entry
+):
     """Test pods sensor update."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-
     # Set up coordinator data
     mock_coordinator.data = {"pods_count": 5}
 
@@ -198,12 +217,8 @@ async def test_pods_sensor_update(mock_kubernetes_client, mock_coordinator):
     assert sensor.native_value == 5
 
 
-async def test_cluster_health_sensor_update(mock_kubernetes_client):
+async def test_cluster_health_sensor_update(mock_kubernetes_client, mock_config_entry):
     """Test cluster health sensor update."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-
     sensor = KubernetesClusterHealthSensor(mock_kubernetes_client, mock_config_entry)
 
     # Test the update method
@@ -213,16 +228,8 @@ async def test_cluster_health_sensor_update(mock_kubernetes_client):
     assert sensor.is_on is True
 
 
-async def test_deployment_switch_initialization(mock_coordinator):
+async def test_deployment_switch_initialization(mock_coordinator, mock_config_entry):
     """Test deployment switch initialization."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-    mock_config_entry.data = {
-        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
-        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    }
-
     switch = KubernetesDeploymentSwitch(
         mock_coordinator, mock_config_entry, "nginx-deployment", "default"
     )
@@ -240,16 +247,8 @@ async def test_deployment_switch_initialization(mock_coordinator):
     assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_DEPLOYMENT
 
 
-async def test_deployment_switch_update(mock_coordinator):
+async def test_deployment_switch_update(mock_coordinator, mock_config_entry):
     """Test deployment switch update."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-    mock_config_entry.data = {
-        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
-        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    }
-
     switch = KubernetesDeploymentSwitch(
         mock_coordinator, mock_config_entry, "nginx-deployment", "default"
     )
@@ -262,16 +261,8 @@ async def test_deployment_switch_update(mock_coordinator):
     assert switch._replicas == 3
 
 
-async def test_deployment_switch_turn_on(mock_coordinator):
+async def test_deployment_switch_turn_on(mock_coordinator, mock_config_entry):
     """Test deployment switch turn on."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-    mock_config_entry.data = {
-        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
-        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    }
-
     switch = KubernetesDeploymentSwitch(
         mock_coordinator, mock_config_entry, "api-deployment", "default"
     )
@@ -300,16 +291,8 @@ async def test_deployment_switch_turn_on(mock_coordinator):
     switch._verify_scaling.assert_called_once_with(1)
 
 
-async def test_deployment_switch_turn_off(mock_coordinator):
+async def test_deployment_switch_turn_off(mock_coordinator, mock_config_entry):
     """Test deployment switch turn off."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-    mock_config_entry.data = {
-        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
-        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    }
-
     switch = KubernetesDeploymentSwitch(
         mock_coordinator, mock_config_entry, "nginx-deployment", "default"
     )
@@ -388,16 +371,8 @@ async def test_kubernetes_client_statefulset_control(mock_config):
     client.stop_statefulset.assert_called_once_with("test-statefulset", "default")
 
 
-async def test_statefulset_switch_initialization(mock_coordinator):
+async def test_statefulset_switch_initialization(mock_coordinator, mock_config_entry):
     """Test statefulset switch initialization."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-    mock_config_entry.data = {
-        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
-        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    }
-
     switch = KubernetesStatefulSetSwitch(
         mock_coordinator, mock_config_entry, "redis-statefulset", "default"
     )
@@ -415,16 +390,8 @@ async def test_statefulset_switch_initialization(mock_coordinator):
     assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_STATEFULSET
 
 
-async def test_statefulset_switch_update(mock_coordinator):
+async def test_statefulset_switch_update(mock_coordinator, mock_config_entry):
     """Test statefulset switch update."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-    mock_config_entry.data = {
-        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
-        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    }
-
     switch = KubernetesStatefulSetSwitch(
         mock_coordinator, mock_config_entry, "redis-statefulset", "default"
     )
@@ -437,16 +404,8 @@ async def test_statefulset_switch_update(mock_coordinator):
     assert switch._replicas == 3
 
 
-async def test_statefulset_switch_turn_on(mock_coordinator):
+async def test_statefulset_switch_turn_on(mock_coordinator, mock_config_entry):
     """Test statefulset switch turn on."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-    mock_config_entry.data = {
-        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
-        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    }
-
     switch = KubernetesStatefulSetSwitch(
         mock_coordinator, mock_config_entry, "redis-statefulset", "default"
     )
@@ -475,16 +434,8 @@ async def test_statefulset_switch_turn_on(mock_coordinator):
     switch._verify_scaling.assert_called_once_with(1)
 
 
-async def test_statefulset_switch_turn_off(mock_coordinator):
+async def test_statefulset_switch_turn_off(mock_coordinator, mock_config_entry):
     """Test statefulset switch turn off."""
-    # Create a mock config entry
-    mock_config_entry = MagicMock()
-    mock_config_entry.entry_id = "test_entry_id"
-    mock_config_entry.data = {
-        "scale_cooldown": DEFAULT_SCALE_COOLDOWN,
-        "scale_verification_timeout": DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    }
-
     switch = KubernetesStatefulSetSwitch(
         mock_coordinator, mock_config_entry, "redis-statefulset", "default"
     )

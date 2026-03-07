@@ -1,10 +1,12 @@
 """Tests for the Kubernetes binary sensor platform."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
+from homeassistant.core import HomeAssistant
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.binary_sensor import (
     KubernetesBaseBinarySensor,
@@ -16,21 +18,29 @@ from custom_components.kubernetes.const import DOMAIN
 
 
 @pytest.fixture
-def mock_config_entry():
+def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
     """Create a mock config entry."""
-    config_entry = MagicMock()
-    config_entry.entry_id = "test_entry_id"
-    config_entry.data = {
-        CONF_HOST: "https://kubernetes.example.com",
-        CONF_PORT: 443,
-        CONF_VERIFY_SSL: True,
-    }
-    return config_entry
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="test_entry_id",
+        data={
+            CONF_HOST: "https://kubernetes.example.com",
+            CONF_PORT: 443,
+            CONF_VERIFY_SSL: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    return entry
 
 
 @pytest.fixture
 def mock_client():
-    """Create a mock Kubernetes client."""
+    """Create a minimal mock client for binary sensor tests.
+
+    Shadows the conftest mock_client intentionally — binary sensor tests only
+    need ``is_cluster_healthy``, so a minimal fixture avoids coupling to the
+    broader conftest mock that carries deployment/statefulset helpers.
+    """
     client = MagicMock()
     client.is_cluster_healthy = AsyncMock(return_value=True)
     return client
@@ -38,7 +48,12 @@ def mock_client():
 
 @pytest.fixture
 def mock_coordinator():
-    """Create a mock coordinator with no nodes."""
+    """Create a minimal mock coordinator for binary sensor tests.
+
+    Shadows the conftest mock_coordinator intentionally — binary sensor tests
+    only need node data and basic coordinator attributes, not the full
+    deployment/statefulset/daemonset data provided by the conftest version.
+    """
     coordinator = MagicMock()
     coordinator.data = {"nodes": {}}
     coordinator.last_update_success = True
@@ -48,40 +63,30 @@ def mock_coordinator():
 
 
 @pytest.fixture
-def mock_hass(mock_coordinator, mock_config_entry, mock_client):
-    """Create a mock Home Assistant instance."""
-    hass = MagicMock()
-    hass.data = {
-        DOMAIN: {
-            mock_config_entry.entry_id: {
-                "coordinator": mock_coordinator,
-                "client": mock_client,
-            }
-        }
+def setup_domain_data(
+    hass: HomeAssistant, mock_config_entry, mock_coordinator, mock_client
+) -> None:
+    """Set up hass.data with kubernetes domain data."""
+    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+        "coordinator": mock_coordinator,
+        "client": mock_client,
     }
-    hass.config = MagicMock()
-    hass.config.config_dir = "/tmp"
-    return hass
 
 
 class TestKubernetesBinarySensorSetup:
     """Test binary sensor setup."""
 
     async def test_async_setup_entry_success(
-        self, mock_hass, mock_config_entry, mock_client
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_client,
+        setup_domain_data,
     ):
         """Test successful binary sensor setup with no nodes yields 1 entity."""
-        mock_device_registry = MagicMock()
-        mock_device_registry.async_get_device = MagicMock(return_value=None)
-        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
-
         mock_add_entities = MagicMock()
 
-        with patch(
-            "custom_components.kubernetes.device.dr.async_get",
-            return_value=mock_device_registry,
-        ):
-            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         mock_add_entities.assert_called_once()
         added_entities = mock_add_entities.call_args[0][0]
@@ -89,7 +94,12 @@ class TestKubernetesBinarySensorSetup:
         assert isinstance(added_entities[0], KubernetesClusterHealthSensor)
 
     async def test_async_setup_entry_with_nodes(
-        self, mock_hass, mock_config_entry, mock_client, mock_coordinator
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        setup_domain_data,
     ):
         """Test setup creates 4 condition sensors per node."""
         mock_coordinator.data = {
@@ -108,17 +118,9 @@ class TestKubernetesBinarySensorSetup:
                 },
             }
         }
-        mock_device_registry = MagicMock()
-        mock_device_registry.async_get_device = MagicMock(return_value=None)
-        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
-
         mock_add_entities = MagicMock()
 
-        with patch(
-            "custom_components.kubernetes.device.dr.async_get",
-            return_value=mock_device_registry,
-        ):
-            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         added_entities = mock_add_entities.call_args[0][0]
         # 1 cluster health + 2 nodes × 4 conditions = 9
@@ -131,17 +133,20 @@ class TestKubernetesBinarySensorSetup:
         assert len(condition_sensors) == 8
 
     async def test_async_setup_entry_missing_client(
-        self, mock_hass, mock_config_entry, mock_coordinator
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_coordinator,
     ):
         """Test binary sensor setup when client is missing."""
-        mock_hass.data[DOMAIN][mock_config_entry.entry_id] = {
+        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
             "coordinator": mock_coordinator
         }
 
         mock_add_entities = MagicMock()
 
         with pytest.raises(KeyError, match="'client'"):
-            await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+            await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
 
 class TestKubernetesBaseBinarySensor:
