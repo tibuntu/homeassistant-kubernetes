@@ -1,29 +1,15 @@
 """Test configuration and fixtures for the Kubernetes integration."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-# Try to import HomeAssistant, fall back to mocks if not available
-try:
-    from homeassistant.core import HomeAssistant
-    from homeassistant.setup import async_setup_component
-
-    HASS_AVAILABLE = True
-except ImportError:
-    HASS_AVAILABLE = False
-
-    # Create minimal mocks only if homeassistant is not available
-    class HomeAssistant:
-        pass
-
-    def async_setup_component(*args, **kwargs):
-        return True
 
 
 @pytest.fixture
 def mock_hass():
     """Mock Home Assistant instance."""
+    from homeassistant.core import HomeAssistant
+
     hass = MagicMock(spec=HomeAssistant)
     hass.config = MagicMock()
     hass.config_entries = MagicMock()
@@ -41,10 +27,8 @@ def mock_hass():
     hass.async_add_executor_job = AsyncMock()
     hass.async_create_task = AsyncMock()
     hass.async_run_job = AsyncMock()
-    # Add missing attributes that might be accessed
     hass.config_entries.async_forward_entry_setups = AsyncMock()
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
-    # Add state attribute
     hass.state = MagicMock()
     hass.http = MagicMock()
     hass.http.async_register_static_paths = AsyncMock()
@@ -119,53 +103,22 @@ def mock_coordinator():
 @pytest.fixture
 def mock_kubernetes_api():
     """Mock Kubernetes API responses."""
+    from unittest.mock import patch
+
     with patch(
         "custom_components.kubernetes.kubernetes_client.k8s_client"
     ) as mock_client:
-        # Mock CoreV1Api
         mock_core_api = MagicMock()
         mock_core_api.list_namespaced_pod = AsyncMock()
         mock_core_api.list_node = AsyncMock()
 
-        # Mock AppsV1Api
         mock_apps_api = MagicMock()
         mock_apps_api.list_namespaced_deployment = AsyncMock()
         mock_apps_api.list_namespaced_stateful_set = AsyncMock()
         mock_apps_api.patch_namespaced_deployment = AsyncMock()
         mock_apps_api.patch_namespaced_stateful_set = AsyncMock()
 
-        # Mock client
         mock_client.CoreV1Api.return_value = mock_core_api
         mock_client.AppsV1Api.return_value = mock_apps_api
 
         yield mock_client
-
-
-@pytest.fixture
-def mock_homeassistant_setup():
-    """Mock Home Assistant setup."""
-    with patch("homeassistant.setup.async_setup_component") as mock_setup:
-        mock_setup.return_value = True
-        yield mock_setup
-
-
-@pytest.fixture
-def mock_frame_helper():
-    """Mock Home Assistant frame helper."""
-    with patch("homeassistant.helpers.frame.report_usage") as mock_report:
-        mock_report.return_value = None
-        yield mock_report
-
-
-@pytest.fixture
-def mock_services():
-    """Mock Home Assistant services."""
-    with patch(
-        "custom_components.kubernetes.services.hass.services.async_register"
-    ) as mock_register:
-        with patch(
-            "custom_components.kubernetes.services.hass.services.async_remove"
-        ) as mock_remove:
-            mock_register.return_value = None
-            mock_remove.return_value = None
-            yield mock_register, mock_remove
