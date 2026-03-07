@@ -23,6 +23,7 @@ from custom_components.kubernetes.const import (
 )
 from custom_components.kubernetes.services import (
     _extract_workload_info,
+    _get_entry_data,
     _get_workload_info_from_entity,
     _log_no_workloads_found,
     _normalize_entity_id_list,
@@ -1378,3 +1379,54 @@ class TestResolveRawWorkloadName:
 
         result = _resolve_raw_workload_name(mock_hass, "nginx", None)
         assert result is None
+
+
+class TestGetEntryData:
+    """Tests for _get_entry_data helper."""
+
+    def test_returns_none_when_no_domain_data(self, mock_hass):
+        """Test returns None when no DOMAIN data exists."""
+        mock_hass.data = {}
+        result = _get_entry_data(mock_hass, {})
+        assert result is None
+
+    def test_returns_specified_entry(self, mock_hass):
+        """Test returns the entry matching entry_id."""
+        entry_a = {"config": {"host": "a"}}
+        entry_b = {"config": {"host": "b"}}
+        mock_hass.data = {DOMAIN: {"entry_a": entry_a, "entry_b": entry_b}}
+
+        result = _get_entry_data(mock_hass, {"entry_id": "entry_b"})
+        assert result is entry_b
+
+    def test_falls_back_to_first_entry(self, mock_hass):
+        """Test falls back to first real entry when no entry_id provided."""
+        entry_a = {"config": {"host": "a"}}
+        mock_hass.data = {DOMAIN: {"entry_a": entry_a}}
+
+        result = _get_entry_data(mock_hass, {})
+        assert result is entry_a
+
+    def test_skips_metadata_keys(self, mock_hass):
+        """Test skips metadata keys when falling back."""
+        entry_a = {"config": {"host": "a"}}
+        mock_hass.data = {DOMAIN: {"panel_registered": True, "entry_a": entry_a}}
+
+        result = _get_entry_data(mock_hass, {})
+        assert result is entry_a
+
+    def test_ignores_invalid_entry_id(self, mock_hass):
+        """Test falls back when entry_id doesn't match any entry."""
+        entry_a = {"config": {"host": "a"}}
+        mock_hass.data = {DOMAIN: {"entry_a": entry_a}}
+
+        result = _get_entry_data(mock_hass, {"entry_id": "nonexistent"})
+        assert result is entry_a
+
+    def test_ignores_metadata_key_as_entry_id(self, mock_hass):
+        """Test rejects metadata keys passed as entry_id."""
+        entry_a = {"config": {"host": "a"}}
+        mock_hass.data = {DOMAIN: {"panel_registered": True, "entry_a": entry_a}}
+
+        result = _get_entry_data(mock_hass, {"entry_id": "panel_registered"})
+        assert result is entry_a

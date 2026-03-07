@@ -145,8 +145,8 @@ def _build_cluster_overview(
         }
 
     counts = {
-        "pods": data.get("pods_count", 0),
-        "nodes": data.get("nodes_count", 0),
+        "pods": len(data.get("pods", {})),
+        "nodes": len(data.get("nodes", {})),
         "deployments": len(data.get("deployments", {})),
         "statefulsets": len(data.get("statefulsets", {})),
         "daemonsets": len(data.get("daemonsets", {})),

@@ -78,14 +78,37 @@ export class K8sOverview extends LitElement {
   @state() private _expandedNamespaces: Set<string> = new Set();
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
+  private _loadingInFlight = false;
+  private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     this._loadData();
-    this._refreshInterval = setInterval(() => this._loadData(), 30000);
+    this._startPolling();
+    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._stopPolling();
+    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+  }
+
+  private _handleVisibilityChange(): void {
+    if (document.hidden) {
+      this._stopPolling();
+    } else {
+      this._loadData();
+      this._startPolling();
+    }
+  }
+
+  private _startPolling(): void {
+    if (!this._refreshInterval) {
+      this._refreshInterval = setInterval(() => this._loadData(), 30000);
+    }
+  }
+
+  private _stopPolling(): void {
     if (this._refreshInterval) {
       clearInterval(this._refreshInterval);
       this._refreshInterval = undefined;
@@ -93,6 +116,8 @@ export class K8sOverview extends LitElement {
   }
 
   private async _loadData(): Promise<void> {
+    if (this._loadingInFlight) return;
+    this._loadingInFlight = true;
     if (!this._data) {
       this._loading = true;
     }
@@ -106,6 +131,7 @@ export class K8sOverview extends LitElement {
       this._error = err.message || "Failed to load cluster data";
     } finally {
       this._loading = false;
+      this._loadingInFlight = false;
     }
   }
 
@@ -205,27 +231,27 @@ export class K8sOverview extends LitElement {
     }
 
     .badge-healthy {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-unhealthy {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-unknown {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .badge-watch {
-      background: rgba(33, 150, 243, 0.15);
-      color: #2196f3;
+      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
+      color: var(--info-color, #2196f3);
     }
 
     .badge-watch-off {
-      background: rgba(158, 158, 158, 0.1);
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.1);
       color: var(--secondary-text-color);
     }
 
@@ -350,21 +376,21 @@ export class K8sOverview extends LitElement {
     }
 
     .alert-warning {
-      background: rgba(255, 152, 0, 0.1);
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
       color: var(--primary-text-color);
     }
 
     .alert-warning ha-icon {
-      color: #ff9800;
+      color: var(--warning-color, #ff9800);
     }
 
     .alert-error {
-      background: rgba(244, 67, 54, 0.1);
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
       color: var(--primary-text-color);
     }
 
     .alert-error ha-icon {
-      color: #f44336;
+      color: var(--error-color, #f44336);
     }
 
     .alert-title {
@@ -380,11 +406,76 @@ export class K8sOverview extends LitElement {
     .no-alerts {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 12px 0;
-      color: #4caf50;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 8px;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.08);
       font-size: 14px;
+      --mdc-icon-size: 24px;
+    }
+
+    .no-alerts ha-icon {
+      color: var(--success-color, #4caf50);
+      flex-shrink: 0;
+    }
+
+    .no-alerts-text {
+      flex: 1;
+    }
+
+    .no-alerts-title {
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+
+    .no-alerts-detail {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      margin-top: 2px;
+    }
+
+    .alerts-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--primary-text-color);
       --mdc-icon-size: 20px;
+    }
+
+    .alerts-info-icon {
+      color: var(--secondary-text-color);
+      cursor: help;
+      --mdc-icon-size: 18px;
+      position: relative;
+    }
+
+    .alerts-info-icon:hover {
+      color: var(--primary-color);
+    }
+
+    .alerts-tooltip {
+      display: none;
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 0;
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--secondary-text-color);
+      width: 280px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      z-index: 10;
+      line-height: 1.5;
+    }
+
+    .alerts-info-icon:hover .alerts-tooltip {
+      display: block;
     }
   `;
 
@@ -452,18 +543,35 @@ export class K8sOverview extends LitElement {
           )}
         </div>
 
-        ${this._renderNamespaceSection(cluster)}
-
         <div class="alerts-section">
+          <div class="alerts-header">
+            <ha-icon icon="mdi:bell-outline"></ha-icon>
+            <span>Alerts${totalAlerts > 0 ? ` (${totalAlerts})` : ""}</span>
+            <span class="alerts-info-icon">
+              <ha-icon icon="mdi:information-outline"></ha-icon>
+              <div class="alerts-tooltip">
+                Alerts monitor your cluster for issues that may need attention: nodes
+                experiencing memory, disk, or PID pressure; workloads with fewer ready
+                replicas than desired; and pods in a failed state.
+              </div>
+            </span>
+          </div>
           ${totalAlerts > 0
             ? this._renderAlerts(cluster.alerts)
             : html`
                 <div class="no-alerts">
                   <ha-icon icon="mdi:check-circle"></ha-icon>
-                  <span>No active alerts</span>
+                  <div class="no-alerts-text">
+                    <div class="no-alerts-title">No active alerts</div>
+                    <div class="no-alerts-detail">
+                      All nodes, workloads, and pods are operating normally.
+                    </div>
+                  </div>
                 </div>
               `}
         </div>
+
+        ${this._renderNamespaceSection(cluster)}
       </div>
     `;
   }

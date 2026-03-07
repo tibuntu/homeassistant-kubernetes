@@ -129,18 +129,18 @@ export class K8sSettings extends LitElement {
     }
 
     .badge-healthy {
-      background: rgba(76, 175, 80, 0.15);
-      color: #4caf50;
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
     }
 
     .badge-unhealthy {
-      background: rgba(244, 67, 54, 0.15);
-      color: #f44336;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+      color: var(--error-color, #f44336);
     }
 
     .badge-unknown {
-      background: rgba(158, 158, 158, 0.15);
-      color: #9e9e9e;
+      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+      color: var(--disabled-color, #9e9e9e);
     }
 
     .cards-grid {
@@ -203,7 +203,7 @@ export class K8sSettings extends LitElement {
     }
 
     .bool-true {
-      color: #4caf50;
+      color: var(--success-color, #4caf50);
     }
 
     .bool-false {

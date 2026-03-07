@@ -48,7 +48,8 @@ export class KubernetesPanel extends LitElement {
 
   static styles = css`
     :host {
-      display: block;
+      display: flex;
+      flex-direction: column;
       height: 100%;
       background: var(--primary-background-color);
       color: var(--primary-text-color);
@@ -124,7 +125,7 @@ export class KubernetesPanel extends LitElement {
     .content {
       padding: 16px;
       overflow-y: auto;
-      height: calc(100% - 56px - 49px);
+      flex: 1;
       box-sizing: border-box;
     }
 
