@@ -10,11 +10,7 @@ export default defineConfig({
       formats: ["es"],
       fileName: () => "kubernetes-panel.js",
     },
-    rollupOptions: {
-      output: {
-        inlineDynamicImports: true,
-      },
-    },
+    codeSplitting: false,
     sourcemap: false,
     minify: false,
   },
