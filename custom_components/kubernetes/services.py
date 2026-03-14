@@ -172,7 +172,50 @@ def _normalize_entity_id_list(entity_ids_raw: Any) -> list[str]:
     return []
 
 
-def _extract_workload_info(  # noqa: C901
+def _extract_entity_ids_from_value(value: Any) -> list[str]:
+    """Extract entity ID strings from a value that may be a string, list, or dict.
+
+    Handles all the formats that HA service calls can produce:
+    - "switch.foo" (plain string)
+    - ["switch.foo", "switch.bar"] (list of strings)
+    - {"entity_id": "switch.foo"} or {"entity_ids": ["switch.foo"]}
+    - [{"entity_id": "switch.foo"}, "switch.bar"] (mixed list)
+    """
+    if isinstance(value, str):
+        return _normalize_entity_id_list(value)
+    if isinstance(value, dict):
+        raw = value.get("entity_id") or value.get("entity_ids")
+        return _normalize_entity_id_list(raw)
+    if isinstance(value, list):
+        result: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                result.append(item.strip())
+            elif isinstance(item, dict):
+                raw = item.get("entity_id") or item.get("entity_ids")
+                result.extend(_normalize_entity_id_list(raw))
+        return [s for s in result if s]
+    return []
+
+
+def _collect_entity_ids(call_data: dict[str, Any]) -> list[str]:
+    """Collect all entity IDs from service call data, regardless of format.
+
+    Checks ATTR_WORKLOAD_NAMES, then falls back to top-level "target".
+    Filters to switch entities only.
+    """
+    entity_ids: list[str] = []
+
+    if ATTR_WORKLOAD_NAMES in call_data:
+        entity_ids = _extract_entity_ids_from_value(call_data[ATTR_WORKLOAD_NAMES])
+
+    if not entity_ids and "target" in call_data:
+        entity_ids = _extract_entity_ids_from_value(call_data["target"])
+
+    return [eid for eid in entity_ids if eid.startswith("switch.")]
+
+
+def _extract_workload_info(
     call_data: dict[str, Any], hass: HomeAssistant
 ) -> list[tuple[str, str | None, str]]:
     """Extract workload information (name, namespace, workload_type) from service call data.
@@ -184,109 +227,30 @@ def _extract_workload_info(  # noqa: C901
 
     _LOGGER.debug("Extracting workload info from call data: %s", call_data)
 
-    # Check for workload_names (multi-select)
-    if ATTR_WORKLOAD_NAMES in call_data:
-        names = call_data[ATTR_WORKLOAD_NAMES]
-        _LOGGER.debug("Found workload_names: %s (type: %s)", names, type(names))
-
-        if isinstance(names, str):
-            # Single entity ID as string
-            namespace, workload_name, workload_type = _get_workload_info_from_entity(
-                hass, names
+    # Resolve entity IDs from workload_names / target
+    for entity_id in _collect_entity_ids(call_data):
+        namespace, workload_name, workload_type = _get_workload_info_from_entity(
+            hass, entity_id
+        )
+        if workload_name and workload_type:
+            workloads.append((workload_name, namespace, workload_type))
+        else:
+            _LOGGER.warning(
+                "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
+                entity_id,
+                namespace,
+                workload_name,
+                workload_type,
             )
-            if workload_name and workload_type:
-                workloads.append((workload_name, namespace, workload_type))
-            else:
-                _LOGGER.warning(
-                    "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
-                    names,
-                    namespace,
-                    workload_name,
-                    workload_type,
-                )
-        elif isinstance(names, dict) and (
-            "entity_id" in names or "entity_ids" in names
-        ):
-            # Home Assistant UI/target format: {'entity_id': ['switch.entity1', ...]} or {'entity_id': 'switch.entity1'} or comma-separated string
-            entity_ids_raw = names.get("entity_id") or names.get("entity_ids")
-            entity_ids = _normalize_entity_id_list(entity_ids_raw)
-            for entity_id in entity_ids:
-                if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                    namespace, workload_name, workload_type = (
-                        _get_workload_info_from_entity(hass, entity_id)
-                    )
-                    if workload_name and workload_type:
-                        workloads.append((workload_name, namespace, workload_type))
-                    else:
-                        _LOGGER.warning(
-                            "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
-                            entity_id,
-                            namespace,
-                            workload_name,
-                            workload_type,
-                        )
-        elif isinstance(names, list):
-            # List of entity IDs, or list of target objects e.g. [{'entity_id': ['switch.x', ...]}]
-            for name in names:
-                if isinstance(name, str):
-                    namespace, workload_name, workload_type = (
-                        _get_workload_info_from_entity(hass, name)
-                    )
-                    if workload_name and workload_type:
-                        workloads.append((workload_name, namespace, workload_type))
-                    else:
-                        _LOGGER.warning(
-                            "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
-                            name,
-                            namespace,
-                            workload_name,
-                            workload_type,
-                        )
-                elif isinstance(name, dict) and (
-                    "entity_id" in name or "entity_ids" in name
-                ):
-                    entity_ids_raw = name.get("entity_id") or name.get("entity_ids")
-                    entity_ids = _normalize_entity_id_list(entity_ids_raw)
-                    for entity_id in entity_ids:
-                        if isinstance(entity_id, str) and entity_id.startswith(
-                            "switch."
-                        ):
-                            namespace, workload_name, workload_type = (
-                                _get_workload_info_from_entity(hass, entity_id)
-                            )
-                            if workload_name and workload_type:
-                                workloads.append(
-                                    (workload_name, namespace, workload_type)
-                                )
-                            else:
-                                _LOGGER.warning(
-                                    "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
-                                    entity_id,
-                                    namespace,
-                                    workload_name,
-                                    workload_type,
-                                )
-
-    # Fallback: top-level "target" (e.g. when UI sends target selector result at root)
-    if not workloads and "target" in call_data:
-        target = call_data["target"]
-        if isinstance(target, dict) and (
-            "entity_id" in target or "entity_ids" in target
-        ):
-            entity_ids_raw = target.get("entity_id") or target.get("entity_ids")
-            entity_ids = _normalize_entity_id_list(entity_ids_raw)
-            for entity_id in entity_ids:
-                if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                    namespace, workload_name, workload_type = (
-                        _get_workload_info_from_entity(hass, entity_id)
-                    )
-                    if workload_name and workload_type:
-                        workloads.append((workload_name, namespace, workload_type))
 
     # Check for workload_name (single select)
     if ATTR_WORKLOAD_NAME in call_data:
         name = call_data[ATTR_WORKLOAD_NAME]
         _LOGGER.debug("Found workload_name: %s (type: %s)", name, type(name))
+
+        # Extract entity ID from dict wrapper if needed
+        if isinstance(name, dict) and "entity_id" in name:
+            name = name["entity_id"]
 
         if isinstance(name, str):
             namespace, workload_name, workload_type = _get_workload_info_from_entity(
@@ -308,14 +272,6 @@ def _extract_workload_info(  # noqa: C901
                         workload_name,
                         workload_type,
                     )
-        elif isinstance(name, dict) and "entity_id" in name:
-            entity_id = name["entity_id"]
-            if isinstance(entity_id, str) and entity_id.startswith("switch."):
-                namespace, workload_name, workload_type = (
-                    _get_workload_info_from_entity(hass, entity_id)
-                )
-                if workload_name and workload_type:
-                    workloads.append((workload_name, namespace, workload_type))
 
     # Use provided namespace if available
     provided_namespace = call_data.get(ATTR_NAMESPACE)
