@@ -76,7 +76,7 @@ Browser (kubernetes-panel) → hass.callWS() → websocket_api.py → Kubernetes
 - **`coordinator.py`** — Extends HA's `DataUpdateCoordinator`. Polls the cluster on an interval (60 s default, 300 s when watch is active), aggregates all resources into lookup dicts, handles orphaned device cleanup. Merges node metrics (`cpu_usage_millicores`, `memory_usage_mib`) from the Metrics API into node data when available. When watch is enabled, also manages background watch tasks (`async_start_watch_tasks`, `async_stop_watch_tasks`, `_run_watch_loop`, `_apply_watch_event`).
 - **`sensor.py`** — Aggregate count sensors (pods, nodes, deployments, cronjobs, jobs, etc.) and per-resource sensors (individual node/pod/cronjob/job metrics).
 - **`switch.py`** — Scale control for Deployments/StatefulSets (on=running, off=scaled to 0) and CronJob suspension. Includes verification timeouts and cooldowns.
-- **`binary_sensor.py`** — Cluster health connectivity indicator and per-node condition binary sensors (MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable).
+- **`binary_sensor.py`** — Cluster health connectivity indicator and per-node condition binary sensors (MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable). Supports dynamic discovery of new nodes via coordinator listener (same pattern as `sensor.py`), storing the `async_add_entities` callback and pending unique_ids in `hass.data`.
 - **`services.py`** — Three HA services: `scale_workload`, `start_workload`, `stop_workload`. Reuse the coordinator's `KubernetesClient` instance (`entry_data["coordinator"].client`) rather than creating new clients. Support targeting multiple entities. Also accepts raw workload names (not just entity IDs) via `_resolve_raw_workload_name` which searches coordinator data to resolve workload types.
 - **`device.py`** — Device registry management. Two grouping modes: `namespace` (entities grouped by namespace) or `cluster` (all under one device).
 - **`config_flow.py`** — UI configuration flow. Validates cluster connectivity. Lazy-imports kubernetes to handle missing dependency gracefully. Contains `KubernetesOptionsFlow` for configuring the sidebar panel toggle (`enable_panel`, default True) and the experimental watch API toggle. Also contains a reconfigure flow (`async_step_reconfigure` / `async_step_reconfigure_namespaces`) for modifying existing entries without deleting and re-adding the integration.
@@ -118,9 +118,9 @@ Whenever changes are implemented to any integration code, always add or update t
 - Cover the happy path, edge cases (missing data, `None` coordinator data), and all distinct return values.
 - Use `MockConfigEntry` from `pytest_homeassistant_custom_component.common` and the real `hass` fixture for platform setup tests. Entity unit tests (testing properties, state, edge cases) can directly instantiate entities with `MockConfigEntry` + mock coordinator/client. Use the shared K8s-specific fixtures from `conftest.py` (`mock_client`, `mock_coordinator`) rather than creating new ones where possible.
 
-### Future: test directory structure
+### Test directory structure
 
-`test_kubernetes_client.py` is the only test file with no HA dependency — it tests the pure k8s API wrapper. Consider moving it to `tests/unit/` to clearly separate HA-integrated tests from pure unit tests. This would require updating `testpaths` and coverage config in `pyproject.toml`.
+Pure unit tests (no HA dependency) live in `tests/unit/`. Currently `test_kubernetes_client.py` is the only file there — it tests the K8s API wrapper in isolation. All other test files in `tests/` use HA fixtures via `pytest-homeassistant-custom-component`. pytest discovers both directories recursively via `testpaths = ["tests"]`.
 - Do not attempt to run tests locally — the CI pipeline handles test execution.
 
 ## Documentation
