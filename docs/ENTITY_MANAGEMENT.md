@@ -57,7 +57,7 @@ The cleanup process provides detailed logging:
 
 ### Automatic Detection
 
-The integration automatically detects new deployments and statefulsets created in your cluster and adds corresponding entities to Home Assistant.
+The integration automatically detects new deployments, statefulsets, pods, nodes, daemonsets, cronjobs, jobs, and node condition binary sensors created in your cluster and adds corresponding entities to Home Assistant.
 
 ### How It Works
 
@@ -68,6 +68,8 @@ The integration automatically detects new deployments and statefulsets created i
 
 2. **Entity Creation**:
    - New switch entities are automatically created for deployments and statefulsets
+   - New sensor entities are created for nodes, pods, daemonsets, cronjobs, and jobs
+   - New binary sensor entities are created for node conditions (MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable)
    - Entities are added with proper unique IDs and configuration
    - No restart required - entities appear immediately after the next poll
 

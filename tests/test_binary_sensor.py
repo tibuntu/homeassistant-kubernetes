@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -12,6 +13,8 @@ from custom_components.kubernetes.binary_sensor import (
     KubernetesBaseBinarySensor,
     KubernetesClusterHealthSensor,
     KubernetesNodeConditionBinarySensor,
+    _async_discover_and_add_new_binary_sensors,
+    _discover_new_node_condition_sensors,
     async_setup_entry,
 )
 from custom_components.kubernetes.const import DOMAIN
@@ -410,3 +413,253 @@ class TestKubernetesNodeConditionBinarySensor:
         for condition, value in expected.items():
             sensor = self._make_sensor(mock_coordinator, mock_config_entry, condition)
             assert sensor.is_on is value
+
+
+class TestDiscoverNewNodeConditionSensors:
+    """Test _discover_new_node_condition_sensors helper."""
+
+    def test_discovers_new_node(self, mock_coordinator, mock_config_entry):
+        """Test discovering sensors for a brand-new node."""
+        mock_coordinator.data = {
+            "nodes": {
+                "new-node": {
+                    "memory_pressure": False,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                }
+            }
+        }
+        result = _discover_new_node_condition_sensors(
+            mock_coordinator, mock_config_entry, existing_unique_ids=set()
+        )
+        assert len(result) == 4
+        conditions = {s.condition_key for s in result}
+        assert conditions == {
+            "memory_pressure",
+            "disk_pressure",
+            "pid_pressure",
+            "network_unavailable",
+        }
+
+    def test_skips_existing_node(self, mock_coordinator, mock_config_entry):
+        """Test that already-registered nodes are not duplicated."""
+        mock_coordinator.data = {
+            "nodes": {
+                "node-1": {
+                    "memory_pressure": False,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                }
+            }
+        }
+        existing = {
+            f"{mock_config_entry.entry_id}_node_node-1_{c}"
+            for c in [
+                "memory_pressure",
+                "disk_pressure",
+                "pid_pressure",
+                "network_unavailable",
+            ]
+        }
+        result = _discover_new_node_condition_sensors(
+            mock_coordinator, mock_config_entry, existing_unique_ids=existing
+        )
+        assert len(result) == 0
+
+    def test_returns_empty_when_no_data(self, mock_coordinator, mock_config_entry):
+        """Test returns empty list when coordinator has no data."""
+        mock_coordinator.data = None
+        result = _discover_new_node_condition_sensors(
+            mock_coordinator, mock_config_entry, existing_unique_ids=set()
+        )
+        assert result == []
+
+    def test_returns_empty_when_no_nodes(self, mock_coordinator, mock_config_entry):
+        """Test returns empty list when coordinator data has no nodes key."""
+        mock_coordinator.data = {"pods": {}}
+        result = _discover_new_node_condition_sensors(
+            mock_coordinator, mock_config_entry, existing_unique_ids=set()
+        )
+        assert result == []
+
+    def test_discovers_only_new_nodes(self, mock_coordinator, mock_config_entry):
+        """Test only new nodes get sensors when some already exist."""
+        mock_coordinator.data = {
+            "nodes": {
+                "old-node": {"memory_pressure": False},
+                "new-node": {"memory_pressure": False},
+            }
+        }
+        existing = {
+            f"{mock_config_entry.entry_id}_node_old-node_{c}"
+            for c in [
+                "memory_pressure",
+                "disk_pressure",
+                "pid_pressure",
+                "network_unavailable",
+            ]
+        }
+        result = _discover_new_node_condition_sensors(
+            mock_coordinator, mock_config_entry, existing_unique_ids=existing
+        )
+        assert len(result) == 4
+        assert all(s.node_name == "new-node" for s in result)
+
+
+class TestDynamicBinarySensorDiscovery:
+    """Test dynamic binary sensor discovery via coordinator listener."""
+
+    async def test_setup_stores_callback(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """Test setup stores the add_entities callback for dynamic discovery."""
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        entry_data = hass.data[DOMAIN][mock_config_entry.entry_id]
+        assert entry_data["binary_sensor_add_entities"] is mock_add_entities
+        assert isinstance(entry_data["binary_sensor_pending_unique_ids"], set)
+
+    async def test_setup_registers_coordinator_listener(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """Test setup registers a listener on the coordinator for dynamic discovery."""
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        # The coordinator should have had async_add_listener called
+        # (once for each condition sensor via async_added_to_hass, plus once for discovery)
+        assert mock_coordinator.async_add_listener.called
+
+    async def test_discover_adds_new_node_sensors(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """Test discovery adds binary sensors for a newly appeared node."""
+        mock_add_entities = MagicMock()
+        entry_data = hass.data[DOMAIN][mock_config_entry.entry_id]
+        entry_data["binary_sensor_add_entities"] = mock_add_entities
+        entry_data["binary_sensor_pending_unique_ids"] = set()
+
+        # Simulate new node appearing
+        mock_coordinator.data = {
+            "nodes": {
+                "new-node": {
+                    "memory_pressure": False,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                }
+            }
+        }
+
+        await _async_discover_and_add_new_binary_sensors(
+            hass, mock_config_entry, mock_coordinator
+        )
+
+        mock_add_entities.assert_called_once()
+        added = mock_add_entities.call_args[0][0]
+        assert len(added) == 4
+        assert all(isinstance(s, KubernetesNodeConditionBinarySensor) for s in added)
+
+    async def test_discover_skips_already_registered_nodes(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """Test discovery does not re-add nodes already in the entity registry."""
+        mock_add_entities = MagicMock()
+        entry_data = hass.data[DOMAIN][mock_config_entry.entry_id]
+        entry_data["binary_sensor_add_entities"] = mock_add_entities
+        entry_data["binary_sensor_pending_unique_ids"] = set()
+
+        # Register existing entities in the registry
+        registry = er.async_get(hass)
+        for condition in [
+            "memory_pressure",
+            "disk_pressure",
+            "pid_pressure",
+            "network_unavailable",
+        ]:
+            registry.async_get_or_create(
+                "binary_sensor",
+                DOMAIN,
+                f"{mock_config_entry.entry_id}_node_existing-node_{condition}",
+                config_entry=mock_config_entry,
+            )
+
+        mock_coordinator.data = {"nodes": {"existing-node": {"memory_pressure": False}}}
+
+        await _async_discover_and_add_new_binary_sensors(
+            hass, mock_config_entry, mock_coordinator
+        )
+
+        # No new entities should be added
+        mock_add_entities.assert_not_called()
+
+    async def test_discover_respects_pending_ids(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """Test discovery does not re-add nodes in the pending set."""
+        mock_add_entities = MagicMock()
+        entry_data = hass.data[DOMAIN][mock_config_entry.entry_id]
+        entry_data["binary_sensor_add_entities"] = mock_add_entities
+        pending = {
+            f"{mock_config_entry.entry_id}_node_pending-node_{c}"
+            for c in [
+                "memory_pressure",
+                "disk_pressure",
+                "pid_pressure",
+                "network_unavailable",
+            ]
+        }
+        entry_data["binary_sensor_pending_unique_ids"] = pending
+
+        mock_coordinator.data = {"nodes": {"pending-node": {"memory_pressure": False}}}
+
+        await _async_discover_and_add_new_binary_sensors(
+            hass, mock_config_entry, mock_coordinator
+        )
+
+        mock_add_entities.assert_not_called()
+
+    async def test_discover_handles_missing_callback(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """Test discovery handles missing add_entities callback gracefully."""
+        # Remove the callback
+        hass.data[DOMAIN][mock_config_entry.entry_id].pop(
+            "binary_sensor_add_entities", None
+        )
+
+        mock_coordinator.data = {"nodes": {"node-1": {"memory_pressure": False}}}
+
+        # Should not raise
+        await _async_discover_and_add_new_binary_sensors(
+            hass, mock_config_entry, mock_coordinator
+        )

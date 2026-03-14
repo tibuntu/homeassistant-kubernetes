@@ -13,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 from .const import DOMAIN
 from .coordinator import KubernetesDataCoordinator
@@ -28,6 +29,76 @@ _NODE_CONDITIONS: dict[str, str] = {
     "pid_pressure": "PID Pressure",
     "network_unavailable": "Network Unavailable",
 }
+
+
+def _discover_new_node_condition_sensors(
+    coordinator: KubernetesDataCoordinator,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesNodeConditionBinarySensor]:
+    """Discover new node condition binary sensors for nodes not yet registered."""
+    new_entities: list[KubernetesNodeConditionBinarySensor] = []
+    if not coordinator.data or "nodes" not in coordinator.data:
+        return new_entities
+    for node_name in coordinator.data["nodes"]:
+        for condition_key in _NODE_CONDITIONS:
+            unique_id = f"{config_entry.entry_id}_node_{node_name}_{condition_key}"
+            if unique_id not in existing_unique_ids:
+                _LOGGER.info(
+                    "Adding new node condition binary sensor: %s %s",
+                    node_name,
+                    condition_key,
+                )
+                new_entities.append(
+                    KubernetesNodeConditionBinarySensor(
+                        coordinator, config_entry, node_name, condition_key
+                    )
+                )
+    return new_entities
+
+
+async def _async_discover_and_add_new_binary_sensors(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+    coordinator: KubernetesDataCoordinator,
+) -> None:
+    """Discover and add new binary sensors for newly discovered nodes."""
+    try:
+        entity_registry = async_get_entity_registry(hass)
+
+        sensor_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
+        add_entities_callback = sensor_data.get("binary_sensor_add_entities")
+        if not add_entities_callback:
+            _LOGGER.warning(
+                "No add_entities callback found for dynamic binary sensor management"
+            )
+            return
+
+        existing_entities = entity_registry.entities.get_entries_for_config_entry_id(
+            config_entry.entry_id
+        )
+        existing_unique_ids = {
+            entity.unique_id for entity in existing_entities if entity.unique_id
+        }
+        pending_ids: set[str] = sensor_data.get(
+            "binary_sensor_pending_unique_ids", set()
+        )
+        pending_ids -= existing_unique_ids
+        existing_unique_ids |= pending_ids
+
+        new_entities = _discover_new_node_condition_sensors(
+            coordinator, config_entry, existing_unique_ids
+        )
+
+        if new_entities:
+            _LOGGER.info("Adding %d new binary sensors", len(new_entities))
+            pending_ids.update(e.unique_id for e in new_entities if e.unique_id)
+            add_entities_callback(new_entities)
+        else:
+            _LOGGER.debug("No new binary sensors to add")
+
+    except Exception as ex:
+        _LOGGER.error("Failed to discover and add new binary sensors: %s", ex)
 
 
 async def async_setup_entry(
@@ -63,6 +134,22 @@ async def async_setup_entry(
             )
 
     async_add_entities(binary_sensors)
+
+    # Store callback and pending set for dynamic discovery
+    hass.data[DOMAIN][config_entry.entry_id]["binary_sensor_add_entities"] = (
+        async_add_entities
+    )
+    hass.data[DOMAIN][config_entry.entry_id]["binary_sensor_pending_unique_ids"] = set()
+
+    # Set up listener for adding new entities dynamically
+    @callback
+    def _async_add_new_binary_sensors() -> None:
+        """Add new binary sensors when new nodes are discovered."""
+        hass.async_create_task(
+            _async_discover_and_add_new_binary_sensors(hass, config_entry, coordinator)
+        )
+
+    coordinator.async_add_listener(_async_add_new_binary_sensors)
 
 
 class KubernetesBaseBinarySensor(BinarySensorEntity):
