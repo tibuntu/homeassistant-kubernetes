@@ -1138,7 +1138,7 @@ class TestWebsocketConfigList:
         assert entry["cluster_name"] == "default"
         assert entry["host"] == ""
         assert entry["port"] == 6443
-        assert entry["verify_ssl"] is False
+        assert entry["verify_ssl"] is True
         assert entry["monitor_all_namespaces"] is True
         assert entry["namespaces"] == []
         assert entry["device_grouping_mode"] == "namespace"
