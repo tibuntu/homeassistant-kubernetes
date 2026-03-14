@@ -222,24 +222,40 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
         _LOGGER.error("Failed to discover and add new entities: %s", ex)
 
 
-class KubernetesDeploymentSwitch(SwitchEntity):
-    """Switch for controlling a Kubernetes deployment."""
+class KubernetesReplicaWorkloadSwitch(SwitchEntity):
+    """Base switch for replica-based Kubernetes workloads (Deployments, StatefulSets)."""
 
     def __init__(
         self,
         coordinator: KubernetesDataCoordinator,
         config_entry: ConfigEntry,
-        deployment_name: str,
+        workload_name: str,
         namespace: str,
+        *,
+        workload_type: str,
+        resource_key: str,
+        unique_id_suffix: str,
+        start_method: str,
+        stop_method: str,
+        log_label: str,
+        attr_name_key: str,
     ) -> None:
-        """Initialize the deployment switch."""
+        """Initialize the replica workload switch."""
         self.coordinator = coordinator
         self.config_entry = config_entry
-        self.deployment_name = deployment_name
+        self.workload_name = workload_name
         self.namespace = namespace
+        self._workload_type = workload_type
+        self._resource_key = resource_key
+        self._start_method = start_method
+        self._stop_method = stop_method
+        self._log_label = log_label
+        self._attr_name_key = attr_name_key
         self._attr_has_entity_name = True
-        self._attr_name = deployment_name
-        self._attr_unique_id = f"{config_entry.entry_id}_{deployment_name}_deployment"
+        self._attr_name = workload_name
+        self._attr_unique_id = (
+            f"{config_entry.entry_id}_{workload_name}_{unique_id_suffix}"
+        )
         self._attr_icon = "mdi:kubernetes"
         self._is_on = False
         self._replicas = 0
@@ -254,6 +270,12 @@ class KubernetesDeploymentSwitch(SwitchEntity):
         self._cpu_usage = 0.0
         self._memory_usage = 0.0
 
+    def _get_workload_data(self) -> dict[str, Any] | None:
+        """Get workload data from coordinator."""
+        if not self.coordinator.data or self._resource_key not in self.coordinator.data:
+            return None
+        return self.coordinator.data[self._resource_key].get(self.workload_name)
+
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
@@ -261,17 +283,17 @@ class KubernetesDeploymentSwitch(SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return true if the deployment is running (has replicas > 0)."""
+        """Return true if the workload is running (has replicas > 0)."""
         return self._is_on
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return entity specific state attributes."""
         return {
-            "deployment_name": self.deployment_name,
+            self._attr_name_key: self.workload_name,
             "namespace": self.namespace,
             "replicas": self._replicas,
-            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+            ATTR_WORKLOAD_TYPE: self._workload_type,
             "last_scale_attempt_failed": self._last_scale_attempt_failed,
             "cpu_usage_(millicores)": f"{int(self._cpu_usage)}",
             "memory_usage_(MiB)": f"{int(self._memory_usage)}",
@@ -292,19 +314,19 @@ class KubernetesDeploymentSwitch(SwitchEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        # Update internal state from coordinator data
-        deployment_data = self.coordinator.get_deployment_data(self.deployment_name)
-        if deployment_data:
-            self._replicas = deployment_data.get("replicas", 0)
-            self._is_on = deployment_data.get("is_running", False)
+        workload_data = self._get_workload_data()
+        if workload_data:
+            self._replicas = workload_data.get("replicas", 0)
+            self._is_on = workload_data.get("is_running", False)
             old_cpu = self._cpu_usage
             old_memory = self._memory_usage
-            self._cpu_usage = deployment_data.get("cpu_usage", 0.0)
-            self._memory_usage = deployment_data.get("memory_usage", 0.0)
+            self._cpu_usage = workload_data.get("cpu_usage", 0.0)
+            self._memory_usage = workload_data.get("memory_usage", 0.0)
             if old_cpu != self._cpu_usage or old_memory != self._memory_usage:
                 _LOGGER.debug(
-                    "Deployment %s metrics updated: CPU=%.2f m (was %.2f), Memory=%.2f MiB (was %.2f)",
-                    self.deployment_name,
+                    "%s %s metrics updated: CPU=%.2f m (was %.2f), Memory=%.2f MiB (was %.2f)",
+                    self._log_label,
+                    self.workload_name,
                     self._cpu_usage,
                     old_cpu,
                     self._memory_usage,
@@ -312,177 +334,198 @@ class KubernetesDeploymentSwitch(SwitchEntity):
                 )
         else:
             _LOGGER.warning(
-                "Deployment %s not found in coordinator data during update",
-                self.deployment_name,
+                "%s %s not found in coordinator data during update",
+                self._log_label,
+                self.workload_name,
             )
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the deployment on by scaling to 1 replica."""
-        _LOGGER.info("Scaling deployment %s to 1 replica", self.deployment_name)
+        """Turn the workload on by scaling to 1 replica."""
+        _LOGGER.info("Scaling %s %s to 1 replica", self._log_label, self.workload_name)
 
-        # Get the client from the coordinator's config entry
         client = self.coordinator.client
-
-        success = await client.start_deployment(
-            self.deployment_name, replicas=1, namespace=self.namespace
+        start_fn = getattr(client, self._start_method)
+        success = await start_fn(
+            self.workload_name, replicas=1, namespace=self.namespace
         )
 
         if success:
-            # Set optimistic state immediately
             self._is_on = True
             self._replicas = 1
             self._last_scale_time = time.time()
             self._last_scale_attempt_failed = False
             self.async_write_ha_state()
             _LOGGER.info(
-                "Successfully scaled deployment %s to 1 replica", self.deployment_name
+                "Successfully scaled %s %s to 1 replica",
+                self._log_label,
+                self.workload_name,
             )
-
-            # Verify the scaling actually took effect
             await self._verify_scaling(1)
         else:
-            _LOGGER.error("Failed to start deployment %s", self.deployment_name)
+            _LOGGER.error("Failed to start %s %s", self._log_label, self.workload_name)
             self._last_scale_attempt_failed = True
             self.async_write_ha_state()
-
-            # Force an immediate update to get the actual state
             await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the deployment off by scaling to 0 replicas."""
-        _LOGGER.info("Scaling deployment %s to 0 replicas", self.deployment_name)
+        """Turn the workload off by scaling to 0 replicas."""
+        _LOGGER.info("Scaling %s %s to 0 replicas", self._log_label, self.workload_name)
 
-        # Get the client from the coordinator's config entry
         client = self.coordinator.client
-
-        success = await client.stop_deployment(
-            self.deployment_name, namespace=self.namespace
-        )
+        stop_fn = getattr(client, self._stop_method)
+        success = await stop_fn(self.workload_name, namespace=self.namespace)
 
         if success:
-            # Set optimistic state immediately
             self._is_on = False
             self._replicas = 0
             self._last_scale_time = time.time()
             self._last_scale_attempt_failed = False
             self.async_write_ha_state()
             _LOGGER.info(
-                "Successfully scaled deployment %s to 0 replicas", self.deployment_name
+                "Successfully scaled %s %s to 0 replicas",
+                self._log_label,
+                self.workload_name,
             )
-
-            # Verify the scaling actually took effect
             await self._verify_scaling(0)
         else:
-            _LOGGER.error("Failed to stop deployment %s", self.deployment_name)
+            _LOGGER.error("Failed to stop %s %s", self._log_label, self.workload_name)
             self._last_scale_attempt_failed = True
             self.async_write_ha_state()
-
-            # Force an immediate update to get the actual state
             await self.coordinator.async_request_refresh()
 
     async def async_update(self) -> None:
         """Update the switch state from coordinator data."""
-        # Don't update state immediately after scaling to allow Kubernetes time to propagate changes
         if time.time() - self._last_scale_time < self._scale_cooldown:
             _LOGGER.debug(
                 "Skipping state update for %s (scaled recently, cooldown: %.1fs remaining)",
-                self.deployment_name,
+                self.workload_name,
                 self._scale_cooldown - (time.time() - self._last_scale_time),
             )
             return
 
-        # Get data from coordinator
-        deployment_data = self.coordinator.get_deployment_data(self.deployment_name)
+        workload_data = self._get_workload_data()
 
-        if deployment_data is None:
+        if workload_data is None:
             _LOGGER.warning(
-                "Deployment %s not found in coordinator data", self.deployment_name
+                "%s %s not found in coordinator data",
+                self._log_label,
+                self.workload_name,
             )
             return
 
         old_replicas = self._replicas
         old_state = self._is_on
 
-        self._replicas = deployment_data["replicas"]
-        self._is_on = deployment_data["is_running"]
-        self._cpu_usage = deployment_data.get("cpu_usage", 0.0)
-        self._memory_usage = deployment_data.get("memory_usage", 0.0)
+        self._replicas = workload_data["replicas"]
+        self._is_on = workload_data["is_running"]
+        self._cpu_usage = workload_data.get("cpu_usage", 0.0)
+        self._memory_usage = workload_data.get("memory_usage", 0.0)
 
-        # Log state changes for debugging
         if old_replicas != self._replicas:
             _LOGGER.info(
-                "Deployment %s replicas changed: %d -> %d",
-                self.deployment_name,
+                "%s %s replicas changed: %d -> %d",
+                self._log_label,
+                self.workload_name,
                 old_replicas,
                 self._replicas,
             )
         if old_state != self._is_on:
             _LOGGER.info(
-                "Deployment %s state changed: %s -> %s",
-                self.deployment_name,
+                "%s %s state changed: %s -> %s",
+                self._log_label,
+                self.workload_name,
                 old_state,
                 self._is_on,
             )
         else:
             _LOGGER.debug(
-                "Deployment %s state unchanged: replicas=%d, is_running=%s",
-                self.deployment_name,
+                "%s %s state unchanged: replicas=%d, is_running=%s",
+                self._log_label,
+                self.workload_name,
                 self._replicas,
                 self._is_on,
             )
 
     async def _verify_scaling(self, target_replicas: int) -> None:
         """Verify that scaling actually took effect."""
-        max_attempts = self._scale_verification_timeout // 5  # Try every 5 seconds
+        max_attempts = self._scale_verification_timeout // 5
         for attempt in range(max_attempts):
-            await asyncio.sleep(5)  # Wait 5 seconds between checks
+            await asyncio.sleep(5)
 
             try:
-                # Force a coordinator refresh to get latest data
                 await self.coordinator.async_request_refresh()
 
-                deployment_data = self.coordinator.get_deployment_data(
-                    self.deployment_name
-                )
-                if deployment_data is None:
+                workload_data = self._get_workload_data()
+                if workload_data is None:
                     _LOGGER.warning(
-                        "Deployment %s not found during scaling verification",
-                        self.deployment_name,
+                        "%s %s not found during scaling verification",
+                        self._log_label,
+                        self.workload_name,
                     )
                     continue
 
-                current_replicas = deployment_data["replicas"]
+                current_replicas = workload_data["replicas"]
                 if current_replicas == target_replicas:
                     _LOGGER.info(
-                        "Deployment %s scaling verified: %d replicas",
-                        self.deployment_name,
+                        "%s %s scaling verified: %d replicas",
+                        self._log_label,
+                        self.workload_name,
                         current_replicas,
                     )
                     return
                 else:
                     _LOGGER.debug(
-                        "Deployment %s still scaling: %d replicas (target: %d)",
-                        self.deployment_name,
+                        "%s %s still scaling: %d replicas (target: %d)",
+                        self._log_label,
+                        self.workload_name,
                         current_replicas,
                         target_replicas,
                     )
             except Exception as ex:
                 _LOGGER.warning(
                     "Failed to verify scaling for %s (attempt %d): %s",
-                    self.deployment_name,
+                    self.workload_name,
                     attempt + 1,
                     ex,
                 )
 
         _LOGGER.warning(
-            "Deployment %s scaling verification timed out after %d attempts",
-            self.deployment_name,
+            "%s %s scaling verification timed out after %d attempts",
+            self._log_label,
+            self.workload_name,
             max_attempts,
         )
 
 
-class KubernetesStatefulSetSwitch(SwitchEntity):
+class KubernetesDeploymentSwitch(KubernetesReplicaWorkloadSwitch):
+    """Switch for controlling a Kubernetes Deployment."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        config_entry: ConfigEntry,
+        deployment_name: str,
+        namespace: str,
+    ) -> None:
+        """Initialize the deployment switch."""
+        super().__init__(
+            coordinator,
+            config_entry,
+            deployment_name,
+            namespace,
+            workload_type=WORKLOAD_TYPE_DEPLOYMENT,
+            resource_key="deployments",
+            unique_id_suffix="deployment",
+            start_method="start_deployment",
+            stop_method="stop_deployment",
+            log_label="Deployment",
+            attr_name_key="deployment_name",
+        )
+        self.deployment_name = deployment_name
+
+
+class KubernetesStatefulSetSwitch(KubernetesReplicaWorkloadSwitch):
     """Switch for controlling a Kubernetes StatefulSet."""
 
     def __init__(
@@ -493,254 +536,20 @@ class KubernetesStatefulSetSwitch(SwitchEntity):
         namespace: str,
     ) -> None:
         """Initialize the StatefulSet switch."""
-        self.coordinator = coordinator
-        self.config_entry = config_entry
+        super().__init__(
+            coordinator,
+            config_entry,
+            statefulset_name,
+            namespace,
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            resource_key="statefulsets",
+            unique_id_suffix="statefulset",
+            start_method="start_statefulset",
+            stop_method="stop_statefulset",
+            log_label="StatefulSet",
+            attr_name_key="statefulset_name",
+        )
         self.statefulset_name = statefulset_name
-        self.namespace = namespace
-        self._attr_has_entity_name = True
-        self._attr_name = statefulset_name
-        self._attr_unique_id = f"{config_entry.entry_id}_{statefulset_name}_statefulset"
-        self._attr_icon = "mdi:kubernetes"
-        self._is_on = False
-        self._replicas = 0
-        self._last_scale_time = 0.0
-        self._scale_cooldown = config_entry.data.get(
-            CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN
-        )
-        self._scale_verification_timeout = config_entry.data.get(
-            CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
-        )
-        self._last_scale_attempt_failed = False
-        self._cpu_usage = 0.0
-        self._memory_usage = 0.0
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
-
-    @property
-    def is_on(self) -> bool:
-        """Return true if the StatefulSet is running (has replicas > 0)."""
-        return self._is_on
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return entity specific state attributes."""
-        return {
-            "statefulset_name": self.statefulset_name,
-            "namespace": self.namespace,
-            "replicas": self._replicas,
-            ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-            "last_scale_attempt_failed": self._last_scale_attempt_failed,
-            "cpu_usage_(millicores)": f"{int(self._cpu_usage)}",
-            "memory_usage_(MiB)": f"{int(self._memory_usage)}",
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self.coordinator.last_update_success
-
-    async def async_added_to_hass(self) -> None:
-        """When entity is added to hass."""
-        await super().async_added_to_hass()
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        # Update internal state from coordinator data
-        statefulset_data = self.coordinator.get_statefulset_data(self.statefulset_name)
-        if statefulset_data:
-            self._replicas = statefulset_data.get("replicas", 0)
-            self._is_on = statefulset_data.get("is_running", False)
-            old_cpu = self._cpu_usage
-            old_memory = self._memory_usage
-            self._cpu_usage = statefulset_data.get("cpu_usage", 0.0)
-            self._memory_usage = statefulset_data.get("memory_usage", 0.0)
-            if old_cpu != self._cpu_usage or old_memory != self._memory_usage:
-                _LOGGER.debug(
-                    "StatefulSet %s metrics updated: CPU=%.2f m (was %.2f), Memory=%.2f MiB (was %.2f)",
-                    self.statefulset_name,
-                    self._cpu_usage,
-                    old_cpu,
-                    self._memory_usage,
-                    old_memory,
-                )
-        else:
-            _LOGGER.warning(
-                "StatefulSet %s not found in coordinator data during update",
-                self.statefulset_name,
-            )
-        self.async_write_ha_state()
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the StatefulSet on by scaling to 1 replica."""
-        _LOGGER.info("Scaling StatefulSet %s to 1 replica", self.statefulset_name)
-
-        # Get the client from the coordinator's config entry
-        client = self.coordinator.client
-
-        success = await client.start_statefulset(
-            self.statefulset_name, replicas=1, namespace=self.namespace
-        )
-
-        if success:
-            # Set optimistic state immediately
-            self._is_on = True
-            self._replicas = 1
-            self._last_scale_time = time.time()
-            self._last_scale_attempt_failed = False
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Successfully scaled StatefulSet %s to 1 replica", self.statefulset_name
-            )
-
-            # Verify the scaling actually took effect
-            await self._verify_scaling(1)
-        else:
-            _LOGGER.error("Failed to start StatefulSet %s", self.statefulset_name)
-            self._last_scale_attempt_failed = True
-            self.async_write_ha_state()
-
-            # Force an immediate update to get the actual state
-            await self.coordinator.async_request_refresh()
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the StatefulSet off by scaling to 0 replicas."""
-        _LOGGER.info("Scaling StatefulSet %s to 0 replicas", self.statefulset_name)
-
-        # Get the client from the coordinator's config entry
-        client = self.coordinator.client
-
-        success = await client.stop_statefulset(
-            self.statefulset_name, namespace=self.namespace
-        )
-
-        if success:
-            # Set optimistic state immediately
-            self._is_on = False
-            self._replicas = 0
-            self._last_scale_time = time.time()
-            self._last_scale_attempt_failed = False
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Successfully scaled StatefulSet %s to 0 replicas",
-                self.statefulset_name,
-            )
-
-            # Verify the scaling actually took effect
-            await self._verify_scaling(0)
-        else:
-            _LOGGER.error("Failed to stop StatefulSet %s", self.statefulset_name)
-            self._last_scale_attempt_failed = True
-            self.async_write_ha_state()
-
-            # Force an immediate update to get the actual state
-            await self.coordinator.async_request_refresh()
-
-    async def async_update(self) -> None:
-        """Update the switch state from coordinator data."""
-        # Don't update state immediately after scaling to allow Kubernetes time to propagate changes
-        if time.time() - self._last_scale_time < self._scale_cooldown:
-            _LOGGER.debug(
-                "Skipping state update for %s (scaled recently, cooldown: %.1fs remaining)",
-                self.statefulset_name,
-                self._scale_cooldown - (time.time() - self._last_scale_time),
-            )
-            return
-
-        # Get data from coordinator
-        statefulset_data = self.coordinator.get_statefulset_data(self.statefulset_name)
-
-        if statefulset_data is None:
-            _LOGGER.warning(
-                "StatefulSet %s not found in coordinator data", self.statefulset_name
-            )
-            return
-
-        old_replicas = self._replicas
-        old_state = self._is_on
-
-        self._replicas = statefulset_data["replicas"]
-        self._is_on = statefulset_data["is_running"]
-        self._cpu_usage = statefulset_data.get("cpu_usage", 0.0)
-        self._memory_usage = statefulset_data.get("memory_usage", 0.0)
-
-        # Log state changes for debugging
-        if old_replicas != self._replicas:
-            _LOGGER.info(
-                "StatefulSet %s replicas changed: %d -> %d",
-                self.statefulset_name,
-                old_replicas,
-                self._replicas,
-            )
-        if old_state != self._is_on:
-            _LOGGER.info(
-                "StatefulSet %s state changed: %s -> %s",
-                self.statefulset_name,
-                old_state,
-                self._is_on,
-            )
-        else:
-            _LOGGER.debug(
-                "StatefulSet %s state unchanged: replicas=%d, is_running=%s",
-                self.statefulset_name,
-                self._replicas,
-                self._is_on,
-            )
-
-    async def _verify_scaling(self, target_replicas: int) -> None:
-        """Verify that scaling actually took effect."""
-        max_attempts = self._scale_verification_timeout // 5  # Try every 5 seconds
-        for attempt in range(max_attempts):
-            await asyncio.sleep(5)  # Wait 5 seconds between checks
-
-            try:
-                # Force a coordinator refresh to get latest data
-                await self.coordinator.async_request_refresh()
-
-                statefulset_data = self.coordinator.get_statefulset_data(
-                    self.statefulset_name
-                )
-                if statefulset_data is None:
-                    _LOGGER.warning(
-                        "StatefulSet %s not found during scaling verification",
-                        self.statefulset_name,
-                    )
-                    continue
-
-                current_replicas = statefulset_data["replicas"]
-                if current_replicas == target_replicas:
-                    _LOGGER.info(
-                        "StatefulSet %s scaling verified: %d replicas",
-                        self.statefulset_name,
-                        current_replicas,
-                    )
-                    return
-                else:
-                    _LOGGER.debug(
-                        "StatefulSet %s still scaling: %d replicas (target: %d)",
-                        self.statefulset_name,
-                        current_replicas,
-                        target_replicas,
-                    )
-            except Exception as ex:
-                _LOGGER.warning(
-                    "Failed to verify scaling for %s (attempt %d): %s",
-                    self.statefulset_name,
-                    attempt + 1,
-                    ex,
-                )
-
-        _LOGGER.warning(
-            "StatefulSet %s scaling verification timed out after %d attempts",
-            self.statefulset_name,
-            max_attempts,
-        )
 
 
 class KubernetesCronJobSwitch(SwitchEntity):

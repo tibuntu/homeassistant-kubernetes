@@ -662,7 +662,7 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Test _handle_coordinator_update when data is present."""
         deployment_switch.async_write_ha_state = MagicMock()
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 3,
             "is_running": True,
             "cpu_usage": 200.0,
@@ -678,7 +678,7 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Test _handle_coordinator_update when deployment not found."""
         deployment_switch.async_write_ha_state = MagicMock()
-        deployment_coordinator.get_deployment_data.return_value = None
+        deployment_coordinator.data = {"deployments": {}}
         deployment_switch._handle_coordinator_update()
         # Should still call async_write_ha_state
         deployment_switch.async_write_ha_state.assert_called_once()
@@ -690,7 +690,7 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch.async_write_ha_state = MagicMock()
         deployment_switch._cpu_usage = 10.0
         deployment_switch._memory_usage = 64.0
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 200.0,
@@ -762,7 +762,7 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Test async_update with coordinator data."""
         deployment_switch._last_scale_time = 0.0
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 3,
             "is_running": True,
             "cpu_usage": 100.0,
@@ -777,7 +777,7 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Test async_update when deployment not found in coordinator."""
         deployment_switch._last_scale_time = 0.0
-        deployment_coordinator.get_deployment_data.return_value = None
+        deployment_coordinator.data = {"deployments": {}}
         # Should return early without exception
         await deployment_switch.async_update()
 
@@ -787,9 +787,10 @@ class TestKubernetesDeploymentSwitch:
         """Test async_update skips during cooldown period."""
         deployment_switch._last_scale_time = time.time()
         deployment_switch._scale_cooldown = 100
+        original_replicas = deployment_switch._replicas
         await deployment_switch.async_update()
-        # Should not call get_deployment_data during cooldown
-        deployment_coordinator.get_deployment_data.assert_not_called()
+        # Replicas should not change during cooldown
+        assert deployment_switch._replicas == original_replicas
 
     async def test_async_update_replica_change_logged(
         self, deployment_switch, deployment_coordinator
@@ -798,7 +799,7 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch._last_scale_time = 0.0
         deployment_switch._replicas = 1
         deployment_switch._is_on = True
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 3,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -813,7 +814,7 @@ class TestKubernetesDeploymentSwitch:
         """Test async_update logs state changes."""
         deployment_switch._last_scale_time = 0.0
         deployment_switch._is_on = False
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -829,7 +830,7 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch._last_scale_time = 0.0
         deployment_switch._replicas = 2
         deployment_switch._is_on = True
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 2,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -845,7 +846,7 @@ class TestKubernetesDeploymentSwitch:
         """Test _verify_scaling succeeds when target replicas reached."""
         deployment_switch._scale_verification_timeout = 10
         deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 1,
             "is_running": True,
         }
@@ -859,7 +860,7 @@ class TestKubernetesDeploymentSwitch:
         """Test _verify_scaling when deployment not found during verification."""
         deployment_switch._scale_verification_timeout = 10
         deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.get_deployment_data.return_value = None
+        deployment_coordinator.data = {"deployments": {}}
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await deployment_switch._verify_scaling(1)
 
@@ -869,7 +870,7 @@ class TestKubernetesDeploymentSwitch:
         """Test _verify_scaling logs debug when still scaling."""
         deployment_switch._scale_verification_timeout = 10
         deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 0,
             "is_running": False,
         }
@@ -893,7 +894,7 @@ class TestKubernetesDeploymentSwitch:
         """Test _verify_scaling times out when target never reached."""
         deployment_switch._scale_verification_timeout = 15
         deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.get_deployment_data.return_value = {
+        deployment_coordinator.data["deployments"]["nginx"] = {
             "replicas": 0,
             "is_running": False,
         }
@@ -1032,7 +1033,7 @@ class TestKubernetesStatefulSetSwitch:
     ):
         """Test _handle_coordinator_update when data is present."""
         statefulset_switch.async_write_ha_state = MagicMock()
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 2,
             "is_running": True,
             "cpu_usage": 100.0,
@@ -1048,7 +1049,7 @@ class TestKubernetesStatefulSetSwitch:
     ):
         """Test _handle_coordinator_update when statefulset not found."""
         statefulset_switch.async_write_ha_state = MagicMock()
-        statefulset_coordinator.get_statefulset_data.return_value = None
+        statefulset_coordinator.data = {"statefulsets": {}}
         statefulset_switch._handle_coordinator_update()
         statefulset_switch.async_write_ha_state.assert_called_once()
 
@@ -1059,7 +1060,7 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch.async_write_ha_state = MagicMock()
         statefulset_switch._cpu_usage = 5.0
         statefulset_switch._memory_usage = 32.0
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 150.0,
@@ -1130,7 +1131,7 @@ class TestKubernetesStatefulSetSwitch:
     ):
         """Test async_update with coordinator data."""
         statefulset_switch._last_scale_time = 0.0
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 2,
             "is_running": True,
             "cpu_usage": 50.0,
@@ -1145,7 +1146,7 @@ class TestKubernetesStatefulSetSwitch:
     ):
         """Test async_update when statefulset not found in coordinator."""
         statefulset_switch._last_scale_time = 0.0
-        statefulset_coordinator.get_statefulset_data.return_value = None
+        statefulset_coordinator.data = {"statefulsets": {}}
         await statefulset_switch.async_update()
 
     async def test_async_update_in_cooldown(
@@ -1154,8 +1155,9 @@ class TestKubernetesStatefulSetSwitch:
         """Test async_update skips during cooldown period."""
         statefulset_switch._last_scale_time = time.time()
         statefulset_switch._scale_cooldown = 100
+        original_replicas = statefulset_switch._replicas
         await statefulset_switch.async_update()
-        statefulset_coordinator.get_statefulset_data.assert_not_called()
+        assert statefulset_switch._replicas == original_replicas
 
     async def test_async_update_replica_change(
         self, statefulset_switch, statefulset_coordinator
@@ -1164,7 +1166,7 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch._last_scale_time = 0.0
         statefulset_switch._replicas = 1
         statefulset_switch._is_on = True
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 3,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -1179,7 +1181,7 @@ class TestKubernetesStatefulSetSwitch:
         """Test async_update logs state changes."""
         statefulset_switch._last_scale_time = 0.0
         statefulset_switch._is_on = False
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -1195,7 +1197,7 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch._last_scale_time = 0.0
         statefulset_switch._replicas = 1
         statefulset_switch._is_on = True
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -1211,7 +1213,7 @@ class TestKubernetesStatefulSetSwitch:
         """Test _verify_scaling succeeds when target replicas reached."""
         statefulset_switch._scale_verification_timeout = 10
         statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 1,
             "is_running": True,
         }
@@ -1225,7 +1227,7 @@ class TestKubernetesStatefulSetSwitch:
         """Test _verify_scaling when statefulset not found during verification."""
         statefulset_switch._scale_verification_timeout = 10
         statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.get_statefulset_data.return_value = None
+        statefulset_coordinator.data = {"statefulsets": {}}
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await statefulset_switch._verify_scaling(1)
 
@@ -1235,7 +1237,7 @@ class TestKubernetesStatefulSetSwitch:
         """Test _verify_scaling logs debug when still scaling."""
         statefulset_switch._scale_verification_timeout = 10
         statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 0,
             "is_running": False,
         }
@@ -1259,7 +1261,7 @@ class TestKubernetesStatefulSetSwitch:
         """Test _verify_scaling times out gracefully."""
         statefulset_switch._scale_verification_timeout = 15
         statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.get_statefulset_data.return_value = {
+        statefulset_coordinator.data["statefulsets"]["redis"] = {
             "replicas": 0,
             "is_running": False,
         }
