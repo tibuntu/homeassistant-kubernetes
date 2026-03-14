@@ -1315,3 +1315,841 @@ class TestWatchSupport:
         assert "ns1_existing" in coordinator_watch_enabled.data["pods"]
         assert "ns2_new-pod" in coordinator_watch_enabled.data["pods"]
         assert coordinator_watch_enabled.data["pods_count"] == 2
+
+
+class TestPopulateFromList:
+    """Tests for _populate_from_list method."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client."""
+        client = MagicMock()
+        client.host = "test-cluster.example.com"
+        client.port = 6443
+        client.monitor_all_namespaces = True
+        client.namespaces = ["default"]
+        client._parse_pod_item = MagicMock()
+        client._parse_node_item = MagicMock()
+        client._parse_deployment_item = MagicMock()
+        client.list_resource_with_version = AsyncMock(return_value=([], "123"))
+
+        async def _empty_stream(url, rv):
+            return
+            yield
+
+        client.watch_stream = _empty_stream
+        return client
+
+    @pytest.fixture
+    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Mock config entry with watch enabled."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_WATCH: True},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    @pytest.fixture
+    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
+        """Create coordinator for populate tests."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+
+    async def test_returns_early_when_data_is_none(self, coord, mock_client):
+        """_populate_from_list should return early if coordinator.data is None."""
+        coord.data = None
+        mock_client._parse_pod_item.return_value = {
+            "name": "pod1",
+            "namespace": "default",
+        }
+
+        coord._populate_from_list(
+            "pods",
+            [{"metadata": {"name": "pod1"}}],
+            mock_client._parse_pod_item,
+        )
+
+        assert coord.data is None
+
+    async def test_non_pod_resources_use_name_as_key(self, coord, mock_client):
+        """Non-pod resources should use result['name'] as the dict key."""
+        coord.data = {"deployments": {}}
+        mock_client._parse_deployment_item.return_value = {
+            "name": "nginx-deploy",
+            "namespace": "default",
+        }
+
+        coord._populate_from_list(
+            "deployments",
+            [{"metadata": {"name": "nginx-deploy"}}],
+            mock_client._parse_deployment_item,
+        )
+
+        assert "nginx-deploy" in coord.data["deployments"]
+
+    async def test_nodes_count_updated(self, coord, mock_client):
+        """_populate_from_list should update nodes_count for nodes."""
+        coord.data = {"nodes": {}}
+        mock_client._parse_node_item.return_value = {"name": "node-1"}
+
+        coord._populate_from_list(
+            "nodes",
+            [{"metadata": {"name": "node-1"}}],
+            mock_client._parse_node_item,
+        )
+
+        assert coord.data["nodes_count"] == 1
+        assert "node-1" in coord.data["nodes"]
+
+    async def test_parse_exception_skips_item(self, coord, mock_client):
+        """Items that fail parsing should be skipped without crashing."""
+        coord.data = {"pods": {}, "pods_count": 0}
+        mock_client._parse_pod_item.side_effect = [
+            ValueError("bad item"),
+            {"name": "good-pod", "namespace": "ns1"},
+        ]
+
+        coord._populate_from_list(
+            "pods",
+            [{"metadata": {"name": "bad"}}, {"metadata": {"name": "good"}}],
+            mock_client._parse_pod_item,
+        )
+
+        assert coord.data["pods_count"] == 1
+        assert "ns1_good-pod" in coord.data["pods"]
+
+    async def test_parse_returns_none_skips_item(self, coord, mock_client):
+        """Items where parse_fn returns None should be skipped."""
+        coord.data = {"deployments": {}}
+        mock_client._parse_deployment_item.return_value = None
+
+        coord._populate_from_list(
+            "deployments",
+            [{"metadata": {"name": "x"}}],
+            mock_client._parse_deployment_item,
+        )
+
+        assert coord.data["deployments"] == {}
+
+    async def test_setdefault_creates_missing_resource_type(self, coord, mock_client):
+        """setdefault should create the resource_type dict if it doesn't exist."""
+        coord.data = {}
+        mock_client._parse_deployment_item.return_value = {
+            "name": "my-deploy",
+            "namespace": "default",
+        }
+
+        coord._populate_from_list(
+            "deployments",
+            [{"metadata": {"name": "my-deploy"}}],
+            mock_client._parse_deployment_item,
+        )
+
+        assert "deployments" in coord.data
+        assert "my-deploy" in coord.data["deployments"]
+
+    async def test_no_count_update_for_non_pod_non_node(self, coord, mock_client):
+        """Deployments should not trigger pods_count or nodes_count updates."""
+        coord.data = {"deployments": {}}
+        mock_client._parse_deployment_item.return_value = {
+            "name": "dep1",
+            "namespace": "default",
+        }
+
+        coord._populate_from_list(
+            "deployments",
+            [{"metadata": {"name": "dep1"}}],
+            mock_client._parse_deployment_item,
+        )
+
+        assert "pods_count" not in coord.data
+        assert "nodes_count" not in coord.data
+
+
+class TestApplyWatchEventExtended:
+    """Extended tests for _apply_watch_event method."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client."""
+        client = MagicMock()
+        client.host = "test-cluster.example.com"
+        client.port = 6443
+        client.monitor_all_namespaces = True
+        client.namespaces = ["default"]
+        client._parse_pod_item = MagicMock()
+        client._parse_node_item = MagicMock()
+        client._parse_deployment_item = MagicMock()
+        client.list_resource_with_version = AsyncMock(return_value=([], "123"))
+
+        async def _empty_stream(url, rv):
+            return
+            yield
+
+        client.watch_stream = _empty_stream
+        return client
+
+    @pytest.fixture
+    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Mock config entry with watch enabled."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_WATCH: True},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    @pytest.fixture
+    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
+        """Create coordinator for apply_watch_event tests."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+
+    async def test_unknown_event_type_ignored(self, coord, mock_client):
+        """Unknown event types should return early without modifying data."""
+        coord.data = {"deployments": {"dep1": {"name": "dep1"}}}
+        coord.async_update_listeners = MagicMock()
+
+        coord._apply_watch_event(
+            "deployments",
+            "UNKNOWN_TYPE",
+            {"metadata": {"name": "dep1"}},
+            mock_client._parse_deployment_item,
+        )
+
+        # Data unchanged, listeners not called
+        assert "dep1" in coord.data["deployments"]
+        coord.async_update_listeners.assert_not_called()
+
+    async def test_last_update_timestamp_set(self, coord, mock_client):
+        """_apply_watch_event should set last_update in coordinator.data."""
+        coord.data = {"nodes": {}, "nodes_count": 0}
+        coord.async_update_listeners = MagicMock()
+        mock_client._parse_node_item.return_value = {"name": "node-x"}
+
+        coord._apply_watch_event(
+            "nodes",
+            "ADDED",
+            {"metadata": {"name": "node-x", "resourceVersion": "5"}},
+            mock_client._parse_node_item,
+        )
+
+        assert "last_update" in coord.data
+        assert isinstance(coord.data["last_update"], float)
+
+    async def test_non_pod_key_uses_name(self, coord, mock_client):
+        """Non-pod resources should use name (not namespace_name) as key."""
+        coord.data = {"deployments": {}}
+        coord.async_update_listeners = MagicMock()
+        mock_client._parse_deployment_item.return_value = {
+            "name": "my-deploy",
+            "namespace": "production",
+        }
+
+        coord._apply_watch_event(
+            "deployments",
+            "ADDED",
+            {"metadata": {"name": "my-deploy", "namespace": "production"}},
+            mock_client._parse_deployment_item,
+        )
+
+        assert "my-deploy" in coord.data["deployments"]
+        # Should NOT use namespace_name key like pods
+        assert "production_my-deploy" not in coord.data["deployments"]
+
+    async def test_deleted_event_for_nodes_updates_count(self, coord, mock_client):
+        """DELETED event for nodes should decrement nodes_count."""
+        coord.data = {
+            "nodes": {"node-1": {"name": "node-1"}, "node-2": {"name": "node-2"}},
+            "nodes_count": 2,
+        }
+        coord.async_update_listeners = MagicMock()
+
+        coord._apply_watch_event(
+            "nodes",
+            "DELETED",
+            {"metadata": {"name": "node-1"}},
+            mock_client._parse_node_item,
+        )
+
+        assert coord.data["nodes_count"] == 1
+        assert "node-1" not in coord.data["nodes"]
+
+    async def test_deleted_nonexistent_key_is_safe(self, coord, mock_client):
+        """Deleting a key that does not exist should not raise."""
+        coord.data = {"pods": {}, "pods_count": 0}
+        coord.async_update_listeners = MagicMock()
+
+        coord._apply_watch_event(
+            "pods",
+            "DELETED",
+            {"metadata": {"name": "ghost", "namespace": "default"}},
+            mock_client._parse_pod_item,
+        )
+
+        assert coord.data["pods_count"] == 0
+
+    async def test_parse_exception_returns_early(self, coord, mock_client):
+        """If parse_fn raises during ADDED, the event should be skipped."""
+        coord.data = {"pods": {}, "pods_count": 0}
+        coord.async_update_listeners = MagicMock()
+        mock_client._parse_pod_item.side_effect = ValueError("parse failed")
+
+        coord._apply_watch_event(
+            "pods",
+            "ADDED",
+            {"metadata": {"name": "bad-pod", "namespace": "default"}},
+            mock_client._parse_pod_item,
+        )
+
+        assert coord.data["pods"] == {}
+        coord.async_update_listeners.assert_not_called()
+
+    async def test_added_creates_resource_type_via_setdefault(self, coord, mock_client):
+        """ADDED event for a resource_type not yet in data should create the dict."""
+        coord.data = {}
+        coord.async_update_listeners = MagicMock()
+        mock_client._parse_deployment_item.return_value = {
+            "name": "new-dep",
+            "namespace": "default",
+        }
+
+        coord._apply_watch_event(
+            "deployments",
+            "ADDED",
+            {"metadata": {"name": "new-dep", "namespace": "default"}},
+            mock_client._parse_deployment_item,
+        )
+
+        assert "deployments" in coord.data
+        assert "new-dep" in coord.data["deployments"]
+
+    async def test_deleted_triggers_orphan_cleanup(self, hass, coord, mock_client):
+        """DELETED event should schedule orphan entity cleanup."""
+        coord.data = {
+            "pods": {"default_nginx": {"name": "nginx", "namespace": "default"}},
+            "pods_count": 1,
+        }
+        coord.async_update_listeners = MagicMock()
+
+        with patch.object(coord, "_cleanup_orphaned_entities", new=AsyncMock()) as m:
+            coord._apply_watch_event(
+                "pods",
+                "DELETED",
+                {"metadata": {"name": "nginx", "namespace": "default"}},
+                mock_client._parse_pod_item,
+            )
+            # Let the scheduled task run
+            await hass.async_block_till_done()
+
+            m.assert_called_once()
+
+
+class TestRunWatchLoopExtended:
+    """Extended tests for _run_watch_loop method."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client."""
+        client = MagicMock()
+        client.host = "test-cluster.example.com"
+        client.port = 6443
+        client.monitor_all_namespaces = True
+        client.namespaces = ["default"]
+        client._parse_pod_item = MagicMock(
+            return_value={"name": "pod", "namespace": "default"}
+        )
+        client._parse_node_item = MagicMock(return_value={"name": "node"})
+        client._parse_deployment_item = MagicMock(
+            return_value={"name": "deploy", "namespace": "default"}
+        )
+        client.list_resource_with_version = AsyncMock(return_value=([], "100"))
+
+        async def _empty_stream(url, rv):
+            return
+            yield
+
+        client.watch_stream = _empty_stream
+        return client
+
+    @pytest.fixture
+    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Mock config entry with watch enabled."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_WATCH: True},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    @pytest.fixture
+    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
+        """Create coordinator for watch loop tests."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            c = KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+        c.data = {
+            "pods": {},
+            "pods_count": 0,
+            "nodes": {},
+            "nodes_count": 0,
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "cronjobs": {},
+            "jobs": {},
+        }
+        c.async_update_listeners = MagicMock()
+        return c
+
+    async def test_bookmark_events_are_skipped(self, coord, mock_client):
+        """BOOKMARK events should be skipped without calling _apply_watch_event."""
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        async def _bookmark_then_stop(url, rv):
+            yield {
+                "type": "BOOKMARK",
+                "object": {"metadata": {"resourceVersion": "200"}},
+            }
+            coord._watch_stop_event.set()
+
+        mock_client.watch_stream = _bookmark_then_stop
+
+        with patch.object(coord, "_apply_watch_event") as mock_apply:
+            await coord._run_watch_loop(
+                "pods",
+                "https://host/api/v1/pods",
+                mock_client._parse_pod_item,
+            )
+            mock_apply.assert_not_called()
+
+    async def test_initial_list_then_watch_stream(self, coord, mock_client):
+        """The loop should fetch an initial list, then process watch events."""
+        mock_client.list_resource_with_version.return_value = (
+            [{"metadata": {"name": "pod1", "namespace": "default"}}],
+            "100",
+        )
+
+        async def _stream_with_event(url, rv):
+            yield {
+                "type": "ADDED",
+                "object": {
+                    "metadata": {
+                        "name": "pod2",
+                        "namespace": "default",
+                        "resourceVersion": "101",
+                    }
+                },
+            }
+            coord._watch_stop_event.set()
+
+        mock_client.watch_stream = _stream_with_event
+
+        with patch.object(coord, "_apply_watch_event") as mock_apply:
+            await coord._run_watch_loop(
+                "pods",
+                "https://host/api/v1/pods",
+                mock_client._parse_pod_item,
+            )
+
+        # Initial list should have been fetched
+        mock_client.list_resource_with_version.assert_called_once()
+        # Watch event should have been applied
+        mock_apply.assert_called_once()
+
+    async def test_resource_version_expired_during_watch_triggers_relist(
+        self, coord, mock_client
+    ):
+        """ResourceVersionExpired during watch stream should reset rv and relist."""
+        call_count = 0
+
+        async def _list_side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                coord._watch_stop_event.set()
+            return [], str(call_count * 100)
+
+        mock_client.list_resource_with_version.side_effect = _list_side_effect
+
+        first_stream = True
+
+        async def _stream_raises_expired(url, rv):
+            nonlocal first_stream
+            if first_stream:
+                first_stream = False
+                raise ResourceVersionExpired("410 Gone")
+            return
+            yield
+
+        mock_client.watch_stream = _stream_raises_expired
+
+        await coord._run_watch_loop(
+            "pods",
+            "https://host/api/v1/pods",
+            mock_client._parse_pod_item,
+        )
+
+        # Should have listed twice: once initially, once after rv expired
+        assert call_count == 2
+
+    async def test_generic_exception_triggers_backoff_reconnect(
+        self, coord, mock_client
+    ):
+        """Non-cancelled exceptions should trigger exponential backoff."""
+        call_count = 0
+
+        async def _list_side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("network down")
+            # Second call: stop after listing
+            coord._watch_stop_event.set()
+            return [], "200"
+
+        mock_client.list_resource_with_version.side_effect = _list_side_effect
+
+        # Patch wait_for to simulate immediate timeout (no actual sleep)
+        with patch("asyncio.wait_for", side_effect=TimeoutError):
+            await coord._run_watch_loop(
+                "pods",
+                "https://host/api/v1/pods",
+                mock_client._parse_pod_item,
+            )
+
+        assert call_count == 2
+
+    async def test_stop_event_during_backoff_exits_cleanly(self, coord, mock_client):
+        """If stop event fires during backoff wait, the loop should exit."""
+
+        async def _list_raises(url):
+            raise ConnectionError("fail")
+
+        mock_client.list_resource_with_version.side_effect = _list_raises
+
+        # Simulate the stop event being set during the wait_for
+        async def _mock_wait_for(coro, timeout):
+            coord._watch_stop_event.set()
+            # Simulate the event being set (wait completes without TimeoutError)
+            return None
+
+        with patch("asyncio.wait_for", side_effect=_mock_wait_for):
+            await coord._run_watch_loop(
+                "pods",
+                "https://host/api/v1/pods",
+                mock_client._parse_pod_item,
+            )
+
+        # Should have exited after one attempt
+        mock_client.list_resource_with_version.assert_called_once()
+
+    async def test_resource_version_updated_from_events(self, coord, mock_client):
+        """Resource version should be updated from event metadata for resume."""
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        async def _stream_with_rv(url, rv):
+            assert rv == "100"
+            yield {
+                "type": "ADDED",
+                "object": {
+                    "metadata": {
+                        "name": "p1",
+                        "namespace": "default",
+                        "resourceVersion": "150",
+                    }
+                },
+            }
+            coord._watch_stop_event.set()
+
+        mock_client.watch_stream = _stream_with_rv
+
+        await coord._run_watch_loop(
+            "pods",
+            "https://host/api/v1/pods",
+            mock_client._parse_pod_item,
+        )
+
+    async def test_stream_end_reconnects_immediately(self, coord, mock_client):
+        """When the stream ends cleanly, the loop should reconnect without backoff."""
+        call_count = 0
+
+        async def _list_side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                coord._watch_stop_event.set()
+            return [], str(call_count * 100)
+
+        mock_client.list_resource_with_version.side_effect = _list_side_effect
+
+        # First stream ends cleanly (empty generator), second iteration stops
+        async def _empty_stream(url, rv):
+            return
+            yield
+
+        mock_client.watch_stream = _empty_stream
+
+        await coord._run_watch_loop(
+            "pods",
+            "https://host/api/v1/pods",
+            mock_client._parse_pod_item,
+        )
+
+        # The stream ended cleanly the first time, so it reconnected. The second
+        # list call set the stop event, so only 2 calls total.
+        assert call_count == 2
+
+
+class TestBuildWatchConfigs:
+    """Tests for _build_watch_configs method."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client."""
+        client = MagicMock()
+        client.host = "test-cluster.example.com"
+        client.port = 6443
+        client._parse_pod_item = MagicMock()
+        client._parse_node_item = MagicMock()
+        client._parse_deployment_item = MagicMock()
+        client._parse_statefulset_item = MagicMock()
+        client._parse_daemonset_item = MagicMock()
+        client._format_cronjob_from_dict = MagicMock()
+        client._format_job_from_dict = MagicMock()
+        return client
+
+    @pytest.fixture
+    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Mock config entry with watch enabled."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_WATCH: True},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    @pytest.fixture
+    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
+        """Create coordinator for build_watch_configs tests."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+
+    async def test_cluster_scoped_configs_when_monitor_all(self, coord, mock_client):
+        """When monitor_all_namespaces=True, should return cluster-wide URLs."""
+        mock_client.monitor_all_namespaces = True
+        base_url = "https://test-cluster.example.com:6443"
+
+        configs = coord._build_watch_configs(base_url)
+
+        resource_types = [rt for rt, _, _ in configs]
+        urls = [url for _, url, _ in configs]
+
+        # Should include nodes (always cluster-scoped) and all namespace-scoped types
+        assert "nodes" in resource_types
+        assert "pods" in resource_types
+        assert "deployments" in resource_types
+        assert "statefulsets" in resource_types
+        assert "daemonsets" in resource_types
+        assert "cronjobs" in resource_types
+        assert "jobs" in resource_types
+
+        # All URLs should be cluster-wide (no /namespaces/ in them)
+        for url in urls:
+            assert "/namespaces/" not in url
+
+        # 7 resource types total
+        assert len(configs) == 7
+
+    async def test_per_namespace_configs_when_not_monitor_all(self, coord, mock_client):
+        """When monitor_all_namespaces=False, should return per-namespace URLs."""
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["default", "kube-system"]
+        base_url = "https://test-cluster.example.com:6443"
+
+        configs = coord._build_watch_configs(base_url)
+
+        # Nodes is always cluster-scoped (1 config) plus 6 resource types * 2 namespaces
+        assert len(configs) == 1 + 6 * 2
+
+        # The nodes URL should be cluster-wide
+        nodes_configs = [(rt, url) for rt, url, _ in configs if rt == "nodes"]
+        assert len(nodes_configs) == 1
+        assert "/namespaces/" not in nodes_configs[0][1]
+
+        # Pods should have per-namespace URLs
+        pod_configs = [(rt, url) for rt, url, _ in configs if rt == "pods"]
+        assert len(pod_configs) == 2
+        assert any("/namespaces/default/pods" in url for _, url in pod_configs)
+        assert any("/namespaces/kube-system/pods" in url for _, url in pod_configs)
+
+    async def test_single_namespace_config(self, coord, mock_client):
+        """With one namespace and not monitoring all, should have 7 configs."""
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["production"]
+        base_url = "https://test-cluster.example.com:6443"
+
+        configs = coord._build_watch_configs(base_url)
+
+        # 1 nodes (cluster-wide) + 6 per-namespace resources * 1 namespace
+        assert len(configs) == 7
+
+        # Verify namespace appears in URLs for namespace-scoped resources
+        ns_urls = [url for rt, url, _ in configs if rt != "nodes"]
+        for url in ns_urls:
+            assert "/namespaces/production/" in url
+
+    async def test_parse_functions_are_correct(self, coord, mock_client):
+        """Each config should reference the correct parse function."""
+        mock_client.monitor_all_namespaces = True
+        base_url = "https://test-cluster.example.com:6443"
+
+        configs = coord._build_watch_configs(base_url)
+
+        parse_fn_map = {rt: fn for rt, _, fn in configs}
+
+        assert parse_fn_map["nodes"] is mock_client._parse_node_item
+        assert parse_fn_map["pods"] is mock_client._parse_pod_item
+        assert parse_fn_map["deployments"] is mock_client._parse_deployment_item
+        assert parse_fn_map["statefulsets"] is mock_client._parse_statefulset_item
+        assert parse_fn_map["daemonsets"] is mock_client._parse_daemonset_item
+        assert parse_fn_map["cronjobs"] is mock_client._format_cronjob_from_dict
+        assert parse_fn_map["jobs"] is mock_client._format_job_from_dict
+
+
+class TestStartStopWatchTasksExtended:
+    """Extended tests for async_start_watch_tasks and async_stop_watch_tasks."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client."""
+        client = MagicMock()
+        client.host = "test-cluster.example.com"
+        client.port = 6443
+        client.monitor_all_namespaces = True
+        client.namespaces = ["default"]
+        client._parse_pod_item = MagicMock()
+        client._parse_node_item = MagicMock()
+        client._parse_deployment_item = MagicMock()
+        client._parse_statefulset_item = MagicMock()
+        client._parse_daemonset_item = MagicMock()
+        client._format_cronjob_from_dict = MagicMock()
+        client._format_job_from_dict = MagicMock()
+        client.list_resource_with_version = AsyncMock(return_value=([], "123"))
+
+        async def _empty_stream(url, rv):
+            return
+            yield
+
+        client.watch_stream = _empty_stream
+        return client
+
+    @pytest.fixture
+    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Mock config entry with watch enabled."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_WATCH: True},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    @pytest.fixture
+    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
+        """Create coordinator for start/stop tests."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+
+    async def test_start_creates_task_per_watch_config(self, hass, coord, mock_client):
+        """async_start_watch_tasks should create one task per config entry."""
+        created_coros = []
+
+        def _mock_create(coro, name):
+            created_coros.append(coro)
+            return MagicMock()
+
+        with patch.object(
+            hass, "async_create_background_task", side_effect=_mock_create
+        ):
+            await coord.async_start_watch_tasks()
+
+        # 7 resource types for monitor_all_namespaces=True
+        assert len(coord._watch_tasks) == 7
+
+        for coro in created_coros:
+            coro.close()
+
+    async def test_start_clears_stop_event(self, hass, coord, mock_client):
+        """async_start_watch_tasks should clear the stop event before starting."""
+        coord._watch_stop_event.set()
+
+        def _mock_create(coro, name):
+            coro.close()
+            return MagicMock()
+
+        with patch.object(
+            hass, "async_create_background_task", side_effect=_mock_create
+        ):
+            await coord.async_start_watch_tasks()
+
+        assert not coord._watch_stop_event.is_set()
+
+    async def test_stop_sets_stop_event(self, coord):
+        """async_stop_watch_tasks should set the stop event."""
+        mock_task = MagicMock()
+        mock_task.cancel = MagicMock()
+        coord._watch_tasks = [mock_task]
+
+        with patch("asyncio.gather", new=AsyncMock()):
+            await coord.async_stop_watch_tasks()
+
+        # After stop, stop_event should be cleared (it's set then cleared)
+        assert not coord._watch_stop_event.is_set()
+
+    async def test_stop_clears_task_list(self, coord):
+        """After stopping, the task list should be empty."""
+        task1 = MagicMock()
+        task2 = MagicMock()
+        coord._watch_tasks = [task1, task2]
+
+        with patch("asyncio.gather", new=AsyncMock()):
+            await coord.async_stop_watch_tasks()
+
+        assert coord._watch_tasks == []
+        task1.cancel.assert_called_once()
+        task2.cancel.assert_called_once()
