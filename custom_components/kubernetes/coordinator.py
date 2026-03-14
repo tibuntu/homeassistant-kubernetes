@@ -248,17 +248,88 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         """Get all unique namespaces from coordinator data."""
         return get_all_namespaces(self.data)
 
-    async def _cleanup_orphaned_entities(self, current_data: dict[str, Any]) -> None:  # noqa: C901
+    def _build_expected_unique_ids(self, current_data: dict[str, Any]) -> set[str]:
+        """Build the set of unique_ids that should exist based on current data.
+
+        Uses the same format strings as the entity classes so there is no
+        ambiguous parsing of underscore-delimited IDs.
+        """
+        eid = self.config_entry.entry_id
+        expected: set[str] = set()
+
+        # Count sensors (always valid)
+        for suffix in (
+            "pods_count",
+            "nodes_count",
+            "deployments_count",
+            "statefulsets_count",
+            "daemonsets_count",
+            "cronjobs_count",
+            "jobs_count",
+        ):
+            expected.add(f"{eid}_{suffix}")
+
+        # Cluster health binary sensor
+        expected.add(f"{eid}_cluster_health")
+
+        # Node sensors + node condition binary sensors
+        for node_name in current_data.get("nodes", {}):
+            expected.add(f"{eid}_node_{node_name}")
+            for condition in (
+                "memory_pressure",
+                "disk_pressure",
+                "pid_pressure",
+                "network_unavailable",
+            ):
+                expected.add(f"{eid}_node_{node_name}_{condition}")
+
+        # Pod sensors: pod_{namespace}_{pod_name}
+        for pod_key, pod_data in current_data.get("pods", {}).items():
+            namespace = pod_data.get("namespace", "default")
+            pod_name = pod_data.get("name", pod_key)
+            expected.add(f"{eid}_pod_{namespace}_{pod_name}")
+
+        # Deployment switches: {name}_deployment
+        # Deployment metric sensors: {name}_deployment_{metric}
+        for name in current_data.get("deployments", {}):
+            expected.add(f"{eid}_{name}_deployment")
+            for metric in ("cpu", "memory"):
+                expected.add(f"{eid}_{name}_deployment_{metric}")
+
+        # StatefulSet switches: {name}_statefulset
+        # StatefulSet metric sensors: {name}_statefulset_{metric}
+        for name in current_data.get("statefulsets", {}):
+            expected.add(f"{eid}_{name}_statefulset")
+            for metric in ("cpu", "memory"):
+                expected.add(f"{eid}_{name}_statefulset_{metric}")
+
+        # DaemonSet sensors: daemonset_{name}
+        for name in current_data.get("daemonsets", {}):
+            expected.add(f"{eid}_daemonset_{name}")
+
+        # CronJob sensors: cronjob_{namespace}_{name}
+        # CronJob switches: {namespace}_{name}_cronjob
+        for name, data in current_data.get("cronjobs", {}).items():
+            namespace = data.get("namespace", "default")
+            expected.add(f"{eid}_cronjob_{namespace}_{name}")
+            expected.add(f"{eid}_{namespace}_{name}_cronjob")
+
+        # Job sensors: job_{namespace}_{name}
+        for name, data in current_data.get("jobs", {}).items():
+            namespace = data.get("namespace", "default")
+            expected.add(f"{eid}_job_{namespace}_{name}")
+
+        return expected
+
+    async def _cleanup_orphaned_entities(self, current_data: dict[str, Any]) -> None:
         """Remove entities for Kubernetes resources that no longer exist."""
         try:
-            # Skip cleanup if config_entry is not available (e.g., in tests)
             if not self.config_entry or not hasattr(self.config_entry, "entry_id"):
                 _LOGGER.debug("Skipping entity cleanup: config_entry not available")
                 return
 
             entity_registry = async_get_entity_registry(self.hass)
 
-            # Get all entities for this integration
             entities = entity_registry.entities.get_entries_for_config_entry_id(
                 self.config_entry.entry_id
             )
@@ -269,224 +340,25 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 self.config_entry.entry_id,
             )
 
-            # Log current data for debugging
-            current_nodes = list(current_data.get("nodes", {}).keys())
-            current_pods = list(current_data.get("pods", {}).keys())
-            _LOGGER.debug("Current nodes in data: %s", current_nodes)
-            _LOGGER.debug("Current pods in data: %s", current_pods)
-
-            # Track which entities should be removed
+            expected_ids = self._build_expected_unique_ids(current_data)
+            eid_prefix = f"{self.config_entry.entry_id}_"
             entities_to_remove = []
 
             for entity in entities:
                 if not entity.unique_id:
                     continue
 
-                # Parse the unique_id to determine resource type and name
-                # Format: {config_entry.entry_id}_{resource_name}_{resource_type} or {config_entry.entry_id}_{namespace}_{resource_name}_{resource_type}
-                if not entity.unique_id.startswith(f"{self.config_entry.entry_id}_"):
+                # Only consider entities belonging to this config entry
+                if not entity.unique_id.startswith(eid_prefix):
                     continue
 
-                # Remove the config entry ID prefix
-                suffix = entity.unique_id[len(f"{self.config_entry.entry_id}_") :]
-                parts = suffix.split("_")
-                if len(parts) < 2:
-                    continue
-
-                resource_type = parts[-1]  # 'deployment', 'statefulset', or 'cronjob'
-
-                _LOGGER.debug(
-                    "Processing entity cleanup - unique_id: %s, suffix: %s, parts: %s, initial resource_type: %s",
-                    entity.unique_id,
-                    suffix,
-                    parts,
-                    resource_type,
-                )
-
-                # Skip count sensors - they are not tracking individual resources
-                if resource_type in (
-                    "count",
-                    "pods_count",
-                    "nodes_count",
-                    "deployments_count",
-                    "statefulsets_count",
-                    "daemonsets_count",
-                    "cronjobs_count",
-                ):
-                    _LOGGER.debug(
-                        "Skipping cleanup for count sensor: %s", entity.unique_id
+                if entity.unique_id not in expected_ids:
+                    _LOGGER.info(
+                        "Entity %s (unique_id: %s) no longer matches current data, "
+                        "marking for removal",
+                        entity.entity_id,
+                        entity.unique_id,
                     )
-                    continue
-
-                # Handle different formats:
-                # - Node format: node_{node_name}
-                # - Pod format: pod_{namespace}_{pod_name}
-                # - CronJob format: {namespace}_{resource_name}_{resource_type}
-                # - Old format: {resource_name}_{resource_type}
-                if len(parts) >= 2 and parts[0] == "node":
-                    # Node format: node_{node_name}
-                    resource_type = "node"
-                    resource_name = "_".join(parts[1:])  # Everything after 'node'
-                    _LOGGER.debug(
-                        "Detected node entity format - node_name: %s", resource_name
-                    )
-                elif len(parts) >= 3 and parts[0] == "cronjob":
-                    # CronJob sensor format: cronjob_{namespace}_{cronjob_name}
-                    resource_type = "cronjob"
-                    resource_name = "_".join(parts[2:])  # Everything after namespace
-                    _LOGGER.debug(
-                        "Detected cronjob sensor format - cronjob_name: %s",
-                        resource_name,
-                    )
-                elif len(parts) >= 3 and parts[0] == "job":
-                    # Job sensor format: job_{namespace}_{job_name}
-                    resource_type = "job"
-                    resource_name = "_".join(parts[2:])  # Everything after namespace
-                    _LOGGER.debug(
-                        "Detected job sensor format - job_name: %s",
-                        resource_name,
-                    )
-                elif len(parts) >= 3 and parts[0] == "pod":
-                    # Pod format: pod_{namespace}_{pod_name}
-                    resource_type = "pod"
-                    namespace = parts[1]
-                    resource_name = "_".join(parts[2:])  # Everything after namespace
-                    pod_key = f"{namespace}_{resource_name}"
-                    _LOGGER.debug(
-                        "Detected pod entity format - namespace: %s, pod_name: %s, key: %s",
-                        namespace,
-                        resource_name,
-                        pod_key,
-                    )
-                elif len(parts) >= 2 and parts[0] == "daemonset":
-                    # DaemonSet sensor format: daemonset_{daemonset_name}
-                    resource_type = "daemonset"
-                    resource_name = "_".join(parts[1:])  # Everything after 'daemonset'
-                    _LOGGER.debug(
-                        "Detected daemonset sensor format - daemonset_name: %s",
-                        resource_name,
-                    )
-                elif resource_type == "cronjob" and len(parts) >= 3:
-                    # New CronJob format: {namespace}_{resource_name}_cronjob
-                    resource_name = "_".join(
-                        parts[1:-1]
-                    )  # Everything between namespace and 'cronjob'
-                else:
-                    # Old format: {resource_name}_{resource_type}
-                    resource_name = "_".join(
-                        parts[:-1]
-                    )  # Handle names with underscores
-
-                _LOGGER.debug(
-                    "Parsed entity - resource_type: %s, resource_name: %s",
-                    resource_type,
-                    resource_name,
-                )
-                should_remove = False
-
-                if resource_type in ("deployment", "deployments"):
-                    if resource_name not in current_data.get("deployments", {}):
-                        should_remove = True
-                        _LOGGER.info(
-                            "Deployment %s no longer exists, marking entity for removal",
-                            resource_name,
-                        )
-                elif resource_type in ("statefulset", "statefulsets"):
-                    if resource_name not in current_data.get("statefulsets", {}):
-                        should_remove = True
-                        _LOGGER.info(
-                            "StatefulSet %s no longer exists, marking entity for removal",
-                            resource_name,
-                        )
-                elif resource_type in ("daemonset", "daemonsets"):
-                    if resource_name not in current_data.get("daemonsets", {}):
-                        should_remove = True
-                        _LOGGER.info(
-                            "DaemonSet %s no longer exists, marking entity for removal",
-                            resource_name,
-                        )
-                elif resource_type in ("cronjob", "cronjobs"):
-                    if resource_name not in current_data.get("cronjobs", {}):
-                        should_remove = True
-                        _LOGGER.info(
-                            "CronJob %s no longer exists, marking entity for removal",
-                            resource_name,
-                        )
-                elif resource_type in ("job", "jobs"):
-                    if resource_name not in current_data.get("jobs", {}):
-                        should_remove = True
-                        _LOGGER.info(
-                            "Job %s no longer exists, marking entity for removal",
-                            resource_name,
-                        )
-                elif resource_type in ("node", "nodes"):
-                    if resource_name not in current_data.get("nodes", {}):
-                        should_remove = True
-                        _LOGGER.info(
-                            "Node %s no longer exists, marking entity for removal",
-                            resource_name,
-                        )
-                elif resource_type in ("cpu", "memory", "status"):
-                    # Format: {workload_name}_{deployment|statefulset}_{cpu|memory|status}
-                    if len(parts) >= 3:
-                        parent_type = parts[-2]
-                        workload_name = "_".join(parts[:-2])
-                        if parent_type == "deployment":
-                            if workload_name not in current_data.get("deployments", {}):
-                                should_remove = True
-                                _LOGGER.info(
-                                    "Deployment %s no longer exists, marking %s sensor for removal",
-                                    workload_name,
-                                    resource_type,
-                                )
-                        elif parent_type == "statefulset":
-                            if workload_name not in current_data.get(
-                                "statefulsets", {}
-                            ):
-                                should_remove = True
-                                _LOGGER.info(
-                                    "StatefulSet %s no longer exists, marking %s sensor for removal",
-                                    workload_name,
-                                    resource_type,
-                                )
-                elif resource_type in ("pod", "pods"):
-                    if len(parts) >= 3 and parts[0] == "pod":
-                        # For pod entities, check using the pod_key format
-                        pod_key = f"{namespace}_{resource_name}"
-                        if pod_key not in current_data.get("pods", {}):
-                            should_remove = True
-                            _LOGGER.info(
-                                "Pod %s in namespace %s no longer exists, marking entity for removal",
-                                resource_name,
-                                namespace,
-                            )
-                    else:
-                        # Fallback for other pod formats
-                        if resource_name not in current_data.get("pods", {}):
-                            should_remove = True
-                            _LOGGER.info(
-                                "Pod %s no longer exists, marking entity for removal",
-                                resource_name,
-                            )
-                else:
-                    # Handle other entity types like sensors that might track deployments/statefulsets/cronjobs/nodes/pods
-                    # Check if this entity is tracking a resource that no longer exists
-                    if (
-                        resource_name not in current_data.get("deployments", {})
-                        and resource_name not in current_data.get("statefulsets", {})
-                        and resource_name not in current_data.get("daemonsets", {})
-                        and resource_name not in current_data.get("cronjobs", {})
-                        and resource_name not in current_data.get("nodes", {})
-                        and resource_name not in current_data.get("pods", {})
-                    ):
-                        should_remove = True
-                        _LOGGER.info(
-                            "Resource %s (type: %s) no longer exists, marking entity for removal",
-                            resource_name,
-                            resource_type,
-                        )
-
-                if should_remove:
                     entities_to_remove.append(entity.entity_id)
 
             # Remove the orphaned entities
