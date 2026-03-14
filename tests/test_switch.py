@@ -1576,3 +1576,343 @@ class TestDiscoverAndAddNewEntities:
             )
 
         add_entities_callback.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# CronJob operations tests
+# ---------------------------------------------------------------------------
+
+
+class TestCronJobOperations:
+    """Tests for CronJob suspend/resume operations, state updates, and coordinator updates."""
+
+    # -- Fixtures local to this class --
+
+    @pytest.fixture
+    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Create a MockConfigEntry and add it to hass."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_entry_id",
+            data={
+                "host": "https://kubernetes.example.com",
+                "port": 443,
+                "verify_ssl": True,
+                "cluster_name": "test-cluster",
+            },
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    @pytest.fixture
+    def mock_coordinator(self):
+        """Mock coordinator with cronjob data."""
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        coordinator.data = {
+            "cronjobs": {
+                "test-cronjob": {
+                    "name": "test-cronjob",
+                    "namespace": "default",
+                    "schedule": "0 2 * * *",
+                    "suspend": False,
+                    "active_jobs_count": 0,
+                    "last_schedule_time": None,
+                    "next_schedule_time": None,
+                }
+            }
+        }
+        return coordinator
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client."""
+        client = MagicMock()
+        client.suspend_cronjob = AsyncMock(return_value={"success": True})
+        client.resume_cronjob = AsyncMock(return_value={"success": True})
+        return client
+
+    @pytest.fixture
+    def cronjob_switch(self, mock_config_entry, mock_coordinator):
+        """Create a CronJob switch instance."""
+        return KubernetesCronJobSwitch(
+            mock_coordinator, mock_config_entry, "test-cronjob", "default"
+        )
+
+    def _setup_hass(self, switch, mock_config_entry, mock_client):
+        """Wire up switch.hass so that client lookup works."""
+        switch.hass = MagicMock()
+        switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
+        }
+        switch.config_entry = mock_config_entry
+
+    # -----------------------------------------------------------------------
+    # 1. CronJob suspend operation (async_turn_off)
+    # -----------------------------------------------------------------------
+
+    async def test_suspend_success(
+        self, cronjob_switch, mock_config_entry, mock_client
+    ):
+        """Suspend succeeds: _is_on=False, _suspend=True, _last_suspend_time set."""
+        self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
+        cronjob_switch._is_on = True
+        cronjob_switch._suspend = False
+
+        await cronjob_switch.async_turn_off()
+
+        mock_client.suspend_cronjob.assert_called_once_with("test-cronjob", "default")
+        assert cronjob_switch._is_on is False
+        assert cronjob_switch._suspend is True
+        assert cronjob_switch._last_suspend_time is not None
+        assert isinstance(cronjob_switch._last_suspend_time, float)
+
+    async def test_suspend_failure_raises(
+        self, cronjob_switch, mock_config_entry, mock_client
+    ):
+        """Suspend returns success=False: exception raised, state unchanged."""
+        self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
+        mock_client.suspend_cronjob.return_value = {
+            "success": False,
+            "error": "Namespace not found",
+        }
+        cronjob_switch._is_on = True
+        cronjob_switch._suspend = False
+
+        with pytest.raises(Exception, match="Namespace not found"):
+            await cronjob_switch.async_turn_off()
+
+        # State must remain unchanged
+        assert cronjob_switch._is_on is True
+        assert cronjob_switch._suspend is False
+        assert cronjob_switch._last_suspend_time is None
+
+    async def test_suspend_exception_propagated(
+        self, cronjob_switch, mock_config_entry, mock_client
+    ):
+        """Client raises an exception during suspend: exception propagated."""
+        self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
+        mock_client.suspend_cronjob.side_effect = ConnectionError("Connection refused")
+        cronjob_switch._is_on = True
+        cronjob_switch._suspend = False
+
+        with pytest.raises(ConnectionError, match="Connection refused"):
+            await cronjob_switch.async_turn_off()
+
+        # State must remain unchanged
+        assert cronjob_switch._is_on is True
+        assert cronjob_switch._suspend is False
+
+    # -----------------------------------------------------------------------
+    # 2. CronJob resume operation (async_turn_on)
+    # -----------------------------------------------------------------------
+
+    async def test_resume_success(self, cronjob_switch, mock_config_entry, mock_client):
+        """Resume succeeds: _is_on=True, _suspend=False, _last_resume_time set."""
+        self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
+        cronjob_switch._is_on = False
+        cronjob_switch._suspend = True
+
+        await cronjob_switch.async_turn_on()
+
+        mock_client.resume_cronjob.assert_called_once_with("test-cronjob", "default")
+        assert cronjob_switch._is_on is True
+        assert cronjob_switch._suspend is False
+        assert cronjob_switch._last_resume_time is not None
+        assert isinstance(cronjob_switch._last_resume_time, float)
+
+    async def test_resume_failure_raises(
+        self, cronjob_switch, mock_config_entry, mock_client
+    ):
+        """Resume returns success=False: exception raised, state unchanged."""
+        self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
+        mock_client.resume_cronjob.return_value = {
+            "success": False,
+            "error": "RBAC forbidden",
+        }
+        cronjob_switch._is_on = False
+        cronjob_switch._suspend = True
+
+        with pytest.raises(Exception, match="RBAC forbidden"):
+            await cronjob_switch.async_turn_on()
+
+        # State must remain unchanged
+        assert cronjob_switch._is_on is False
+        assert cronjob_switch._suspend is True
+        assert cronjob_switch._last_resume_time is None
+
+    # -----------------------------------------------------------------------
+    # 3. CronJob state update (async_update)
+    # -----------------------------------------------------------------------
+
+    async def test_update_with_coordinator_data(self, cronjob_switch, mock_coordinator):
+        """Normal update sets _is_on, _schedule, _suspend, _active_jobs_count."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "name": "test-cronjob",
+                "namespace": "default",
+                "schedule": "*/5 * * * *",
+                "suspend": False,
+                "active_jobs_count": 3,
+                "last_schedule_time": "2026-03-14T10:00:00Z",
+                "next_schedule_time": "2026-03-14T10:05:00Z",
+            }
+        )
+
+        await cronjob_switch.async_update()
+
+        assert cronjob_switch._is_on is True
+        assert cronjob_switch._suspend is False
+        assert cronjob_switch._schedule == "*/5 * * * *"
+        assert cronjob_switch._active_jobs_count == 3
+        assert cronjob_switch._last_schedule_time == "2026-03-14T10:00:00Z"
+        assert cronjob_switch._next_schedule_time == "2026-03-14T10:05:00Z"
+
+    async def test_update_no_data_returns_early(self, cronjob_switch, mock_coordinator):
+        """No data from coordinator: returns early without crash."""
+        mock_coordinator.get_cronjob_data = MagicMock(return_value=None)
+
+        # Should not raise
+        await cronjob_switch.async_update()
+
+        # Internal state should remain at defaults
+        assert cronjob_switch._is_on is False
+        assert cronjob_switch._schedule == ""
+        assert cronjob_switch._active_jobs_count == 0
+
+    async def test_update_suspend_true_boolean(self, cronjob_switch, mock_coordinator):
+        """suspend=True (bool) -> _suspend=True, _is_on=False."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "schedule": "0 0 * * *",
+                "suspend": True,
+                "active_jobs_count": 0,
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+
+        await cronjob_switch.async_update()
+
+        assert cronjob_switch._suspend is True
+        assert cronjob_switch._is_on is False
+
+    async def test_update_suspend_false_boolean(self, cronjob_switch, mock_coordinator):
+        """suspend=False (bool) -> _suspend=False, _is_on=True."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "schedule": "0 0 * * *",
+                "suspend": False,
+                "active_jobs_count": 0,
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+
+        await cronjob_switch.async_update()
+
+        assert cronjob_switch._suspend is False
+        assert cronjob_switch._is_on is True
+
+    async def test_update_suspend_string_true(self, cronjob_switch, mock_coordinator):
+        """suspend='true' (string) -> _suspend=True, _is_on=False."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "schedule": "0 0 * * *",
+                "suspend": "true",
+                "active_jobs_count": 0,
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+
+        await cronjob_switch.async_update()
+
+        assert cronjob_switch._suspend is True
+        assert cronjob_switch._is_on is False
+
+    async def test_update_suspend_string_false(self, cronjob_switch, mock_coordinator):
+        """suspend='false' (string) -> _suspend=False, _is_on=True."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "schedule": "0 0 * * *",
+                "suspend": "false",
+                "active_jobs_count": 0,
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+
+        await cronjob_switch.async_update()
+
+        assert cronjob_switch._suspend is False
+        assert cronjob_switch._is_on is True
+
+    async def test_update_suspend_other_value_defaults_false(
+        self, cronjob_switch, mock_coordinator
+    ):
+        """suspend=42 (non-bool, non-string) -> _suspend=False, _is_on=True."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "schedule": "0 0 * * *",
+                "suspend": 42,
+                "active_jobs_count": 0,
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+
+        await cronjob_switch.async_update()
+
+        assert cronjob_switch._suspend is False
+        assert cronjob_switch._is_on is True
+
+    async def test_update_schedule_time_as_strings(
+        self, cronjob_switch, mock_coordinator
+    ):
+        """Schedule times are converted to strings."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "schedule": "0 0 * * *",
+                "suspend": False,
+                "active_jobs_count": 1,
+                "last_schedule_time": "2026-03-14T00:00:00Z",
+                "next_schedule_time": "2026-03-15T00:00:00Z",
+            }
+        )
+
+        await cronjob_switch.async_update()
+
+        assert cronjob_switch._last_schedule_time == "2026-03-14T00:00:00Z"
+        assert cronjob_switch._next_schedule_time == "2026-03-15T00:00:00Z"
+        assert isinstance(cronjob_switch._last_schedule_time, str)
+        assert isinstance(cronjob_switch._next_schedule_time, str)
+
+    async def test_update_schedule_time_none(self, cronjob_switch, mock_coordinator):
+        """Schedule times that are None remain None."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "schedule": "0 0 * * *",
+                "suspend": False,
+                "active_jobs_count": 0,
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
+
+        await cronjob_switch.async_update()
+
+        assert cronjob_switch._last_schedule_time is None
+        assert cronjob_switch._next_schedule_time is None
+
+    # -----------------------------------------------------------------------
+    # 4. CronJob coordinator update (_handle_coordinator_update)
+    # -----------------------------------------------------------------------
+
+    def test_handle_coordinator_update_calls_write_ha_state(self, cronjob_switch):
+        """_handle_coordinator_update calls async_write_ha_state."""
+        cronjob_switch.async_write_ha_state = MagicMock()
+
+        cronjob_switch._handle_coordinator_update()
+
+        cronjob_switch.async_write_ha_state.assert_called_once()
