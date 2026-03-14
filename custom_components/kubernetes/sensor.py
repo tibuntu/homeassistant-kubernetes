@@ -47,10 +47,7 @@ async def async_setup_entry(
             KubernetesJobsSensor(coordinator, client, config_entry),
         ]
 
-        # Wait for the coordinator to have initial data
-        await coordinator.async_config_entry_first_refresh()
-
-        # Ensure cluster device exists
+        # Ensure cluster device exists (coordinator already refreshed in __init__.py)
         from .device import get_or_create_cluster_device
 
         await get_or_create_cluster_device(hass, config_entry)
