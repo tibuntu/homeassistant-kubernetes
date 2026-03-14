@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.0.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.12.0...v1.0.0) (2026-03-14)
+
+
+### Features
+
+* add dynamic node discovery for binary sensors ([bf2858d](https://github.com/tibuntu/homeassistant-kubernetes/commit/bf2858dabf8a4c4b29996f6025480ef0493d3fe0))
+
+
+### Bug Fixes
+
+* add data lock to coordinator to prevent watch/poll race condition ([53e3c42](https://github.com/tibuntu/homeassistant-kubernetes/commit/53e3c429b71f7cf341a5839304968085f450ed82))
+* add missing daemonset prefix handler in entity cleanup ([40f19a8](https://github.com/tibuntu/homeassistant-kubernetes/commit/40f19a88bad3c40bb63f649862ebae02225e5997))
+* change SSL verification default to True for secure-by-default behavior ([e338ff0](https://github.com/tibuntu/homeassistant-kubernetes/commit/e338ff0bb3ef5966d5bce381f9b020c3ed92b67c))
+* guard against None coordinator.data in sensor setup ([04cef70](https://github.com/tibuntu/homeassistant-kubernetes/commit/04cef705d6d212205093e35969bf38195678fe50))
+* remove redundant coordinator refresh in sensor and binary_sensor setup ([a4126d2](https://github.com/tibuntu/homeassistant-kubernetes/commit/a4126d290157516abd027851bd02710d9e98faaa))
+* return None instead of 0.0 when workload metrics are unavailable ([c2745f8](https://github.com/tibuntu/homeassistant-kubernetes/commit/c2745f87f156168fae2a299f5be65db1637b1419))
+
+
+### Documentation
+
+* add license, tests, coverage, release, and ko-fi badges to README ([3a10b32](https://github.com/tibuntu/homeassistant-kubernetes/commit/3a10b3210f6cfd538e10b299f1703bf8c6b3d2ab))
+* update CLAUDE.md for coordinator data lock and switch refactoring ([da87c8f](https://github.com/tibuntu/homeassistant-kubernetes/commit/da87c8f1ade2d6351f651fccd56ac2a3d8c525de))
+* update CLAUDE.md for kubernetes_client, services, and config_flow refactoring ([aba6b55](https://github.com/tibuntu/homeassistant-kubernetes/commit/aba6b55bdab4eb776b962737f675396b906918c5))
+
+
+### Other
+
+* add generic fetch infrastructure in kubernetes_client.py ([1bded64](https://github.com/tibuntu/homeassistant-kubernetes/commit/1bded64fea5e83385c40c1189da2e58458d05ced))
+* add tests for coordinator watch loop, populate, and apply_watch_event ([7246057](https://github.com/tibuntu/homeassistant-kubernetes/commit/72460577b448391d357b1d1b39d54ec7a73ef41f))
+* add tests for CronJob switch suspend/resume/update operations ([391772f](https://github.com/tibuntu/homeassistant-kubernetes/commit/391772f332f46f9d17daf53c2eec481a44b96fa8))
+* add thread-safe lazy import in config_flow.py ([a7f0a30](https://github.com/tibuntu/homeassistant-kubernetes/commit/a7f0a3070cb8f8acda75c68055bd39cc8ebe62eb))
+* consolidate deployment and statefulset switch classes into parameterized base ([6bfe74f](https://github.com/tibuntu/homeassistant-kubernetes/commit/6bfe74f6e247fa97250e1af79a954e6f35c22c52))
+* **deps-frontend:** update dependency vite to v8 ([132debf](https://github.com/tibuntu/homeassistant-kubernetes/commit/132debff3bf1a3512523889551fe8baf588b982f))
+* **deps-frontend:** update frontend dependencies to v8.57.0 ([176cac0](https://github.com/tibuntu/homeassistant-kubernetes/commit/176cac07b5e6f6ddef5fd0a658d13bad5c5fa8bb))
+* **deps:** update ruff to v0.15.6 ([69f3349](https://github.com/tibuntu/homeassistant-kubernetes/commit/69f334914276849335014c4b15d193fd3b18d0b5))
+* improve test coverage across all modules for &gt;90% target ([edc4eb2](https://github.com/tibuntu/homeassistant-kubernetes/commit/edc4eb2f9f0abb564d341f46d2953ef123a18852))
+* move test_kubernetes_client.py to tests/unit/ ([b3f4acc](https://github.com/tibuntu/homeassistant-kubernetes/commit/b3f4accc1a6f2f4eb5f023e86d3756c86ef2d5e1))
+* release 1.0.0 ([d97abfa](https://github.com/tibuntu/homeassistant-kubernetes/commit/d97abfa0eadb23b9d8bbcfa892ec019bd67b6a8f))
+* replace fragile unique_id parsing with set-based lookup in entity cleanup ([64e4eb2](https://github.com/tibuntu/homeassistant-kubernetes/commit/64e4eb2f12d785029246e60797a8bcd227b9b8ad))
+* simplify workload extraction in services.py ([9f9d056](https://github.com/tibuntu/homeassistant-kubernetes/commit/9f9d0562d137b624030ed35a2250f17d8a0c565f))
+
 ## [0.12.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.11.0...v0.12.0) (2026-03-07)
 
 
