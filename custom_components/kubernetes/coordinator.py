@@ -64,95 +64,107 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Watch API state
         self._watch_tasks: list[asyncio.Task] = []
         self._watch_stop_event: asyncio.Event = asyncio.Event()
+        # Prevents watch events from modifying self.data while a poll is building
+        # a replacement dict. Without this, watch changes are lost when the poll
+        # overwrites self.data.
+        self._data_lock: asyncio.Lock = asyncio.Lock()
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Update data via Kubernetes client."""
-        try:
-            _LOGGER.debug("Updating Kubernetes data for coordinator")
+        """Update data via Kubernetes client.
 
-            # Fetch deployments, statefulsets, daemonsets, cronjobs, jobs, pods count, nodes count, and detailed nodes info
-            deployments = await self.client.get_deployments()
-            statefulsets = await self.client.get_statefulsets()
-            daemonsets = await self.client.get_daemonsets()
-            cronjobs = await self.client.get_cronjobs()
-            jobs = await self.client.get_jobs()
-            pods_count = await self.client.get_pods_count()
-            nodes_count = await self.client.get_nodes_count()
+        Holds _data_lock for the entire fetch cycle so that watch events
+        queue up and apply *after* self.data is replaced with the fresh
+        snapshot, preventing lost updates.
+        """
+        async with self._data_lock:
+            try:
+                _LOGGER.debug("Updating Kubernetes data for coordinator")
 
-            _LOGGER.debug("Starting to fetch detailed node information")
-            nodes = await self.client.get_nodes()
-            _LOGGER.debug(
-                "Successfully fetched %d nodes with detailed information", len(nodes)
-            )
+                # Fetch deployments, statefulsets, daemonsets, cronjobs, jobs, pods count, nodes count, and detailed nodes info
+                deployments = await self.client.get_deployments()
+                statefulsets = await self.client.get_statefulsets()
+                daemonsets = await self.client.get_daemonsets()
+                cronjobs = await self.client.get_cronjobs()
+                jobs = await self.client.get_jobs()
+                pods_count = await self.client.get_pods_count()
+                nodes_count = await self.client.get_nodes_count()
 
-            _LOGGER.debug("Starting to fetch detailed pod information")
-            pods = await self.client.get_pods()
-            _LOGGER.debug(
-                "Successfully fetched %d pods with detailed information", len(pods)
-            )
+                _LOGGER.debug("Starting to fetch detailed node information")
+                nodes = await self.client.get_nodes()
+                _LOGGER.debug(
+                    "Successfully fetched %d nodes with detailed information",
+                    len(nodes),
+                )
 
-            # Fetch node metrics (CPU/memory usage) — best-effort
-            node_metrics = await self.client.get_node_metrics()
-            if node_metrics:
-                _LOGGER.debug("Fetched metrics for %d nodes", len(node_metrics))
-                for node in nodes:
-                    name = node.get("name")
-                    if name and name in node_metrics:
-                        node["cpu_usage_millicores"] = node_metrics[name]["cpu"]
-                        node["memory_usage_mib"] = node_metrics[name]["memory"]
+                _LOGGER.debug("Starting to fetch detailed pod information")
+                pods = await self.client.get_pods()
+                _LOGGER.debug(
+                    "Successfully fetched %d pods with detailed information",
+                    len(pods),
+                )
 
-            # Log node names for debugging
-            if nodes:
-                node_names = [node.get("name", "Unknown") for node in nodes]
-                _LOGGER.debug("Fetched nodes: %s", node_names)
+                # Fetch node metrics (CPU/memory usage) — best-effort
+                node_metrics = await self.client.get_node_metrics()
+                if node_metrics:
+                    _LOGGER.debug("Fetched metrics for %d nodes", len(node_metrics))
+                    for node in nodes:
+                        name = node.get("name")
+                        if name and name in node_metrics:
+                            node["cpu_usage_millicores"] = node_metrics[name]["cpu"]
+                            node["memory_usage_mib"] = node_metrics[name]["memory"]
 
-            # Create a lookup dictionary for quick access
-            data = {
-                "deployments": {
-                    deployment["name"]: deployment for deployment in deployments
-                },
-                "statefulsets": {
-                    statefulset["name"]: statefulset for statefulset in statefulsets
-                },
-                "daemonsets": {
-                    daemonset["name"]: daemonset for daemonset in daemonsets
-                },
-                "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
-                "jobs": {job["name"]: job for job in jobs},
-                "nodes": {node["name"]: node for node in nodes},
-                "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
-                "pods_count": pods_count,
-                "nodes_count": nodes_count,
-                "last_update": time.time(),
-            }
+                # Log node names for debugging
+                if nodes:
+                    node_names = [node.get("name", "Unknown") for node in nodes]
+                    _LOGGER.debug("Fetched nodes: %s", node_names)
 
-            _LOGGER.debug(
-                "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d jobs, %d pods (detailed: %d), %d nodes (detailed: %d)",
-                len(deployments),
-                len(statefulsets),
-                len(daemonsets),
-                len(cronjobs),
-                len(jobs),
-                pods_count,
-                len(pods),
-                nodes_count,
-                len(nodes),
-            )
+                # Create a lookup dictionary for quick access
+                data = {
+                    "deployments": {
+                        deployment["name"]: deployment for deployment in deployments
+                    },
+                    "statefulsets": {
+                        statefulset["name"]: statefulset for statefulset in statefulsets
+                    },
+                    "daemonsets": {
+                        daemonset["name"]: daemonset for daemonset in daemonsets
+                    },
+                    "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
+                    "jobs": {job["name"]: job for job in jobs},
+                    "nodes": {node["name"]: node for node in nodes},
+                    "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
+                    "pods_count": pods_count,
+                    "nodes_count": nodes_count,
+                    "last_update": time.time(),
+                }
 
-            # Clean up entities for resources that no longer exist
-            await self._cleanup_orphaned_entities(data)
+                _LOGGER.debug(
+                    "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d jobs, %d pods (detailed: %d), %d nodes (detailed: %d)",
+                    len(deployments),
+                    len(statefulsets),
+                    len(daemonsets),
+                    len(cronjobs),
+                    len(jobs),
+                    pods_count,
+                    len(pods),
+                    nodes_count,
+                    len(nodes),
+                )
 
-            # Clean up orphaned namespace devices
-            current_namespaces = get_all_namespaces(data)
-            await cleanup_orphaned_namespace_devices(
-                self.hass, self.config_entry, current_namespaces
-            )
+                # Clean up entities for resources that no longer exist
+                await self._cleanup_orphaned_entities(data)
 
-            return data
+                # Clean up orphaned namespace devices
+                current_namespaces = get_all_namespaces(data)
+                await cleanup_orphaned_namespace_devices(
+                    self.hass, self.config_entry, current_namespaces
+                )
 
-        except Exception as ex:
-            _LOGGER.error("Failed to update Kubernetes data: %s", ex)
-            raise UpdateFailed(f"Failed to update Kubernetes data: {ex}") from ex
+                return data
+
+            except Exception as ex:
+                _LOGGER.error("Failed to update Kubernetes data: %s", ex)
+                raise UpdateFailed(f"Failed to update Kubernetes data: {ex}") from ex
 
     def get_deployment_data(self, deployment_name: str) -> dict[str, Any] | None:
         """Get deployment data by name."""
@@ -631,7 +643,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 )
         # Merge into the existing dict so that tasks watching different namespaces
         # for the same resource type don't overwrite each other's initial data.
-        self.data[resource_type].update(parsed)
+        self.data.setdefault(resource_type, {}).update(parsed)
         # Sync derived counts
         if resource_type == "pods":
             self.data["pods_count"] = len(self.data["pods"])
@@ -658,7 +670,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             try:
                 parsed = parse_fn(obj)
                 if parsed:
-                    self.data[resource_type][key] = parsed
+                    self.data.setdefault(resource_type, {})[key] = parsed
             except Exception as ex:
                 _LOGGER.warning(
                     "Failed to parse %s %s event for %r: %s",
@@ -669,15 +681,15 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 )
                 return
         elif event_type == "DELETED":
-            self.data[resource_type].pop(key, None)
+            self.data.get(resource_type, {}).pop(key, None)
             self.hass.async_create_task(self._cleanup_orphaned_entities(self.data))
         else:
             return
 
         # Sync derived counts
-        if resource_type == "pods":
+        if resource_type == "pods" and "pods" in self.data:
             self.data["pods_count"] = len(self.data["pods"])
-        elif resource_type == "nodes":
+        elif resource_type == "nodes" and "nodes" in self.data:
             self.data["nodes_count"] = len(self.data["nodes"])
 
         self.data["last_update"] = time.time()
@@ -701,7 +713,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         items,
                         resource_version,
                     ) = await self.client.list_resource_with_version(url)
-                    self._populate_from_list(resource_type, items, parse_fn)
+                    async with self._data_lock:
+                        self._populate_from_list(resource_type, items, parse_fn)
                     self.async_update_listeners()
                     _LOGGER.debug(
                         "Watch %s: initial list fetched (%d items, rv=%s)",
@@ -725,7 +738,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     if event_type == "BOOKMARK":
                         continue
 
-                    self._apply_watch_event(resource_type, event_type, obj, parse_fn)
+                    async with self._data_lock:
+                        self._apply_watch_event(
+                            resource_type, event_type, obj, parse_fn
+                        )
 
                 # Stream ended cleanly (timeoutSeconds expired); reconnect immediately
                 reconnect_delay = DEFAULT_WATCH_RECONNECT_DELAY
