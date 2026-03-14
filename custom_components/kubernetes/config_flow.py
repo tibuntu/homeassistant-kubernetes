@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 from typing import Any
 
 import aiohttp
@@ -19,6 +20,7 @@ import voluptuous as vol
 KUBERNETES_AVAILABLE: bool | None = None
 client: Any | None = None
 ApiException: type = Exception
+_import_lock = threading.Lock()
 
 from .const import (  # noqa: E402
     CONF_API_TOKEN,
@@ -53,16 +55,25 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _ensure_kubernetes_imported() -> bool:
-    """Ensure kubernetes package is imported."""
+    """Ensure kubernetes package is imported.
+
+    Uses double-checked locking so the fast path (already imported) is lock-free
+    while concurrent first-time callers are serialized.
+    """
     global KUBERNETES_AVAILABLE, client, ApiException
 
-    if KUBERNETES_AVAILABLE is None:
+    if KUBERNETES_AVAILABLE is not None:
+        return KUBERNETES_AVAILABLE
+
+    with _import_lock:
+        # Re-check after acquiring the lock (another caller may have completed)
+        if KUBERNETES_AVAILABLE is not None:  # another thread may have set it
+            return KUBERNETES_AVAILABLE  # type: ignore[unreachable]
+
         try:
-            # Try to import the same way as kubernetes_client.py
             import kubernetes.client as k8s_client
             from kubernetes.client.rest import ApiException as K8sApiException
 
-            # Set global variables
             client = k8s_client
             ApiException = K8sApiException
             KUBERNETES_AVAILABLE = True
