@@ -999,17 +999,20 @@ class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
         return get_namespace_device_info(self.config_entry, self.namespace)
 
     @property
-    def native_value(self) -> float:
-        """Return the current metric value."""
+    def native_value(self) -> float | None:
+        """Return the current metric value, or None when unavailable."""
         if not self.coordinator.data:
-            return 0.0
+            return None
         workload_data = self.coordinator.data.get(f"{self._workload_type}s", {}).get(
             self.workload_name
         )
         if workload_data is None:
-            return 0.0
+            return None
         metric_key = "cpu_usage" if self._metric == "cpu" else "memory_usage"
-        return round(workload_data.get(metric_key, 0.0), 2)
+        value = workload_data.get(metric_key)
+        if value is None:
+            return None
+        return round(value, 2)
 
 
 class KubernetesWorkloadStatusSensor(KubernetesBaseSensor):

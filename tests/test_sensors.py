@@ -1484,7 +1484,7 @@ class TestKubernetesWorkloadMetricSensor:
     def test_native_value_no_coordinator_data(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
-        """Test native value returns 0.0 when coordinator data is None."""
+        """Test native value returns None when coordinator data is None."""
         mock_coordinator.data = None
         sensor = KubernetesWorkloadMetricSensor(
             mock_coordinator,
@@ -1495,12 +1495,12 @@ class TestKubernetesWorkloadMetricSensor:
             "deployment",
             "cpu",
         )
-        assert sensor.native_value == 0.0
+        assert sensor.native_value is None
 
     def test_native_value_workload_not_found(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
-        """Test native value returns 0.0 when workload is absent from coordinator data."""
+        """Test native value returns None when workload is absent from coordinator data."""
         mock_coordinator.data = {"deployments": {}}
         sensor = KubernetesWorkloadMetricSensor(
             mock_coordinator,
@@ -1511,12 +1511,12 @@ class TestKubernetesWorkloadMetricSensor:
             "deployment",
             "cpu",
         )
-        assert sensor.native_value == 0.0
+        assert sensor.native_value is None
 
     def test_native_value_metric_key_missing(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
-        """Test native value returns 0.0 when metric key is absent from workload data."""
+        """Test native value returns None when metric key is absent from workload data."""
         mock_coordinator.data = {
             "deployments": {"my-app": {"name": "my-app", "namespace": "default"}}
         }
@@ -1538,8 +1538,8 @@ class TestKubernetesWorkloadMetricSensor:
             "deployment",
             "memory",
         )
-        assert cpu_sensor.native_value == 0.0
-        assert mem_sensor.native_value == 0.0
+        assert cpu_sensor.native_value is None
+        assert mem_sensor.native_value is None
 
     def test_native_value_rounds_to_two_decimals(
         self, mock_config_entry, mock_client, mock_coordinator
