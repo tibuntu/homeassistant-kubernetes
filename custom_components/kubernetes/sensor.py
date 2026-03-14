@@ -99,7 +99,8 @@ async def async_setup_entry(
             )
 
         # Create individual sensors for each DaemonSet
-        daemonsets_data = coordinator.data.get("daemonsets", {})
+        data = coordinator.data or {}
+        daemonsets_data = data.get("daemonsets", {})
         _LOGGER.debug(
             "Creating daemonset sensors for: %s", list(daemonsets_data.keys())
         )
@@ -119,9 +120,7 @@ async def async_setup_entry(
         status_sensors_created = 0
         for workload_type in ("deployment", "statefulset"):
             resource_key = f"{workload_type}s"
-            for workload_name, workload_data in coordinator.data.get(
-                resource_key, {}
-            ).items():
+            for workload_name, workload_data in data.get(resource_key, {}).items():
                 namespace = workload_data.get("namespace", "default")
                 await get_or_create_namespace_device(hass, config_entry, namespace)
                 sensors.append(
@@ -151,7 +150,7 @@ async def async_setup_entry(
 
         # Create individual sensors for each CronJob
         cronjob_sensors_created = 0
-        for cronjob_name, cronjob_data in coordinator.data.get("cronjobs", {}).items():
+        for cronjob_name, cronjob_data in data.get("cronjobs", {}).items():
             namespace = cronjob_data.get("namespace", "default")
             await get_or_create_namespace_device(hass, config_entry, namespace)
             sensors.append(
@@ -163,7 +162,7 @@ async def async_setup_entry(
 
         # Create individual sensors for each Job
         job_sensors_created = 0
-        for job_name, job_data in coordinator.data.get("jobs", {}).items():
+        for job_name, job_data in data.get("jobs", {}).items():
             namespace = job_data.get("namespace", "default")
             await get_or_create_namespace_device(hass, config_entry, namespace)
             sensors.append(
