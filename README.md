@@ -1,7 +1,13 @@
 # Home Assistant Kubernetes Integration
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![codecov](https://codecov.io/gh/tibuntu/homeassistant-kubernetes/graph/badge.svg)](https://codecov.io/gh/tibuntu/homeassistant-kubernetes)
+[![GitHub Release](https://img.shields.io/github/v/release/tibuntu/homeassistant-kubernetes)](https://github.com/tibuntu/homeassistant-kubernetes/releases/latest)
+
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Tibuntu&repository=homeassistant-kubernetes)
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/tibuntu)
 
 A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
