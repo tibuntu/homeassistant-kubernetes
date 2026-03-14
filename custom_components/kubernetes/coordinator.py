@@ -346,6 +346,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         resource_name,
                         pod_key,
                     )
+                elif len(parts) >= 2 and parts[0] == "daemonset":
+                    # DaemonSet sensor format: daemonset_{daemonset_name}
+                    resource_type = "daemonset"
+                    resource_name = "_".join(parts[1:])  # Everything after 'daemonset'
+                    _LOGGER.debug(
+                        "Detected daemonset sensor format - daemonset_name: %s",
+                        resource_name,
+                    )
                 elif resource_type == "cronjob" and len(parts) >= 3:
                     # New CronJob format: {namespace}_{resource_name}_cronjob
                     resource_name = "_".join(

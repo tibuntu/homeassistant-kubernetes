@@ -734,6 +734,74 @@ class TestKubernetesDataCoordinator:
         registry = er.async_get(hass)
         assert registry.async_get("sensor.fluentd") is None
 
+    async def test_cleanup_orphaned_entities_removes_daemonset_sensor_format(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Test cleanup removes orphaned DaemonSet sensor (sensor format: daemonset_{name})."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_daemonset_fluentd",
+            "sensor.fluentd_daemonset",
+        )
+
+        current_data = {"daemonsets": {}}
+        await coordinator._cleanup_orphaned_entities(current_data)
+
+        registry = er.async_get(hass)
+        assert registry.async_get("sensor.fluentd_daemonset") is None
+
+    async def test_cleanup_orphaned_entities_keeps_existing_daemonset_sensor_format(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Test cleanup keeps existing DaemonSet sensor (sensor format: daemonset_{name})."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_daemonset_fluentd",
+            "sensor.fluentd_daemonset",
+        )
+
+        current_data = {"daemonsets": {"fluentd": {"name": "fluentd"}}}
+        await coordinator._cleanup_orphaned_entities(current_data)
+
+        registry = er.async_get(hass)
+        assert registry.async_get("sensor.fluentd_daemonset") is not None
+
+    async def test_cleanup_orphaned_entities_removes_daemonset_sensor_underscore_name(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Test cleanup removes orphaned DaemonSet sensor with underscored name."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_daemonset_my_custom_ds",
+            "sensor.my_custom_ds_daemonset",
+        )
+
+        current_data = {"daemonsets": {}}
+        await coordinator._cleanup_orphaned_entities(current_data)
+
+        registry = er.async_get(hass)
+        assert registry.async_get("sensor.my_custom_ds_daemonset") is None
+
+    async def test_cleanup_orphaned_entities_keeps_daemonset_sensor_underscore_name(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Test cleanup keeps existing DaemonSet sensor with underscored name."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_daemonset_my_custom_ds",
+            "sensor.my_custom_ds_daemonset",
+        )
+
+        current_data = {"daemonsets": {"my_custom_ds": {"name": "my_custom_ds"}}}
+        await coordinator._cleanup_orphaned_entities(current_data)
+
+        registry = er.async_get(hass)
+        assert registry.async_get("sensor.my_custom_ds_daemonset") is not None
+
     async def test_cleanup_orphaned_entities_removes_job(
         self, hass: HomeAssistant, coordinator, mock_config_entry
     ):
