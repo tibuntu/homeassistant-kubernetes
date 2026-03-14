@@ -1175,3 +1175,880 @@ class TestWebsocketConfigList:
 
         result = _get_config_list_data(mock_hass)
         assert len(result["entries"]) == 0
+
+
+class TestBuildNamespaceBreakdownEdgeCases:
+    """Additional edge-case tests for _build_namespace_breakdown."""
+
+    def test_missing_namespace_field_defaults_to_unknown(self):
+        """Test resources without a namespace field are grouped under 'unknown'."""
+        data = {
+            "pods": {
+                "p1": {"name": "p1"},  # no namespace key
+            },
+            "deployments": {
+                "d1": {"name": "d1"},  # no namespace key
+            },
+            "statefulsets": {},
+            "daemonsets": {},
+            "cronjobs": {},
+            "jobs": {},
+        }
+        result = _build_namespace_breakdown(data)
+        assert "unknown" in result
+        assert result["unknown"]["pods"] == 1
+        assert result["unknown"]["deployments"] == 1
+
+    def test_all_resource_types_missing_namespace(self):
+        """Test all six resource types default to 'unknown' when namespace is absent."""
+        data = {
+            "pods": {"p1": {"name": "p1"}},
+            "deployments": {"d1": {"name": "d1"}},
+            "statefulsets": {"s1": {"name": "s1"}},
+            "daemonsets": {"ds1": {"name": "ds1"}},
+            "cronjobs": {"cj1": {"name": "cj1"}},
+            "jobs": {"j1": {"name": "j1"}},
+        }
+        result = _build_namespace_breakdown(data)
+        assert len(result) == 1
+        assert result["unknown"]["pods"] == 1
+        assert result["unknown"]["deployments"] == 1
+        assert result["unknown"]["statefulsets"] == 1
+        assert result["unknown"]["daemonsets"] == 1
+        assert result["unknown"]["cronjobs"] == 1
+        assert result["unknown"]["jobs"] == 1
+
+    def test_duplicate_namespaces_across_resource_types(self):
+        """Test same namespace across multiple resource types accumulates correctly."""
+        data = {
+            "pods": {
+                "p1": {"name": "p1", "namespace": "shared"},
+                "p2": {"name": "p2", "namespace": "shared"},
+            },
+            "deployments": {
+                "d1": {"name": "d1", "namespace": "shared"},
+            },
+            "statefulsets": {
+                "s1": {"name": "s1", "namespace": "shared"},
+            },
+            "daemonsets": {
+                "ds1": {"name": "ds1", "namespace": "shared"},
+            },
+            "cronjobs": {
+                "cj1": {"name": "cj1", "namespace": "shared"},
+                "cj2": {"name": "cj2", "namespace": "shared"},
+            },
+            "jobs": {
+                "j1": {"name": "j1", "namespace": "shared"},
+            },
+        }
+        result = _build_namespace_breakdown(data)
+        assert len(result) == 1
+        assert result["shared"]["pods"] == 2
+        assert result["shared"]["deployments"] == 1
+        assert result["shared"]["statefulsets"] == 1
+        assert result["shared"]["daemonsets"] == 1
+        assert result["shared"]["cronjobs"] == 2
+        assert result["shared"]["jobs"] == 1
+
+    def test_only_some_resource_types_present(self):
+        """Test data dict with only pods and jobs keys."""
+        data = {
+            "pods": {
+                "p1": {"name": "p1", "namespace": "ns-a"},
+            },
+            "jobs": {
+                "j1": {"name": "j1", "namespace": "ns-b"},
+            },
+        }
+        result = _build_namespace_breakdown(data)
+        assert result["ns-a"]["pods"] == 1
+        # ns-a should have zero for other types since setdefault initializes them
+        assert result["ns-a"]["deployments"] == 0
+        assert result["ns-b"]["jobs"] == 1
+        assert result["ns-b"]["pods"] == 0
+
+    def test_mixed_known_and_unknown_namespaces(self):
+        """Test mix of resources with and without namespace field."""
+        data = {
+            "pods": {
+                "p1": {"name": "p1", "namespace": "real-ns"},
+                "p2": {"name": "p2"},  # missing namespace
+            },
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "cronjobs": {},
+            "jobs": {},
+        }
+        result = _build_namespace_breakdown(data)
+        assert result["real-ns"]["pods"] == 1
+        assert result["unknown"]["pods"] == 1
+
+    def test_empty_resource_dicts(self):
+        """Test all resource type dicts are present but empty."""
+        data = {
+            "pods": {},
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "cronjobs": {},
+            "jobs": {},
+        }
+        result = _build_namespace_breakdown(data)
+        assert result == {}
+
+
+class TestBuildAlertsEdgeCases:
+    """Additional edge-case tests for _build_alerts."""
+
+    def test_node_with_all_pressure_conditions_true(self):
+        """Test node with all four pressure conditions set to True."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {
+                "critical-node": {
+                    "name": "critical-node",
+                    "memory_pressure": True,
+                    "disk_pressure": True,
+                    "pid_pressure": True,
+                    "network_unavailable": True,
+                },
+            },
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert len(result["nodes_with_pressure"]) == 1
+        conditions = result["nodes_with_pressure"][0]["conditions"]
+        assert len(conditions) == 4
+        assert "memory_pressure" in conditions
+        assert "disk_pressure" in conditions
+        assert "pid_pressure" in conditions
+        assert "network_unavailable" in conditions
+
+    def test_node_missing_pressure_keys_entirely(self):
+        """Test node dict without any pressure keys does not appear in alerts."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {
+                "bare-node": {
+                    "name": "bare-node",
+                    "status": "Ready",
+                    # no pressure keys at all
+                },
+            },
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert result["nodes_with_pressure"] == []
+
+    def test_node_pressure_keys_with_none_values(self):
+        """Test node pressure keys set to None are treated as falsy."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {
+                "none-node": {
+                    "name": "none-node",
+                    "memory_pressure": None,
+                    "disk_pressure": None,
+                    "pid_pressure": None,
+                    "network_unavailable": None,
+                },
+            },
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert result["nodes_with_pressure"] == []
+
+    def test_node_pressure_keys_with_false_values(self):
+        """Test node with all pressure conditions explicitly False."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {
+                "ok-node": {
+                    "name": "ok-node",
+                    "memory_pressure": False,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                },
+            },
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert result["nodes_with_pressure"] == []
+
+    def test_multiple_nodes_with_different_pressure_conditions(self):
+        """Test multiple nodes each with different pressure conditions."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {
+                "node-a": {
+                    "name": "node-a",
+                    "memory_pressure": True,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                },
+                "node-b": {
+                    "name": "node-b",
+                    "memory_pressure": False,
+                    "disk_pressure": True,
+                    "pid_pressure": True,
+                    "network_unavailable": False,
+                },
+                "node-c": {
+                    "name": "node-c",
+                    "memory_pressure": False,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                },
+            },
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert len(result["nodes_with_pressure"]) == 2
+        names = {n["name"] for n in result["nodes_with_pressure"]}
+        assert names == {"node-a", "node-b"}
+
+    def test_deployment_with_none_available_replicas(self):
+        """Test deployment where available_replicas is None (not yet scheduled)."""
+        data = {
+            "deployments": {
+                "new-deploy": {
+                    "name": "new-deploy",
+                    "namespace": "default",
+                    "replicas": 3,
+                    "available_replicas": None,
+                },
+            },
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert len(result["degraded_workloads"]) == 1
+        assert result["degraded_workloads"][0]["name"] == "new-deploy"
+        assert result["degraded_workloads"][0]["ready"] == 0
+        assert result["degraded_workloads"][0]["desired"] == 3
+
+    def test_statefulset_with_none_ready_replicas(self):
+        """Test statefulset where ready_replicas is None."""
+        data = {
+            "deployments": {},
+            "statefulsets": {
+                "new-sts": {
+                    "name": "new-sts",
+                    "namespace": "default",
+                    "replicas": 2,
+                    "ready_replicas": None,
+                },
+            },
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert len(result["degraded_workloads"]) == 1
+        assert result["degraded_workloads"][0]["type"] == "StatefulSet"
+        assert result["degraded_workloads"][0]["ready"] == 0
+        assert result["degraded_workloads"][0]["desired"] == 2
+
+    def test_daemonset_with_none_number_available(self):
+        """Test daemonset where number_available is None."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {
+                "new-ds": {
+                    "name": "new-ds",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 5,
+                    "number_available": None,
+                },
+            },
+            "nodes": {},
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert len(result["degraded_workloads"]) == 1
+        assert result["degraded_workloads"][0]["type"] == "DaemonSet"
+        assert result["degraded_workloads"][0]["ready"] == 0
+        assert result["degraded_workloads"][0]["desired"] == 5
+
+    def test_deployment_missing_replicas_key(self):
+        """Test deployment with missing replicas key defaults to 0 (not degraded)."""
+        data = {
+            "deployments": {
+                "bare-deploy": {
+                    "name": "bare-deploy",
+                    "namespace": "default",
+                    # no replicas key
+                },
+            },
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        # replicas defaults to 0, so desired=0, condition desired>0 is False
+        assert result["degraded_workloads"] == []
+
+    def test_statefulset_scaled_to_zero_not_degraded(self):
+        """Test statefulset with replicas=0 is not reported as degraded."""
+        data = {
+            "deployments": {},
+            "statefulsets": {
+                "off-sts": {
+                    "name": "off-sts",
+                    "namespace": "default",
+                    "replicas": 0,
+                    "ready_replicas": 0,
+                },
+            },
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert result["degraded_workloads"] == []
+
+    def test_daemonset_scaled_to_zero_not_degraded(self):
+        """Test daemonset with desired_number_scheduled=0 is not degraded."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {
+                "off-ds": {
+                    "name": "off-ds",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 0,
+                    "number_available": 0,
+                },
+            },
+            "nodes": {},
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert result["degraded_workloads"] == []
+
+    def test_pod_with_missing_phase_not_failed(self):
+        """Test pod missing the phase key is not treated as failed."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {
+                "p1": {
+                    "name": "no-phase-pod",
+                    "namespace": "default",
+                    # no phase key
+                },
+            },
+        }
+        result = _build_alerts(data)
+        assert result["failed_pods"] == []
+
+    def test_pod_with_empty_string_phase_not_failed(self):
+        """Test pod with empty string phase is not treated as failed."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {
+                "p1": {
+                    "name": "empty-phase-pod",
+                    "namespace": "default",
+                    "phase": "",
+                },
+            },
+        }
+        result = _build_alerts(data)
+        assert result["failed_pods"] == []
+
+    def test_pod_pending_and_succeeded_not_failed(self):
+        """Test pods in Pending and Succeeded phase are not reported as failed."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {
+                "p1": {
+                    "name": "pending-pod",
+                    "namespace": "default",
+                    "phase": "Pending",
+                },
+                "p2": {
+                    "name": "done-pod",
+                    "namespace": "default",
+                    "phase": "Succeeded",
+                },
+            },
+        }
+        result = _build_alerts(data)
+        assert result["failed_pods"] == []
+
+    def test_multiple_failed_and_unknown_pods(self):
+        """Test multiple pods in Failed and Unknown phases all appear."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {
+                "p1": {
+                    "name": "fail-1",
+                    "namespace": "default",
+                    "phase": "Failed",
+                },
+                "p2": {
+                    "name": "fail-2",
+                    "namespace": "prod",
+                    "phase": "Failed",
+                },
+                "p3": {
+                    "name": "unknown-1",
+                    "namespace": "default",
+                    "phase": "Unknown",
+                },
+            },
+        }
+        result = _build_alerts(data)
+        assert len(result["failed_pods"]) == 3
+        names = {p["name"] for p in result["failed_pods"]}
+        assert names == {"fail-1", "fail-2", "unknown-1"}
+
+    def test_pod_missing_name_field(self):
+        """Test failed pod with missing name field defaults to empty string."""
+        data = {
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "nodes": {},
+            "pods": {
+                "p1": {
+                    "namespace": "default",
+                    "phase": "Failed",
+                    # no name key
+                },
+            },
+        }
+        result = _build_alerts(data)
+        assert len(result["failed_pods"]) == 1
+        assert result["failed_pods"][0]["name"] == ""
+
+    def test_degraded_workload_missing_namespace_defaults_to_unknown(self):
+        """Test degraded workloads without namespace default to 'unknown'."""
+        data = {
+            "deployments": {
+                "no-ns-deploy": {
+                    "name": "no-ns-deploy",
+                    "replicas": 2,
+                    "available_replicas": 1,
+                    # no namespace key
+                },
+            },
+            "statefulsets": {
+                "no-ns-sts": {
+                    "name": "no-ns-sts",
+                    "replicas": 3,
+                    "ready_replicas": 0,
+                    # no namespace key
+                },
+            },
+            "daemonsets": {
+                "no-ns-ds": {
+                    "name": "no-ns-ds",
+                    "desired_number_scheduled": 2,
+                    "number_available": 1,
+                    # no namespace key
+                },
+            },
+            "nodes": {},
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert len(result["degraded_workloads"]) == 3
+        for workload in result["degraded_workloads"]:
+            assert workload["namespace"] == "unknown"
+
+    def test_mixed_healthy_and_degraded_workloads(self):
+        """Test only degraded workloads appear, healthy ones are excluded."""
+        data = {
+            "deployments": {
+                "healthy-deploy": {
+                    "name": "healthy-deploy",
+                    "namespace": "default",
+                    "replicas": 2,
+                    "available_replicas": 2,
+                },
+                "sick-deploy": {
+                    "name": "sick-deploy",
+                    "namespace": "default",
+                    "replicas": 3,
+                    "available_replicas": 1,
+                },
+            },
+            "statefulsets": {
+                "healthy-sts": {
+                    "name": "healthy-sts",
+                    "namespace": "default",
+                    "replicas": 1,
+                    "ready_replicas": 1,
+                },
+            },
+            "daemonsets": {
+                "healthy-ds": {
+                    "name": "healthy-ds",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 3,
+                    "number_available": 3,
+                },
+            },
+            "nodes": {},
+            "pods": {},
+        }
+        result = _build_alerts(data)
+        assert len(result["degraded_workloads"]) == 1
+        assert result["degraded_workloads"][0]["name"] == "sick-deploy"
+
+
+class TestHandlersEdgeCases:
+    """Edge-case tests for WebSocket command handler data functions."""
+
+    def test_overview_skips_non_dict_entry_data(self, mock_hass):
+        """Test _get_cluster_overview_data skips non-dict entry values."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": "not_a_dict",
+                "entry_2": 42,
+                "entry_3": None,
+            }
+        }
+        result = _get_cluster_overview_data(mock_hass)
+        assert result == {"clusters": []}
+
+    def test_nodes_list_skips_non_dict_entry_data(self, mock_hass):
+        """Test _get_nodes_list_data skips non-dict entry values."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": "string_value",
+            }
+        }
+        result = _get_nodes_list_data(mock_hass)
+        assert result == {"clusters": []}
+
+    def test_pods_list_skips_non_dict_entry_data(self, mock_hass):
+        """Test _get_pods_list_data skips non-dict entry values."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": 123,
+            }
+        }
+        result = _get_pods_list_data(mock_hass)
+        assert result == {"clusters": []}
+
+    def test_workloads_list_skips_non_dict_entry_data(self, mock_hass):
+        """Test _get_workloads_list_data skips non-dict entry values."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": ["a", "list"],
+            }
+        }
+        result = _get_workloads_list_data(mock_hass)
+        assert result == {"clusters": []}
+
+    def test_config_list_skips_non_dict_entry_data(self, mock_hass):
+        """Test _get_config_list_data skips non-dict entry values."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": "nope",
+            }
+        }
+        result = _get_config_list_data(mock_hass)
+        assert result == {"entries": []}
+
+    def test_overview_coordinator_with_empty_dict_data(self, mock_hass):
+        """Test overview handles coordinator.data being an empty dict."""
+        coordinator = _make_coordinator({})
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "empty"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_cluster_overview_data(mock_hass)
+        # Empty dict is truthy, so it goes through the normal path
+        cluster = result["clusters"][0]
+        assert cluster["counts"]["pods"] == 0
+        assert cluster["counts"]["nodes"] == 0
+        assert cluster["counts"]["deployments"] == 0
+        assert cluster["namespaces"] == {}
+        assert cluster["alerts"]["nodes_with_pressure"] == []
+        assert cluster["alerts"]["degraded_workloads"] == []
+        assert cluster["alerts"]["failed_pods"] == []
+
+    def test_nodes_list_empty_nodes_dict(self, mock_hass):
+        """Test nodes list returns empty list when nodes dict is empty."""
+        coordinator = _make_coordinator({"nodes": {}})
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "empty"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_nodes_list_data(mock_hass)
+        assert result["clusters"][0]["nodes"] == []
+
+    def test_pods_list_empty_pods_dict(self, mock_hass):
+        """Test pods list returns empty list when pods dict is empty."""
+        coordinator = _make_coordinator({"pods": {}})
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "empty"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_pods_list_data(mock_hass)
+        assert result["clusters"][0]["pods"] == []
+
+    def test_workloads_list_empty_data(self, mock_hass):
+        """Test workloads list with empty coordinator data dict."""
+        coordinator = _make_coordinator({})
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "empty"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_workloads_list_data(mock_hass)
+        cluster = result["clusters"][0]
+        assert cluster["deployments"] == []
+        assert cluster["statefulsets"] == []
+        assert cluster["daemonsets"] == []
+        assert cluster["cronjobs"] == []
+        assert cluster["jobs"] == []
+
+    def test_overview_missing_config_key(self, mock_hass):
+        """Test overview when entry_data has no 'config' key."""
+        coordinator = _make_coordinator(None)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "coordinator": coordinator,
+                    # no "config" key
+                },
+            }
+        }
+        result = _get_cluster_overview_data(mock_hass)
+        cluster = result["clusters"][0]
+        # config.get() on empty dict returns defaults
+        assert cluster["cluster_name"] == "default"
+
+    def test_nodes_list_missing_config_key(self, mock_hass):
+        """Test nodes list uses default cluster name when config is missing."""
+        coordinator = _make_coordinator({"nodes": {"n1": {"name": "n1"}}})
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_nodes_list_data(mock_hass)
+        assert result["clusters"][0]["cluster_name"] == "default"
+
+    def test_pods_list_missing_config_key(self, mock_hass):
+        """Test pods list uses default cluster name when config is missing."""
+        coordinator = _make_coordinator({"pods": {}})
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_pods_list_data(mock_hass)
+        assert result["clusters"][0]["cluster_name"] == "default"
+
+    def test_workloads_list_missing_config_key(self, mock_hass):
+        """Test workloads list uses default cluster name when config is missing."""
+        coordinator = _make_coordinator({"deployments": {}})
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_workloads_list_data(mock_hass)
+        assert result["clusters"][0]["cluster_name"] == "default"
+
+    def test_overview_with_coordinator_none_in_entry(self, mock_hass):
+        """Test overview skips entry where coordinator key exists but is None."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": None,
+                },
+            }
+        }
+        result = _get_cluster_overview_data(mock_hass)
+        assert result == {"clusters": []}
+
+
+class TestConfigListEdgeCases:
+    """Additional edge-case tests for _get_config_list_data."""
+
+    def test_panel_enabled_from_options(self, mock_hass, sample_coordinator_data):
+        """Test panel_enabled reflects config entry options."""
+        coordinator = _make_coordinator(
+            sample_coordinator_data, options={"enable_panel": False}
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["panel_enabled"] is False
+
+    def test_panel_enabled_defaults_to_true(self, mock_hass, sample_coordinator_data):
+        """Test panel_enabled defaults to True when not in options."""
+        coordinator = _make_coordinator(sample_coordinator_data, options={})
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["panel_enabled"] is True
+
+    def test_healthy_false_when_coordinator_failed(
+        self, mock_hass, sample_coordinator_data
+    ):
+        """Test healthy is False when last_update_success is False."""
+        coordinator = _make_coordinator(
+            sample_coordinator_data, last_update_success=False
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["healthy"] is False
+
+    def test_namespace_empty_list_when_not_in_config(
+        self, mock_hass, sample_coordinator_data
+    ):
+        """Test namespaces is empty list when namespace key is missing from config."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {
+                        "cluster_name": "test",
+                        # no "namespace" key
+                    },
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["namespaces"] == []
+
+    def test_namespace_list_stays_as_list(self, mock_hass, sample_coordinator_data):
+        """Test namespace list value is passed through unchanged."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {
+                        "cluster_name": "test",
+                        "namespace": ["ns-a", "ns-b", "ns-c"],
+                    },
+                    "coordinator": coordinator,
+                },
+            }
+        }
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["namespaces"] == ["ns-a", "ns-b", "ns-c"]
+
+    def test_multiple_entries_returned(self, mock_hass, sample_coordinator_data):
+        """Test multiple config entries are all returned."""
+        coord_1 = _make_coordinator(sample_coordinator_data)
+        coord_2 = _make_coordinator(
+            sample_coordinator_data, options={"enable_watch": True}
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "cluster-a", "host": "10.0.0.1"},
+                    "coordinator": coord_1,
+                },
+                "entry_2": {
+                    "config": {"cluster_name": "cluster-b", "host": "10.0.0.2"},
+                    "coordinator": coord_2,
+                },
+            }
+        }
+        result = _get_config_list_data(mock_hass)
+        assert len(result["entries"]) == 2
+        names = {e["cluster_name"] for e in result["entries"]}
+        assert names == {"cluster-a", "cluster-b"}
+        # Verify watch_enabled differs between entries
+        entry_map = {e["cluster_name"]: e for e in result["entries"]}
+        assert entry_map["cluster-a"]["watch_enabled"] is False
+        assert entry_map["cluster-b"]["watch_enabled"] is True
+
+    def test_config_list_missing_config_key(self, mock_hass, sample_coordinator_data):
+        """Test config list uses defaults when config dict is missing."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "coordinator": coordinator,
+                    # no "config" key
+                },
+            }
+        }
+        result = _get_config_list_data(mock_hass)
+        entry = result["entries"][0]
+        assert entry["cluster_name"] == "default"
+        assert entry["host"] == ""
+        assert entry["namespaces"] == []

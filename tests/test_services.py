@@ -22,6 +22,8 @@ from custom_components.kubernetes.const import (
     WORKLOAD_TYPE_STATEFULSET,
 )
 from custom_components.kubernetes.services import (
+    _collect_entity_ids,
+    _extract_entity_ids_from_value,
     _extract_workload_info,
     _get_entry_data,
     _get_workload_info_from_entity,
@@ -29,6 +31,7 @@ from custom_components.kubernetes.services import (
     _normalize_entity_id_list,
     _resolve_raw_workload_name,
     _validate_entity_workload_type,
+    _validate_workload_schema,
     async_setup_services,
     async_unload_services,
 )
@@ -1274,3 +1277,251 @@ class TestGetEntryData:
 
         result = _get_entry_data(hass, {"entry_id": "panel_registered"})
         assert result is entry_a
+
+
+class TestCollectEntityIds:
+    """Tests for _collect_entity_ids."""
+
+    def test_single_string_entity_id_in_workload_names(self):
+        """Test single string entity_id via workload_names key."""
+        result = _collect_entity_ids({ATTR_WORKLOAD_NAMES: "switch.nginx"})
+        assert result == ["switch.nginx"]
+
+    def test_list_of_entity_ids_in_workload_names(self):
+        """Test list of entity_ids via workload_names key."""
+        result = _collect_entity_ids(
+            {ATTR_WORKLOAD_NAMES: ["switch.nginx", "switch.redis"]}
+        )
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_dict_with_entity_id_key_in_workload_names(self):
+        """Test dict with entity_id key via workload_names."""
+        result = _collect_entity_ids(
+            {ATTR_WORKLOAD_NAMES: {"entity_id": "switch.nginx"}}
+        )
+        assert result == ["switch.nginx"]
+
+    def test_dict_with_entity_ids_key_in_workload_names(self):
+        """Test dict with entity_ids key (list) via workload_names."""
+        result = _collect_entity_ids(
+            {ATTR_WORKLOAD_NAMES: {"entity_ids": ["switch.nginx", "switch.redis"]}}
+        )
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_target_selector_format(self):
+        """Test target selector format as fallback."""
+        result = _collect_entity_ids({"target": {"entity_id": "switch.nginx"}})
+        assert result == ["switch.nginx"]
+
+    def test_target_fallback_only_when_workload_names_empty(self):
+        """Test target is only used when workload_names yields no results."""
+        result = _collect_entity_ids(
+            {
+                ATTR_WORKLOAD_NAMES: "switch.nginx",
+                "target": {"entity_id": "switch.redis"},
+            }
+        )
+        assert result == ["switch.nginx"]
+
+    def test_comma_separated_string_in_workload_names(self):
+        """Test comma-separated string via workload_names key."""
+        result = _collect_entity_ids(
+            {ATTR_WORKLOAD_NAMES: "switch.nginx, switch.redis"}
+        )
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_empty_workload_names_falls_back_to_target(self):
+        """Test empty workload_names falls back to target."""
+        result = _collect_entity_ids(
+            {ATTR_WORKLOAD_NAMES: [], "target": "switch.nginx"}
+        )
+        assert result == ["switch.nginx"]
+
+    def test_none_workload_names_falls_back_to_target(self):
+        """Test None workload_names falls back to target."""
+        result = _collect_entity_ids(
+            {ATTR_WORKLOAD_NAMES: None, "target": "switch.nginx"}
+        )
+        assert result == ["switch.nginx"]
+
+    def test_empty_dict_returns_empty(self):
+        """Test empty call data returns empty list."""
+        result = _collect_entity_ids({})
+        assert result == []
+
+    def test_filters_non_switch_entities(self):
+        """Test that non-switch entities are filtered out."""
+        result = _collect_entity_ids(
+            {ATTR_WORKLOAD_NAMES: ["switch.nginx", "sensor.cpu", "switch.redis"]}
+        )
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_all_non_switch_entities_returns_empty(self):
+        """Test that only non-switch entities returns empty list."""
+        result = _collect_entity_ids(
+            {ATTR_WORKLOAD_NAMES: ["sensor.cpu", "binary_sensor.health"]}
+        )
+        assert result == []
+
+    def test_mixed_list_with_dicts_and_strings(self):
+        """Test mixed list containing both dicts and strings in workload_names."""
+        result = _collect_entity_ids(
+            {
+                ATTR_WORKLOAD_NAMES: [
+                    {"entity_id": "switch.nginx"},
+                    "switch.redis",
+                ]
+            }
+        )
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_target_with_list_of_entity_ids(self):
+        """Test target with a list of entity IDs."""
+        result = _collect_entity_ids({"target": ["switch.nginx", "switch.redis"]})
+        assert result == ["switch.nginx", "switch.redis"]
+
+
+class TestExtractEntityIdsFromValue:
+    """Tests for _extract_entity_ids_from_value."""
+
+    def test_string_input(self):
+        """Test plain string input."""
+        result = _extract_entity_ids_from_value("switch.nginx")
+        assert result == ["switch.nginx"]
+
+    def test_comma_separated_string_input(self):
+        """Test comma-separated string input."""
+        result = _extract_entity_ids_from_value("switch.nginx, switch.redis")
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_list_of_strings(self):
+        """Test list of strings input."""
+        result = _extract_entity_ids_from_value(["switch.nginx", "switch.redis"])
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_dict_with_entity_id(self):
+        """Test dict with entity_id key."""
+        result = _extract_entity_ids_from_value({"entity_id": "switch.nginx"})
+        assert result == ["switch.nginx"]
+
+    def test_dict_with_entity_ids(self):
+        """Test dict with entity_ids key (list)."""
+        result = _extract_entity_ids_from_value(
+            {"entity_ids": ["switch.nginx", "switch.redis"]}
+        )
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_dict_with_neither_key(self):
+        """Test dict without entity_id or entity_ids returns empty."""
+        result = _extract_entity_ids_from_value({"foo": "bar"})
+        assert result == []
+
+    def test_mixed_list_with_dicts_and_strings(self):
+        """Test mixed list containing dicts and strings."""
+        result = _extract_entity_ids_from_value(
+            [{"entity_id": "switch.nginx"}, "switch.redis"]
+        )
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_list_with_dict_entity_ids(self):
+        """Test list containing dict with entity_ids (list) key."""
+        result = _extract_entity_ids_from_value(
+            [{"entity_ids": ["switch.nginx", "switch.redis"]}]
+        )
+        assert result == ["switch.nginx", "switch.redis"]
+
+    def test_none_input(self):
+        """Test None input returns empty list."""
+        result = _extract_entity_ids_from_value(None)
+        assert result == []
+
+    def test_integer_input(self):
+        """Test integer input returns empty list."""
+        result = _extract_entity_ids_from_value(42)
+        assert result == []
+
+    def test_boolean_input(self):
+        """Test boolean input returns empty list."""
+        result = _extract_entity_ids_from_value(True)
+        assert result == []
+
+    def test_empty_string(self):
+        """Test empty string returns empty list."""
+        result = _extract_entity_ids_from_value("")
+        assert result == []
+
+    def test_empty_list(self):
+        """Test empty list returns empty list."""
+        result = _extract_entity_ids_from_value([])
+        assert result == []
+
+    def test_empty_dict(self):
+        """Test empty dict returns empty list."""
+        result = _extract_entity_ids_from_value({})
+        assert result == []
+
+    def test_list_with_non_string_non_dict_items(self):
+        """Test list with non-string, non-dict items ignores them."""
+        result = _extract_entity_ids_from_value(["switch.nginx", 42, None])
+        assert result == ["switch.nginx"]
+
+    def test_string_with_whitespace(self):
+        """Test string values are trimmed of whitespace."""
+        result = _extract_entity_ids_from_value("  switch.nginx  ")
+        assert result == ["switch.nginx"]
+
+    def test_dict_entity_id_prefers_entity_id_over_entity_ids(self):
+        """Test dict with both entity_id and entity_ids uses entity_id first."""
+        result = _extract_entity_ids_from_value(
+            {"entity_id": "switch.nginx", "entity_ids": ["switch.redis"]}
+        )
+        assert result == ["switch.nginx"]
+
+
+class TestValidateWorkloadSchema:
+    """Tests for _validate_workload_schema."""
+
+    def test_valid_with_workload_name(self):
+        """Test passes validation when workload_name is provided."""
+        data = {ATTR_WORKLOAD_NAME: "switch.nginx"}
+        result = _validate_workload_schema(data)
+        assert result is data
+
+    def test_valid_with_workload_names(self):
+        """Test passes validation when workload_names is provided."""
+        data = {ATTR_WORKLOAD_NAMES: ["switch.nginx", "switch.redis"]}
+        result = _validate_workload_schema(data)
+        assert result is data
+
+    def test_valid_with_both_fields(self):
+        """Test passes validation when both workload_name and workload_names provided."""
+        data = {
+            ATTR_WORKLOAD_NAME: "switch.nginx",
+            ATTR_WORKLOAD_NAMES: ["switch.redis"],
+        }
+        result = _validate_workload_schema(data)
+        assert result is data
+
+    def test_invalid_with_neither_field(self):
+        """Test raises vol.Invalid when neither field provided."""
+        import voluptuous as vol
+
+        with pytest.raises(vol.Invalid, match="Either workload_name or workload_names"):
+            _validate_workload_schema({})
+
+    def test_invalid_with_unrelated_keys(self):
+        """Test raises vol.Invalid when only unrelated keys are present."""
+        import voluptuous as vol
+
+        with pytest.raises(vol.Invalid, match="Either workload_name or workload_names"):
+            _validate_workload_schema({"replicas": 3, "namespace": "default"})
+
+    def test_valid_with_extra_keys(self):
+        """Test passes validation when workload_name is present alongside other keys."""
+        data = {
+            ATTR_WORKLOAD_NAME: "switch.nginx",
+            "replicas": 3,
+            "namespace": "default",
+        }
+        result = _validate_workload_schema(data)
+        assert result is data

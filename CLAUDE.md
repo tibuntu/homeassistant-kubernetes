@@ -122,6 +122,7 @@ Whenever changes are implemented to any integration code, always add or update t
 
 Pure unit tests (no HA dependency) live in `tests/unit/`. Currently `test_kubernetes_client.py` is the only file there — it tests the K8s API wrapper in isolation. All other test files in `tests/` use HA fixtures via `pytest-homeassistant-custom-component`. pytest discovers both directories recursively via `testpaths = ["tests"]`.
 - Do not attempt to run tests locally — the CI pipeline handles test execution.
+- Do not install packages locally (no `pip install`). All dependencies are managed by the CI pipeline.
 
 ## Documentation
 

@@ -454,3 +454,504 @@ class TestAsyncRemovePanel:
         with patch("custom_components.kubernetes.async_remove_panel") as mock_remove:
             _async_remove_panel(hass)
             mock_remove.assert_not_called()
+
+    def test_noop_when_domain_missing(self, hass: HomeAssistant):
+        """Test does nothing when DOMAIN not in hass.data at all."""
+        with patch("custom_components.kubernetes.async_remove_panel") as mock_remove:
+            _async_remove_panel(hass)
+            mock_remove.assert_not_called()
+
+
+class TestAsyncUpdateOptions:
+    """Tests for _async_update_options."""
+
+    async def test_reloads_config_entry(self, hass: HomeAssistant):
+        """Test that _async_update_options calls async_reload with entry_id."""
+        from custom_components.kubernetes import _async_update_options
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_reload_entry",
+            data={"host": "test"},
+            options={},
+        )
+        entry.add_to_hass(hass)
+
+        with patch.object(
+            hass.config_entries,
+            "async_reload",
+            new_callable=AsyncMock,
+        ) as mock_reload:
+            await _async_update_options(hass, entry)
+            mock_reload.assert_called_once_with("test_reload_entry")
+
+
+class TestAsyncSyncPanel:
+    """Tests for _async_sync_panel."""
+
+    async def test_registers_panel_when_wanted_and_not_registered(
+        self, hass: HomeAssistant
+    ):
+        """Test panel is registered when wanted but not yet registered."""
+        from custom_components.kubernetes import _async_sync_panel
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_panel_entry",
+            data={"host": "test"},
+            options={"enable_panel": True},
+        )
+        entry.add_to_hass(hass)
+        hass.data[DOMAIN] = {}
+
+        with patch(
+            "custom_components.kubernetes._async_register_panel", new_callable=AsyncMock
+        ) as mock_register:
+            await _async_sync_panel(hass, entry)
+            mock_register.assert_called_once_with(hass)
+
+    async def test_does_not_register_when_already_registered(self, hass: HomeAssistant):
+        """Test panel is not re-registered when already registered."""
+        from custom_components.kubernetes import _async_sync_panel
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_panel_entry",
+            data={"host": "test"},
+            options={"enable_panel": True},
+        )
+        entry.add_to_hass(hass)
+        hass.data[DOMAIN] = {"panel_registered": True}
+
+        with patch(
+            "custom_components.kubernetes._async_register_panel", new_callable=AsyncMock
+        ) as mock_register:
+            await _async_sync_panel(hass, entry)
+            mock_register.assert_not_called()
+
+    async def test_removes_panel_when_not_wanted_and_registered(
+        self, hass: HomeAssistant
+    ):
+        """Test panel is removed when not wanted but currently registered."""
+        from custom_components.kubernetes import _async_sync_panel
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_panel_entry",
+            data={"host": "test"},
+            options={"enable_panel": False},
+        )
+        entry.add_to_hass(hass)
+        hass.data[DOMAIN] = {"panel_registered": True}
+
+        with (
+            patch(
+                "custom_components.kubernetes._any_entry_wants_panel",
+                return_value=False,
+            ),
+            patch("custom_components.kubernetes._async_remove_panel") as mock_remove,
+        ):
+            await _async_sync_panel(hass, entry)
+            mock_remove.assert_called_once_with(hass)
+
+    async def test_does_not_remove_panel_when_other_entry_wants_it(
+        self, hass: HomeAssistant
+    ):
+        """Test panel is not removed when another entry still wants it."""
+        from custom_components.kubernetes import _async_sync_panel
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_panel_entry",
+            data={"host": "test"},
+            options={"enable_panel": False},
+        )
+        entry.add_to_hass(hass)
+        hass.data[DOMAIN] = {"panel_registered": True}
+
+        with (
+            patch(
+                "custom_components.kubernetes._any_entry_wants_panel", return_value=True
+            ),
+            patch("custom_components.kubernetes._async_remove_panel") as mock_remove,
+        ):
+            await _async_sync_panel(hass, entry)
+            mock_remove.assert_not_called()
+
+    async def test_noop_when_not_wanted_and_not_registered(self, hass: HomeAssistant):
+        """Test nothing happens when panel is neither wanted nor registered."""
+        from custom_components.kubernetes import _async_sync_panel
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_panel_entry",
+            data={"host": "test"},
+            options={"enable_panel": False},
+        )
+        entry.add_to_hass(hass)
+        hass.data[DOMAIN] = {}
+
+        with (
+            patch(
+                "custom_components.kubernetes._async_register_panel",
+                new_callable=AsyncMock,
+            ) as mock_register,
+            patch("custom_components.kubernetes._async_remove_panel") as mock_remove,
+        ):
+            await _async_sync_panel(hass, entry)
+            mock_register.assert_not_called()
+            mock_remove.assert_not_called()
+
+    async def test_defaults_to_panel_enabled(self, hass: HomeAssistant):
+        """Test that panel defaults to enabled when option not set."""
+        from custom_components.kubernetes import _async_sync_panel
+
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_panel_entry",
+            data={"host": "test"},
+            options={},
+        )
+        entry.add_to_hass(hass)
+        hass.data[DOMAIN] = {}
+
+        with patch(
+            "custom_components.kubernetes._async_register_panel", new_callable=AsyncMock
+        ) as mock_register:
+            await _async_sync_panel(hass, entry)
+            mock_register.assert_called_once_with(hass)
+
+
+class TestAsyncRegisterPanelStaticPathError:
+    """Tests for _async_register_panel error handling."""
+
+    async def test_static_path_error_does_not_prevent_registration(
+        self, hass: HomeAssistant
+    ):
+        """Test that a static path registration error is caught and panel still registers."""
+        hass.data[DOMAIN] = {}
+        hass.http = MagicMock()
+        mock_static = AsyncMock(side_effect=RuntimeError("already registered"))
+        hass.http.async_register_static_paths = mock_static
+
+        with (
+            patch("custom_components.kubernetes.Path") as mock_path_cls,
+            patch(
+                "custom_components.kubernetes.async_register_built_in_panel"
+            ) as mock_register,
+        ):
+            mock_panel_dir = MagicMock()
+            mock_panel_js = MagicMock()
+            mock_panel_js.is_file.return_value = True
+            mock_path_cls.return_value.parent.__truediv__ = MagicMock(
+                return_value=mock_panel_dir
+            )
+            mock_panel_dir.__truediv__ = MagicMock(return_value=mock_panel_js)
+
+            await _async_register_panel(hass)
+
+            # Static path raised but panel should still be registered
+            mock_static.assert_called_once()
+            mock_register.assert_called_once()
+            assert hass.data[DOMAIN]["panel_registered"] is True
+
+
+class TestAsyncSetupEntryWatchEnabled:
+    """Tests for async_setup_entry with watch tasks enabled."""
+
+    async def test_watch_tasks_started_when_enabled(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that watch tasks are started when enable_watch is True."""
+        hass.config_entries.async_update_entry(
+            mock_config_entry, options={"enable_watch": True}
+        )
+
+        with (
+            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
+            patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
+            patch(
+                "custom_components.kubernetes.KubernetesDataCoordinator"
+            ) as mock_coordinator_class,
+            patch(
+                "custom_components.kubernetes.async_setup_services",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
+            ),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            mock_coordinator = MagicMock()
+            mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+            mock_coordinator.async_start_watch_tasks = AsyncMock()
+            mock_coordinator_class.return_value = mock_coordinator
+
+            result = await async_setup_entry(hass, mock_config_entry)
+
+            assert result is True
+            mock_coordinator.async_start_watch_tasks.assert_called_once()
+
+    async def test_watch_tasks_not_started_when_disabled(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that watch tasks are not started when enable_watch is False."""
+        hass.config_entries.async_update_entry(
+            mock_config_entry, options={"enable_watch": False}
+        )
+
+        with (
+            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
+            patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
+            patch(
+                "custom_components.kubernetes.KubernetesDataCoordinator"
+            ) as mock_coordinator_class,
+            patch(
+                "custom_components.kubernetes.async_setup_services",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
+            ),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            mock_coordinator = MagicMock()
+            mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+            mock_coordinator.async_start_watch_tasks = AsyncMock()
+            mock_coordinator_class.return_value = mock_coordinator
+
+            result = await async_setup_entry(hass, mock_config_entry)
+
+            assert result is True
+            mock_coordinator.async_start_watch_tasks.assert_not_called()
+
+    async def test_watch_tasks_not_started_by_default(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that watch tasks default to disabled (DEFAULT_ENABLE_WATCH=False)."""
+        # mock_config_entry has options={}, so enable_watch defaults to False
+        with (
+            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
+            patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
+            patch(
+                "custom_components.kubernetes.KubernetesDataCoordinator"
+            ) as mock_coordinator_class,
+            patch(
+                "custom_components.kubernetes.async_setup_services",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
+            ),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            mock_coordinator = MagicMock()
+            mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+            mock_coordinator.async_start_watch_tasks = AsyncMock()
+            mock_coordinator_class.return_value = mock_coordinator
+
+            result = await async_setup_entry(hass, mock_config_entry)
+
+            assert result is True
+            mock_coordinator.async_start_watch_tasks.assert_not_called()
+
+
+class TestAsyncUnloadEntryWatchCleanup:
+    """Tests for async_unload_entry watch task cleanup."""
+
+    async def test_watch_tasks_stopped_on_unload(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that watch tasks are stopped during unload."""
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_stop_watch_tasks = AsyncMock()
+        hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {"coordinator": mock_coordinator}
+        }
+
+        with (
+            patch(
+                "custom_components.kubernetes.async_unload_services",
+                new_callable=AsyncMock,
+            ),
+            patch("custom_components.kubernetes.async_remove_panel"),
+            patch.object(
+                hass.config_entries,
+                "async_unload_platforms",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            result = await async_unload_entry(hass, mock_config_entry)
+
+            assert result is True
+            mock_coordinator.async_stop_watch_tasks.assert_called_once()
+
+    async def test_watch_tasks_stopped_even_when_platform_unload_fails(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that watch tasks are always stopped, even if platform unload fails."""
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_stop_watch_tasks = AsyncMock()
+        hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {"coordinator": mock_coordinator}
+        }
+
+        with (
+            patch(
+                "custom_components.kubernetes.async_unload_services",
+                new_callable=AsyncMock,
+            ),
+            patch("custom_components.kubernetes.async_remove_panel"),
+            patch.object(
+                hass.config_entries,
+                "async_unload_platforms",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await async_unload_entry(hass, mock_config_entry)
+
+            assert result is False
+            # Watch tasks should still be stopped regardless
+            mock_coordinator.async_stop_watch_tasks.assert_called_once()
+
+
+class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
+    """Tests for panel removal logic when other entries remain."""
+
+    async def test_panel_removed_when_no_remaining_entry_wants_it(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test panel is removed when remaining entries don't want it."""
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_stop_watch_tasks = AsyncMock()
+
+        # Another entry exists that does not want the panel
+        other_coordinator = MagicMock()
+        other_coordinator.config_entry.options = {"enable_panel": False}
+
+        hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {"coordinator": mock_coordinator},
+            "other_entry": {"coordinator": other_coordinator},
+            "panel_registered": True,
+        }
+
+        with (
+            patch(
+                "custom_components.kubernetes.async_unload_services",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.kubernetes.async_remove_panel"
+            ) as mock_remove_panel,
+            patch.object(
+                hass.config_entries,
+                "async_unload_platforms",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            result = await async_unload_entry(hass, mock_config_entry)
+
+            assert result is True
+            # Panel should be removed since the remaining entry doesn't want it
+            mock_remove_panel.assert_called_once_with(hass, DOMAIN)
+
+    async def test_panel_not_removed_when_remaining_entry_wants_it(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test panel is kept when a remaining entry still wants it."""
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_stop_watch_tasks = AsyncMock()
+
+        # Another entry exists that wants the panel
+        other_coordinator = MagicMock()
+        other_coordinator.config_entry.options = {"enable_panel": True}
+
+        hass.data[DOMAIN] = {
+            mock_config_entry.entry_id: {"coordinator": mock_coordinator},
+            "other_entry": {"coordinator": other_coordinator},
+            "panel_registered": True,
+        }
+
+        with (
+            patch(
+                "custom_components.kubernetes.async_unload_services",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.kubernetes.async_remove_panel"
+            ) as mock_remove_panel,
+            patch.object(
+                hass.config_entries,
+                "async_unload_platforms",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            result = await async_unload_entry(hass, mock_config_entry)
+
+            assert result is True
+            # Panel should NOT be removed since other entry wants it
+            mock_remove_panel.assert_not_called()
+
+
+class TestAsyncSetupEntryUpdateListener:
+    """Tests for the options update listener registration."""
+
+    async def test_update_listener_registered(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that an update listener is registered during setup."""
+        with (
+            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
+            patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
+            patch(
+                "custom_components.kubernetes.KubernetesDataCoordinator"
+            ) as mock_coordinator_class,
+            patch(
+                "custom_components.kubernetes.async_setup_services",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
+            ),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_client_class.return_value = MagicMock()
+
+            mock_coordinator = MagicMock()
+            mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+            mock_coordinator_class.return_value = mock_coordinator
+
+            result = await async_setup_entry(hass, mock_config_entry)
+            assert result is True
+
+            # Verify that the entry has update listeners registered
+            assert len(mock_config_entry.update_listeners) > 0

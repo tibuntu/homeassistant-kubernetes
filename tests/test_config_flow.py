@@ -1900,3 +1900,1180 @@ class TestReconfigureNamespacesFlow:
         assert result["type"] is FlowResultType.ABORT
         assert result["reason"] == "reconfigure_successful"
         assert mock_config_entry.data[CONF_NAMESPACE] == ["default"]
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: _test_connection edge cases
+# ---------------------------------------------------------------------------
+
+
+async def test_test_connection_strips_https_prefix(hass: HomeAssistant):
+    """Test _test_connection strips https:// prefix from host."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_config = MagicMock()
+    mock_k8s_client.Configuration.return_value = mock_config
+    mock_k8s_client.ApiClient.return_value = MagicMock()
+    mock_k8s_client.CoreV1Api.return_value = MagicMock()
+    cf_module.client = mock_k8s_client
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = hass
+
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            user_input = {
+                CONF_HOST: "https://my-cluster.example.com",
+                CONF_API_TOKEN: "test-token",
+                CONF_VERIFY_SSL: False,
+            }
+
+            with patch.object(
+                loop, "run_in_executor", new=AsyncMock(return_value=None)
+            ):
+                await flow._test_connection(user_input)
+
+            # The host should have the protocol stripped
+            assert user_input[CONF_HOST] == "my-cluster.example.com"
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+
+
+async def test_test_connection_strips_http_prefix(hass: HomeAssistant):
+    """Test _test_connection strips http:// prefix from host."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_config = MagicMock()
+    mock_k8s_client.Configuration.return_value = mock_config
+    mock_k8s_client.ApiClient.return_value = MagicMock()
+    mock_k8s_client.CoreV1Api.return_value = MagicMock()
+    cf_module.client = mock_k8s_client
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = hass
+
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            user_input = {
+                CONF_HOST: "http://my-cluster.example.com",
+                CONF_API_TOKEN: "test-token",
+                CONF_VERIFY_SSL: False,
+            }
+
+            with patch.object(
+                loop, "run_in_executor", new=AsyncMock(return_value=None)
+            ):
+                await flow._test_connection(user_input)
+
+            assert user_input[CONF_HOST] == "my-cluster.example.com"
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+
+
+async def test_test_connection_empty_host_after_strip(hass: HomeAssistant):
+    """Test _test_connection raises when host is empty after stripping protocol."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_k8s_client.Configuration.return_value = MagicMock()
+    cf_module.client = mock_k8s_client
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = hass
+
+            with pytest.raises(ValueError, match="Host cannot be empty"):
+                await flow._test_connection(
+                    {
+                        CONF_HOST: "https://",
+                        CONF_API_TOKEN: "test-token",
+                    }
+                )
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+
+
+async def test_test_connection_client_is_none(hass: HomeAssistant):
+    """Test _test_connection raises when client module is None."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    cf_module.KUBERNETES_AVAILABLE = True
+    cf_module.client = None
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = hass
+
+            with pytest.raises(ValueError, match="Kubernetes client not available"):
+                await flow._test_connection(
+                    {
+                        CONF_HOST: "test-host",
+                        CONF_API_TOKEN: "test-token",
+                    }
+                )
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+
+
+async def test_test_connection_api_exception_with_body(hass: HomeAssistant):
+    """Test _test_connection logs response body when ApiException has body."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    original_api_exc = cf_module.ApiException
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_k8s_client.Configuration.return_value = MagicMock()
+    mock_k8s_client.ApiClient.return_value = MagicMock()
+    mock_k8s_client.CoreV1Api.return_value = MagicMock()
+    cf_module.client = mock_k8s_client
+
+    class FakeApiException(Exception):
+        def __init__(self):
+            self.status = 403
+            self.reason = "Forbidden"
+            self.body = '{"message": "forbidden: User cannot list resources"}'
+
+    cf_module.ApiException = FakeApiException
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = hass
+            flow._test_connection_aiohttp = AsyncMock(return_value=False)
+
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+
+            with patch.object(
+                loop,
+                "run_in_executor",
+                new=AsyncMock(side_effect=FakeApiException()),
+            ):
+                with pytest.raises(ValueError, match="Failed to connect"):
+                    await flow._test_connection(
+                        {
+                            CONF_HOST: "test-host",
+                            CONF_API_TOKEN: "test-token",
+                            CONF_VERIFY_SSL: False,
+                        }
+                    )
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+        cf_module.ApiException = original_api_exc
+
+
+async def test_test_connection_api_exception_404_aiohttp_fallback(
+    hass: HomeAssistant,
+):
+    """Test _test_connection with 404 ApiException falls back to aiohttp."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    original_api_exc = cf_module.ApiException
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_k8s_client.Configuration.return_value = MagicMock()
+    mock_k8s_client.ApiClient.return_value = MagicMock()
+    mock_k8s_client.CoreV1Api.return_value = MagicMock()
+    cf_module.client = mock_k8s_client
+
+    class FakeApiException(Exception):
+        def __init__(self):
+            self.status = 404
+            self.reason = "Not Found"
+            self.body = None
+
+    cf_module.ApiException = FakeApiException
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = hass
+            flow._test_connection_aiohttp = AsyncMock(return_value=True)
+
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+
+            with patch.object(
+                loop,
+                "run_in_executor",
+                new=AsyncMock(side_effect=FakeApiException()),
+            ):
+                # Should succeed because aiohttp fallback returns True
+                await flow._test_connection(
+                    {
+                        CONF_HOST: "test-host",
+                        CONF_API_TOKEN: "test-token",
+                        CONF_VERIFY_SSL: False,
+                    }
+                )
+
+            flow._test_connection_aiohttp.assert_called_once()
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+        cf_module.ApiException = original_api_exc
+
+
+async def test_test_connection_api_exception_500_aiohttp_fails(
+    hass: HomeAssistant,
+):
+    """Test _test_connection with 500 ApiException and aiohttp also failing."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    original_api_exc = cf_module.ApiException
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_k8s_client.Configuration.return_value = MagicMock()
+    mock_k8s_client.ApiClient.return_value = MagicMock()
+    mock_k8s_client.CoreV1Api.return_value = MagicMock()
+    cf_module.client = mock_k8s_client
+
+    class FakeApiException(Exception):
+        def __init__(self):
+            self.status = 500
+            self.reason = "Internal Server Error"
+            self.body = None
+
+    cf_module.ApiException = FakeApiException
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = hass
+            flow._test_connection_aiohttp = AsyncMock(return_value=False)
+
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+
+            with patch.object(
+                loop,
+                "run_in_executor",
+                new=AsyncMock(side_effect=FakeApiException()),
+            ):
+                with pytest.raises(ValueError, match="Failed to connect"):
+                    await flow._test_connection(
+                        {
+                            CONF_HOST: "test-host",
+                            CONF_API_TOKEN: "test-token",
+                            CONF_VERIFY_SSL: False,
+                        }
+                    )
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+        cf_module.ApiException = original_api_exc
+
+
+async def test_test_connection_host_with_whitespace(hass: HomeAssistant):
+    """Test _test_connection strips whitespace from host."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    mock_k8s_client = MagicMock()
+    mock_config = MagicMock()
+    mock_k8s_client.Configuration.return_value = mock_config
+    mock_k8s_client.ApiClient.return_value = MagicMock()
+    mock_k8s_client.CoreV1Api.return_value = MagicMock()
+    cf_module.client = mock_k8s_client
+
+    try:
+        with patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ):
+            flow = KubernetesConfigFlow()
+            flow.hass = hass
+
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            user_input = {
+                CONF_HOST: "  my-cluster.example.com  ",
+                CONF_API_TOKEN: "test-token",
+                CONF_VERIFY_SSL: False,
+            }
+
+            with patch.object(
+                loop, "run_in_executor", new=AsyncMock(return_value=None)
+            ):
+                await flow._test_connection(user_input)
+
+            assert user_input[CONF_HOST] == "my-cluster.example.com"
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: _fetch_namespaces edge cases
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_namespaces_empty_items(hass: HomeAssistant):
+    """Test _fetch_namespaces returns empty list when items array is empty."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={"items": []})
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == []
+
+
+async def test_fetch_namespaces_malformed_json_missing_metadata(
+    hass: HomeAssistant,
+):
+    """Test _fetch_namespaces handles malformed JSON with missing metadata key."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(
+        return_value={
+            "items": [
+                {"not_metadata": {"name": "default"}},
+            ]
+        }
+    )
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        # This should raise a KeyError which is caught by the generic except
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    # KeyError from item["metadata"]["name"] is caught by the generic except
+    assert result == []
+
+
+async def test_fetch_namespaces_no_items_key(hass: HomeAssistant):
+    """Test _fetch_namespaces handles response with no items key."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={"kind": "NamespaceList"})
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    # data.get("items", []) returns [] when key missing
+    assert result == []
+
+
+async def test_fetch_namespaces_timeout(hass: HomeAssistant):
+    """Test _fetch_namespaces returns empty list on asyncio.TimeoutError."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(side_effect=TimeoutError())
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == []
+
+
+async def test_fetch_namespaces_non_200_with_empty_body(hass: HomeAssistant):
+    """Test _fetch_namespaces handles non-200 with empty error text."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 500
+    mock_response.text = AsyncMock(return_value="")
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == []
+
+
+async def test_fetch_namespaces_uses_default_port(hass: HomeAssistant):
+    """Test _fetch_namespaces uses DEFAULT_PORT when port not provided."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(
+        return_value={"items": [{"metadata": {"name": "default"}}]}
+    )
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+                # No CONF_PORT provided
+            }
+        )
+
+    assert result == ["default"]
+    # Verify the URL used the default port
+    call_args = mock_session.get.call_args
+    assert f":{DEFAULT_PORT}" in call_args[0][0]
+
+
+async def test_fetch_namespaces_client_timeout_error(hass: HomeAssistant):
+    """Test _fetch_namespaces returns empty list on aiohttp.ServerTimeoutError."""
+    import aiohttp as aiohttp_mod
+
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(
+        side_effect=aiohttp_mod.ServerTimeoutError("Request timed out")
+    )
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: _test_connection_aiohttp edge cases
+# ---------------------------------------------------------------------------
+
+
+async def test_test_connection_aiohttp_uses_default_port(hass: HomeAssistant):
+    """Test _test_connection_aiohttp uses DEFAULT_PORT when port not provided."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 200
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._test_connection_aiohttp(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+                # No CONF_PORT
+            }
+        )
+
+    assert result is True
+    call_args = mock_session.get.call_args
+    assert f":{DEFAULT_PORT}" in call_args[0][0]
+
+
+async def test_test_connection_aiohttp_client_error(hass: HomeAssistant):
+    """Test _test_connection_aiohttp returns False on aiohttp.ClientError."""
+    import aiohttp as aiohttp_mod
+
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(
+        side_effect=aiohttp_mod.ClientConnectionError("Connection refused")
+    )
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._test_connection_aiohttp(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: async_step_namespaces edge cases
+# ---------------------------------------------------------------------------
+
+
+async def test_async_step_namespaces_missing_namespace_key(hass: HomeAssistant):
+    """Test namespace step returns error when CONF_NAMESPACE key is missing."""
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ),
+        patch("custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE", True),
+        patch.object(KubernetesConfigFlow, "_test_connection", new_callable=AsyncMock),
+        patch.object(
+            KubernetesConfigFlow,
+            "_fetch_namespaces",
+            new_callable=AsyncMock,
+            return_value=["default", "kube-system"],
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+                CONF_MONITOR_ALL_NAMESPACES: False,
+            },
+        )
+        assert result["step_id"] == "namespaces"
+
+        # Submit with empty namespace list to trigger validation error
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={CONF_NAMESPACE: []},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "namespaces"
+    assert CONF_NAMESPACE in result["errors"]
+
+
+async def test_async_step_namespaces_filters_empty_strings(hass: HomeAssistant):
+    """Test namespace step filters out empty strings from namespace list.
+
+    Direct method call to bypass schema validation.
+    """
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+    flow.context = {"source": config_entries.SOURCE_USER}
+    flow._connection_data = {
+        CONF_CLUSTER_NAME: "test-cluster",
+        CONF_HOST: "test-host",
+        CONF_PORT: 6443,
+        CONF_API_TOKEN: "test-token",
+    }
+
+    result = await flow.async_step_namespaces(
+        {CONF_NAMESPACE: ["default", "", "production", ""]}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_NAMESPACE] == ["default", "production"]
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: async_step_reconfigure edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestReconfigureAdditionalCoverage:
+    """Additional reconfigure flow tests for untested paths."""
+
+    @pytest.fixture
+    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Return a config entry with CA cert for reconfigure tests."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "host.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "test-token",
+                CONF_CA_CERT: "/path/to/ca.crt",
+                CONF_VERIFY_SSL: True,
+                CONF_MONITOR_ALL_NAMESPACES: True,
+                CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
+                CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
+                CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+                CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
+            },
+            unique_id="test-cluster",
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    async def _init_reconfigure(self, hass, entry):
+        """Helper to start a reconfigure flow."""
+        return await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+
+    async def test_reconfigure_keeps_ca_cert_when_provided(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that CA cert is preserved when user provides a new one."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+            patch.object(
+                KubernetesConfigFlow, "_test_connection", new_callable=AsyncMock
+            ),
+        ):
+            result = await self._init_reconfigure(hass, mock_config_entry)
+
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={
+                    CONF_HOST: "host.example.com",
+                    CONF_PORT: 6443,
+                    CONF_API_TOKEN: "test-token",
+                    CONF_CA_CERT: "/new/ca.crt",
+                    CONF_VERIFY_SSL: True,
+                    CONF_MONITOR_ALL_NAMESPACES: True,
+                },
+            )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
+        assert mock_config_entry.data[CONF_CA_CERT] == "/new/ca.crt"
+
+    async def test_reconfigure_applies_default_values(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that reconfigure applies defaults for optional fields not submitted."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+            patch.object(
+                KubernetesConfigFlow, "_test_connection", new_callable=AsyncMock
+            ),
+        ):
+            result = await self._init_reconfigure(hass, mock_config_entry)
+
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={
+                    CONF_HOST: "host.example.com",
+                    CONF_API_TOKEN: "test-token",
+                    CONF_MONITOR_ALL_NAMESPACES: True,
+                },
+            )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert mock_config_entry.data[CONF_PORT] == DEFAULT_PORT
+        assert mock_config_entry.data[CONF_VERIFY_SSL] == DEFAULT_VERIFY_SSL
+        assert (
+            mock_config_entry.data[CONF_SWITCH_UPDATE_INTERVAL]
+            == DEFAULT_SWITCH_UPDATE_INTERVAL
+        )
+        assert (
+            mock_config_entry.data[CONF_SCALE_VERIFICATION_TIMEOUT]
+            == DEFAULT_SCALE_VERIFICATION_TIMEOUT
+        )
+        assert mock_config_entry.data[CONF_SCALE_COOLDOWN] == DEFAULT_SCALE_COOLDOWN
+        assert (
+            mock_config_entry.data[CONF_DEVICE_GROUPING_MODE]
+            == DEFAULT_DEVICE_GROUPING_MODE
+        )
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: reconfigure_namespaces with string current_namespaces
+# ---------------------------------------------------------------------------
+
+
+class TestReconfigureNamespacesStringEntry:
+    """Tests for reconfigure_namespaces when current namespaces is a string."""
+
+    @pytest.fixture
+    def entry_with_string_namespace(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Return entry where CONF_NAMESPACE is a string (legacy format)."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "host.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "test-token",
+                CONF_VERIFY_SSL: False,
+                CONF_MONITOR_ALL_NAMESPACES: False,
+                CONF_NAMESPACE: "production",
+                CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
+                CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
+                CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+                CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
+            },
+            unique_id="test-cluster",
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    async def test_reconfigure_namespaces_string_current_namespace(
+        self, hass: HomeAssistant, entry_with_string_namespace: MockConfigEntry
+    ):
+        """Test reconfigure_namespaces converts string current_namespaces to list."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+            patch.object(
+                KubernetesConfigFlow, "_test_connection", new_callable=AsyncMock
+            ),
+            patch.object(
+                KubernetesConfigFlow,
+                "_fetch_namespaces",
+                new_callable=AsyncMock,
+                return_value=["default", "production", "staging"],
+            ),
+        ):
+            result = await hass.config_entries.flow.async_init(
+                DOMAIN,
+                context={
+                    "source": config_entries.SOURCE_RECONFIGURE,
+                    "entry_id": entry_with_string_namespace.entry_id,
+                },
+            )
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={
+                    CONF_HOST: "host.example.com",
+                    CONF_PORT: 6443,
+                    CONF_API_TOKEN: "test-token",
+                    CONF_MONITOR_ALL_NAMESPACES: False,
+                },
+            )
+
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "reconfigure_namespaces"
+
+        # Verify "production" is pre-selected (converted from string)
+        for key in result["data_schema"].schema:
+            if str(key) == CONF_NAMESPACE or (
+                hasattr(key, "schema") and key.schema == CONF_NAMESPACE
+            ):
+                assert "production" in key.default()
+                break
+        else:
+            pytest.fail(f"{CONF_NAMESPACE} not found in schema")
+
+    async def test_reconfigure_namespaces_empty_selection_shows_error(
+        self, hass: HomeAssistant, entry_with_string_namespace: MockConfigEntry
+    ):
+        """Test reconfigure_namespaces returns error when no namespace key in input."""
+        flow = KubernetesConfigFlow()
+        flow.hass = hass
+        flow._connection_data = {
+            CONF_CLUSTER_NAME: "test-cluster",
+            CONF_HOST: "host.example.com",
+            CONF_PORT: 6443,
+            CONF_API_TOKEN: "test-token",
+        }
+        flow.handler = DOMAIN
+        flow.context = {
+            "source": config_entries.SOURCE_RECONFIGURE,
+            "entry_id": entry_with_string_namespace.entry_id,
+        }
+
+        # Submit with empty dict (missing CONF_NAMESPACE)
+        with patch.object(
+            KubernetesConfigFlow,
+            "_fetch_namespaces",
+            new_callable=AsyncMock,
+            return_value=["default"],
+        ):
+            result = await flow.async_step_reconfigure_namespaces({})
+
+        assert result["type"] is FlowResultType.FORM
+        assert CONF_NAMESPACE in result["errors"]
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: _ensure_kubernetes_imported double-checked locking
+# ---------------------------------------------------------------------------
+
+
+def test_ensure_kubernetes_imported_cached_true():
+    """Test _ensure_kubernetes_imported returns cached True without re-importing."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original = cf_module.KUBERNETES_AVAILABLE
+    cf_module.KUBERNETES_AVAILABLE = True
+
+    try:
+        # Should return immediately without attempting import
+        result = cf_module._ensure_kubernetes_imported()
+        assert result is True
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original
+
+
+def test_ensure_kubernetes_imported_cached_false():
+    """Test _ensure_kubernetes_imported returns cached False without re-importing."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original = cf_module.KUBERNETES_AVAILABLE
+    cf_module.KUBERNETES_AVAILABLE = False
+
+    try:
+        result = cf_module._ensure_kubernetes_imported()
+        assert result is False
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: user step with namespace removal
+# ---------------------------------------------------------------------------
+
+
+async def test_async_step_user_monitor_all_creates_entry_without_namespace(
+    hass: HomeAssistant,
+):
+    """Test that user step creates entry without CONF_NAMESPACE when monitoring all."""
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ),
+        patch("custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE", True),
+        patch.object(KubernetesConfigFlow, "_test_connection", new_callable=AsyncMock),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "test-host.example.com",
+                CONF_API_TOKEN: "test-token",
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            },
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert CONF_NAMESPACE not in result["data"]
+
+
+async def test_async_step_user_sets_all_defaults(hass: HomeAssistant):
+    """Test that user step sets all default values for optional fields."""
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ),
+        patch("custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE", True),
+        patch.object(KubernetesConfigFlow, "_test_connection", new_callable=AsyncMock),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "test-host.example.com",
+                CONF_API_TOKEN: "test-token",
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            },
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    data = result["data"]
+    assert data[CONF_PORT] == DEFAULT_PORT
+    assert data[CONF_VERIFY_SSL] == DEFAULT_VERIFY_SSL
+    assert data[CONF_SWITCH_UPDATE_INTERVAL] == DEFAULT_SWITCH_UPDATE_INTERVAL
+    assert data[CONF_SCALE_VERIFICATION_TIMEOUT] == DEFAULT_SCALE_VERIFICATION_TIMEOUT
+    assert data[CONF_SCALE_COOLDOWN] == DEFAULT_SCALE_COOLDOWN
+    assert data[CONF_DEVICE_GROUPING_MODE] == DEFAULT_DEVICE_GROUPING_MODE
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: _test_connection_aiohttp specific status codes
+# ---------------------------------------------------------------------------
+
+
+async def test_test_connection_aiohttp_forbidden(hass: HomeAssistant):
+    """Test _test_connection_aiohttp returns False on 403 Forbidden."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 403
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._test_connection_aiohttp(
+            {
+                CONF_HOST: "test-host",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result is False
+
+
+async def test_test_connection_aiohttp_500(hass: HomeAssistant):
+    """Test _test_connection_aiohttp returns False on 500 Internal Server Error."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 500
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._test_connection_aiohttp(
+            {
+                CONF_HOST: "test-host",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result is False
+
+
+async def test_test_connection_aiohttp_timeout(hass: HomeAssistant):
+    """Test _test_connection_aiohttp returns False on timeout."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(side_effect=TimeoutError())
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._test_connection_aiohttp(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result is False
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: fetch namespaces non-200 status codes
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_namespaces_401_unauthorized(hass: HomeAssistant):
+    """Test _fetch_namespaces returns empty list on 401 Unauthorized."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    mock_response = MagicMock()
+    mock_response.status = 401
+    mock_response.text = AsyncMock(return_value="Unauthorized")
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "bad-token",
+            }
+        )
+
+    assert result == []
+
+
+async def test_fetch_namespaces_long_error_text_truncated(hass: HomeAssistant):
+    """Test _fetch_namespaces truncates long error text in log message."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    long_error = "x" * 500
+    mock_response = MagicMock()
+    mock_response.status = 500
+    mock_response.text = AsyncMock(return_value=long_error)
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+
+    with patch("aiohttp.ClientSession", return_value=mock_session):
+        # Should not raise, just return empty list
+        result = await flow._fetch_namespaces(
+            {
+                CONF_HOST: "test-host",
+                CONF_API_TOKEN: "test-token",
+            }
+        )
+
+    assert result == []

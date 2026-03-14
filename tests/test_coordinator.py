@@ -1893,19 +1893,15 @@ class TestRunWatchLoopExtended:
 
     async def test_stream_end_reconnects_immediately(self, coord, mock_client):
         """When the stream ends cleanly, the loop should reconnect without backoff."""
-        call_count = 0
+        mock_client.list_resource_with_version.return_value = ([], "100")
 
-        async def _list_side_effect(url):
-            nonlocal call_count
-            call_count += 1
-            if call_count >= 2:
-                coord._watch_stop_event.set()
-            return [], str(call_count * 100)
+        stream_count = 0
 
-        mock_client.list_resource_with_version.side_effect = _list_side_effect
-
-        # First stream ends cleanly (empty generator), second iteration stops
         async def _empty_stream(url, rv):
+            nonlocal stream_count
+            stream_count += 1
+            if stream_count >= 2:
+                coord._watch_stop_event.set()
             return
             yield
 
@@ -1917,9 +1913,9 @@ class TestRunWatchLoopExtended:
             mock_client._parse_pod_item,
         )
 
-        # The stream ended cleanly the first time, so it reconnected. The second
-        # list call set the stop event, so only 2 calls total.
-        assert call_count == 2
+        # The stream ended cleanly the first time, so it reconnected.
+        # The second stream set the stop event, proving reconnection happened.
+        assert stream_count == 2
 
 
 class TestBuildWatchConfigs:

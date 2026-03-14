@@ -33,6 +33,7 @@ from custom_components.kubernetes.sensor import (
     _discover_new_cronjob_sensors,
     _discover_new_daemonset_sensors,
     _discover_new_job_sensors,
+    _discover_new_pod_sensors,
     _discover_new_workload_metric_sensors,
     _discover_new_workload_status_sensors,
 )
@@ -2862,3 +2863,1277 @@ class TestDiscoverJobSensors:
             mock_coordinator, mock_client, mock_config_entry, set()
         )
         assert new_sensors == []
+
+
+class TestDiscoverPodSensors:
+    """Tests for the _discover_new_pod_sensors helper."""
+
+    def test_discovers_sensor_for_new_pod(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that a sensor is created for a new pod."""
+        mock_coordinator.data = {
+            "pods": {
+                "default/nginx-abc123": {
+                    "name": "nginx-abc123",
+                    "namespace": "default",
+                    "phase": "Running",
+                }
+            }
+        }
+        new_sensors = _discover_new_pod_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+
+        assert len(new_sensors) == 1
+        assert isinstance(new_sensors[0], KubernetesPodSensor)
+        assert new_sensors[0].pod_name == "nginx-abc123"
+        assert new_sensors[0].namespace == "default"
+        assert new_sensors[0].unique_id == "test_entry_id_pod_default_nginx-abc123"
+
+    def test_skips_existing_sensor(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an already-registered pod sensor is not duplicated."""
+        mock_coordinator.data = {
+            "pods": {
+                "default/nginx-abc123": {
+                    "name": "nginx-abc123",
+                    "namespace": "default",
+                    "phase": "Running",
+                }
+            }
+        }
+        existing_ids = {"test_entry_id_pod_default_nginx-abc123"}
+        new_sensors = _discover_new_pod_sensors(
+            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+        assert new_sensors == []
+
+    def test_discovers_multiple_pods(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test discovery of multiple new pod sensors across namespaces."""
+        mock_coordinator.data = {
+            "pods": {
+                "default/nginx-abc123": {
+                    "name": "nginx-abc123",
+                    "namespace": "default",
+                    "phase": "Running",
+                },
+                "production/api-xyz789": {
+                    "name": "api-xyz789",
+                    "namespace": "production",
+                    "phase": "Running",
+                },
+                "kube-system/coredns-def456": {
+                    "name": "coredns-def456",
+                    "namespace": "kube-system",
+                    "phase": "Running",
+                },
+            }
+        }
+        new_sensors = _discover_new_pod_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert len(new_sensors) == 3
+        names = {s.pod_name for s in new_sensors}
+        assert names == {"nginx-abc123", "api-xyz789", "coredns-def456"}
+
+    def test_discovers_only_new_pods_when_some_exist(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that only new pods are discovered when some already exist."""
+        mock_coordinator.data = {
+            "pods": {
+                "default/nginx-abc123": {
+                    "name": "nginx-abc123",
+                    "namespace": "default",
+                    "phase": "Running",
+                },
+                "default/redis-xyz789": {
+                    "name": "redis-xyz789",
+                    "namespace": "default",
+                    "phase": "Running",
+                },
+            }
+        }
+        existing_ids = {"test_entry_id_pod_default_nginx-abc123"}
+        new_sensors = _discover_new_pod_sensors(
+            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        )
+        assert len(new_sensors) == 1
+        assert new_sensors[0].pod_name == "redis-xyz789"
+
+    def test_returns_empty_when_no_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when coordinator has no data."""
+        mock_coordinator.data = None
+        new_sensors = _discover_new_pod_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert new_sensors == []
+
+    def test_returns_empty_when_no_pods(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that an empty list is returned when there are no pods."""
+        mock_coordinator.data = {"pods": {}}
+        new_sensors = _discover_new_pod_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert new_sensors == []
+
+    def test_defaults_namespace_to_default(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that namespace defaults to 'default' when missing from pod data."""
+        mock_coordinator.data = {
+            "pods": {
+                "some-pod-key": {
+                    "name": "orphan-pod",
+                }
+            }
+        }
+        new_sensors = _discover_new_pod_sensors(
+            mock_coordinator, mock_client, mock_config_entry, set()
+        )
+        assert len(new_sensors) == 1
+        assert new_sensors[0].namespace == "default"
+        assert new_sensors[0].unique_id == "test_entry_id_pod_default_orphan-pod"
+
+
+class TestKubernetesJobsSensorExtended:
+    """Extended tests for KubernetesJobsSensor covering async_update and availability."""
+
+    def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
+        return KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
+
+    def test_native_value_missing_jobs_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native_value returns 0 when jobs key is missing from data."""
+        mock_coordinator.data = {"deployments": {}, "statefulsets": {}}
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == 0
+
+    def test_device_info_uses_cluster_device(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that the jobs count sensor uses the cluster device."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
+
+    def test_available_property(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test sensor availability follows coordinator status."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        mock_coordinator.last_update_success = True
+        assert sensor.available is True
+
+        mock_coordinator.last_update_success = False
+        assert sensor.available is False
+
+    async def test_async_update_success(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test async update when coordinator succeeds."""
+        mock_coordinator.data = {"jobs": {"job1": {}}}
+        mock_coordinator.async_request_refresh = AsyncMock()
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        await sensor.async_update()
+        mock_coordinator.async_request_refresh.assert_called_once()
+
+    async def test_async_update_fallback_to_client(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test async update falls back to client when coordinator has no jobs data."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_jobs_count = AsyncMock(return_value=5)
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        await sensor.async_update()
+        mock_client.get_jobs_count.assert_called_once()
+        assert sensor._attr_native_value == 5
+
+    async def test_async_update_exception_sets_zero(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test async update sets value to 0 on exception."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock(
+            side_effect=Exception("API Error")
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        await sensor.async_update()
+        assert sensor._attr_native_value == 0
+
+
+class TestKubernetesJobSensorExtended:
+    """Extended tests for KubernetesJobSensor covering availability and edge cases."""
+
+    def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
+        return KubernetesJobSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "data-import",
+            "production",
+        )
+
+    def test_available_property(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test sensor availability follows coordinator status."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        mock_coordinator.last_update_success = True
+        assert sensor.available is True
+
+        mock_coordinator.last_update_success = False
+        assert sensor.available is False
+
+    def test_unique_id_includes_namespace(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that the unique_id includes namespace to avoid collisions."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.unique_id == "test_entry_id_job_production_data-import"
+
+    def test_extra_state_attributes_defaults(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes use defaults for missing keys."""
+        mock_coordinator.get_job_data = MagicMock(
+            return_value={
+                "namespace": "production",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["completions"] == 1
+        assert attrs["succeeded"] == 0
+        assert attrs["failed"] == 0
+        assert attrs["active"] == 0
+        assert attrs["start_time"] is None
+        assert attrs["completion_time"] is None
+        assert attrs[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_JOB
+
+    def test_native_value_defaults_completions_to_one(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native_value defaults completions to 1 when missing."""
+        mock_coordinator.get_job_data = MagicMock(
+            return_value={
+                "succeeded": 1,
+                "active": 0,
+                "failed": 0,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Complete"
+
+
+class TestKubernetesWorkloadStatusSensorExtended:
+    """Extended tests for KubernetesWorkloadStatusSensor covering availability and edge cases."""
+
+    def _make_sensor(
+        self,
+        mock_coordinator,
+        mock_client,
+        mock_config_entry,
+        workload_type="deployment",
+    ):
+        return KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "web-app",
+            "staging",
+            workload_type,
+        )
+
+    def test_available_property(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test sensor availability follows coordinator status."""
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+
+        mock_coordinator.last_update_success = True
+        assert sensor.available is True
+
+        mock_coordinator.last_update_success = False
+        assert sensor.available is False
+
+    def test_extra_state_attributes_workload_missing(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes return empty dict when workload is missing."""
+        mock_coordinator.data = {"deployments": {}}
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.extra_state_attributes == {}
+
+    def test_extra_state_attributes_defaults(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test extra state attributes use defaults for missing keys."""
+        mock_coordinator.data = {
+            "deployments": {
+                "web-app": {
+                    "namespace": "staging",
+                }
+            }
+        }
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        attrs = sensor.extra_state_attributes
+
+        assert attrs["namespace"] == "staging"
+        assert attrs["replicas"] == 0
+        assert attrs["ready_replicas"] == 0
+        assert attrs["available_replicas"] == 0
+
+    def test_native_value_defaults_replicas_to_zero(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test native_value returns 'Scaled Down' when replicas key is missing."""
+        mock_coordinator.data = {
+            "deployments": {
+                "web-app": {
+                    "namespace": "staging",
+                }
+            }
+        }
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        # replicas defaults to 0, so status should be "Scaled Down"
+        assert sensor.native_value == "Scaled Down"
+
+    def test_statefulset_workload_type(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test statefulset sensor reads from statefulsets key and returns correct status."""
+        mock_coordinator.data = {
+            "statefulsets": {
+                "web-app": {
+                    "namespace": "staging",
+                    "replicas": 2,
+                    "ready_replicas": 1,
+                    "available_replicas": 1,
+                }
+            }
+        }
+        sensor = self._make_sensor(
+            mock_coordinator, mock_client, mock_config_entry, "statefulset"
+        )
+        assert sensor.native_value == "Degraded"
+        attrs = sensor.extra_state_attributes
+        assert attrs["replicas"] == 2
+        assert attrs["ready_replicas"] == 1
+
+
+class TestAsyncSetupEntryWithResources:
+    """Test async_setup_entry creates sensors for pods, daemonsets, workloads, cronjobs, jobs."""
+
+    @pytest.fixture
+    def rich_coordinator(self, mock_coordinator):
+        """Coordinator with diverse resource data."""
+        mock_coordinator.get_all_pods_data = MagicMock(
+            return_value={
+                "default/nginx-abc": {
+                    "name": "nginx-abc",
+                    "namespace": "default",
+                    "phase": "Running",
+                },
+                "prod/api-xyz": {
+                    "name": "api-xyz",
+                    "namespace": "prod",
+                    "phase": "Running",
+                },
+            }
+        )
+        mock_coordinator.data = {
+            "nodes": {
+                "node-1": {"name": "node-1", "status": "Ready"},
+            },
+            "pods": {
+                "default/nginx-abc": {
+                    "name": "nginx-abc",
+                    "namespace": "default",
+                    "phase": "Running",
+                },
+                "prod/api-xyz": {
+                    "name": "api-xyz",
+                    "namespace": "prod",
+                    "phase": "Running",
+                },
+            },
+            "daemonsets": {
+                "fluentd": {"name": "fluentd", "namespace": "kube-system"},
+            },
+            "deployments": {
+                "web-app": {
+                    "name": "web-app",
+                    "namespace": "default",
+                    "replicas": 2,
+                    "ready_replicas": 2,
+                },
+            },
+            "statefulsets": {
+                "my-db": {
+                    "name": "my-db",
+                    "namespace": "default",
+                    "replicas": 1,
+                    "ready_replicas": 1,
+                },
+            },
+            "cronjobs": {
+                "nightly-backup": {
+                    "name": "nightly-backup",
+                    "namespace": "default",
+                    "schedule": "0 2 * * *",
+                    "suspend": False,
+                },
+            },
+            "jobs": {
+                "import-job": {
+                    "name": "import-job",
+                    "namespace": "default",
+                    "completions": 1,
+                    "succeeded": 1,
+                },
+            },
+        }
+        mock_coordinator.get_all_nodes_data = MagicMock(
+            return_value={"node-1": {"name": "node-1", "status": "Ready"}}
+        )
+        return mock_coordinator
+
+    @pytest.fixture
+    def setup_rich_data(self, hass, mock_config_entry, rich_coordinator, mock_client):
+        """Set up domain data with rich coordinator."""
+        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
+            "coordinator": rich_coordinator,
+            "client": mock_client,
+        }
+
+    async def test_creates_pod_sensors(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test that pod sensors are created for each pod."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        mock_add_entities.assert_called_once()
+        sensors = mock_add_entities.call_args[0][0]
+        pod_sensors = [s for s in sensors if isinstance(s, KubernetesPodSensor)]
+        assert len(pod_sensors) == 2
+        pod_names = {s.pod_name for s in pod_sensors}
+        assert pod_names == {"nginx-abc", "api-xyz"}
+
+    async def test_creates_daemonset_sensors(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test that daemonset sensors are created."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        ds_sensors = [s for s in sensors if isinstance(s, KubernetesDaemonSetSensor)]
+        assert len(ds_sensors) == 1
+        assert ds_sensors[0].daemonset_name == "fluentd"
+
+    async def test_creates_workload_status_sensors(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test that workload status sensors are created for deployments and statefulsets."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        status_sensors = [
+            s for s in sensors if isinstance(s, KubernetesWorkloadStatusSensor)
+        ]
+        assert len(status_sensors) == 2
+        names = {s.workload_name for s in status_sensors}
+        assert names == {"web-app", "my-db"}
+
+    async def test_creates_workload_metric_sensors(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test that CPU and memory metric sensors are created for each workload."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        metric_sensors = [
+            s for s in sensors if isinstance(s, KubernetesWorkloadMetricSensor)
+        ]
+        # 2 workloads (web-app + my-db) x 2 metrics (cpu + memory) = 4
+        assert len(metric_sensors) == 4
+
+    async def test_creates_cronjob_sensors(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test that cronjob sensors are created."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        cj_sensors = [s for s in sensors if isinstance(s, KubernetesCronJobSensor)]
+        assert len(cj_sensors) == 1
+        assert cj_sensors[0].cronjob_name == "nightly-backup"
+
+    async def test_creates_job_sensors(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test that job sensors are created."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        job_sensors = [s for s in sensors if isinstance(s, KubernetesJobSensor)]
+        assert len(job_sensors) == 1
+        assert job_sensors[0].job_name == "import-job"
+
+    async def test_total_sensor_count(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test the total number of sensors created."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        # 7 aggregate + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 19
+        assert len(sensors) == 19
+
+    async def test_stores_add_entities_callback(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test that the add_entities callback is stored for dynamic management."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        stored = hass.data[DOMAIN][mock_config_entry.entry_id]["sensor_add_entities"]
+        assert stored is mock_add_entities
+
+    async def test_stores_pending_unique_ids(
+        self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
+    ):
+        """Test that sensor_pending_unique_ids set is created."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        pending = hass.data[DOMAIN][mock_config_entry.entry_id][
+            "sensor_pending_unique_ids"
+        ]
+        assert isinstance(pending, set)
+        assert len(pending) == 0
+
+
+class TestAggregateSensorFallbackPaths:
+    """Test aggregate sensor async_update fallback paths when coordinator.data is None."""
+
+    async def test_pods_sensor_fallback(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test PodsSensor falls back to client.get_pods_count when data is None."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_pods_count = AsyncMock(return_value=10)
+        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
+        await sensor.async_update()
+        mock_client.get_pods_count.assert_called_once()
+        assert sensor._attr_native_value == 10
+
+    async def test_nodes_sensor_fallback(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test NodesSensor falls back to client.get_nodes_count when data is None."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_nodes_count = AsyncMock(return_value=7)
+        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
+        await sensor.async_update()
+        mock_client.get_nodes_count.assert_called_once()
+        assert sensor._attr_native_value == 7
+
+    async def test_deployments_sensor_fallback(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test DeploymentsSensor falls back to client.get_deployments_count when data is None."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_deployments_count = AsyncMock(return_value=4)
+        sensor = KubernetesDeploymentsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        mock_client.get_deployments_count.assert_called_once()
+        assert sensor._attr_native_value == 4
+
+    async def test_statefulsets_sensor_fallback(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test StatefulSetsSensor falls back to client.get_statefulsets_count when data is None."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_statefulsets_count = AsyncMock(return_value=3)
+        sensor = KubernetesStatefulSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        mock_client.get_statefulsets_count.assert_called_once()
+        assert sensor._attr_native_value == 3
+
+    async def test_daemonsets_sensor_fallback(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test DaemonSetsSensor falls back to client.get_daemonsets_count when data is None."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_daemonsets_count = AsyncMock(return_value=2)
+        sensor = KubernetesDaemonSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        mock_client.get_daemonsets_count.assert_called_once()
+        assert sensor._attr_native_value == 2
+
+    async def test_cronjobs_sensor_fallback(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobsSensor falls back to client.get_cronjobs_count when data is None."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_cronjobs_count = AsyncMock(return_value=6)
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        mock_client.get_cronjobs_count.assert_called_once()
+        assert sensor._attr_native_value == 6
+
+    async def test_jobs_sensor_fallback(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test JobsSensor falls back to client.get_jobs_count when data is None."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_jobs_count = AsyncMock(return_value=8)
+        sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
+        await sensor.async_update()
+        mock_client.get_jobs_count.assert_called_once()
+        assert sensor._attr_native_value == 8
+
+    async def test_pods_sensor_fallback_missing_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test PodsSensor fallback when data exists but pods_count key is missing."""
+        mock_coordinator.data = {"deployments": {}}
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_pods_count = AsyncMock(return_value=3)
+        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
+        await sensor.async_update()
+        mock_client.get_pods_count.assert_called_once()
+        assert sensor._attr_native_value == 3
+
+    async def test_deployments_sensor_fallback_missing_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test DeploymentsSensor fallback when data exists but deployments key is missing."""
+        mock_coordinator.data = {"pods_count": 5}
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_deployments_count = AsyncMock(return_value=2)
+        sensor = KubernetesDeploymentsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        mock_client.get_deployments_count.assert_called_once()
+        assert sensor._attr_native_value == 2
+
+
+class TestDiscoverAndAddNewSensorsDeviceCreation:
+    """Test _async_discover_and_add_new_sensors namespace device creation."""
+
+    async def test_creates_namespace_devices_for_new_pods(
+        self, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test namespace devices are created for pods in new namespaces."""
+        from custom_components.kubernetes.sensor import (
+            _async_discover_and_add_new_sensors,
+        )
+
+        mock_hass = MagicMock()
+        mock_hass.data = {
+            DOMAIN: {
+                mock_config_entry.entry_id: {
+                    "sensor_add_entities": MagicMock(),
+                    "sensor_pending_unique_ids": set(),
+                }
+            }
+        }
+
+        mock_coordinator.data = {
+            "pods": {
+                "staging/app-1": {
+                    "name": "app-1",
+                    "namespace": "staging",
+                    "phase": "Running",
+                },
+            },
+            "nodes": {},
+        }
+
+        mock_entity_registry = MagicMock()
+        mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = []
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.sensor.async_get_entity_registry",
+                return_value=mock_entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+        ):
+            await _async_discover_and_add_new_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
+
+        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
+            "sensor_add_entities"
+        ]
+        callback.assert_called_once()
+        added = callback.call_args[0][0]
+        pod_sensors = [s for s in added if isinstance(s, KubernetesPodSensor)]
+        assert len(pod_sensors) == 1
+        assert pod_sensors[0].namespace == "staging"
+
+    async def test_creates_namespace_devices_for_cronjobs_and_jobs(
+        self, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test namespace devices are created for cronjobs and jobs."""
+        from custom_components.kubernetes.sensor import (
+            _async_discover_and_add_new_sensors,
+        )
+
+        mock_hass = MagicMock()
+        mock_hass.data = {
+            DOMAIN: {
+                mock_config_entry.entry_id: {
+                    "sensor_add_entities": MagicMock(),
+                    "sensor_pending_unique_ids": set(),
+                }
+            }
+        }
+
+        mock_coordinator.data = {
+            "nodes": {},
+            "pods": {},
+            "daemonsets": {},
+            "deployments": {},
+            "statefulsets": {},
+            "cronjobs": {
+                "backup": {
+                    "name": "backup",
+                    "namespace": "ops",
+                    "schedule": "0 2 * * *",
+                    "suspend": False,
+                },
+            },
+            "jobs": {
+                "migrate-data": {
+                    "name": "migrate-data",
+                    "namespace": "ops",
+                    "completions": 1,
+                    "succeeded": 0,
+                },
+            },
+        }
+
+        mock_entity_registry = MagicMock()
+        mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = []
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.sensor.async_get_entity_registry",
+                return_value=mock_entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+        ):
+            await _async_discover_and_add_new_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
+
+        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
+            "sensor_add_entities"
+        ]
+        callback.assert_called_once()
+        added = callback.call_args[0][0]
+        cj_sensors = [s for s in added if isinstance(s, KubernetesCronJobSensor)]
+        job_sensors = [s for s in added if isinstance(s, KubernetesJobSensor)]
+        assert len(cj_sensors) == 1
+        assert len(job_sensors) == 1
+        assert cj_sensors[0].namespace == "ops"
+        assert job_sensors[0].namespace == "ops"
+
+    async def test_creates_namespace_devices_for_daemonsets_and_workloads(
+        self, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Test namespace devices for daemonsets, status sensors, and metric sensors."""
+        from custom_components.kubernetes.sensor import (
+            _async_discover_and_add_new_sensors,
+        )
+
+        mock_hass = MagicMock()
+        mock_hass.data = {
+            DOMAIN: {
+                mock_config_entry.entry_id: {
+                    "sensor_add_entities": MagicMock(),
+                    "sensor_pending_unique_ids": set(),
+                }
+            }
+        }
+
+        mock_coordinator.data = {
+            "nodes": {},
+            "pods": {},
+            "daemonsets": {
+                "log-collector": {"name": "log-collector", "namespace": "infra"},
+            },
+            "deployments": {
+                "frontend": {"name": "frontend", "namespace": "web"},
+            },
+            "statefulsets": {},
+            "cronjobs": {},
+            "jobs": {},
+        }
+
+        mock_entity_registry = MagicMock()
+        mock_entity_registry.entities.get_entries_for_config_entry_id.return_value = []
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.sensor.async_get_entity_registry",
+                return_value=mock_entity_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+        ):
+            await _async_discover_and_add_new_sensors(
+                mock_hass, mock_config_entry, mock_coordinator, mock_client
+            )
+
+        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
+            "sensor_add_entities"
+        ]
+        callback.assert_called_once()
+        added = callback.call_args[0][0]
+        ds_sensors = [s for s in added if isinstance(s, KubernetesDaemonSetSensor)]
+        status_sensors = [
+            s for s in added if isinstance(s, KubernetesWorkloadStatusSensor)
+        ]
+        metric_sensors = [
+            s for s in added if isinstance(s, KubernetesWorkloadMetricSensor)
+        ]
+        assert len(ds_sensors) == 1
+        assert ds_sensors[0].namespace == "infra"
+        assert len(status_sensors) == 1
+        assert status_sensors[0].namespace == "web"
+        # 1 deployment x 2 metrics = 2
+        assert len(metric_sensors) == 2
+
+
+class TestAggregateSensorDeviceInfo:
+    """Test device_info properties for aggregate sensors."""
+
+    def test_deployments_sensor_device_info(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test DeploymentsSensor device_info returns cluster device."""
+        sensor = KubernetesDeploymentsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
+
+    def test_statefulsets_sensor_device_info(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test StatefulSetsSensor device_info returns cluster device."""
+        sensor = KubernetesStatefulSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
+
+    def test_daemonsets_sensor_device_info(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test DaemonSetsSensor device_info returns cluster device."""
+        sensor = KubernetesDaemonSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
+
+    def test_cronjobs_sensor_device_info(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobsSensor device_info returns cluster device."""
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
+
+    def test_jobs_sensor_device_info(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test JobsSensor device_info returns cluster device."""
+        sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
+        device_info = sensor.device_info
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
+
+
+class TestNodeSensorAsyncUpdateException:
+    """Test KubernetesNodeSensor.async_update exception path."""
+
+    async def test_node_sensor_update_exception_is_caught(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that exceptions in node sensor async_update are handled gracefully."""
+        mock_coordinator.async_request_refresh = AsyncMock(
+            side_effect=Exception("Refresh failed")
+        )
+        sensor = KubernetesNodeSensor(
+            mock_coordinator, mock_client, mock_config_entry, "broken-node"
+        )
+        # Should not raise
+        await sensor.async_update()
+
+    async def test_node_sensor_update_logs_error(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that node sensor update logs error on exception."""
+        mock_coordinator.async_request_refresh = AsyncMock(
+            side_effect=RuntimeError("Connection lost")
+        )
+        sensor = KubernetesNodeSensor(
+            mock_coordinator, mock_client, mock_config_entry, "flaky-node"
+        )
+        # Should handle gracefully without raising
+        await sensor.async_update()
+
+
+class TestPodSensorAsyncUpdateException:
+    """Test KubernetesPodSensor.async_update exception path."""
+
+    async def test_pod_sensor_update_exception_is_caught(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that exceptions in pod sensor async_update are handled gracefully."""
+        mock_coordinator.async_request_refresh = AsyncMock(
+            side_effect=Exception("Coordinator error")
+        )
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, "default", "broken-pod"
+        )
+        # Should not raise
+        await sensor.async_update()
+
+    async def test_pod_sensor_update_logs_error(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test that pod sensor update handles RuntimeError."""
+        mock_coordinator.async_request_refresh = AsyncMock(
+            side_effect=RuntimeError("Timeout")
+        )
+        sensor = KubernetesPodSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "production",
+            "flaky-pod",
+        )
+        # Should handle gracefully without raising
+        await sensor.async_update()
+
+
+class TestDaemonSetSensorEmptyData:
+    """Test KubernetesDaemonSetSensor extra_state_attributes with empty/missing daemonset data."""
+
+    def test_extra_state_attributes_daemonset_name_missing_from_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test attributes return empty dict when daemonset name is missing from data."""
+        mock_coordinator.data = {"daemonsets": {"other-ds": {"namespace": "default"}}}
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "missing-ds", "default"
+        )
+        assert sensor.extra_state_attributes == {}
+
+    def test_extra_state_attributes_empty_daemonsets_dict(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test attributes return empty dict when daemonsets dict is empty."""
+        mock_coordinator.data = {"daemonsets": {}}
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "my-ds", "default"
+        )
+        assert sensor.extra_state_attributes == {}
+
+    def test_extra_state_attributes_no_daemonsets_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test attributes return empty dict when daemonsets key is missing."""
+        mock_coordinator.data = {"pods": {}}
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "my-ds", "default"
+        )
+        assert sensor.extra_state_attributes == {}
+
+
+class TestCronJobSensorSuspendEdgeCases:
+    """Test KubernetesCronJobSensor native_value suspend edge cases."""
+
+    def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
+        return KubernetesCronJobSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "test-cron",
+            "default",
+        )
+
+    def test_suspend_non_boolean_non_string_value(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test non-boolean/non-string suspend value defaults to not suspended."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": 42,
+                "active_jobs_count": 0,
+                "schedule": "*/5 * * * *",
+                "namespace": "default",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        # Non-bool/non-string should fall through to is_suspended = False
+        assert sensor.native_value == "Scheduled"
+
+    def test_suspend_none_value(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test None suspend value defaults to not suspended."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": None,
+                "active_jobs_count": 0,
+                "schedule": "*/5 * * * *",
+                "namespace": "default",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Scheduled"
+
+    def test_suspend_string_yes(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test string 'yes' suspend value is treated as suspended."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": "yes",
+                "active_jobs_count": 0,
+                "schedule": "*/5 * * * *",
+                "namespace": "default",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Suspended"
+
+    def test_suspend_string_on(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test string 'on' suspend value is treated as suspended."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": "on",
+                "active_jobs_count": 0,
+                "schedule": "*/5 * * * *",
+                "namespace": "default",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Suspended"
+
+    def test_suspend_string_1(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test string '1' suspend value is treated as suspended."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": "1",
+                "active_jobs_count": 0,
+                "schedule": "*/5 * * * *",
+                "namespace": "default",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Suspended"
+
+    def test_suspend_string_false(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test string 'false' suspend value is not treated as suspended."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": "false",
+                "active_jobs_count": 0,
+                "schedule": "*/5 * * * *",
+                "namespace": "default",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Scheduled"
+
+    def test_suspend_list_value(self, mock_config_entry, mock_client, mock_coordinator):
+        """Test list suspend value defaults to not suspended."""
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "suspend": [True],
+                "active_jobs_count": 0,
+                "schedule": "*/5 * * * *",
+                "namespace": "default",
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == "Scheduled"
+
+
+class TestAggregateSensorFallbackExceptions:
+    """Test aggregate sensor async_update exception handling in fallback path."""
+
+    async def test_pods_sensor_fallback_exception(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test PodsSensor sets value to 0 when fallback client call raises."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_pods_count = AsyncMock(
+            side_effect=Exception("Connection refused")
+        )
+        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
+        await sensor.async_update()
+        assert sensor._attr_native_value == 0
+
+    async def test_nodes_sensor_fallback_exception(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test NodesSensor sets value to 0 when fallback client call raises."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_nodes_count = AsyncMock(
+            side_effect=Exception("Connection refused")
+        )
+        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
+        await sensor.async_update()
+        assert sensor._attr_native_value == 0
+
+    async def test_deployments_sensor_fallback_exception(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test DeploymentsSensor sets value to 0 when fallback raises."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_deployments_count = AsyncMock(side_effect=Exception("Timeout"))
+        sensor = KubernetesDeploymentsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        assert sensor._attr_native_value == 0
+
+    async def test_statefulsets_sensor_fallback_exception(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test StatefulSetsSensor sets value to 0 when fallback raises."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_statefulsets_count = AsyncMock(side_effect=Exception("Timeout"))
+        sensor = KubernetesStatefulSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        assert sensor._attr_native_value == 0
+
+    async def test_daemonsets_sensor_fallback_exception(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test DaemonSetsSensor sets value to 0 when fallback raises."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_daemonsets_count = AsyncMock(side_effect=Exception("Timeout"))
+        sensor = KubernetesDaemonSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        assert sensor._attr_native_value == 0
+
+    async def test_cronjobs_sensor_fallback_exception(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test CronJobsSensor sets value to 0 when fallback raises."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_cronjobs_count = AsyncMock(side_effect=Exception("Timeout"))
+        sensor = KubernetesCronJobsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        await sensor.async_update()
+        assert sensor._attr_native_value == 0
+
+    async def test_jobs_sensor_fallback_exception(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test JobsSensor sets value to 0 when fallback raises."""
+        mock_coordinator.data = None
+        mock_coordinator.async_request_refresh = AsyncMock()
+        mock_client.get_jobs_count = AsyncMock(side_effect=Exception("Timeout"))
+        sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
+        await sensor.async_update()
+        assert sensor._attr_native_value == 0
