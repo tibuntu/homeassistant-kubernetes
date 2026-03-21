@@ -434,6 +434,12 @@ export class K8sPodsTable extends LitElement {
       font-weight: 500;
     }
 
+    .col-actions {
+      width: 40px;
+      min-width: 40px;
+      cursor: default;
+    }
+
     .delete-btn {
       display: inline-flex;
       align-items: center;
@@ -690,7 +696,7 @@ export class K8sPodsTable extends LitElement {
                             ? html`<ha-icon icon=${this._sortIcon("age")}></ha-icon>`
                             : nothing}
                         </th>
-                        <th></th>
+                        <th class="col-actions"></th>
                       </tr>
                     </thead>
                     <tbody>
