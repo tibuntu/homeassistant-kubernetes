@@ -45,3 +45,4 @@ frontend/dist/
 
 # AI
 .claude/
+.serena/
