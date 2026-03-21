@@ -9,14 +9,18 @@ metadata:
     # Full permissions for all integration features:
     #   - Sensors and binary sensors (monitoring)
     #   - Switches (deployment/statefulset scaling, cronjob suspension)
+    #   - Pod deletion from the sidebar panel
     #   - Experimental Watch API (real-time updates via ?watch=true)
     #   - Legacy API compatibility (Kubernetes < 1.16)
     # For a read-only setup use manifests/minimal/ instead.
 rules:
-  # Core resources — monitoring + watch
+  # Core resources — monitoring + watch + pod deletion
   - apiGroups: [""]
-    resources: ["pods", "nodes", "namespaces", "events"]
+    resources: ["nodes", "namespaces", "events"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
 
   # Apps resources — monitoring + watch
   - apiGroups: ["apps"]

@@ -1855,6 +1855,8 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		this._namespaceFilter = "all";
 		this._sortField = "name";
 		this._sortAsc = true;
+		this._deleteConfirm = null;
+		this._deleting = false;
 		this._loadingInFlight = false;
 		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 	}
@@ -1942,6 +1944,35 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		else {
 			this._sortField = field;
 			this._sortAsc = true;
+		}
+	}
+	_requestDelete(entryId, pod) {
+		this._deleteConfirm = {
+			entry_id: entryId,
+			pod_name: pod.name,
+			namespace: pod.namespace
+		};
+	}
+	_cancelDelete() {
+		this._deleteConfirm = null;
+	}
+	async _confirmDelete() {
+		if (!this._deleteConfirm) return;
+		this._deleting = true;
+		try {
+			await this.hass.callWS({
+				type: "kubernetes/pods/delete",
+				entry_id: this._deleteConfirm.entry_id,
+				pod_name: this._deleteConfirm.pod_name,
+				namespace: this._deleteConfirm.namespace
+			});
+			this._deleteConfirm = null;
+			await this._loadData();
+		} catch (err) {
+			this._error = err.message || "Failed to delete pod";
+			this._deleteConfirm = null;
+		} finally {
+			this._deleting = false;
 		}
 	}
 	_sortIcon(field) {
@@ -2166,6 +2197,103 @@ var K8sPodsTable = class K8sPodsTable extends i {
       font-weight: 500;
     }
 
+    .delete-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 50%;
+      color: var(--secondary-text-color);
+      --mdc-icon-size: 18px;
+      transition:
+        color 0.2s,
+        background 0.2s;
+    }
+
+    .delete-btn:hover {
+      color: var(--error-color, #f44336);
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+    }
+
+    .confirm-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+
+    .confirm-dialog {
+      background: var(--card-background-color, #fff);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .confirm-dialog h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      color: var(--primary-text-color);
+    }
+
+    .confirm-dialog p {
+      margin: 0 0 20px;
+      color: var(--secondary-text-color);
+      font-size: 14px;
+    }
+
+    .confirm-dialog .pod-ref {
+      font-family: monospace;
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .confirm-actions button {
+      padding: 8px 20px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      border: 1px solid var(--divider-color);
+      background: transparent;
+      color: var(--primary-text-color);
+    }
+
+    .confirm-actions button:hover {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+    }
+
+    .confirm-actions .delete-action {
+      background: var(--error-color, #f44336);
+      color: #fff;
+      border-color: var(--error-color, #f44336);
+    }
+
+    .confirm-actions .delete-action:hover {
+      opacity: 0.9;
+      background: var(--error-color, #f44336);
+    }
+
+    .confirm-actions .delete-action:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .table-wrapper {
       overflow-x: auto;
     }
@@ -2195,7 +2323,10 @@ var K8sPodsTable = class K8sPodsTable extends i {
         </ha-card>
       `;
 		if (!this._data?.clusters.length) return b`<div class="empty">No Kubernetes clusters configured.</div>`;
-		return b`${this._data.clusters.map((c) => this._renderCluster(c))}`;
+		return b`
+      ${this._data.clusters.map((c) => this._renderCluster(c))}
+      ${this._deleteConfirm ? this._renderDeleteDialog() : A}
+    `;
 	}
 	_renderCluster(cluster) {
 		const filtered = this._getFilteredPods(cluster.pods);
@@ -2293,10 +2424,11 @@ var K8sPodsTable = class K8sPodsTable extends i {
                           Age
                           ${this._sortIcon("age") ? b`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : A}
                         </th>
+                        <th></th>
                       </tr>
                     </thead>
                     <tbody>
-                      ${filtered.map((pod) => this._renderPodRow(pod))}
+                      ${filtered.map((pod) => this._renderPodRow(cluster.entry_id, pod))}
                     </tbody>
                   </table>
                 </div>
@@ -2305,7 +2437,7 @@ var K8sPodsTable = class K8sPodsTable extends i {
       </div>
     `;
 	}
-	_renderPodRow(pod) {
+	_renderPodRow(entryId, pod) {
 		const phaseClass = PHASE_CLASSES[pod.phase] || "badge-unknown";
 		return b`
       <tr>
@@ -2322,7 +2454,46 @@ var K8sPodsTable = class K8sPodsTable extends i {
           ${pod.owner_kind !== "N/A" ? b`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>` : b`<span class="owner-info">-</span>`}
         </td>
         <td>${this._formatAge(pod.creation_timestamp)}</td>
+        <td>
+          <button
+            class="delete-btn"
+            title="Delete pod"
+            @click=${() => this._requestDelete(entryId, pod)}
+          >
+            <ha-icon icon="mdi:delete-outline"></ha-icon>
+          </button>
+        </td>
       </tr>
+    `;
+	}
+	_renderDeleteDialog() {
+		const confirm = this._deleteConfirm;
+		return b`
+      <div
+        class="confirm-overlay"
+        @click=${this._deleting ? A : this._cancelDelete}
+      >
+        <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
+          <h3>Delete Pod</h3>
+          <p>
+            Are you sure you want to delete
+            <span class="pod-ref">${confirm.namespace}/${confirm.pod_name}</span>? This
+            action cannot be undone.
+          </p>
+          <div class="confirm-actions">
+            <button @click=${this._cancelDelete} ?disabled=${this._deleting}>
+              Cancel
+            </button>
+            <button
+              class="delete-action"
+              @click=${this._confirmDelete}
+              ?disabled=${this._deleting}
+            >
+              ${this._deleting ? "Deleting..." : "Delete"}
+            </button>
+          </div>
+        </div>
+      </div>
     `;
 	}
 };
@@ -2335,6 +2506,8 @@ __decorate([r()], K8sPodsTable.prototype, "_phaseFilter", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_namespaceFilter", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_sortField", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_sortAsc", void 0);
+__decorate([r()], K8sPodsTable.prototype, "_deleteConfirm", void 0);
+__decorate([r()], K8sPodsTable.prototype, "_deleting", void 0);
 K8sPodsTable = __decorate([t("k8s-pods-table")], K8sPodsTable);
 //#endregion
 //#region src/views/k8s-workloads.ts

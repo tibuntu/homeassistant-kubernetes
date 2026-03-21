@@ -5310,3 +5310,139 @@ class TestGetNodesSuccessLogging:
         result = await mock_client.get_nodes()
 
         assert result == []
+
+
+class TestDeletePod:
+    """Tests for delete_pod method."""
+
+    async def test_delete_pod_aiohttp_success(self, mock_client):
+        """delete_pod returns True when aiohttp DELETE returns 200."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.delete = MagicMock(return_value=mock_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.delete_pod("test-pod", "default")
+
+        assert result is True
+
+    async def test_delete_pod_aiohttp_202_accepted(self, mock_client):
+        """delete_pod returns True when aiohttp DELETE returns 202."""
+        mock_response = MagicMock()
+        mock_response.status = 202
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.delete = MagicMock(return_value=mock_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.delete_pod("test-pod", "default")
+
+        assert result is True
+
+    async def test_delete_pod_aiohttp_failure_falls_back_to_kubernetes(
+        self, mock_client
+    ):
+        """delete_pod falls back to official client when aiohttp fails."""
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.text = AsyncMock(return_value="Forbidden")
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.delete = MagicMock(return_value=mock_response)
+
+        # Official client succeeds
+        mock_client.core_v1.delete_namespaced_pod = MagicMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.delete_pod("test-pod", "default")
+
+        assert result is True
+
+    async def test_delete_pod_both_methods_fail(self, mock_client):
+        """delete_pod returns False when both aiohttp and official client fail."""
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.text = AsyncMock(return_value="Server Error")
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.delete = MagicMock(return_value=mock_response)
+
+        mock_client.core_v1.delete_namespaced_pod = MagicMock(
+            side_effect=ApiException(status=404, reason="Not Found")
+        )
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.delete_pod("test-pod", "default")
+
+        assert result is False
+
+    async def test_delete_pod_uses_default_namespace(self, mock_client):
+        """delete_pod uses client's default namespace when none specified."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.delete = MagicMock(return_value=mock_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.delete_pod("test-pod")
+
+        assert result is True
+
+    async def test_delete_pod_aiohttp_exception_kubernetes_fallback_succeeds(
+        self, mock_client
+    ):
+        """delete_pod falls back to official client when aiohttp raises exception."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.delete = MagicMock(
+            side_effect=aiohttp.ClientError("Connection refused")
+        )
+
+        mock_client.core_v1.delete_namespaced_pod = MagicMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.delete_pod("test-pod", "default")
+
+        assert result is True
+
+    async def test_delete_pod_aiohttp_exception_both_fail(self, mock_client):
+        """delete_pod returns False when both aiohttp exception and official client fail."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.delete = MagicMock(
+            side_effect=aiohttp.ClientError("Connection refused")
+        )
+
+        mock_client.core_v1.delete_namespaced_pod = MagicMock(
+            side_effect=ApiException(status=500, reason="Server Error")
+        )
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.delete_pod("test-pod", "default")
+
+        assert result is False
