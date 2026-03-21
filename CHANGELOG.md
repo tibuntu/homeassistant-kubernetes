@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.1.0...v1.1.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* ensure delete button column is visible in pods table ([535f8b5](https://github.com/tibuntu/homeassistant-kubernetes/commit/535f8b5297fa28b8ba1121e5c7fba8de43ca34a9))
+
 ## [1.1.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.0.0...v1.1.0) (2026-03-21)
 
 
