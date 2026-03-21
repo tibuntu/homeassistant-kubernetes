@@ -51,7 +51,17 @@
       "matchFileNames": ["frontend/package.json"],
       "groupName": "frontend dependencies",
       "semanticCommitType": "build",
-      "semanticCommitScope": "deps-frontend"
+      "semanticCommitScope": "deps-frontend",
+      "postUpgradeTasks": {
+        "commands": [
+          "npm ci --prefix frontend",
+          "npm run build --prefix frontend"
+        ],
+        "fileFilters": [
+          "custom_components/kubernetes/frontend/kubernetes-panel.js"
+        ],
+        "executionMode": "branch"
+      }
     },
     {
       "matchDepNames": ["pytest-homeassistant-custom-component", "homeassistant", "pytest", "pytest-asyncio"],
