@@ -1317,6 +1317,84 @@ class KubernetesClient:
         """Start a StatefulSet by scaling it to the specified number of replicas."""
         return await self.scale_statefulset(statefulset_name, replicas, namespace)
 
+    # Pod methods
+    async def delete_pod(self, pod_name: str, namespace: str | None = None) -> bool:
+        """Delete a pod by name."""
+        try:
+            result = await self._delete_pod_aiohttp(pod_name, namespace)
+            if result:
+                _LOGGER.info(
+                    "Successfully deleted pod %s in namespace %s",
+                    pod_name,
+                    namespace or self.namespace,
+                )
+                return result
+
+            _LOGGER.debug(
+                "aiohttp failed, trying official Kubernetes client for pod deletion"
+            )
+            result = await self._delete_pod_kubernetes(pod_name, namespace)
+            if result:
+                _LOGGER.info(
+                    "Successfully deleted pod %s in namespace %s using official client",
+                    pod_name,
+                    namespace or self.namespace,
+                )
+            return result
+        except Exception as ex:
+            self._log_error(f"delete pod {pod_name}", ex)
+            return False
+
+    async def _delete_pod_aiohttp(
+        self, pod_name: str, namespace: str | None = None
+    ) -> bool:
+        """Delete a pod using aiohttp."""
+        try:
+            target_namespace = namespace or self.namespace
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    f"https://{self.host}:{self.port}/api/v1/namespaces/{target_namespace}/pods/{pod_name}",
+                    headers=headers,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status in [200, 202]:
+                        return True
+                    else:
+                        response_text = await response.text()
+                        _LOGGER.error(
+                            "aiohttp delete pod failed with status %s: %s",
+                            response.status,
+                            response_text,
+                        )
+                        return False
+        except Exception as ex:
+            self._log_error(f"aiohttp delete pod {pod_name}", ex)
+            return False
+
+    async def _delete_pod_kubernetes(
+        self, pod_name: str, namespace: str | None = None
+    ) -> bool:
+        """Delete a pod using the official Kubernetes client."""
+        try:
+            target_namespace = namespace or self.namespace
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                self.core_v1.delete_namespaced_pod,
+                pod_name,
+                target_namespace,
+            )
+            return True
+        except Exception as ex:
+            self._log_error(f"official client delete pod {pod_name}", ex)
+            return False
+
     async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
         """Get pod metrics (CPU and memory usage)."""
         # Metrics API is usually accessed via /apis/metrics.k8s.io/v1beta1/pods

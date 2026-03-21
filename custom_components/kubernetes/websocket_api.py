@@ -48,6 +48,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_pods_list)
     websocket_api.async_register_command(hass, websocket_workloads_list)
     websocket_api.async_register_command(hass, websocket_config_list)
+    websocket_api.async_register_command(hass, websocket_delete_pod)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/cluster/overview"})
@@ -433,6 +434,62 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
         )
 
     return {"clusters": clusters}
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "kubernetes/pods/delete",
+        vol.Required("entry_id"): str,
+        vol.Required("pod_name"): str,
+        vol.Required("namespace"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_delete_pod(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Delete a pod."""
+    await _handle_delete_pod(hass, connection, msg)
+
+
+async def _handle_delete_pod(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Handle pod deletion logic."""
+    entry_id = msg["entry_id"]
+    pod_name = msg["pod_name"]
+    namespace = msg["namespace"]
+
+    domain_data = hass.data.get(DOMAIN, {})
+    entry_data = domain_data.get(entry_id)
+
+    if not isinstance(entry_data, dict):
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+
+    coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Coordinator not found")
+        return
+
+    client = coordinator.client
+    success = await client.delete_pod(pod_name, namespace)
+
+    if success:
+        # Trigger a data refresh so the UI updates
+        await coordinator.async_request_refresh()
+        connection.send_result(msg["id"], {"success": True})
+    else:
+        connection.send_error(
+            msg["id"],
+            "delete_failed",
+            f"Failed to delete pod {pod_name} in namespace {namespace}",
+        )
 
 
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/config/list"})

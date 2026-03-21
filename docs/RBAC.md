@@ -24,6 +24,7 @@ Enables all integration features:
 
 - Sensors and binary sensors (monitoring)
 - Switches (deployment / statefulset scaling, CronJob suspension)
+- Pod deletion from the sidebar panel (requires Home Assistant admin role)
 - Experimental Watch API (real-time updates via `?watch=true`)
 - Legacy API compatibility (Kubernetes < 1.16)
 
@@ -43,7 +44,7 @@ Read-only access to every resource the integration monitors. No write permission
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **pods** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Pod count and status sensors |
+| **pods** | `get`, `list`, `watch`, `delete` | ✅ | `get`, `list` only | Pod count and status sensors, pod deletion |
 | **nodes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Node count sensors and binary sensors |
 | **namespaces** | `get`, `list` | ✅ | ✅ | Namespace discovery |
 | **events** | `get`, `list`, `watch` | ✅ | ❌ | Enhanced troubleshooting |
@@ -132,7 +133,7 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["pods", "events"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["get", "list", "watch", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
   verbs: ["get", "list", "watch"]
@@ -209,6 +210,17 @@ kubectl auth can-i list cronjobs --as=system:serviceaccount:homeassistant:homeas
 kubectl auth can-i create jobs --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Fix: Apply manifests/full/ — the minimal set only grants get and list on jobs
+```
+
+#### 7. "Forbidden: User cannot delete pods"
+
+Pod deletion requires **both** Home Assistant admin role and Kubernetes RBAC permissions. Non-admin HA users will not see the delete action succeed, as the WebSocket command enforces admin access.
+
+```bash
+# Verify pod deletion permissions
+kubectl auth can-i delete pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+
+# Fix: Apply manifests/full/ — the minimal set does not grant delete permissions
 ```
 
 ### Diagnostic Commands

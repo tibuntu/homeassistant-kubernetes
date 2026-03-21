@@ -1,6 +1,6 @@
 """Tests for the Kubernetes WebSocket API module."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -14,6 +14,7 @@ from custom_components.kubernetes.websocket_api import (
     _get_nodes_list_data,
     _get_pods_list_data,
     _get_workloads_list_data,
+    _handle_delete_pod,
     async_register_websocket_commands,
 )
 
@@ -133,7 +134,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 5
+            assert mock_ws_api.async_register_command.call_count == 6
 
 
 class TestWebsocketClusterOverview:
@@ -2052,3 +2053,117 @@ class TestConfigListEdgeCases:
         assert entry["cluster_name"] == "default"
         assert entry["host"] == ""
         assert entry["namespaces"] == []
+
+
+class TestWebsocketDeletePod:
+    """Tests for the kubernetes/pods/delete command."""
+
+    async def test_delete_pod_success(self, mock_hass, sample_coordinator_data):
+        """Test successful pod deletion."""
+        mock_client = MagicMock()
+        mock_client.delete_pod = AsyncMock(return_value=True)
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+        coordinator.async_request_refresh = AsyncMock()
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/pods/delete",
+            "entry_id": "entry_1",
+            "pod_name": "nginx-abc123",
+            "namespace": "default",
+        }
+
+        await _handle_delete_pod(mock_hass, connection, msg)
+
+        mock_client.delete_pod.assert_called_once_with("nginx-abc123", "default")
+        coordinator.async_request_refresh.assert_called_once()
+        connection.send_result.assert_called_once_with(1, {"success": True})
+
+    async def test_delete_pod_failure(self, mock_hass, sample_coordinator_data):
+        """Test pod deletion failure returns error."""
+        mock_client = MagicMock()
+        mock_client.delete_pod = AsyncMock(return_value=False)
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/pods/delete",
+            "entry_id": "entry_1",
+            "pod_name": "nginx-abc123",
+            "namespace": "default",
+        }
+
+        await _handle_delete_pod(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1,
+            "delete_failed",
+            "Failed to delete pod nginx-abc123 in namespace default",
+        )
+
+    async def test_delete_pod_entry_not_found(self, mock_hass):
+        """Test pod deletion with invalid entry_id."""
+        mock_hass.data = {DOMAIN: {}}
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/pods/delete",
+            "entry_id": "nonexistent",
+            "pod_name": "test-pod",
+            "namespace": "default",
+        }
+
+        await _handle_delete_pod(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1, "not_found", "Config entry not found"
+        )
+
+    async def test_delete_pod_no_coordinator(self, mock_hass):
+        """Test pod deletion when coordinator is missing."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    # No coordinator
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/pods/delete",
+            "entry_id": "entry_1",
+            "pod_name": "test-pod",
+            "namespace": "default",
+        }
+
+        await _handle_delete_pod(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1, "not_found", "Coordinator not found"
+        )
