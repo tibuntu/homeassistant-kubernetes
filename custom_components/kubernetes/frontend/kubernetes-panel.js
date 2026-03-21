@@ -654,7 +654,7 @@ var loadHaElements = async () => {
 	}
 };
 //#endregion
-//#region \0@oxc-project+runtime@0.115.0/helpers/decorate.js
+//#region \0@oxc-project+runtime@0.120.0/helpers/decorate.js
 function __decorate(decorators, target, key, desc) {
 	var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
 	if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -1332,8 +1332,7 @@ var K8sNodesTable = class K8sNodesTable extends i {
 	_formatAge(timestamp) {
 		if (!timestamp || timestamp === "N/A") return "N/A";
 		const created = new Date(timestamp).getTime();
-		const now = Date.now();
-		const diff = Math.max(0, Math.floor((now - created) / 1e3));
+		const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
 		if (diff < 60) return `${diff}s`;
 		if (diff < 3600) return `${Math.floor(diff / 60)}m`;
 		if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
@@ -1902,8 +1901,7 @@ var K8sPodsTable = class K8sPodsTable extends i {
 	_formatAge(timestamp) {
 		if (!timestamp || timestamp === "N/A") return "N/A";
 		const created = new Date(timestamp).getTime();
-		const now = Date.now();
-		const diff = Math.max(0, Math.floor((now - created) / 1e3));
+		const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
 		if (diff < 60) return `${diff}s`;
 		if (diff < 3600) return `${Math.floor(diff / 60)}m`;
 		if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
@@ -2414,8 +2412,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 	_formatAge(timestamp) {
 		if (!timestamp) return "N/A";
 		const created = new Date(timestamp).getTime();
-		const now = Date.now();
-		const diff = Math.max(0, Math.floor((now - created) / 1e3));
+		const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
 		if (diff < 60) return `${diff}s ago`;
 		if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
 		if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
