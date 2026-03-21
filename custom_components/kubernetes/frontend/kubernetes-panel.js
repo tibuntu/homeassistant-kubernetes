@@ -2197,6 +2197,12 @@ var K8sPodsTable = class K8sPodsTable extends i {
       font-weight: 500;
     }
 
+    .col-actions {
+      width: 40px;
+      min-width: 40px;
+      cursor: default;
+    }
+
     .delete-btn {
       display: inline-flex;
       align-items: center;
@@ -2424,7 +2430,7 @@ var K8sPodsTable = class K8sPodsTable extends i {
                           Age
                           ${this._sortIcon("age") ? b`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : A}
                         </th>
-                        <th></th>
+                        <th class="col-actions"></th>
                       </tr>
                     </thead>
                     <tbody>
