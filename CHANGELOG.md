@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.0.0...v1.1.0) (2026-03-21)
+
+
+### Features
+
+* add pod deletion from sidebar panel ([bb2baeb](https://github.com/tibuntu/homeassistant-kubernetes/commit/bb2baeb758089ad28d7d85f241a3939584fb1346))
+
+
+### Other
+
+* **deps-frontend:** update frontend dependencies ([0b92458](https://github.com/tibuntu/homeassistant-kubernetes/commit/0b92458b79df86ab174ccef53d2723e84b8f67c1))
+* **deps-frontend:** update frontend dependencies to v8.57.1 ([fedbb82](https://github.com/tibuntu/homeassistant-kubernetes/commit/fedbb82e39abad54f9117e76766a834e6e6592f4))
+* **deps:** update dependency pytest-homeassistant-custom-component to v0.13.318 ([f3d7385](https://github.com/tibuntu/homeassistant-kubernetes/commit/f3d73858bb81a49d0f2a5a6beef14d2ec2ecd93a))
+* **deps:** update dependency pytest-homeassistant-custom-component to v0.13.319 ([13f8465](https://github.com/tibuntu/homeassistant-kubernetes/commit/13f8465a63d20a4fc79c7837530e42fd214d1e80))
+* **deps:** update ruff to v0.15.7 ([1da97f6](https://github.com/tibuntu/homeassistant-kubernetes/commit/1da97f602349579f892dc61ee990227e814886f8))
+* update .gitignore ([16b6e83](https://github.com/tibuntu/homeassistant-kubernetes/commit/16b6e8315ff6563eb0df13cfd6b9285a800cc80a))
+
 ## [1.0.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v0.12.0...v1.0.0) (2026-03-14)
 
 
