@@ -33,7 +33,7 @@ dev = [
     "pytest-cov==7.0.0",
 
     # Linting and formatting
-    "ruff==0.15.7",
+    "ruff==0.15.8",
 
     # Type checking
     "mypy==1.19.1",
