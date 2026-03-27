@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.1.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.1.1...v1.1.2) (2026-03-27)
+
+
+### Bug Fixes
+
+* **deps:** group pytest-cov with homeassistant dependencies in Renovate ([675d420](https://github.com/tibuntu/homeassistant-kubernetes/commit/675d420681f7d8e60bd4e7ccca4022874d62805b))
+* **deps:** group typescript with typescript-eslint in Renovate ([1001445](https://github.com/tibuntu/homeassistant-kubernetes/commit/10014454b2d15a8a2d0c7f4512d5ada6ea2528ed))
+* **deps:** use npm install in Renovate postUpgradeTasks for lock file sync ([4c862f8](https://github.com/tibuntu/homeassistant-kubernetes/commit/4c862f8f84e8b9fde95cf5da340d329f852c1a9f))
+
+
+### Other
+
+* **deps-frontend:** update dependency vite to v8.0.2 ([22683f2](https://github.com/tibuntu/homeassistant-kubernetes/commit/22683f213e7561006f16e538300ecf948e528b0a))
+* **deps-frontend:** update dependency vite to v8.0.3 ([7145dca](https://github.com/tibuntu/homeassistant-kubernetes/commit/7145dcae2d73e839b7c06fd69c140dd726d45e9a))
+* **deps-frontend:** update frontend dependencies to v8.57.2 ([e3c9eba](https://github.com/tibuntu/homeassistant-kubernetes/commit/e3c9eba2be96b2f4f777ee5a88dd8a5fad84227b))
+* **deps:** update actions/deploy-pages action to v5 ([746fed9](https://github.com/tibuntu/homeassistant-kubernetes/commit/746fed96823cafc7093532301286575a77b94ab1))
+* **deps:** update codecov/codecov-action action to v6 ([f340f72](https://github.com/tibuntu/homeassistant-kubernetes/commit/f340f72532745db6254952ad46efdbb936ed189c))
+* **deps:** update dependency pytest-homeassistant-custom-component to v0.13.320 ([b314d15](https://github.com/tibuntu/homeassistant-kubernetes/commit/b314d15443dd22be85b9f482e68706bcf7e297b2))
+* **deps:** update dependency ruff to v0.15.8 ([8a86a20](https://github.com/tibuntu/homeassistant-kubernetes/commit/8a86a20340fd9e84fea5b6dced58b52eed9eba69))
+* **deps:** update pre-commit hook astral-sh/ruff-pre-commit to v0.15.8 ([ac7c785](https://github.com/tibuntu/homeassistant-kubernetes/commit/ac7c785a4d94fc77d0eb6cd6b513d8b980db7225))
+
 ## [1.1.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.1.0...v1.1.1) (2026-03-21)
 
 
