@@ -48,6 +48,12 @@
       "semanticCommitScope": "deps"
     },
     {
+      "matchDepNames": ["typescript", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser"],
+      "groupName": "typescript",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps-frontend"
+    },
+    {
       "matchFileNames": ["frontend/package.json"],
       "groupName": "frontend dependencies",
       "semanticCommitType": "build",
