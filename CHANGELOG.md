@@ -15,6 +15,7 @@
 * **deps-frontend:** update dependency vite to v8.0.2 ([22683f2](https://github.com/tibuntu/homeassistant-kubernetes/commit/22683f213e7561006f16e538300ecf948e528b0a))
 * **deps-frontend:** update dependency vite to v8.0.3 ([7145dca](https://github.com/tibuntu/homeassistant-kubernetes/commit/7145dcae2d73e839b7c06fd69c140dd726d45e9a))
 * **deps-frontend:** update frontend dependencies to v8.57.2 ([e3c9eba](https://github.com/tibuntu/homeassistant-kubernetes/commit/e3c9eba2be96b2f4f777ee5a88dd8a5fad84227b))
+* **deps:** update actions/configure-pages action to v6 ([efb8e2a](https://github.com/tibuntu/homeassistant-kubernetes/commit/efb8e2aa1a91629b0c539b850345ee41509e73a6))
 * **deps:** update actions/deploy-pages action to v5 ([746fed9](https://github.com/tibuntu/homeassistant-kubernetes/commit/746fed96823cafc7093532301286575a77b94ab1))
 * **deps:** update codecov/codecov-action action to v6 ([f340f72](https://github.com/tibuntu/homeassistant-kubernetes/commit/f340f72532745db6254952ad46efdbb936ed189c))
 * **deps:** update dependency pytest-homeassistant-custom-component to v0.13.320 ([b314d15](https://github.com/tibuntu/homeassistant-kubernetes/commit/b314d15443dd22be85b9f482e68706bcf7e297b2))
