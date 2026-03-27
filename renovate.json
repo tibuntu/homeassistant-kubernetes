@@ -54,10 +54,11 @@
       "semanticCommitScope": "deps-frontend",
       "postUpgradeTasks": {
         "commands": [
-          "npm ci --prefix frontend",
+          "npm install --prefix frontend",
           "npm run build --prefix frontend"
         ],
         "fileFilters": [
+          "frontend/package-lock.json",
           "custom_components/kubernetes/frontend/kubernetes-panel.js"
         ],
         "executionMode": "branch"
