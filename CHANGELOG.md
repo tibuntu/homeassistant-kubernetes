@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.1.2...v1.1.3) (2026-04-02)
+
+
+### Bug Fixes
+
+* **release:** hide non-releasable commit types from triggering releases ([be7db2c](https://github.com/tibuntu/homeassistant-kubernetes/commit/be7db2c16ce6475ecf5019b791305e89a50496fc))
+
 ## [1.1.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.1.1...v1.1.2) (2026-03-27)
 
 
