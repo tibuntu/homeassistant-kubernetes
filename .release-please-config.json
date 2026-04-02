@@ -18,27 +18,27 @@
         {
           "type": "docs",
           "section": "Documentation",
-          "hidden": false
+          "hidden": true
         },
         {
           "type": "refactor",
           "section": "Other",
-          "hidden": false
+          "hidden": true
         },
         {
           "type": "test",
           "section": "Other",
-          "hidden": false
+          "hidden": true
         },
         {
           "type": "build",
           "section": "Other",
-          "hidden": false
+          "hidden": true
         },
         {
           "type": "chore",
           "section": "Other",
-          "hidden": false
+          "hidden": true
         }
       ],
       "extra-files": [
