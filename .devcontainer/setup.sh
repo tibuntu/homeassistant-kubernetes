@@ -46,20 +46,16 @@ sudo apt-get install -y \
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip setuptools wheel
 
-# Install integration dependencies first (including kubernetes package)
+# Install integration runtime dependencies (NOT the package itself — it's symlinked as a custom component)
 echo "📦 Installing integration dependencies..."
-pip install -r /workspaces/homeassistant-kubernetes/requirements.txt
-
-# Ensure kubernetes package is installed (explicit installation for reliability)
-echo "🔧 Ensuring kubernetes package is available..."
-pip install kubernetes==33.1.0
+pip install kubernetes==35.0.0
 
 # Verify kubernetes package installation
 echo "🔍 Verifying kubernetes package installation..."
 python3 -c "import kubernetes.client; print('✅ kubernetes.client import successful')" || {
     echo "❌ kubernetes package not properly installed, trying alternative installation..."
     pip uninstall -y kubernetes
-    pip install --no-cache-dir kubernetes==33.1.0
+    pip install --no-cache-dir kubernetes==35.0.0
     python3 -c "import kubernetes.client; print('✅ kubernetes.client import successful after retry')"
 }
 
@@ -69,7 +65,7 @@ pip install homeassistant
 
 # Install development dependencies
 echo "🛠️ Installing development dependencies..."
-pip install black isort flake8 pytest pytest-homeassistant-custom-component mypy
+pip install ruff pytest pytest-homeassistant-custom-component mypy bandit pre-commit
 
 # Install performance libraries to address warnings
 echo "📈 Installing performance libraries..."
@@ -228,7 +224,7 @@ echo "🔍 Final verification of environment..."
 echo "Testing kubernetes package in Home Assistant python environment:"
 /usr/local/bin/python -c "import kubernetes.client; print('✅ kubernetes.client available in HA python')" || {
     echo "❌ kubernetes not available in HA python, installing globally..."
-    /usr/local/bin/python -m pip install kubernetes==33.1.0
+    /usr/local/bin/python -m pip install kubernetes==35.0.0
     /usr/local/bin/python -c "import kubernetes.client; print('✅ kubernetes.client now available in HA python')"
 }
 
