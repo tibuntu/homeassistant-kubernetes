@@ -15,5 +15,5 @@
   "requirements": [
     "kubernetes==35.0.0"
   ],
-  "version": "1.1.2"
+  "version": "1.2.0"
 }
