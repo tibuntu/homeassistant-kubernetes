@@ -160,6 +160,44 @@ automation:
           namespace: "development"
 ```
 
+### Rollout Restart Examples
+
+#### Restart Deployment via Button
+
+```yaml
+automation:
+  - alias: "Restart web app on button press"
+    trigger:
+      platform: state
+      entity_id: input_button.restart_web_app
+    action:
+      - service: kubernetes.restart_workload
+        data:
+          workload_name: "web-app"
+          namespace: "production"
+```
+
+#### Scheduled Rolling Restart
+
+```yaml
+automation:
+  - alias: "Weekly rolling restart of all workloads"
+    trigger:
+      platform: time
+      at: "04:00:00"
+    condition:
+      condition: time
+      weekday:
+        - sun
+    action:
+      - service: kubernetes.restart_workload
+        data:
+          workload_names:
+            - switch.production_web_app
+            - switch.production_api_server
+          namespace: "production"
+```
+
 ### Node Monitoring Automations
 
 #### Alert on Node Not Ready

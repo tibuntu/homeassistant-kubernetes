@@ -16,10 +16,12 @@ from .const import (
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
+    SERVICE_RESTART_WORKLOAD,
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
     SERVICE_STOP_WORKLOAD,
     WORKLOAD_TYPE_CRONJOB,
+    WORKLOAD_TYPE_DAEMONSET,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
@@ -129,6 +131,7 @@ def _resolve_raw_workload_name(
     resource_type_map = {
         "deployments": WORKLOAD_TYPE_DEPLOYMENT,
         "statefulsets": WORKLOAD_TYPE_STATEFULSET,
+        "daemonsets": WORKLOAD_TYPE_DAEMONSET,
         "cronjobs": WORKLOAD_TYPE_CRONJOB,
     }
 
@@ -362,6 +365,23 @@ START_WORKLOAD_SCHEMA = vol.Schema(
 )
 
 STOP_WORKLOAD_SCHEMA = vol.Schema(
+    vol.All(
+        {
+            vol.Optional(ATTR_WORKLOAD_NAME): vol.Any(cv.string, dict),
+            vol.Optional(ATTR_WORKLOAD_NAMES): vol.Any(
+                cv.string,
+                vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
+                vol.All(cv.ensure_list, [cv.string]),
+                dict,
+            ),
+            vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional("entry_id"): cv.string,
+        },
+        _validate_workload_schema,
+    )
+)
+
+RESTART_WORKLOAD_SCHEMA = vol.Schema(
     vol.All(
         {
             vol.Optional(ATTR_WORKLOAD_NAME): vol.Any(cv.string, dict),
@@ -613,6 +633,58 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         if len(workloads) > 1:
             _LOGGER.info("Completed stop operation for %d workloads", len(workloads))
 
+    async def restart_workload(call: ServiceCall) -> None:
+        """Perform a rollout restart of one or more Kubernetes workloads."""
+        workloads = _extract_workload_info(call.data, hass)
+
+        if not workloads:
+            _log_no_workloads_found(call.data, "restart_workload")
+            return
+
+        entry_data = _get_entry_data(hass, call.data)
+        if not entry_data:
+            return
+
+        config_data = entry_data["config"]
+        client = entry_data["coordinator"].client
+
+        restart_methods = {
+            WORKLOAD_TYPE_DEPLOYMENT: client.rollout_restart_deployment,
+            WORKLOAD_TYPE_STATEFULSET: client.rollout_restart_statefulset,
+            WORKLOAD_TYPE_DAEMONSET: client.rollout_restart_daemonset,
+        }
+
+        for workload_name, namespace, workload_type in workloads:
+            namespace = namespace or config_data.get("namespace", "default")
+
+            restart_fn = restart_methods.get(workload_type)
+            if restart_fn is None:
+                _LOGGER.warning(
+                    "Cannot restart %s (type: %s) - restart only supported for Deployments, StatefulSets, and DaemonSets",
+                    workload_name,
+                    workload_type,
+                )
+                continue
+
+            success = await restart_fn(workload_name, namespace)
+            if success:
+                _LOGGER.info(
+                    "Successfully restarted %s %s in namespace %s",
+                    workload_type,
+                    workload_name,
+                    namespace,
+                )
+            else:
+                _LOGGER.error(
+                    "Failed to restart %s %s in namespace %s",
+                    workload_type,
+                    workload_name,
+                    namespace,
+                )
+
+        if len(workloads) > 1:
+            _LOGGER.info("Completed restart operation for %d workloads", len(workloads))
+
     # Register the generic services
     hass.services.async_register(
         DOMAIN,
@@ -635,9 +707,17 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         schema=STOP_WORKLOAD_SCHEMA,
     )
 
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RESTART_WORKLOAD,
+        restart_workload,
+        schema=RESTART_WORKLOAD_SCHEMA,
+    )
+
 
 async def async_unload_services(hass: HomeAssistant) -> None:
     """Unload the Kubernetes services."""
     hass.services.async_remove(DOMAIN, SERVICE_SCALE_WORKLOAD)
     hass.services.async_remove(DOMAIN, SERVICE_START_WORKLOAD)
     hass.services.async_remove(DOMAIN, SERVICE_STOP_WORKLOAD)
+    hass.services.async_remove(DOMAIN, SERVICE_RESTART_WORKLOAD)

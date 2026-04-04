@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable
+from datetime import UTC, datetime
 import json
 import logging
 import ssl
@@ -1393,6 +1394,150 @@ class KubernetesClient:
             return True
         except Exception as ex:
             self._log_error(f"official client delete pod {pod_name}", ex)
+            return False
+
+    # Rollout restart methods
+    async def rollout_restart_deployment(
+        self, name: str, namespace: str | None = None
+    ) -> bool:
+        """Perform a rollout restart of a deployment."""
+        return await self._rollout_restart(
+            resource_type="deployments",
+            name=name,
+            namespace=namespace,
+            patch_fn=self.apps_v1.patch_namespaced_deployment,
+        )
+
+    async def rollout_restart_statefulset(
+        self, name: str, namespace: str | None = None
+    ) -> bool:
+        """Perform a rollout restart of a statefulset."""
+        return await self._rollout_restart(
+            resource_type="statefulsets",
+            name=name,
+            namespace=namespace,
+            patch_fn=self.apps_v1.patch_namespaced_stateful_set,
+        )
+
+    async def rollout_restart_daemonset(
+        self, name: str, namespace: str | None = None
+    ) -> bool:
+        """Perform a rollout restart of a daemonset."""
+        return await self._rollout_restart(
+            resource_type="daemonsets",
+            name=name,
+            namespace=namespace,
+            patch_fn=self.apps_v1.patch_namespaced_daemon_set,
+        )
+
+    async def _rollout_restart(
+        self,
+        resource_type: str,
+        name: str,
+        namespace: str | None,
+        patch_fn: Callable,
+    ) -> bool:
+        """Perform a rollout restart by patching the restart annotation."""
+        result = await self._rollout_restart_aiohttp(resource_type, name, namespace)
+        if result:
+            _LOGGER.info(
+                "Successfully triggered rollout restart for %s %s in namespace %s",
+                resource_type.rstrip("s"),
+                name,
+                namespace or self.namespace,
+            )
+            return result
+
+        _LOGGER.debug(
+            "aiohttp failed, trying official Kubernetes client for rollout restart"
+        )
+        result = await self._rollout_restart_kubernetes(name, namespace, patch_fn)
+        if result:
+            _LOGGER.info(
+                "Successfully triggered rollout restart for %s %s in namespace %s using official client",
+                resource_type.rstrip("s"),
+                name,
+                namespace or self.namespace,
+            )
+        return result
+
+    async def _rollout_restart_aiohttp(
+        self, resource_type: str, name: str, namespace: str | None = None
+    ) -> bool:
+        """Perform rollout restart using aiohttp PATCH."""
+        try:
+            target_namespace = namespace or self.namespace
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/strategic-merge-patch+json",
+            }
+
+            restart_at = datetime.now(UTC).isoformat()
+            patch_data = {
+                "spec": {
+                    "template": {
+                        "metadata": {
+                            "annotations": {
+                                "kubectl.kubernetes.io/restartedAt": restart_at
+                            }
+                        }
+                    }
+                }
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(
+                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{target_namespace}/{resource_type}/{name}",
+                    headers=headers,
+                    json=patch_data,
+                    ssl=self.verify_ssl,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status in [200, 201]:
+                        return True
+                    else:
+                        response_text = await response.text()
+                        _LOGGER.error(
+                            "aiohttp rollout restart failed with status %s: %s",
+                            response.status,
+                            response_text,
+                        )
+                        return False
+        except Exception as ex:
+            self._log_error(f"aiohttp rollout restart {resource_type} {name}", ex)
+            return False
+
+    async def _rollout_restart_kubernetes(
+        self,
+        name: str,
+        namespace: str | None,
+        patch_fn: Callable,
+    ) -> bool:
+        """Perform rollout restart using the official Kubernetes client."""
+        try:
+            target_namespace = namespace or self.namespace
+            loop = asyncio.get_running_loop()
+
+            restart_at = datetime.now(UTC).isoformat()
+            patch_body = {
+                "spec": {
+                    "template": {
+                        "metadata": {
+                            "annotations": {
+                                "kubectl.kubernetes.io/restartedAt": restart_at
+                            }
+                        }
+                    }
+                }
+            }
+
+            await loop.run_in_executor(
+                None, patch_fn, name, target_namespace, patch_body
+            )
+            return True
+        except Exception as ex:
+            self._log_error(f"official client rollout restart {name}", ex)
             return False
 
     async def get_pod_metrics(self) -> dict[str, dict[str, float]]:

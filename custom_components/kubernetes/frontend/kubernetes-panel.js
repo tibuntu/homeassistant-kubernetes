@@ -2890,6 +2890,11 @@ var K8sWorkloads = class K8sWorkloads extends i {
       color: var(--success-color, #4caf50);
     }
 
+    .action-btn.restart:hover {
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
+      color: var(--warning-color, #ff9800);
+    }
+
     .last-schedule {
       font-size: 12px;
       color: var(--secondary-text-color);
@@ -3037,7 +3042,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 
         ${this._shouldShowCategory("deployments") ? this._renderDeployments(cluster.deployments, cluster.entry_id) : A}
         ${this._shouldShowCategory("statefulsets") ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id) : A}
-        ${this._shouldShowCategory("daemonsets") ? this._renderDaemonSets(cluster.daemonsets) : A}
+        ${this._shouldShowCategory("daemonsets") ? this._renderDaemonSets(cluster.daemonsets, cluster.entry_id) : A}
         ${this._shouldShowCategory("cronjobs") ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id) : A}
         ${this._shouldShowCategory("jobs") ? this._renderJobs(cluster.jobs) : A}
       </div>
@@ -3140,6 +3145,18 @@ var K8sWorkloads = class K8sWorkloads extends i {
                     <ha-icon icon="mdi:stop"></ha-icon>
                   </button>
                 `}
+            <button
+              class="action-btn restart"
+              title="Rolling restart"
+              ?disabled=${busy}
+              @click=${() => this._callService("restart_workload", {
+			workload_name: d.name,
+			namespace: d.namespace,
+			entry_id: entryId
+		}, actionKey)}
+            >
+              <ha-icon icon="mdi:restart"></ha-icon>
+            </button>
           </div>
         </div>
       </ha-card>
@@ -3205,12 +3222,24 @@ var K8sWorkloads = class K8sWorkloads extends i {
                     <ha-icon icon="mdi:stop"></ha-icon>
                   </button>
                 `}
+            <button
+              class="action-btn restart"
+              title="Rolling restart"
+              ?disabled=${busy}
+              @click=${() => this._callService("restart_workload", {
+			workload_name: s.name,
+			namespace: s.namespace,
+			entry_id: entryId
+		}, actionKey)}
+            >
+              <ha-icon icon="mdi:restart"></ha-icon>
+            </button>
           </div>
         </div>
       </ha-card>
     `;
 	}
-	_renderDaemonSets(daemonsets) {
+	_renderDaemonSets(daemonsets, entryId) {
 		const filtered = daemonsets.filter((ds) => this._matchesNamespace(ds.namespace) && this._matchesSearch(ds.name) && this._matchesStatusFilter(this._getDaemonSetStatus(ds)));
 		if (filtered.length === 0 && this._categoryFilter !== "all") return b`<div class="empty">No daemonsets match your filters.</div>`;
 		if (filtered.length === 0) return A;
@@ -3221,12 +3250,14 @@ var K8sWorkloads = class K8sWorkloads extends i {
           DaemonSets
           <span class="category-count">(${filtered.length})</span>
         </div>
-        ${filtered.map((ds) => this._renderDaemonSetCard(ds))}
+        ${filtered.map((ds) => this._renderDaemonSetCard(ds, entryId))}
       </div>
     `;
 	}
-	_renderDaemonSetCard(ds) {
+	_renderDaemonSetCard(ds, entryId) {
 		const status = this._getDaemonSetStatus(ds);
+		const actionKey = `ds_${ds.namespace}_${ds.name}`;
+		const busy = this._actionInProgress.has(actionKey);
 		return b`
       <ha-card class="workload-card">
         <div class="workload-row">
@@ -3240,6 +3271,20 @@ var K8sWorkloads = class K8sWorkloads extends i {
           <span class="badge ${this._statusBadgeClass(status)}">
             ${this._statusLabel(status)}
           </span>
+          <div class="workload-actions">
+            <button
+              class="action-btn restart"
+              title="Rolling restart"
+              ?disabled=${busy}
+              @click=${() => this._callService("restart_workload", {
+			workload_name: ds.name,
+			namespace: ds.namespace,
+			entry_id: entryId
+		}, actionKey)}
+            >
+              <ha-icon icon="mdi:restart"></ha-icon>
+            </button>
+          </div>
         </div>
       </ha-card>
     `;

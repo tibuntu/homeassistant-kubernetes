@@ -78,6 +78,7 @@ WORKLOAD_TYPE_POD = "Pod"
 SERVICE_SCALE_WORKLOAD = "scale_workload"
 SERVICE_START_WORKLOAD = "start_workload"
 SERVICE_STOP_WORKLOAD = "stop_workload"
+SERVICE_RESTART_WORKLOAD = "restart_workload"
 
 # Service attributes
 ATTR_WORKLOAD_NAME = "workload_name"

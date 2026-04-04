@@ -11,6 +11,7 @@ The integration provides the following generic services that work with multiple 
 | **Scale Workload** | Scale a workload to a specific number of replicas | Deployments, StatefulSets |
 | **Start Workload** | Start a workload by scaling to specified replicas, or trigger CronJobs | Deployments, StatefulSets, CronJobs |
 | **Stop Workload** | Stop a workload by scaling to 0 replicas | Deployments, StatefulSets |
+| **Restart Workload** | Perform a rolling restart (equivalent to `kubectl rollout restart`) | Deployments, StatefulSets, DaemonSets |
 
 > **Note**: CronJobs are not affected by `scale_workload` or `stop_workload`. Use the switch entity to suspend/resume CronJobs, or use `start_workload` to trigger them.
 
@@ -135,6 +136,45 @@ data:
   namespace: development
 ```
 
+### Restart Workload
+
+**Service**: `kubernetes.restart_workload`
+
+Perform a rolling restart of one or more Kubernetes workloads. This is equivalent to `kubectl rollout restart` — it patches `spec.template.metadata.annotations` with a `kubectl.kubernetes.io/restartedAt` timestamp, causing the controller to gradually recreate all pods.
+
+**Parameters**:
+
+- `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.my_deployment`)
+- `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
+- `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
+
+**Supported Workloads**: Deployments, StatefulSets, DaemonSets
+
+**Note**: CronJobs and Jobs are not supported. If an unsupported workload type is provided, a warning will be logged and the operation will be skipped.
+
+**Examples**:
+
+```yaml
+# Restart a single deployment
+service: kubernetes.restart_workload
+data:
+  workload_name: switch.web_app
+
+# Restart multiple workloads
+service: kubernetes.restart_workload
+data:
+  workload_names:
+    - switch.web_app
+    - switch.api_server
+  namespace: production
+
+# Restart using direct workload name
+service: kubernetes.restart_workload
+data:
+  workload_name: web-app
+  namespace: production
+```
+
 ## Using Entity IDs vs. Workload Names
 
 The services accept both entity IDs and direct workload names:
@@ -188,8 +228,11 @@ The services automatically detect the workload type from entity attributes:
 Services require the following Kubernetes RBAC permissions:
 
 **For Deployments and StatefulSets**:
-- `apps/deployments`: `get`, `list`, `patch` (for scaling)
-- `apps/statefulsets`: `get`, `list`, `patch` (for scaling)
+- `apps/deployments`: `get`, `list`, `patch` (for scaling and restart)
+- `apps/statefulsets`: `get`, `list`, `patch` (for scaling and restart)
+
+**For DaemonSets (restart only)**:
+- `apps/daemonsets`: `get`, `list`, `patch`
 
 **For CronJobs**:
 - `batch/cronjobs`: `get`, `list`, `watch`, `patch`
@@ -263,6 +306,27 @@ automation:
       service: kubernetes.start_workload
       data:
         workload_name: switch.backup_job
+        namespace: production
+```
+
+### Scheduled Rolling Restart
+
+```yaml
+automation:
+  - alias: "Weekly rolling restart of production workloads"
+    trigger:
+      - platform: time
+        at: "04:00:00"
+    condition:
+      condition: time
+      weekday:
+        - sun
+    action:
+      service: kubernetes.restart_workload
+      data:
+        workload_names:
+          - switch.web_app
+          - switch.api_server
         namespace: production
 ```
 

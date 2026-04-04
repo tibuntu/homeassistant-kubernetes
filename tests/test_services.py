@@ -14,10 +14,12 @@ from custom_components.kubernetes.const import (
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
+    SERVICE_RESTART_WORKLOAD,
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
     SERVICE_STOP_WORKLOAD,
     WORKLOAD_TYPE_CRONJOB,
+    WORKLOAD_TYPE_DAEMONSET,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
@@ -52,6 +54,9 @@ def mock_client():
     )
     client.suspend_cronjob = AsyncMock(return_value={"success": True})
     client.resume_cronjob = AsyncMock(return_value={"success": True})
+    client.rollout_restart_deployment = AsyncMock(return_value=True)
+    client.rollout_restart_statefulset = AsyncMock(return_value=True)
+    client.rollout_restart_daemonset = AsyncMock(return_value=True)
     return client
 
 
@@ -255,6 +260,285 @@ class TestGenericWorkloadServices:
         assert mock_client.stop_deployment.call_count == 2
         mock_client.stop_deployment.assert_any_call("audiobookshelf", "audiobookshelf")
         mock_client.stop_deployment.assert_any_call("cert-manager", "cert-manager")
+
+
+class TestRestartWorkloadService:
+    """Tests for the restart_workload service."""
+
+    async def test_restart_deployment(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restarting a deployment via entity reference."""
+        hass.states.async_set(
+            "switch.test_deployment",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "test-deployment",
+            },
+        )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_deployment",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_deployment.assert_called_once_with(
+            "test-deployment", "default"
+        )
+
+    async def test_restart_statefulset(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restarting a StatefulSet via entity reference."""
+        hass.states.async_set(
+            "switch.test_statefulset",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
+                "namespace": "default",
+                "statefulset_name": "test-statefulset",
+            },
+        )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_statefulset",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_statefulset.assert_called_once_with(
+            "test-statefulset", "default"
+        )
+
+    async def test_restart_daemonset_by_raw_name(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restarting a DaemonSet using raw workload name resolution."""
+        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator.data = {
+            "daemonsets": {
+                "fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                }
+            }
+        }
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "fluentd",
+                ATTR_NAMESPACE: "kube-system",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_daemonset.assert_called_once_with(
+            "fluentd", "kube-system"
+        )
+
+    async def test_restart_unsupported_type_logs_warning(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test that restarting an unsupported workload type logs a warning."""
+        hass.states.async_set(
+            "switch.test_cronjob",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
+                "namespace": "default",
+                "cronjob_name": "test-cronjob",
+            },
+        )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_cronjob",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_deployment.assert_not_called()
+        mock_client.rollout_restart_statefulset.assert_not_called()
+        mock_client.rollout_restart_daemonset.assert_not_called()
+
+    async def test_restart_deployment_failure(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restart deployment logs error on failure."""
+        mock_client.rollout_restart_deployment = AsyncMock(return_value=False)
+        hass.states.async_set(
+            "switch.test_deployment",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "test-deployment",
+            },
+        )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_deployment",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_deployment.assert_called_once_with(
+            "test-deployment", "default"
+        )
+
+    async def test_restart_statefulset_failure(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restart statefulset logs error on failure."""
+        mock_client.rollout_restart_statefulset = AsyncMock(return_value=False)
+        hass.states.async_set(
+            "switch.test_statefulset",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
+                "namespace": "default",
+                "statefulset_name": "test-statefulset",
+            },
+        )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_statefulset",
+                ATTR_NAMESPACE: "default",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_statefulset.assert_called_once_with(
+            "test-statefulset", "default"
+        )
+
+    async def test_restart_daemonset_failure(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restart daemonset logs error on failure."""
+        mock_client.rollout_restart_daemonset = AsyncMock(return_value=False)
+        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator.data = {
+            "daemonsets": {
+                "fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                }
+            }
+        }
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "fluentd",
+                ATTR_NAMESPACE: "kube-system",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_daemonset.assert_called_once_with(
+            "fluentd", "kube-system"
+        )
+
+    async def test_restart_multiple_workloads(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restarting multiple workloads in a single service call."""
+        hass.states.async_set(
+            "switch.test_deploy_a",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "deploy-a",
+            },
+        )
+        hass.states.async_set(
+            "switch.test_deploy_b",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "deploy-b",
+            },
+        )
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAMES: [
+                    {
+                        "entity_id": [
+                            "switch.test_deploy_a",
+                            "switch.test_deploy_b",
+                        ]
+                    }
+                ],
+            },
+            blocking=True,
+        )
+
+        assert mock_client.rollout_restart_deployment.call_count == 2
+
+    async def test_restart_workload_no_workloads(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restart_workload is a no-op when no valid workloads are found."""
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.nonexistent",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_deployment.assert_not_called()
+        mock_client.rollout_restart_statefulset.assert_not_called()
+        mock_client.rollout_restart_daemonset.assert_not_called()
+
+    async def test_restart_workload_no_kubernetes_data(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test restart_workload returns early when domain data is cleared."""
+        await async_setup_services(hass)
+        hass.data.pop(DOMAIN, None)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "switch.test_deployment",
+            },
+            blocking=True,
+        )
+
+        mock_client.rollout_restart_deployment.assert_not_called()
 
 
 class TestServiceSelectorConfiguration:
@@ -1147,6 +1431,25 @@ class TestResolveRawWorkloadName:
 
         result = _resolve_raw_workload_name(hass, "backup", None)
         assert result == ("backup", "default", WORKLOAD_TYPE_CRONJOB)
+
+    async def test_resolves_daemonset(self, hass: HomeAssistant):
+        """Test resolves a daemonset name to its type."""
+        coordinator = self._make_coordinator_with_data(
+            {
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {
+                    "fluentd": {"name": "fluentd", "namespace": "kube-system"},
+                },
+                "cronjobs": {},
+            }
+        )
+        hass.data[DOMAIN] = {
+            "entry_1": {"coordinator": coordinator},
+        }
+
+        result = _resolve_raw_workload_name(hass, "fluentd", None)
+        assert result == ("fluentd", "kube-system", WORKLOAD_TYPE_DAEMONSET)
 
     async def test_filters_by_namespace(self, hass: HomeAssistant):
         """Test namespace filtering when provided."""
