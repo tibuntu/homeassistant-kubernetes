@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.1.2...v1.2.0) (2026-04-04)
+
+
+### Features
+
+* add rollout restart for deployments, statefulsets, and daemonsets ([1d913b1](https://github.com/tibuntu/homeassistant-kubernetes/commit/1d913b1c1c5323d3ec301521630e766a3fa19171))
+
 ## [1.1.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.1.1...v1.1.2) (2026-03-27)
 
 
