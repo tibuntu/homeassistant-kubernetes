@@ -34,6 +34,9 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DOMAIN,
     DOMAIN_META_KEYS,
+    WORKLOAD_TYPE_DAEMONSET,
+    WORKLOAD_TYPE_DEPLOYMENT,
+    WORKLOAD_TYPE_STATEFULSET,
 )
 from .coordinator import KubernetesDataCoordinator
 
@@ -49,6 +52,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_workloads_list)
     websocket_api.async_register_command(hass, websocket_config_list)
     websocket_api.async_register_command(hass, websocket_delete_pod)
+    websocket_api.async_register_command(hass, websocket_restart_workload)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/cluster/overview"})
@@ -563,3 +567,82 @@ def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
         )
 
     return {"entries": entries}
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "kubernetes/workloads/restart",
+        vol.Required("entry_id"): str,
+        vol.Required("workload_name"): str,
+        vol.Required("namespace"): str,
+        vol.Required("workload_type"): vol.In(
+            [
+                WORKLOAD_TYPE_DEPLOYMENT,
+                WORKLOAD_TYPE_STATEFULSET,
+                WORKLOAD_TYPE_DAEMONSET,
+            ]
+        ),
+    }
+)
+@websocket_api.async_response
+async def websocket_restart_workload(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Perform a rollout restart of a workload."""
+    await _handle_restart_workload(hass, connection, msg)
+
+
+async def _handle_restart_workload(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Handle workload rollout restart logic."""
+    entry_id = msg["entry_id"]
+    workload_name = msg["workload_name"]
+    namespace = msg["namespace"]
+    workload_type = msg["workload_type"]
+
+    domain_data = hass.data.get(DOMAIN, {})
+    entry_data = domain_data.get(entry_id)
+
+    if not isinstance(entry_data, dict):
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+
+    coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Coordinator not found")
+        return
+
+    client = coordinator.client
+
+    restart_methods = {
+        WORKLOAD_TYPE_DEPLOYMENT: client.rollout_restart_deployment,
+        WORKLOAD_TYPE_STATEFULSET: client.rollout_restart_statefulset,
+        WORKLOAD_TYPE_DAEMONSET: client.rollout_restart_daemonset,
+    }
+
+    restart_fn = restart_methods.get(workload_type)
+    if restart_fn is None:
+        connection.send_error(
+            msg["id"],
+            "invalid_type",
+            f"Unsupported workload type: {workload_type}",
+        )
+        return
+
+    success = await restart_fn(workload_name, namespace)
+
+    if success:
+        await coordinator.async_request_refresh()
+        connection.send_result(msg["id"], {"success": True})
+    else:
+        connection.send_error(
+            msg["id"],
+            "restart_failed",
+            f"Failed to restart {workload_type} {workload_name} in namespace {namespace}",
+        )

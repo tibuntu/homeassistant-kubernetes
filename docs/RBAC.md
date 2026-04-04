@@ -53,13 +53,13 @@ Read-only access to every resource the integration monitors. No write permission
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **deployments** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Deployment sensors |
+| **deployments** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Deployment sensors + rollout restart |
 | **deployments/scale** | `get`, `patch`, `update` | ✅ | ❌ | Deployment switches |
 | **replicasets** | `get`, `list`, `watch` | ✅ | ❌ | Deployment status accuracy |
-| **statefulsets** | `get`, `list`, `watch` | ✅ | `get`, `list` only | StatefulSet sensors |
+| **statefulsets** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | StatefulSet sensors + rollout restart |
 | **statefulsets/scale** | `get`, `patch`, `update` | ✅ | ❌ | StatefulSet switches |
 | **statefulsets/status** | `get`, `patch`, `update` | ✅ | ❌ | Accurate StatefulSet state |
-| **daemonsets** | `get`, `list`, `watch` | ✅ | `get`, `list` only | DaemonSet sensors |
+| **daemonsets** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | DaemonSet sensors + rollout restart |
 
 ### Batch API Group (`batch`)
 

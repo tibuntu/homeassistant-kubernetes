@@ -475,6 +475,11 @@ export class K8sWorkloads extends LitElement {
       color: var(--success-color, #4caf50);
     }
 
+    .action-btn.restart:hover {
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
+      color: var(--warning-color, #ff9800);
+    }
+
     .last-schedule {
       font-size: 12px;
       color: var(--secondary-text-color);
@@ -640,7 +645,7 @@ export class K8sWorkloads extends LitElement {
           ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id)
           : nothing}
         ${this._shouldShowCategory("daemonsets")
-          ? this._renderDaemonSets(cluster.daemonsets)
+          ? this._renderDaemonSets(cluster.daemonsets, cluster.entry_id)
           : nothing}
         ${this._shouldShowCategory("cronjobs")
           ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id)
@@ -779,6 +784,23 @@ export class K8sWorkloads extends LitElement {
                     <ha-icon icon="mdi:stop"></ha-icon>
                   </button>
                 `}
+            <button
+              class="action-btn restart"
+              title="Rolling restart"
+              ?disabled=${busy}
+              @click=${() =>
+                this._callService(
+                  "restart_workload",
+                  {
+                    workload_name: d.name,
+                    namespace: d.namespace,
+                    entry_id: entryId,
+                  },
+                  actionKey,
+                )}
+            >
+              <ha-icon icon="mdi:restart"></ha-icon>
+            </button>
           </div>
         </div>
       </ha-card>
@@ -868,13 +890,30 @@ export class K8sWorkloads extends LitElement {
                     <ha-icon icon="mdi:stop"></ha-icon>
                   </button>
                 `}
+            <button
+              class="action-btn restart"
+              title="Rolling restart"
+              ?disabled=${busy}
+              @click=${() =>
+                this._callService(
+                  "restart_workload",
+                  {
+                    workload_name: s.name,
+                    namespace: s.namespace,
+                    entry_id: entryId,
+                  },
+                  actionKey,
+                )}
+            >
+              <ha-icon icon="mdi:restart"></ha-icon>
+            </button>
           </div>
         </div>
       </ha-card>
     `;
   }
 
-  private _renderDaemonSets(daemonsets: DaemonSetData[]) {
+  private _renderDaemonSets(daemonsets: DaemonSetData[], entryId: string) {
     const filtered = daemonsets.filter(
       (ds) =>
         this._matchesNamespace(ds.namespace) &&
@@ -894,13 +933,15 @@ export class K8sWorkloads extends LitElement {
           DaemonSets
           <span class="category-count">(${filtered.length})</span>
         </div>
-        ${filtered.map((ds) => this._renderDaemonSetCard(ds))}
+        ${filtered.map((ds) => this._renderDaemonSetCard(ds, entryId))}
       </div>
     `;
   }
 
-  private _renderDaemonSetCard(ds: DaemonSetData) {
+  private _renderDaemonSetCard(ds: DaemonSetData, entryId: string) {
     const status = this._getDaemonSetStatus(ds);
+    const actionKey = `ds_${ds.namespace}_${ds.name}`;
+    const busy = this._actionInProgress.has(actionKey);
 
     return html`
       <ha-card class="workload-card">
@@ -915,6 +956,25 @@ export class K8sWorkloads extends LitElement {
           <span class="badge ${this._statusBadgeClass(status)}">
             ${this._statusLabel(status)}
           </span>
+          <div class="workload-actions">
+            <button
+              class="action-btn restart"
+              title="Rolling restart"
+              ?disabled=${busy}
+              @click=${() =>
+                this._callService(
+                  "restart_workload",
+                  {
+                    workload_name: ds.name,
+                    namespace: ds.namespace,
+                    entry_id: entryId,
+                  },
+                  actionKey,
+                )}
+            >
+              <ha-icon icon="mdi:restart"></ha-icon>
+            </button>
+          </div>
         </div>
       </ha-card>
     `;

@@ -15,6 +15,7 @@ from custom_components.kubernetes.websocket_api import (
     _get_pods_list_data,
     _get_workloads_list_data,
     _handle_delete_pod,
+    _handle_restart_workload,
     async_register_websocket_commands,
 )
 
@@ -134,7 +135,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 6
+            assert mock_ws_api.async_register_command.call_count == 7
 
 
 class TestWebsocketClusterOverview:
@@ -2166,4 +2167,230 @@ class TestWebsocketDeletePod:
 
         connection.send_error.assert_called_once_with(
             1, "not_found", "Coordinator not found"
+        )
+
+
+class TestWebsocketRestartWorkload:
+    """Tests for the kubernetes/workloads/restart command."""
+
+    async def test_restart_deployment_success(self, mock_hass, sample_coordinator_data):
+        """Test successful deployment rollout restart."""
+        mock_client = MagicMock()
+        mock_client.rollout_restart_deployment = AsyncMock(return_value=True)
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+        coordinator.async_request_refresh = AsyncMock()
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/workloads/restart",
+            "entry_id": "entry_1",
+            "workload_name": "nginx",
+            "namespace": "default",
+            "workload_type": "Deployment",
+        }
+
+        await _handle_restart_workload(mock_hass, connection, msg)
+
+        mock_client.rollout_restart_deployment.assert_called_once_with(
+            "nginx", "default"
+        )
+        coordinator.async_request_refresh.assert_called_once()
+        connection.send_result.assert_called_once_with(1, {"success": True})
+
+    async def test_restart_statefulset_success(
+        self, mock_hass, sample_coordinator_data
+    ):
+        """Test successful statefulset rollout restart."""
+        mock_client = MagicMock()
+        mock_client.rollout_restart_statefulset = AsyncMock(return_value=True)
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+        coordinator.async_request_refresh = AsyncMock()
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/workloads/restart",
+            "entry_id": "entry_1",
+            "workload_name": "postgres",
+            "namespace": "default",
+            "workload_type": "StatefulSet",
+        }
+
+        await _handle_restart_workload(mock_hass, connection, msg)
+
+        mock_client.rollout_restart_statefulset.assert_called_once_with(
+            "postgres", "default"
+        )
+        connection.send_result.assert_called_once_with(1, {"success": True})
+
+    async def test_restart_daemonset_success(self, mock_hass, sample_coordinator_data):
+        """Test successful daemonset rollout restart."""
+        mock_client = MagicMock()
+        mock_client.rollout_restart_daemonset = AsyncMock(return_value=True)
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+        coordinator.async_request_refresh = AsyncMock()
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/workloads/restart",
+            "entry_id": "entry_1",
+            "workload_name": "fluentd",
+            "namespace": "kube-system",
+            "workload_type": "DaemonSet",
+        }
+
+        await _handle_restart_workload(mock_hass, connection, msg)
+
+        mock_client.rollout_restart_daemonset.assert_called_once_with(
+            "fluentd", "kube-system"
+        )
+        connection.send_result.assert_called_once_with(1, {"success": True})
+
+    async def test_restart_workload_failure(self, mock_hass, sample_coordinator_data):
+        """Test workload restart failure returns error."""
+        mock_client = MagicMock()
+        mock_client.rollout_restart_deployment = AsyncMock(return_value=False)
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/workloads/restart",
+            "entry_id": "entry_1",
+            "workload_name": "nginx",
+            "namespace": "default",
+            "workload_type": "Deployment",
+        }
+
+        await _handle_restart_workload(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1,
+            "restart_failed",
+            "Failed to restart Deployment nginx in namespace default",
+        )
+
+    async def test_restart_workload_entry_not_found(self, mock_hass):
+        """Test restart with missing entry_id returns error."""
+        mock_hass.data = {DOMAIN: {}}
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/workloads/restart",
+            "entry_id": "missing",
+            "workload_name": "nginx",
+            "namespace": "default",
+            "workload_type": "Deployment",
+        }
+
+        await _handle_restart_workload(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1, "not_found", "Config entry not found"
+        )
+
+    async def test_restart_workload_coordinator_not_found(
+        self, mock_hass, sample_coordinator_data
+    ):
+        """Test restart with missing coordinator returns error."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/workloads/restart",
+            "entry_id": "entry_1",
+            "workload_name": "nginx",
+            "namespace": "default",
+            "workload_type": "Deployment",
+        }
+
+        await _handle_restart_workload(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1, "not_found", "Coordinator not found"
+        )
+
+    async def test_restart_workload_invalid_type(
+        self, mock_hass, sample_coordinator_data
+    ):
+        """Test restart with unsupported workload type returns error."""
+        mock_client = MagicMock()
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/workloads/restart",
+            "entry_id": "entry_1",
+            "workload_name": "backup",
+            "namespace": "default",
+            "workload_type": "CronJob",
+        }
+
+        await _handle_restart_workload(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1,
+            "invalid_type",
+            "Unsupported workload type: CronJob",
         )

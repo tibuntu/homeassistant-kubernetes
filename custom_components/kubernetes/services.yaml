@@ -92,3 +92,29 @@ stop_workload:
       name: Namespace
       description: The namespace containing the workload(s) (optional, defaults to configured namespace).
       required: false
+
+restart_workload:
+  name: Restart Workload
+  description: Perform a rolling restart of one or more Kubernetes workloads (Deployments/StatefulSets/DaemonSets). Equivalent to "kubectl rollout restart".
+  fields:
+    workload_name:
+      name: Workload Name
+      description: The name of a single workload to restart (use workload_names for multiple).
+      required: false
+      selector:
+        entity:
+          domain: switch
+          integration: kubernetes
+    workload_names:
+      name: Workload Names
+      description: A list of workload names to restart (use workload_name for single).
+      required: false
+      selector:
+        target:
+          entity:
+            domain: switch
+            integration: kubernetes
+    namespace:
+      name: Namespace
+      description: The namespace containing the workload(s) (optional, defaults to configured namespace).
+      required: false

@@ -5446,3 +5446,190 @@ class TestDeletePod:
             result = await mock_client.delete_pod("test-pod", "default")
 
         assert result is False
+
+
+class TestRolloutRestart:
+    """Tests for rollout restart methods."""
+
+    async def test_rollout_restart_deployment_aiohttp_success(self, mock_client):
+        """rollout_restart_deployment returns True when aiohttp PATCH returns 200."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_deployment("nginx", "default")
+
+        assert result is True
+
+    async def test_rollout_restart_statefulset_aiohttp_success(self, mock_client):
+        """rollout_restart_statefulset returns True when aiohttp PATCH returns 200."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_statefulset(
+                "postgres", "default"
+            )
+
+        assert result is True
+
+    async def test_rollout_restart_daemonset_aiohttp_success(self, mock_client):
+        """rollout_restart_daemonset returns True when aiohttp PATCH returns 200."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_daemonset(
+                "fluentd", "kube-system"
+            )
+
+        assert result is True
+
+    async def test_rollout_restart_aiohttp_failure_falls_back_to_kubernetes(
+        self, mock_client
+    ):
+        """rollout_restart falls back to official client when aiohttp fails."""
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.text = AsyncMock(return_value="Forbidden")
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_response)
+
+        # Official client: mock patch
+        mock_client.apps_v1.patch_namespaced_deployment = MagicMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_deployment("nginx", "default")
+
+        assert result is True
+        mock_client.apps_v1.patch_namespaced_deployment.assert_called_once()
+
+    async def test_rollout_restart_aiohttp_exception_falls_back(self, mock_client):
+        """rollout_restart falls back when aiohttp raises exception."""
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(
+            side_effect=aiohttp.ClientError("Connection refused")
+        )
+
+        # Official client: mock patch
+        mock_client.apps_v1.patch_namespaced_stateful_set = MagicMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_statefulset(
+                "postgres", "default"
+            )
+
+        assert result is True
+        mock_client.apps_v1.patch_namespaced_stateful_set.assert_called_once()
+
+    async def test_rollout_restart_both_methods_fail(self, mock_client):
+        """rollout_restart returns False when both aiohttp and official client fail."""
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.text = AsyncMock(return_value="Internal Server Error")
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_response)
+
+        mock_client.apps_v1.patch_namespaced_deployment = MagicMock(
+            side_effect=ApiException(status=404, reason="Not Found")
+        )
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_deployment("nginx", "default")
+
+        assert result is False
+
+    async def test_rollout_restart_kubernetes_patch_body(self, mock_client):
+        """rollout_restart_kubernetes sends correct patch body with restartedAt."""
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.text = AsyncMock(return_value="Forbidden")
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_response)
+
+        mock_client.apps_v1.patch_namespaced_daemon_set = MagicMock(return_value=None)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_daemonset(
+                "fluentd", "kube-system"
+            )
+
+        assert result is True
+        call_args = mock_client.apps_v1.patch_namespaced_daemon_set.call_args
+        patch_body = call_args[0][2]
+        assert (
+            "kubectl.kubernetes.io/restartedAt"
+            in (patch_body["spec"]["template"]["metadata"]["annotations"])
+        )
+
+    async def test_rollout_restart_aiohttp_status_201(self, mock_client):
+        """rollout_restart returns True when aiohttp PATCH returns 201."""
+        mock_response = MagicMock()
+        mock_response.status = 201
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_deployment("nginx", "default")
+
+        assert result is True
+
+    async def test_rollout_restart_uses_default_namespace(self, mock_client):
+        """rollout_restart uses self.namespace when namespace is None."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.rollout_restart_deployment("nginx")
+
+        assert result is True

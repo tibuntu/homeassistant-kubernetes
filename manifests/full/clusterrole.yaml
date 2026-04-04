@@ -9,6 +9,7 @@ metadata:
     # Full permissions for all integration features:
     #   - Sensors and binary sensors (monitoring)
     #   - Switches (deployment/statefulset scaling, cronjob suspension)
+    #   - Workload rollout restart (deployments, statefulsets, daemonsets)
     #   - Pod deletion from the sidebar panel
     #   - Experimental Watch API (real-time updates via ?watch=true)
     #   - Legacy API compatibility (Kubernetes < 1.16)
@@ -26,6 +27,11 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
     verbs: ["get", "list", "watch"]
+
+  # Apps resources — rollout restart
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["patch"]
 
   # Apps resources — scaling control
   - apiGroups: ["apps"]
