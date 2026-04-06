@@ -3294,7 +3294,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		const statusFiltered = this._statusFilter === "all" ? filtered : filtered.filter((cj) => {
 			if (this._statusFilter === "stopped") return cj.suspend;
 			if (this._statusFilter === "healthy") return !cj.suspend;
-			return true;
+			return false;
 		});
 		if (statusFiltered.length === 0 && this._categoryFilter !== "all") return b`<div class="empty">No cronjobs match your filters.</div>`;
 		if (statusFiltered.length === 0) return A;

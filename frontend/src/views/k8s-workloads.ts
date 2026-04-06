@@ -992,7 +992,7 @@ export class K8sWorkloads extends LitElement {
         : filtered.filter((cj) => {
             if (this._statusFilter === "stopped") return cj.suspend;
             if (this._statusFilter === "healthy") return !cj.suspend;
-            return true;
+            return false;
           });
 
     if (statusFiltered.length === 0 && this._categoryFilter !== "all") {
