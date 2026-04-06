@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.2.0...v1.2.1) (2026-04-06)
+
+
+### Bug Fixes
+
+* **frontend:** exclude cronjobs from degraded status filter ([f9a2045](https://github.com/tibuntu/homeassistant-kubernetes/commit/f9a2045ccda69dccc3d2d61892a72b34d9811369))
+
 ## [1.2.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.1.2...v1.2.0) (2026-04-04)
 
 
