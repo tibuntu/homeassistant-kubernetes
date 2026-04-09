@@ -32,7 +32,7 @@ dev = [
     "pytest-homeassistant-custom-component==0.13.322",
 
     # Linting and formatting
-    "ruff==0.15.9",
+    "ruff==0.15.10",
 
     # Type checking
     "mypy==1.20.0",
