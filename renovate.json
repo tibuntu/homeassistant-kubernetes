@@ -17,7 +17,8 @@
     {
       "matchUpdateTypes": ["patch"],
       "groupName": "patch updates",
-      "automerge": true
+      "automerge": true,
+      "schedule": ["on sunday"]
     },
     {
       "matchPackageNames": ["kubernetes"],
