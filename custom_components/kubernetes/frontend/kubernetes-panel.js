@@ -654,7 +654,7 @@ var loadHaElements = async () => {
 	}
 };
 //#endregion
-//#region \0@oxc-project+runtime@0.124.0/helpers/decorate.js
+//#region \0@oxc-project+runtime@0.126.0/helpers/decorate.js
 function __decorate(decorators, target, key, desc) {
 	var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
 	if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
@@ -729,7 +729,8 @@ var K8sOverview = class K8sOverview extends i {
 		if (!this._data) this._loading = true;
 		this._error = null;
 		try {
-			this._data = await this.hass.callWS({ type: "kubernetes/cluster/overview" });
+			const result = await this.hass.callWS({ type: "kubernetes/cluster/overview" });
+			this._data = result;
 		} catch (err) {
 			this._error = err.message || "Failed to load cluster data";
 		} finally {
@@ -1307,7 +1308,8 @@ var K8sNodesTable = class K8sNodesTable extends i {
 		if (!this._data) this._loading = true;
 		this._error = null;
 		try {
-			this._data = await this.hass.callWS({ type: "kubernetes/nodes/list" });
+			const result = await this.hass.callWS({ type: "kubernetes/nodes/list" });
+			this._data = result;
 		} catch (err) {
 			this._error = err.message || "Failed to load nodes data";
 		} finally {
@@ -1892,7 +1894,8 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		if (!this._data) this._loading = true;
 		this._error = null;
 		try {
-			this._data = await this.hass.callWS({ type: "kubernetes/pods/list" });
+			const result = await this.hass.callWS({ type: "kubernetes/pods/list" });
+			this._data = result;
 		} catch (err) {
 			this._error = err.message || "Failed to load pods data";
 		} finally {
@@ -2564,7 +2567,8 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		if (!this._data) this._loading = true;
 		this._error = null;
 		try {
-			this._data = await this.hass.callWS({ type: "kubernetes/workloads/list" });
+			const result = await this.hass.callWS({ type: "kubernetes/workloads/list" });
+			this._data = result;
 		} catch (err) {
 			this._error = err.message || "Failed to load workloads data";
 		} finally {
@@ -2605,7 +2609,8 @@ var K8sWorkloads = class K8sWorkloads extends i {
 			await this.hass.callService("kubernetes", service, data);
 			setTimeout(() => this._loadData(), 2e3);
 		} catch (err) {
-			this._actionError = `Action failed: ${err?.message || "Service call failed"}`;
+			const message = err?.message || "Service call failed";
+			this._actionError = `Action failed: ${message}`;
 			console.error("[k8s-workloads] Service call failed:", err);
 		} finally {
 			const done = new Set(this._actionInProgress);
@@ -3415,7 +3420,8 @@ var K8sSettings = class K8sSettings extends i {
 		this._loading = true;
 		this._error = null;
 		try {
-			this._data = await this.hass.callWS({ type: "kubernetes/config/list" });
+			const result = await this.hass.callWS({ type: "kubernetes/config/list" });
+			this._data = result;
 		} catch (err) {
 			this._error = err.message || "Failed to load configuration";
 		} finally {
