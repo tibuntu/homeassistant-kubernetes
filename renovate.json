@@ -7,6 +7,10 @@
   "pre-commit": {
     "enabled": true
   },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["on sunday"]
+  },
   "packageRules": [
     {
       "matchFileNames": ["pyproject.toml"],
@@ -29,6 +33,18 @@
       "groupName": "pre-commit hooks",
       "semanticCommitType": "build",
       "semanticCommitScope": "deps"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps-actions"
+    },
+    {
+      "matchManagers": ["devcontainer"],
+      "groupName": "devcontainer",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "deps-devcontainer"
     },
     {
       "matchDepNames": ["ruff", "astral-sh/ruff-pre-commit"],
@@ -97,11 +113,10 @@
         "/\\.github/workflows/.*\\.ya?ml$/"
       ],
       "matchStrings": [
-        "python-version:\\s*[\"'](?<currentValue>[0-9.]+)[\"']",
         "PYTHON_VERSION:\\s*[\"'](?<currentValue>[0-9.]+)[\"']"
       ],
       "depNameTemplate": "python",
-      "datasourceTemplate": "python-version"
+      "datasourceTemplate": "docker"
     }
   ]
 }
