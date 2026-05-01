@@ -3,6 +3,7 @@
   "extends": [
     "config:recommended"
   ],
+  "prFooter": "",
   "semanticCommitType": "fix",
   "automerge": true,
   "pre-commit": {
