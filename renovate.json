@@ -3,7 +3,8 @@
   "extends": [
     "config:recommended"
   ],
-  "semanticCommitType": "build",
+  "semanticCommitType": "fix",
+  "automerge": true,
   "pre-commit": {
     "enabled": true
   },
@@ -13,15 +14,18 @@
   },
   "packageRules": [
     {
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
       "matchFileNames": ["pyproject.toml"],
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps",
       "groupName": "dev dependencies"
     },
     {
       "matchUpdateTypes": ["patch"],
       "groupName": "patch updates",
-      "automerge": true,
       "schedule": ["on sunday"]
     },
     {
@@ -31,49 +35,49 @@
     {
       "matchManagers": ["pre-commit"],
       "groupName": "pre-commit hooks",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     },
     {
       "matchManagers": ["github-actions"],
       "groupName": "github-actions",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps-actions"
     },
     {
       "matchManagers": ["devcontainer"],
       "groupName": "devcontainer",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps-devcontainer"
     },
     {
       "matchDepNames": ["ruff", "astral-sh/ruff-pre-commit"],
       "groupName": "ruff",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     },
     {
       "matchDepNames": ["mypy", "pre-commit/mirrors-mypy"],
       "groupName": "mypy",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     },
     {
       "matchDepNames": ["bandit", "pycqa/bandit"],
       "groupName": "bandit",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     },
     {
       "matchDepNames": ["typescript", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser"],
       "groupName": "typescript",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps-frontend"
     },
     {
       "matchFileNames": ["frontend/package.json"],
       "groupName": "frontend dependencies",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps-frontend",
       "postUpgradeTasks": {
         "commands": [
@@ -90,7 +94,7 @@
     {
       "matchDepNames": ["pytest-homeassistant-custom-component", "homeassistant", "pytest", "pytest-asyncio"],
       "groupName": "homeassistant",
-      "semanticCommitType": "build",
+      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     }
   ],
