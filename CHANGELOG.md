@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.2.2...v1.2.3) (2026-05-02)
+
+
+### Bug Fixes
+
+* **deps-frontend:** lock file maintenance ([645da82](https://github.com/tibuntu/homeassistant-kubernetes/commit/645da82a9fb7a79b026b9ba4df46179a7e6c7960))
+* **deps-frontend:** update dependency eslint to v10.3.0 ([7873dc4](https://github.com/tibuntu/homeassistant-kubernetes/commit/7873dc4dc4ce7dd82b4a1a0e04bfa8e9621aa142))
+
 ## [1.2.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.2.1...v1.2.2) (2026-05-01)
 
 
