@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.4](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.2.3...v1.2.4) (2026-05-05)
+
+
+### Bug Fixes
+
+* **deps-frontend:** lock file maintenance ([d82cc2a](https://github.com/tibuntu/homeassistant-kubernetes/commit/d82cc2a089bdf60c3e388a071a0e5c7abdeaa961))
+* **deps-frontend:** lock file maintenance ([1b331b6](https://github.com/tibuntu/homeassistant-kubernetes/commit/1b331b65ae70b9f7247025d67c423f4c0d036092))
+* **deps-frontend:** update frontend dependencies to v8.59.2 ([9d3e365](https://github.com/tibuntu/homeassistant-kubernetes/commit/9d3e365eb7091aaf1fe55bf444e586e87a354ad7))
+* **deps:** update dependency pytest-homeassistant-custom-component to v0.13.327 ([4dda98a](https://github.com/tibuntu/homeassistant-kubernetes/commit/4dda98ad17ec231148155938ede86a57da2b4c9e))
+
 ## [1.2.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.2.2...v1.2.3) (2026-05-02)
 
 
