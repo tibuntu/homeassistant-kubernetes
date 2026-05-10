@@ -23,6 +23,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts
 - **Diagnostics**: Native Home Assistant Diagnostics download with redacted credentials for easier bug reporting
 - **System Health**: Cluster reachability and aggregate pod/node counts shown in *Settings → System → Repairs → System Information*
+- **Repair Issues**: Surfaces silent failures (missing kubernetes Python package, metrics-server unavailable) as actionable repair issues with auto-clear once resolved
 
 ## Installation
 
