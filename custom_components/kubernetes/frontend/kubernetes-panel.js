@@ -282,8 +282,6 @@ var t$1 = globalThis, i$1 = (t) => t, s$1 = t$1.trustedTypes, e = s$1 ? s$1.crea
 	strings: i,
 	values: s
 }), b = x(1);
-x(2);
-x(3);
 var E = Symbol.for("lit-noChange"), A = Symbol.for("lit-nothing"), C = /* @__PURE__ */ new WeakMap(), P = l.createTreeWalker(l, 129);
 function V(t, i) {
 	if (!u(t) || !t.hasOwnProperty("raw")) throw Error("invalid template strings array");
@@ -654,7 +652,7 @@ var loadHaElements = async () => {
 	}
 };
 //#endregion
-//#region \0@oxc-project+runtime@0.127.0/helpers/decorate.js
+//#region \0@oxc-project+runtime@0.128.0/helpers/decorate.js
 function __decorate(decorators, target, key, desc) {
 	var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
 	if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
