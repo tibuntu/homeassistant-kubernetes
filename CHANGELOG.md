@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.2.4...v1.3.0) (2026-05-10)
+
+
+### Features
+
+* add HA diagnostics platform ([2a54de6](https://github.com/tibuntu/homeassistant-kubernetes/commit/2a54de652a5a090bbbd78b1635c37e5d5adf5181))
+* add HA system_health platform ([5b08a85](https://github.com/tibuntu/homeassistant-kubernetes/commit/5b08a859db98f0599079dd4d1aa043c015471403))
+* in-cluster ServiceAccount support (auto-fill + runtime refresh) ([9851077](https://github.com/tibuntu/homeassistant-kubernetes/commit/9851077fe58e3659311e9a50526c00a63d5c38a9))
+* surface silent failures as repair issues ([3433492](https://github.com/tibuntu/homeassistant-kubernetes/commit/3433492e6a0dc3319997c409e0d9ffe19a5bb69d))
+
+
+### Bug Fixes
+
+* **deps-frontend:** lock file maintenance ([f500804](https://github.com/tibuntu/homeassistant-kubernetes/commit/f500804e676de6c96e42a4d639cd97e98be2dd5b))
+* **deps-frontend:** update dependency vite to v8.0.11 ([0e64150](https://github.com/tibuntu/homeassistant-kubernetes/commit/0e64150dbb8c20731668254b9612f7755ae08e90))
+* **deps-frontend:** update frontend dependencies ([16025f2](https://github.com/tibuntu/homeassistant-kubernetes/commit/16025f2dc96ef2bf6b0d312e2011deba5f86e6c8))
+* **deps:** update dependency pytest-homeassistant-custom-component to v0.13.330 ([9dda894](https://github.com/tibuntu/homeassistant-kubernetes/commit/9dda894229bd1b3703ae9174c8f64f44ae5a5006))
+* **deps:** update mypy to v2 ([8fdb4e4](https://github.com/tibuntu/homeassistant-kubernetes/commit/8fdb4e41534d93599b9af7dd6ba680cc108f3ce8))
+
 ## [1.2.4](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.2.3...v1.2.4) (2026-05-05)
 
 
