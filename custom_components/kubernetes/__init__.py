@@ -13,7 +13,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, issue_registry as ir
 
 from .config_flow import KubernetesConfigFlow  # noqa: F401
 from .const import (
@@ -40,6 +40,8 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+ISSUE_KUBERNETES_PACKAGE_MISSING = "kubernetes_package_missing"
+
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Kubernetes integration."""
@@ -56,8 +58,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         import kubernetes.client  # noqa: F401
 
         _LOGGER.debug("Kubernetes package is available")
+        ir.async_delete_issue(hass, DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
     except ImportError as e:
         _LOGGER.error("Kubernetes package not available: %s", e)
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            ISSUE_KUBERNETES_PACKAGE_MISSING,
+            is_fixable=False,
+            severity=ir.IssueSeverity.ERROR,
+            translation_key=ISSUE_KUBERNETES_PACKAGE_MISSING,
+        )
         return False
 
     # Create Kubernetes client
@@ -188,12 +199,23 @@ async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Clean up integration-wide repair issues when an entry is removed.
+
+    Setup failures (e.g. ImportError) skip async_unload_entry, so the
+    package-missing repair issue would otherwise linger after the user
+    deletes the broken entry.
+    """
+    ir.async_delete_issue(hass, DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     coordinator: KubernetesDataCoordinator = hass.data[DOMAIN][entry.entry_id][
         "coordinator"
     ]
     await coordinator.async_stop_watch_tasks()
+    coordinator.async_clear_repair_issues()
 
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
