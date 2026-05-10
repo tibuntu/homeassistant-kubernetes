@@ -138,5 +138,15 @@
         "name": "StatefulSet"
       }
     }
+  },
+  "issues": {
+    "kubernetes_package_missing": {
+      "title": "Kubernetes Python package is not installed",
+      "description": "The integration requires the official `kubernetes` Python package, which is normally installed automatically. If you see this message, your Home Assistant installation is missing the dependency. Restart Home Assistant or reinstall the integration to retry."
+    },
+    "metrics_server_unavailable": {
+      "title": "Metrics server unavailable for {cluster}",
+      "description": "The cluster `{cluster}` did not return CPU/memory metrics. Either the metrics-server addon is not installed, or the integration's ClusterRole is missing `get`/`list` permissions on the `metrics.k8s.io` API. Install metrics-server (see the Learn more link) or grant the additional RBAC permissions. This message clears automatically once metrics are returned."
+    }
   }
 }

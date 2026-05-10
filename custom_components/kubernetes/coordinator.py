@@ -10,7 +10,8 @@ import time
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -27,6 +28,9 @@ from .device import cleanup_orphaned_namespace_devices, get_all_namespaces
 from .kubernetes_client import KubernetesClient, ResourceVersionExpired
 
 _LOGGER = logging.getLogger(__name__)
+
+ISSUE_METRICS_SERVER_UNAVAILABLE = "metrics_server_unavailable"
+METRICS_SERVER_LEARN_MORE_URL = "https://github.com/kubernetes-sigs/metrics-server"
 
 
 class KubernetesDataCoordinator(DataUpdateCoordinator):
@@ -68,6 +72,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # a replacement dict. Without this, watch changes are lost when the poll
         # overwrites self.data.
         self._data_lock: asyncio.Lock = asyncio.Lock()
+
+        self._metrics_issue_active: bool = False
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via Kubernetes client.
@@ -112,6 +118,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         if name and name in node_metrics:
                             node["cpu_usage_millicores"] = node_metrics[name]["cpu"]
                             node["memory_usage_mib"] = node_metrics[name]["memory"]
+                self._sync_metrics_repair_issue(nodes, node_metrics)
 
                 # Log node names for debugging
                 if nodes:
@@ -489,6 +496,43 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._watch_tasks.clear()
         self._watch_stop_event.clear()
         _LOGGER.debug("Stopped all watch tasks for coordinator %s", self.name)
+
+    def _metrics_issue_id(self) -> str:
+        """Issue id for the per-entry metrics-server-unavailable repair issue."""
+        return f"{ISSUE_METRICS_SERVER_UNAVAILABLE}_{self.config_entry.entry_id}"
+
+    @callback
+    def _sync_metrics_repair_issue(
+        self,
+        nodes: list[dict[str, Any]],
+        node_metrics: dict[str, Any],
+    ) -> None:
+        """Create or dismiss the metrics-server-unavailable issue based on state."""
+        metrics_missing = bool(nodes) and not node_metrics
+        if metrics_missing and not self._metrics_issue_active:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                self._metrics_issue_id(),
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=ISSUE_METRICS_SERVER_UNAVAILABLE,
+                translation_placeholders={
+                    "cluster": getattr(self.client, "cluster_name", "") or "unknown",
+                },
+                learn_more_url=METRICS_SERVER_LEARN_MORE_URL,
+            )
+            self._metrics_issue_active = True
+        elif not metrics_missing and self._metrics_issue_active:
+            ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
+            self._metrics_issue_active = False
+
+    @callback
+    def async_clear_repair_issues(self) -> None:
+        """Remove repair issues owned by this coordinator on unload."""
+        if self._metrics_issue_active:
+            ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
+            self._metrics_issue_active = False
 
     def _populate_from_list(
         self,
