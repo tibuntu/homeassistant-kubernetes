@@ -80,6 +80,7 @@
       "groupName": "frontend dependencies",
       "semanticCommitType": "fix",
       "semanticCommitScope": "deps-frontend",
+      "rangeStrategy": "bump",
       "postUpgradeTasks": {
         "commands": [
           "npm install --prefix frontend",
