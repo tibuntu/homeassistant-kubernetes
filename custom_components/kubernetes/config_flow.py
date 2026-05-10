@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 import sys
 import threading
 from typing import Any
@@ -11,6 +13,7 @@ import aiohttp
 from homeassistant import config_entries
 from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_HOST, CONF_PORT
+from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers import selector
 from homeassistant.helpers.selector import SelectOptionDict
@@ -34,6 +37,7 @@ from .const import (  # noqa: E402
     CONF_SCALE_COOLDOWN,
     CONF_SCALE_VERIFICATION_TIMEOUT,
     CONF_SWITCH_UPDATE_INTERVAL,
+    CONF_USE_IN_CLUSTER,
     CONF_VERIFY_SSL,
     DEFAULT_CLUSTER_NAME,
     DEFAULT_DEVICE_GROUPING_MODE,
@@ -45,13 +49,77 @@ from .const import (  # noqa: E402
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
+    DEFAULT_USE_IN_CLUSTER,
     DEFAULT_VERIFY_SSL,
     DEVICE_GROUPING_MODE_CLUSTER,
     DEVICE_GROUPING_MODE_NAMESPACE,
     DOMAIN,
+    IN_CLUSTER_CA_PATH,
+    IN_CLUSTER_TOKEN_PATH,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# Path-flavoured wrappers around the canonical string constants in const.py.
+SERVICE_ACCOUNT_TOKEN_FILE = Path(IN_CLUSTER_TOKEN_PATH)
+SERVICE_ACCOUNT_CA_FILE = Path(IN_CLUSTER_CA_PATH)
+
+
+# Indirection helpers — give tests a stable patch target instead of having to
+# reach into PosixPath instances (whose attributes are read-only on CPython).
+
+
+def _service_account_token_exists() -> bool:
+    return SERVICE_ACCOUNT_TOKEN_FILE.is_file()
+
+
+def _service_account_ca_exists() -> bool:
+    return SERVICE_ACCOUNT_CA_FILE.is_file()
+
+
+def _read_service_account_token() -> str:
+    return SERVICE_ACCOUNT_TOKEN_FILE.read_text(encoding="utf-8")
+
+
+def _read_in_cluster_config_sync() -> dict[str, Any] | None:
+    """Read in-cluster ServiceAccount credentials. Sync — call via executor.
+
+    Returns None when not running inside a cluster (env var or token file
+    missing). Otherwise returns host/port/api_token plus ca_cert when the
+    CA bundle is mounted.
+    """
+    host = os.environ.get("KUBERNETES_SERVICE_HOST")
+    if not host:
+        return None
+    if not _service_account_token_exists():
+        return None
+
+    try:
+        token = _read_service_account_token().strip()
+    except OSError:
+        return None
+    if not token:
+        return None
+
+    port_str = os.environ.get("KUBERNETES_SERVICE_PORT_HTTPS") or os.environ.get(
+        "KUBERNETES_SERVICE_PORT", "443"
+    )
+    try:
+        port = int(port_str)
+    except ValueError:
+        port = 443
+
+    result: dict[str, Any] = {"host": host, "port": port, "api_token": token}
+    if _service_account_ca_exists():
+        result["ca_cert"] = str(SERVICE_ACCOUNT_CA_FILE)
+    return result
+
+
+async def async_detect_in_cluster_config(
+    hass: HomeAssistant,
+) -> dict[str, Any] | None:
+    """Detect in-cluster ServiceAccount credentials, off the event loop."""
+    return await hass.async_add_executor_job(_read_in_cluster_config_sync)
 
 
 def _ensure_kubernetes_imported() -> bool:
@@ -171,17 +239,42 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 _LOGGER.error("Failed to connect to Kubernetes: %s", ex)
                 errors["base"] = "cannot_connect"
 
+        # When HA itself runs inside the cluster, auto-fill the connection
+        # fields from the pod's ServiceAccount so the user only has to pick
+        # a cluster name and submit.
+        in_cluster = await async_detect_in_cluster_config(self.hass)
+        if in_cluster:
+            _LOGGER.info(
+                "In-cluster ServiceAccount detected at %s; pre-filling config form",
+                in_cluster["host"],
+            )
+
+        def _suggest(key: str) -> dict[str, Any] | None:
+            if in_cluster and key in in_cluster:
+                return {"suggested_value": in_cluster[key]}
+            return None
+
         # Create schema for connection step (no namespace field here)
         # Order: Cluster Name, Host, Port, API Token, CA Certificate, Verify SSL,
         # Monitor All Namespaces, Device Grouping Mode, Switch Update Interval,
         # Scale Verification Timeout, Scale Cooldown
         schema = {
             vol.Required(CONF_CLUSTER_NAME, default=DEFAULT_CLUSTER_NAME): str,
-            vol.Required(CONF_HOST): str,
-            vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-            vol.Required(CONF_API_TOKEN): str,
-            vol.Optional(CONF_CA_CERT): str,
+            vol.Required(CONF_HOST, description=_suggest("host")): str,
+            vol.Optional(
+                CONF_PORT,
+                default=in_cluster["port"] if in_cluster else DEFAULT_PORT,
+            ): int,
+            vol.Required(CONF_API_TOKEN, description=_suggest("api_token")): str,
+            vol.Optional(CONF_CA_CERT, description=_suggest("ca_cert")): str,
             vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
+            # Default the checkbox to True only when in-cluster credentials
+            # were actually detected — turning it on without an SA volume
+            # mounted would have the client fall back to the static token.
+            vol.Optional(
+                CONF_USE_IN_CLUSTER,
+                default=bool(in_cluster),
+            ): bool,
             vol.Optional(
                 CONF_MONITOR_ALL_NAMESPACES, default=DEFAULT_MONITOR_ALL_NAMESPACES
             ): bool,
@@ -345,6 +438,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 # Apply defaults for optional fields
                 user_input.setdefault(CONF_PORT, DEFAULT_PORT)
                 user_input.setdefault(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+                user_input.setdefault(CONF_USE_IN_CLUSTER, DEFAULT_USE_IN_CLUSTER)
                 user_input.setdefault(
                     CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
                 )
@@ -403,6 +497,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             vol.Optional(
                 CONF_VERIFY_SSL,
                 default=current.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+            ): bool,
+            vol.Optional(
+                CONF_USE_IN_CLUSTER,
+                default=current.get(CONF_USE_IN_CLUSTER, DEFAULT_USE_IN_CLUSTER),
             ): bool,
             vol.Optional(
                 CONF_MONITOR_ALL_NAMESPACES,

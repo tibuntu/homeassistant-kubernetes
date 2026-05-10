@@ -29,13 +29,21 @@ from .const import (
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_PORT,
+    CONF_USE_IN_CLUSTER,
     CONF_VERIFY_SSL,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
+    DEFAULT_USE_IN_CLUSTER,
     DEFAULT_VERIFY_SSL,
     DEFAULT_WATCH_TIMEOUT_SECONDS,
+    IN_CLUSTER_TOKEN_PATH,
 )
+
+# How long to cache a freshly-read in-cluster token before re-reading the file.
+# Projected SA tokens rotate roughly hourly by default; 60 s keeps us responsive
+# without hitting tmpfs on every API call.
+IN_CLUSTER_TOKEN_CACHE_TTL = 60.0
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,7 +59,16 @@ class KubernetesClient:
         """Initialize the Kubernetes client."""
         self.host = config_data[CONF_HOST]
         self.port = config_data.get(CONF_PORT, DEFAULT_PORT)
-        self.api_token = config_data[CONF_API_TOKEN]
+        # Static token is the fallback (always populated) and the source of
+        # truth when use_in_cluster=False. When use_in_cluster=True, the
+        # api_token property prefers the projected SA file (with TTL cache)
+        # so token rotations are picked up without a config-flow restart.
+        self._static_api_token: str = config_data.get(CONF_API_TOKEN, "")
+        self._use_in_cluster: bool = config_data.get(
+            CONF_USE_IN_CLUSTER, DEFAULT_USE_IN_CLUSTER
+        )
+        self._token_cache: str = ""
+        self._token_cache_time: float = 0.0
         self.cluster_name = config_data.get(CONF_CLUSTER_NAME, "default")
         # Handle namespace as list (new) or string (legacy)
         namespace_config = config_data.get(CONF_NAMESPACE, [DEFAULT_NAMESPACE])
@@ -79,6 +96,62 @@ class KubernetesClient:
         # Initialize Kubernetes client
         self._setup_kubernetes_client()
 
+    @property
+    def api_token(self) -> str:
+        """Bearer token used for the cluster API.
+
+        When use_in_cluster=True the projected SA token file is read with a
+        short TTL cache so token rotations are picked up without restarting
+        the integration. On read failure the last cached value (or the static
+        token from the config entry) is returned as a fallback.
+
+        Thread-safety: the cache check-then-update is intentionally lock-free.
+        Two concurrent expirations may both read the file and write the same
+        value; the GIL makes individual attribute access safe and the worst
+        case is one redundant tmpfs read. Adding a lock here would be more
+        expensive than the race it prevents.
+        """
+        if not self._use_in_cluster:
+            return self._static_api_token
+
+        now = time.time()
+        if (
+            self._token_cache
+            and (now - self._token_cache_time) < IN_CLUSTER_TOKEN_CACHE_TTL
+        ):
+            return self._token_cache
+
+        try:
+            with open(IN_CLUSTER_TOKEN_PATH, encoding="utf-8") as fh:
+                token = fh.read().strip()
+        except OSError as err:
+            _LOGGER.debug(
+                "Failed to read in-cluster token at %s (%s); using last cached/static token",
+                IN_CLUSTER_TOKEN_PATH,
+                err,
+            )
+            return self._token_cache or self._static_api_token
+
+        if token:
+            self._token_cache = token
+            self._token_cache_time = now
+        return self._token_cache or self._static_api_token
+
+    @api_token.setter
+    def api_token(self, value: str) -> None:
+        """Update the static (fallback) token and drop any in-cluster cache."""
+        self._static_api_token = value
+        self._token_cache = ""  # nosec B105
+        self._token_cache_time = 0.0
+
+    def invalidate_token_cache(self) -> None:
+        """Force the next api_token read to re-fetch the projected SA token."""
+        self._token_cache_time = 0.0
+
+    def _refresh_api_key_hook(self, configuration: Any) -> None:
+        """Refresh the kubernetes Configuration's bearer token before each call."""
+        configuration.api_key["authorization"] = f"Bearer {self.api_token}"
+
     def _log_error(self, operation: str, error: Exception, context: str = "") -> None:
         """Log errors with structured context and actionable information."""
         cluster_info = f"cluster={self.cluster_name}, host={self.host}:{self.port}"
@@ -91,6 +164,10 @@ class KubernetesClient:
         if isinstance(error, ApiException):
             # Handle Kubernetes API exceptions
             if error.status == 401:
+                # The projected SA token may have just rotated — drop any
+                # cached value so the next call re-reads from disk.
+                if self._use_in_cluster:
+                    self.invalidate_token_cache()
                 # Deduplicate authentication errors to reduce log noise
                 current_time = time.time()
                 if (
@@ -202,9 +279,18 @@ class KubernetesClient:
         """Set up the Kubernetes client configuration."""
         configuration = k8s_client.Configuration()
         configuration.host = f"https://{self.host}:{self.port}"
-        configuration.api_key = {"authorization": f"Bearer {self.api_token}"}
+        # Use the static token here to avoid touching the projected SA file
+        # from the event loop during integration setup; the refresh hook
+        # below replaces this with the live token on subsequent calls (which
+        # run in urllib3's thread pool).
+        configuration.api_key = {"authorization": f"Bearer {self._static_api_token}"}
         configuration.api_key_prefix = {"authorization": "Bearer"}
         configuration.verify_ssl = self.verify_ssl
+        # When use_in_cluster=True the bearer token rotates underneath us; the
+        # hook re-reads via the api_token property before each request so the
+        # official client never holds a stale token.
+        if self._use_in_cluster:
+            configuration.refresh_api_key_hook = self._refresh_api_key_hook
 
         if self.ca_cert:
             configuration.ssl_ca_cert = self.ca_cert

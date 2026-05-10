@@ -11,7 +11,14 @@ CONF_CLUSTER_NAME = "cluster_name"
 CONF_NAMESPACE = "namespace"
 CONF_MONITOR_ALL_NAMESPACES = "monitor_all_namespaces"
 CONF_VERIFY_SSL = "verify_ssl"
+CONF_USE_IN_CLUSTER = "use_in_cluster"
 CONF_DEVICE_GROUPING_MODE = "device_grouping_mode"
+
+# Standard mount path for the in-cluster ServiceAccount credentials.
+# See https://kubernetes.io/docs/tasks/run-application/access-api-from-pod/.
+IN_CLUSTER_SERVICE_ACCOUNT_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
+IN_CLUSTER_TOKEN_PATH = f"{IN_CLUSTER_SERVICE_ACCOUNT_DIR}/token"  # nosec B105
+IN_CLUSTER_CA_PATH = f"{IN_CLUSTER_SERVICE_ACCOUNT_DIR}/ca.crt"
 
 # Device grouping modes
 DEVICE_GROUPING_MODE_NAMESPACE = "namespace"
@@ -23,6 +30,7 @@ DEFAULT_CLUSTER_NAME = "default"
 DEFAULT_NAMESPACE = "default"
 DEFAULT_MONITOR_ALL_NAMESPACES = True
 DEFAULT_VERIFY_SSL = True
+DEFAULT_USE_IN_CLUSTER = False
 DEFAULT_DEVICE_GROUPING_MODE = DEVICE_GROUPING_MODE_NAMESPACE
 
 # Update intervals
