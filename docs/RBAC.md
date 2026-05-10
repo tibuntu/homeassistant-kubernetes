@@ -109,6 +109,65 @@ Read-only access to every resource the integration monitors. No write permission
 3. **Audit Logs**: Monitor Kubernetes audit logs for token usage
 4. **Network Security**: Ensure secure communication to the API server
 
+## In-Cluster ServiceAccount (recommended when HA runs inside the cluster)
+
+If the Home Assistant pod runs inside the same cluster it monitors, the integration can bind to the pod's ServiceAccount directly instead of using a manually-extracted token. This is the preferred path because:
+
+- **No token extraction step.** The pod already has the projected token mounted at `/var/run/secrets/kubernetes.io/serviceaccount/token`.
+- **Automatic rotation.** Kubernetes 1.21+ rotates projected ServiceAccount tokens (commonly hourly). With **Use in-cluster ServiceAccount at runtime** enabled in the config flow, the integration re-reads the token file on each request and follows the rotation seamlessly. With this setting off, the captured-at-config-time token will eventually expire and auth-fail.
+- **No persisted credential.** The token never leaves the projected tmpfs; it is not written to Home Assistant's config store.
+- **Same RBAC rules apply.** The permission matrix above is unchanged — bind the existing `ClusterRole` (or namespace-scoped `Role`) to the ServiceAccount that the HA pod uses.
+
+### Pod spec
+
+Set `serviceAccountName` on the Home Assistant pod (or Deployment / StatefulSet) to the same SA referenced by your `ClusterRoleBinding`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homeassistant
+  namespace: homeassistant
+spec:
+  template:
+    spec:
+      # Bind the integration's SA to the HA pod itself.
+      serviceAccountName: homeassistant-kubernetes-integration
+      # automountServiceAccountToken: true is the default and is required for
+      # the projected volume to be mounted at the standard path. Do not set
+      # this to false if you want in-cluster auth.
+      containers:
+        - name: homeassistant
+          image: ghcr.io/home-assistant/home-assistant:latest
+```
+
+### Config flow
+
+When Home Assistant detects it is running inside a cluster (the `KUBERNETES_SERVICE_HOST` env var is set **and** the projected token file is readable):
+
+- The **Host**, **Port**, **API Token**, and **CA Certificate** fields on the *Add Integration* form are pre-filled from the pod's ServiceAccount.
+- A **Use in-cluster ServiceAccount at runtime** checkbox is shown and defaults to enabled. Leave it on so the integration re-reads the token file on each call and survives token rotation.
+- The token entered in the form is kept only as a fallback — used if the projected volume becomes unreadable for any reason (e.g. HA was later moved out of the cluster).
+
+The same checkbox is also available in **Configure → Reconfigure** if you want to flip an existing entry between in-cluster and static-token modes without re-creating it.
+
+### Verifying
+
+Once the HA pod is running with the bound ServiceAccount, you can verify access using the SA's identity:
+
+```bash
+# Use the pod's SA token directly (works from any pod in the same namespace)
+kubectl auth can-i list pods \
+  --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+
+# From inside the HA pod itself, hit the API server with the projected token
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+curl -sS \
+  --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+  -H "Authorization: Bearer $TOKEN" \
+  https://kubernetes.default.svc/api/v1/namespaces
+```
+
 ## Namespace-Scoped Example
 
 If you want to restrict access to specific namespaces instead of cluster-wide, use a `Role` + `RoleBinding` per namespace and a minimal `ClusterRole` for cluster-scoped resources (nodes, namespaces):

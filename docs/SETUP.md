@@ -2,6 +2,57 @@
 
 This guide walks you through setting up the required Kubernetes service account and RBAC permissions for the Home Assistant Kubernetes Integration.
 
+## Picking the right path
+
+| Where Home Assistant runs | Recommended setup |
+|---------------------------|-------------------|
+| **Inside the cluster** (HA itself runs as a pod) | [In-cluster ServiceAccount](#in-cluster-serviceaccount-setup) — bind the SA directly to the HA pod, skip the token-extraction step, get automatic token rotation. |
+| **Outside the cluster** (HA on a different host) | [Quick Setup](#quick-setup) — apply the manifests, extract a token from the long-lived secret, paste it into the integration. |
+
+Both paths use the **same RBAC manifests**; only the way the integration receives the token differs.
+
+## In-Cluster ServiceAccount Setup
+
+When Home Assistant runs as a pod in the same cluster it monitors, you do not need to extract the token manually. Instead, bind the integration's ServiceAccount to the HA pod and let the integration read the projected token file at runtime — rotation included.
+
+### 1. Apply the RBAC manifests
+
+```bash
+kubectl apply -f manifests/full/         # or manifests/minimal/
+```
+
+These create the ServiceAccount, ClusterRole, and ClusterRoleBinding. The `serviceaccount-token-secret.yaml` step from the quick-setup path is **not needed** — the projected token volume is mounted by the kubelet automatically.
+
+### 2. Bind the SA to the Home Assistant pod
+
+Set `serviceAccountName` on the HA pod (or Deployment / StatefulSet) to match the SA referenced in the binding:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homeassistant
+  namespace: homeassistant
+spec:
+  template:
+    spec:
+      serviceAccountName: homeassistant-kubernetes-integration
+      # automountServiceAccountToken defaults to true. Leave it as-is so the
+      # projected token volume is mounted at /var/run/secrets/kubernetes.io/serviceaccount.
+      containers:
+        - name: homeassistant
+          image: ghcr.io/home-assistant/home-assistant:latest
+```
+
+### 3. Configure the integration
+
+1. Go to **Settings → Devices & Services → Add Integration → Kubernetes**.
+2. The **Host**, **Port**, **API Token**, and **CA Certificate** fields are pre-filled from the pod's ServiceAccount.
+3. Leave **Use in-cluster ServiceAccount at runtime** enabled (it defaults to on when in-cluster credentials are detected). The integration will re-read the projected token file on each request, so automatic token rotation is handled transparently.
+4. Pick a friendly **Cluster Name** and submit.
+
+> **Tip:** The same checkbox is available in **Configure → Reconfigure** for existing entries, so you can switch between in-cluster and static-token modes without removing the integration.
+
 ## Quick Setup
 
 For a quick setup using the provided manifests:
@@ -22,6 +73,8 @@ kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -
 ```
 
 Copy this token for use in the Home Assistant configuration.
+
+> **Note:** Tokens extracted from a long-lived `kubernetes.io/service-account-token` secret do **not** rotate. If you want automatic rotation, run Home Assistant inside the cluster and use the [In-Cluster ServiceAccount Setup](#in-cluster-serviceaccount-setup) path instead.
 
 ## Step-by-Step Setup
 
