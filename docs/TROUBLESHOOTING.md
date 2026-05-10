@@ -202,6 +202,17 @@ curl -X PATCH \
   https://YOUR_CLUSTER_HOST:6443/apis/apps/v1/namespaces/default/deployments/DEPLOYMENT_NAME/scale
 ```
 
+## Downloading Diagnostics for Bug Reports
+
+Home Assistant can export a redacted snapshot of the integration's configuration and runtime state. Attaching this to a GitHub issue is the fastest way to get a useful response.
+
+1. Go to **Settings** → **Devices & Services**.
+2. Find the **Kubernetes** integration and click the **⋮** menu next to your cluster.
+3. Choose **Download diagnostics**.
+4. Attach the resulting JSON file to your GitHub issue.
+
+The export includes the cluster host, namespaces, watch/panel options, coordinator status, and resource counts. The API token and CA certificate are automatically redacted before download.
+
 ## Getting Help
 
 If you're still experiencing issues:
@@ -213,6 +224,7 @@ If you're still experiencing issues:
    - Home Assistant version
    - Kubernetes version
    - Error logs
+   - Diagnostics download (see section above)
    - Configuration (without sensitive data)
 
 ## Security Best Practices

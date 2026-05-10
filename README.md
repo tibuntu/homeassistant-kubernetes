@@ -21,6 +21,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **CronJob Management**: Control CronJob suspension state and trigger jobs manually via service calls
 - **Dynamic Entity Management**: Automatic entity creation and cleanup as cluster resources change
 - **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts
+- **Diagnostics**: Native Home Assistant Diagnostics download with redacted credentials for easier bug reporting
 
 ## Installation
 
