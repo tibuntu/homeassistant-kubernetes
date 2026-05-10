@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.0...v1.3.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* **deps-frontend:** lock file maintenance ([a5568b9](https://github.com/tibuntu/homeassistant-kubernetes/commit/a5568b9d4a63359488d703b70e94343a12a42a3a))
+* ensure release-please bumps all versions in the frontend package-log.json ([db9a4cf](https://github.com/tibuntu/homeassistant-kubernetes/commit/db9a4cf156464d7cb17db0fbc3c86ed2ae44ffd8))
+
 ## [1.3.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.2.4...v1.3.0) (2026-05-10)
 
 
