@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Kubernetes Configuration",
-        "description": "Enter your Kubernetes cluster connection details.",
+        "description": "Enter your Kubernetes cluster connection details. When Home Assistant is running inside the Kubernetes cluster, the host, port, API token, and CA certificate fields are pre-filled from the pod's ServiceAccount.",
         "data": {
           "cluster_name": "Cluster Name",
           "host": "Cluster API IP address",
@@ -11,6 +11,7 @@
           "api_token": "API Token",
           "ca_cert": "CA Certificate (optional)",
           "verify_ssl": "Verify SSL",
+          "use_in_cluster": "Use in-cluster ServiceAccount at runtime",
           "monitor_all_namespaces": "Monitor All Namespaces",
           "switch_update_interval": "Switch Update Interval (seconds)",
           "scale_verification_timeout": "Scale Verification Timeout (seconds)",
@@ -24,6 +25,7 @@
           "api_token": "A valid Kubernetes service account token with appropriate RBAC permissions. This token is used to authenticate API requests to your cluster. It is required to access the Kubernetes API.",
           "ca_cert": "Optional path to your cluster's CA certificate file. Required if using self-signed certificates or custom Certificate Authorities. Leave empty if using standard certificates.",
           "verify_ssl": "Whether to verify SSL certificates when connecting to the Kubernetes API. Disable this only for self-signed certificates or development environments.",
+          "use_in_cluster": "When Home Assistant runs inside the Kubernetes cluster, re-read the bearer token from the projected ServiceAccount volume on each request. This handles automatic token rotation. The token entered above is kept as a fallback if the file becomes unreadable.",
           "monitor_all_namespaces": "When enabled, the integration will monitor all namespaces in your cluster. When disabled, you will be prompted to select specific namespaces to monitor. Requires cluster-wide permissions when enabled.",
           "switch_update_interval": "How often (in seconds) the integration polls the Kubernetes API to update switch states. Lower values provide more responsive switches but increase API load.",
           "scale_verification_timeout": "Maximum time (in seconds) to wait for scaling operations to complete before timing out. Increase this value for slow clusters or large deployments.",
@@ -47,6 +49,7 @@
           "api_token": "API Token",
           "ca_cert": "CA Certificate (optional)",
           "verify_ssl": "Verify SSL",
+          "use_in_cluster": "Use in-cluster ServiceAccount at runtime",
           "monitor_all_namespaces": "Monitor All Namespaces",
           "switch_update_interval": "Switch Update Interval (seconds)",
           "scale_verification_timeout": "Scale Verification Timeout (seconds)",
@@ -59,6 +62,7 @@
           "api_token": "A valid Kubernetes service account token with appropriate RBAC permissions.",
           "ca_cert": "Optional path to your cluster's CA certificate file. Leave empty if using standard certificates.",
           "verify_ssl": "Whether to verify SSL certificates when connecting to the Kubernetes API.",
+          "use_in_cluster": "When Home Assistant runs inside the Kubernetes cluster, re-read the bearer token from the projected ServiceAccount volume on each request. This handles automatic token rotation. The token entered above is kept as a fallback if the file becomes unreadable.",
           "monitor_all_namespaces": "When enabled, the integration will monitor all namespaces in your cluster. When disabled, you will be prompted to select specific namespaces to monitor.",
           "switch_update_interval": "How often (in seconds) the integration polls the Kubernetes API to update switch states.",
           "scale_verification_timeout": "Maximum time (in seconds) to wait for scaling operations to complete before timing out.",
