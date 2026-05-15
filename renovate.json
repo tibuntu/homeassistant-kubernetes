@@ -4,7 +4,7 @@
     "config:recommended"
   ],
   "prFooter": "",
-  "semanticCommitType": "fix",
+  "semanticCommitType": "build",
   "automerge": true,
   "pre-commit": {
     "enabled": true
@@ -15,12 +15,15 @@
   },
   "packageRules": [
     {
+      "matchPackageNames": ["*"],
+      "semanticCommitType": "build"
+    },
+    {
       "matchUpdateTypes": ["major"],
       "automerge": false
     },
     {
       "matchFileNames": ["pyproject.toml"],
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps",
       "groupName": "dev dependencies"
     },
@@ -31,54 +34,68 @@
     },
     {
       "matchPackageNames": ["kubernetes"],
-      "groupName": "kubernetes"
+      "groupName": "kubernetes",
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "deps"
     },
     {
       "matchManagers": ["pre-commit"],
       "groupName": "pre-commit hooks",
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     },
     {
       "matchManagers": ["github-actions"],
       "groupName": "github-actions",
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps-actions"
     },
     {
       "matchManagers": ["devcontainer"],
       "groupName": "devcontainer",
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps-devcontainer"
     },
     {
       "matchDepNames": ["ruff", "astral-sh/ruff-pre-commit"],
       "groupName": "ruff",
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     },
     {
       "matchDepNames": ["mypy", "pre-commit/mirrors-mypy"],
       "groupName": "mypy",
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     },
     {
       "matchDepNames": ["bandit", "pycqa/bandit"],
       "groupName": "bandit",
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     },
     {
       "matchDepNames": ["typescript", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser"],
       "groupName": "typescript",
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps-frontend"
     },
     {
       "matchFileNames": ["frontend/package.json"],
-      "groupName": "frontend dependencies",
+      "matchDepTypes": ["dependencies"],
+      "groupName": "frontend runtime dependencies",
       "semanticCommitType": "fix",
+      "semanticCommitScope": "deps-frontend",
+      "rangeStrategy": "bump",
+      "postUpgradeTasks": {
+        "commands": [
+          "npm install --prefix frontend",
+          "npm run build --prefix frontend"
+        ],
+        "fileFilters": [
+          "frontend/package-lock.json",
+          "custom_components/kubernetes/frontend/kubernetes-panel.js"
+        ],
+        "executionMode": "branch"
+      }
+    },
+    {
+      "matchFileNames": ["frontend/package.json"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "frontend dev dependencies",
       "semanticCommitScope": "deps-frontend",
       "rangeStrategy": "bump",
       "postUpgradeTasks": {
@@ -96,7 +113,6 @@
     {
       "matchDepNames": ["pytest-homeassistant-custom-component", "homeassistant", "pytest", "pytest-asyncio"],
       "groupName": "homeassistant",
-      "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
     }
   ],
