@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.1...v1.3.2) (2026-05-17)
+
+
+### Bug Fixes
+
+* **deps-frontend:** update dependency lit to ^3.3.3 ([d54d227](https://github.com/tibuntu/homeassistant-kubernetes/commit/d54d22765ef3520732e50ab92a867763de6ba25e))
+* **deps:** update dependency mypy to v2.1.0 ([0272d41](https://github.com/tibuntu/homeassistant-kubernetes/commit/0272d4114c8e3ad2b0021ae8dde2fddaf8007e69))
+* **deps:** update pre-commit hook pre-commit/mirrors-mypy to v2.1.0 ([2e2c5cd](https://github.com/tibuntu/homeassistant-kubernetes/commit/2e2c5cdfa732517eb5fb752cb3cc809135dd1064))
+
 ## [1.3.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.0...v1.3.1) (2026-05-10)
 
 
