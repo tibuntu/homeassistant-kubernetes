@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.2...v1.3.3) (2026-05-31)
+
+
+### Bug Fixes
+
+* **deps:** update dependency kubernetes to v36.0.1 ([f11de48](https://github.com/tibuntu/homeassistant-kubernetes/commit/f11de4885d4732d06c70d12129406ba3c9526f13))
+
 ## [1.3.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.1...v1.3.2) (2026-05-21)
 
 
