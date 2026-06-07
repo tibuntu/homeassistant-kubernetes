@@ -23,7 +23,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "kubernetes==36.0.1",
+    "kubernetes==36.0.2",
 ]
 
 [project.optional-dependencies]
