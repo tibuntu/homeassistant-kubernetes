@@ -1,5 +1,6 @@
 """Tests for the Kubernetes integration client."""
 
+import ssl
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -135,6 +136,115 @@ def test_kubernetes_client_initialization_with_ca_cert(mock_config):
         client = KubernetesClient(mock_config)
 
         assert client.ca_cert == "test-ca-cert"
+
+
+def _make_client(config):
+    """Build a KubernetesClient with the k8s official client patched out."""
+    with patch("custom_components.kubernetes.kubernetes_client.k8s_client"):
+        return KubernetesClient(config)
+
+
+class TestSslParam:
+    """Regression tests for issue #265: aiohttp must honor ca_cert via an SSLContext."""
+
+    async def test_get_ssl_param_builds_context_from_ca_cert(self, mock_config):
+        """verify_ssl + ca_cert -> SSLContext built from the CA file (not a bare bool)."""
+        mock_config["ca_cert"] = "/path/ca.crt"
+        client = _make_client(mock_config)
+        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
+            return_value=sentinel_ctx,
+        ) as mock_ctx:
+            result = await client._get_ssl_param()
+
+        assert result is sentinel_ctx
+        mock_ctx.assert_called_once_with(cafile="/path/ca.crt")
+
+    async def test_get_ssl_param_caches_context(self, mock_config):
+        """The SSLContext is built once and reused on subsequent calls."""
+        mock_config["ca_cert"] = "/path/ca.crt"
+        client = _make_client(mock_config)
+        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
+            return_value=sentinel_ctx,
+        ) as mock_ctx:
+            first = await client._get_ssl_param()
+            second = await client._get_ssl_param()
+
+        assert first is second is sentinel_ctx
+        mock_ctx.assert_called_once()
+
+    async def test_get_ssl_param_false_when_verify_disabled(self, mock_config):
+        """verify_ssl=False -> ssl param is False (no verification, no context build)."""
+        mock_config["verify_ssl"] = False
+        mock_config["ca_cert"] = "/path/ca.crt"
+        client = _make_client(mock_config)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.ssl.create_default_context"
+        ) as mock_ctx:
+            result = await client._get_ssl_param()
+
+        assert result is False
+        mock_ctx.assert_not_called()
+
+    async def test_aiohttp_read_call_passes_ssl_context(self, mock_config):
+        """A read call (connection test) passes the SSLContext to aiohttp, not a bool."""
+        mock_config["ca_cert"] = "/path/ca.crt"
+        client = _make_client(mock_config)
+        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = AsyncMock(return_value=mock_response)
+
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
+                return_value=sentinel_ctx,
+            ),
+        ):
+            await client._test_connection_aiohttp()
+
+        assert mock_session.get.call_args.kwargs["ssl"] is sentinel_ctx
+
+    async def test_scale_fallback_passes_ssl_context_not_false(self, mock_config):
+        """Write fallback no longer hardcodes ssl=False; it honors the SSLContext."""
+        mock_config["ca_cert"] = "/path/ca.crt"
+        client = _make_client(mock_config)
+        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = AsyncMock(return_value=mock_response)
+
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
+                return_value=sentinel_ctx,
+            ),
+        ):
+            await client._scale_deployment_aiohttp("nginx", 3, "default")
+
+        assert mock_session.patch.call_args.kwargs["ssl"] is sentinel_ctx
 
 
 async def test_get_pods_count_success(mock_client):
