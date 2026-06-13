@@ -353,6 +353,9 @@ class KubernetesClient:
         if not self.verify_ssl:
             return False
         if self._ssl_context is None:
+            # Lock-free on purpose: two concurrent first-callers may each build
+            # a context, but both are equivalent so the second write is
+            # idempotent. A lock would cost more than the rare double-build.
             loop = asyncio.get_running_loop()
             self._ssl_context = await loop.run_in_executor(
                 None, lambda: ssl.create_default_context(cafile=self.ca_cert)
@@ -1970,6 +1973,10 @@ class KubernetesClient:
                 "Authorization": f"Bearer {self.api_token}",
                 "Accept": "application/json",
             }
+            # ssl=False is intentional here: this diagnostic deliberately
+            # bypasses TLS so its result isolates auth from certificate/CA
+            # problems (e.g. "token is fine, the failure is TLS"). The
+            # "ssl": False metadata above reflects this on purpose.
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/",
@@ -2023,7 +2030,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/",
                     headers=headers,
-                    ssl=False,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
