@@ -192,6 +192,26 @@ class TestSslParam:
         assert result is False
         mock_ctx.assert_not_called()
 
+    async def test_get_ssl_param_default_context_without_ca_cert(self, mock_config):
+        """verify_ssl=True + no ca_cert -> default context (cafile=None), system trust.
+
+        This is the path the old ``ssl=True`` boolean took; the fix keeps it
+        behaviorally equivalent via ``create_default_context(cafile=None)``.
+        """
+        mock_config.pop("ca_cert", None)
+        client = _make_client(mock_config)
+        assert client.ca_cert is None
+        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
+            return_value=sentinel_ctx,
+        ) as mock_ctx:
+            result = await client._get_ssl_param()
+
+        assert result is sentinel_ctx
+        mock_ctx.assert_called_once_with(cafile=None)
+
     async def test_aiohttp_read_call_passes_ssl_context(self, mock_config):
         """A read call (connection test) passes the SSLContext to aiohttp, not a bool."""
         mock_config["ca_cert"] = "/path/ca.crt"
@@ -272,7 +292,7 @@ class TestSslParam:
 
         import asyncio
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         with (
             patch.object(
