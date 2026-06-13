@@ -10,7 +10,7 @@ import json
 import logging
 import ssl
 import time
-from typing import Any, Literal
+from typing import Any
 
 import aiohttp
 
@@ -111,6 +111,10 @@ class KubernetesClient:
         )
         self.ca_cert = config_data.get(CONF_CA_CERT)
         self.verify_ssl = config_data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
+
+        # Cached aiohttp SSL context (built lazily from ca_cert; see
+        # _get_ssl_param). None until first use.
+        self._ssl_context: ssl.SSLContext | None = None
 
         # Error deduplication tracking
         self._last_auth_error_time = 0.0
@@ -331,6 +335,30 @@ class KubernetesClient:
             "provided" if self.ca_cert else "none",
         )
 
+    async def _get_ssl_param(self) -> ssl.SSLContext | bool:
+        """Return the value to pass to aiohttp's ``ssl=`` argument.
+
+        Honors ``verify_ssl`` and ``ca_cert``. A bare ``ssl=True`` makes
+        aiohttp verify against the system trust store, ignoring the configured
+        cluster CA (see issue #265). Building an ``SSLContext`` from
+        ``ca_cert`` fixes that. The context is built once and cached;
+        ``create_default_context`` reads ``ca_cert`` from disk, so the first
+        build runs in the executor to avoid blocking the event loop.
+
+        Semantics match the official client / watch path:
+        - ``verify_ssl=False`` -> ``False`` (no verification)
+        - ``verify_ssl=True`` + ``ca_cert`` -> context trusting that CA
+        - ``verify_ssl=True`` + no ``ca_cert`` -> default context (system trust)
+        """
+        if not self.verify_ssl:
+            return False
+        if self._ssl_context is None:
+            loop = asyncio.get_running_loop()
+            self._ssl_context = await loop.run_in_executor(
+                None, lambda: ssl.create_default_context(cafile=self.ca_cert)
+            )
+        return self._ssl_context
+
     async def _test_connection(self) -> bool:
         """Test the connection to Kubernetes."""
         # Use aiohttp as primary since it works better with SSL configuration
@@ -349,7 +377,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/",
                     headers=headers,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -418,7 +446,7 @@ class KubernetesClient:
                     async with session.get(
                         f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods",
                         headers=headers,
-                        ssl=self.verify_ssl,
+                        ssl=await self._get_ssl_param(),
                         timeout=aiohttp.ClientTimeout(total=10),
                     ) as response:
                         if response.status == 200:
@@ -452,7 +480,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/pods",
                     headers=headers,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -584,7 +612,7 @@ class KubernetesClient:
                 async with session.get(
                     f"https://{self.host}:{self.port}/api/v1/nodes",
                     headers=headers,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -984,7 +1012,7 @@ class KubernetesClient:
                 async with session.get(
                     url,
                     headers=headers,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=timeout,
                 ) as response:
                     if response.status == 200:
@@ -1006,7 +1034,7 @@ class KubernetesClient:
                         async with session.get(
                             url,
                             headers=headers,
-                            ssl=self.verify_ssl,
+                            ssl=await self._get_ssl_param(),
                             timeout=timeout,
                         ) as response:
                             if response.status == 200:
@@ -1055,7 +1083,7 @@ class KubernetesClient:
                 async with session.get(
                     url,
                     headers=headers,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=timeout,
                 ) as response:
                     if response.status == 200:
@@ -1074,7 +1102,7 @@ class KubernetesClient:
                         async with session.get(
                             url,
                             headers=headers,
-                            ssl=self.verify_ssl,
+                            ssl=await self._get_ssl_param(),
                             timeout=timeout,
                         ) as response:
                             if response.status == 200:
@@ -1181,7 +1209,7 @@ class KubernetesClient:
                     f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{target_namespace}/deployments/{deployment_name}/scale",
                     headers=headers,
                     json=patch_data,
-                    ssl=False,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status in [200, 201]:
@@ -1347,7 +1375,7 @@ class KubernetesClient:
                     f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{target_namespace}/statefulsets/{statefulset_name}/scale",
                     headers=headers,
                     json=patch_data,
-                    ssl=False,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status in [200, 201]:
@@ -1470,7 +1498,7 @@ class KubernetesClient:
                 async with session.delete(
                     f"https://{self.host}:{self.port}/api/v1/namespaces/{target_namespace}/pods/{pod_name}",
                     headers=headers,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status in [200, 202]:
@@ -1600,7 +1628,7 @@ class KubernetesClient:
                     f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{target_namespace}/{resource_type}/{name}",
                     headers=headers,
                     json=patch_data,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status in [200, 201]:
@@ -1665,14 +1693,12 @@ class KubernetesClient:
             else:
                 url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/namespaces/{self.namespace}/pods"
 
-            ssl_context: ssl.SSLContext | Literal[False] = False
-            if self.verify_ssl:
-                ssl_context = ssl.create_default_context(cafile=self.ca_cert)
-
-            connector = aiohttp.TCPConnector(ssl=ssl_context)
-            async with aiohttp.ClientSession(connector=connector) as session:
+            async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                    url,
+                    headers=headers,
+                    ssl=await self._get_ssl_param(),
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -1739,14 +1765,12 @@ class KubernetesClient:
             headers = {"Authorization": f"Bearer {self.api_token}"}
             url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/nodes"
 
-            ssl_context: ssl.SSLContext | Literal[False] = False
-            if self.verify_ssl:
-                ssl_context = ssl.create_default_context(cafile=self.ca_cert)
-
-            connector = aiohttp.TCPConnector(ssl=ssl_context)
-            async with aiohttp.ClientSession(connector=connector) as session:
+            async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
+                    url,
+                    headers=headers,
+                    ssl=await self._get_ssl_param(),
+                    timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -2090,7 +2114,7 @@ class KubernetesClient:
                     url,
                     headers=headers,
                     json=patch_body,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -2143,7 +2167,7 @@ class KubernetesClient:
                     url,
                     headers=headers,
                     json=patch_body,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -2196,7 +2220,7 @@ class KubernetesClient:
                 async with session.get(
                     cronjob_url,
                     headers=headers,
-                    ssl=self.verify_ssl,
+                    ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status != 200:
@@ -2248,7 +2272,7 @@ class KubernetesClient:
                         jobs_url,
                         headers=headers,
                         json=job_data,
-                        ssl=self.verify_ssl,
+                        ssl=await self._get_ssl_param(),
                         timeout=aiohttp.ClientTimeout(total=10),
                     ) as job_response:
                         if job_response.status == 201:  # Created
@@ -2656,7 +2680,7 @@ class KubernetesClient:
             async with session.get(
                 url,
                 headers=headers,
-                ssl=self.verify_ssl,
+                ssl=await self._get_ssl_param(),
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
                 resp.raise_for_status()
@@ -2689,7 +2713,7 @@ class KubernetesClient:
                 url,
                 params=params,
                 headers=headers,
-                ssl=self.verify_ssl,
+                ssl=await self._get_ssl_param(),
                 timeout=aiohttp.ClientTimeout(
                     total=None,
                     connect=10,
