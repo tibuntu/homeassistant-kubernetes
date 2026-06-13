@@ -677,6 +677,8 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         configuration = client.Configuration()
 
         # Clean the host input - remove any protocol prefix
+        from .kubernetes_client import normalize_host
+
         host = user_input[CONF_HOST].strip()
         if host.startswith(("http://", "https://")):
             host = host.split("://", 1)[1]
@@ -684,6 +686,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         # Validate the cleaned host
         if not host:
             raise ValueError("Host cannot be empty")
+
+        # Bracket bare IPv6 literals so the URLs below (and the persisted entry)
+        # are valid — e.g. "2001:db8::1" -> "[2001:db8::1]".
+        host = normalize_host(host)
 
         # Store the cleaned host value
         user_input[CONF_HOST] = host

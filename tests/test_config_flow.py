@@ -521,6 +521,39 @@ async def test_test_connection_success(hass: HomeAssistant):
             )
 
 
+async def test_test_connection_brackets_ipv6_host(hass: HomeAssistant):
+    """A bare IPv6 host is bracketed before building the connection URL (issue #264)."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    user_input = {
+        CONF_HOST: "aaaa:bbbb:cccc::1",
+        CONF_PORT: 443,
+        CONF_API_TOKEN: "test-token",
+        CONF_VERIFY_SSL: False,
+    }
+
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+            return_value=True,
+        ),
+        patch("custom_components.kubernetes.config_flow.client") as mock_client,
+    ):
+        configuration = MagicMock()
+        mock_client.Configuration.return_value = configuration
+        mock_client.CoreV1Api.return_value = MagicMock()
+        mock_client.ApiClient.return_value = MagicMock()
+
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "run_in_executor", new_callable=AsyncMock):
+            await flow._test_connection(user_input)
+
+    # The persisted host is bracketed, and the built URL is parseable.
+    assert user_input[CONF_HOST] == "[aaaa:bbbb:cccc::1]"
+    assert configuration.host == "https://[aaaa:bbbb:cccc::1]:443"
+
+
 async def test_test_connection_failure(hass: HomeAssistant):
     """Test failed connection test."""
     flow = KubernetesConfigFlow()

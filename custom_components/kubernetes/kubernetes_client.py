@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
+import ipaddress
 import json
 import logging
 import ssl
@@ -48,6 +49,28 @@ IN_CLUSTER_TOKEN_CACHE_TTL = 60.0
 _LOGGER = logging.getLogger(__name__)
 
 
+def normalize_host(host: str) -> str:
+    """Bracket a bare IPv6 literal so it is safe to interpolate into URLs.
+
+    All URLs are built as ``https://{host}:{port}/...``; a bare IPv6 literal
+    (e.g. ``2001:db8::1``) is ambiguous there because its colons collide with
+    the port delimiter. Bracketing it (``[2001:db8::1]``) makes the URL valid.
+
+    Idempotent: already-bracketed values, hostnames, and IPv4 addresses are
+    returned unchanged.
+    """
+    if not host:
+        return host
+    if host.startswith("["):  # already bracketed
+        return host
+    try:
+        if isinstance(ipaddress.ip_address(host), ipaddress.IPv6Address):
+            return f"[{host}]"
+    except ValueError:
+        pass  # hostname or IPv4 — leave as-is
+    return host
+
+
 class ResourceVersionExpired(Exception):
     """Raised when Kubernetes returns HTTP 410 for a watch (resourceVersion too old)."""
 
@@ -57,7 +80,7 @@ class KubernetesClient:
 
     def __init__(self, config_data: dict[str, Any]) -> None:
         """Initialize the Kubernetes client."""
-        self.host = config_data[CONF_HOST]
+        self.host = normalize_host(config_data[CONF_HOST])
         self.port = config_data.get(CONF_PORT, DEFAULT_PORT)
         # Static token is the fallback (always populated) and the source of
         # truth when use_in_cluster=False. When use_in_cluster=True, the
