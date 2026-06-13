@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.5](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.4...v1.3.5) (2026-06-13)
+
+
+### Bug Fixes
+
+* bracket bare IPv6 host literals when building URLs ([#264](https://github.com/tibuntu/homeassistant-kubernetes/issues/264)) ([9dc4a6a](https://github.com/tibuntu/homeassistant-kubernetes/commit/9dc4a6a4420ed35d52b29872a9ebcfd2065ac7a7))
+* **ssl:** honor ca_cert in aiohttp API calls ([#265](https://github.com/tibuntu/homeassistant-kubernetes/issues/265)) ([eaa76d5](https://github.com/tibuntu/homeassistant-kubernetes/commit/eaa76d511f16c094e72891c2fbf3da089b04a087))
+* **ssl:** route test_authentication fallback through shared SSL param ([49861f1](https://github.com/tibuntu/homeassistant-kubernetes/commit/49861f163894b82efea750cd0eda96f3cadb31d7))
+
 ## [1.3.4](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.3...v1.3.4) (2026-06-07)
 
 
