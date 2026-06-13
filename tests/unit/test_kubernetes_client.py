@@ -9,6 +9,7 @@ import pytest
 from custom_components.kubernetes.kubernetes_client import (
     KubernetesClient,
     ResourceVersionExpired,
+    normalize_host,
 )
 
 
@@ -39,6 +40,67 @@ def mock_client(mock_config):
         client._core_api = mock_api
         client._apps_api = mock_api
         return client
+
+
+class TestNormalizeHost:
+    """Tests for the normalize_host() helper."""
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            # Bare IPv6 literals get bracketed.
+            ("2001:db8::1", "[2001:db8::1]"),
+            ("aaaa:bbbb:cccc::1", "[aaaa:bbbb:cccc::1]"),
+            ("::1", "[::1]"),
+            ("fe80::1", "[fe80::1]"),
+            # Already-bracketed values are left untouched (idempotent).
+            ("[2001:db8::1]", "[2001:db8::1]"),
+            ("[::1]", "[::1]"),
+            # IPv4 addresses are left untouched.
+            ("10.0.0.1", "10.0.0.1"),
+            ("127.0.0.1", "127.0.0.1"),
+            # Hostnames are left untouched.
+            ("kubernetes.example.com", "kubernetes.example.com"),
+            ("kubernetes", "kubernetes"),
+            # Empty string is passed through.
+            ("", ""),
+        ],
+    )
+    def test_normalize_host(self, raw, expected):
+        """normalize_host brackets bare IPv6 literals only."""
+        assert normalize_host(raw) == expected
+
+    def test_normalize_host_is_idempotent(self):
+        """Applying normalize_host twice yields the same result."""
+        once = normalize_host("2001:db8::1")
+        assert normalize_host(once) == once == "[2001:db8::1]"
+
+
+def test_kubernetes_client_initialization_brackets_ipv6_host():
+    """A bare IPv6 host is bracketed so built URLs are valid."""
+    config = {
+        "host": "aaaa:bbbb:cccc::1",
+        "port": 443,
+        "api_token": "test-token",
+        "namespace": "default",
+        "verify_ssl": True,
+        "monitor_all_namespaces": False,
+    }
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.k8s_client"
+    ) as mock_k8s_client:
+        mock_api = MagicMock()
+        mock_k8s_client.CoreV1Api.return_value = mock_api
+        mock_k8s_client.AppsV1Api.return_value = mock_api
+
+        client = KubernetesClient(config)
+
+        assert client.host == "[aaaa:bbbb:cccc::1]"
+        # The URL the reporter saw fail must now be well-formed.
+        assert (
+            f"https://{client.host}:{client.port}/api/v1/"
+            == "https://[aaaa:bbbb:cccc::1]:443/api/v1/"
+        )
 
 
 def test_kubernetes_client_initialization(mock_config):
