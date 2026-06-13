@@ -246,6 +246,47 @@ class TestSslParam:
 
         assert mock_session.patch.call_args.kwargs["ssl"] is sentinel_ctx
 
+    async def test_test_authentication_fallback_passes_ssl_context(self, mock_config):
+        """test_authentication's aiohttp fallback honors the SSLContext (not ssl=False).
+
+        Otherwise a ca_cert-configured cluster would get a misleading auth result
+        from a fallback that talks TLS differently than the real client.
+        """
+        mock_config["ca_cert"] = "/path/ca.crt"
+        client = _make_client(mock_config)
+        client.core_v1 = MagicMock()
+        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        # Pre-seed so _get_ssl_param() returns the context without the executor
+        # (which we patch below to fail the official-client path).
+        client._ssl_context = sentinel_ctx
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        import asyncio
+
+        loop = asyncio.get_event_loop()
+
+        with (
+            patch.object(
+                loop, "run_in_executor", new=AsyncMock(side_effect=Exception("k8s"))
+            ),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+        ):
+            await client.test_authentication()
+
+        assert mock_session.get.call_args.kwargs["ssl"] is sentinel_ctx
+
 
 async def test_get_pods_count_success(mock_client):
     """Test successful pods count retrieval."""
@@ -2426,6 +2467,9 @@ class TestTestAuthentication:
         api_exc = ApiException(status=401, reason="Unauthorized")
 
         mock_executor = AsyncMock(side_effect=api_exc)
+        # Pre-seed the SSL context so _get_ssl_param() doesn't route through the
+        # patched run_in_executor (which is mocked to raise for the k8s client).
+        mock_client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
         mock_response = MagicMock()
         mock_response.status = 200
@@ -2459,6 +2503,7 @@ class TestTestAuthentication:
     ):
         """Test test_authentication falls back to aiohttp on generic exception."""
         mock_executor = AsyncMock(side_effect=Exception("SSL error"))
+        mock_client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
         mock_response = MagicMock()
         mock_response.status = 200
@@ -2489,6 +2534,7 @@ class TestTestAuthentication:
     async def test_authentication_both_fail(self, mock_client):
         """Test test_authentication when both methods fail."""
         mock_executor = AsyncMock(side_effect=Exception("K8s error"))
+        mock_client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
         mock_session = MagicMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -2517,6 +2563,7 @@ class TestTestAuthentication:
 
         api_exc = ApiException(status=403, reason="Forbidden")
         mock_executor = AsyncMock(side_effect=api_exc)
+        mock_client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
         mock_response = MagicMock()
         mock_response.status = 403
