@@ -709,7 +709,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         core_v1 = client.CoreV1Api(api_client)
 
         # Test the connection
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             await loop.run_in_executor(None, core_v1.get_api_resources)
             _LOGGER.info(
