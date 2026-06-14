@@ -10,10 +10,16 @@
     "enabled": true
   },
   "lockFileMaintenance": {
-    "enabled": true,
-    "schedule": ["on sunday"]
+    "enabled": false
   },
   "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "lockFileMaintenance": {
+        "enabled": true,
+        "schedule": ["on sunday"]
+      }
+    },
     {
       "matchPackageNames": ["*"],
       "semanticCommitType": "build"
