@@ -24,7 +24,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         id: setup-python
@@ -66,7 +66,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         id: setup-python
