@@ -1,11 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "github>tibuntu/renovate-presets",
+    "github>tibuntu/renovate-presets:automerge",
+    "github>tibuntu/renovate-presets:semanticCommitType(*, build)"
   ],
-  "prFooter": "",
-  "semanticCommitType": "build",
-  "automerge": true,
   "pre-commit": {
     "enabled": true
   },
@@ -19,14 +18,6 @@
         "enabled": true,
         "schedule": ["on sunday"]
       }
-    },
-    {
-      "matchPackageNames": ["*"],
-      "semanticCommitType": "build"
-    },
-    {
-      "matchUpdateTypes": ["major"],
-      "automerge": false
     },
     {
       "matchFileNames": ["pyproject.toml"],
