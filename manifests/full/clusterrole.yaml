@@ -41,10 +41,10 @@ rules:
       - statefulsets/status
     verbs: ["get", "patch", "update"]
 
-  # Batch resources — monitoring + watch + cronjob triggering
+  # Batch resources — monitoring + watch + cronjob triggering + job deletion
   - apiGroups: ["batch"]
     resources: ["cronjobs", "cronjobs/status", "jobs"]
-    verbs: ["get", "list", "watch", "patch", "update", "create"]
+    verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
 
   # Metrics API — real-time CPU and memory usage (requires metrics-server)
   - apiGroups: ["metrics.k8s.io"]

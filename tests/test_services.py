@@ -37,6 +37,7 @@ from custom_components.kubernetes.services import (
     _normalize_entity_id_list,
     _resolve_raw_workload_name,
     _validate_entity_workload_type,
+    _validate_job_schema,
     _validate_workload_schema,
     async_setup_services,
     async_unload_services,
@@ -1835,6 +1836,42 @@ class TestValidateWorkloadSchema:
         assert result is data
 
 
+class TestValidateJobSchema:
+    """Tests for _validate_job_schema."""
+
+    def test_valid_with_job_name(self):
+        """Test passes validation when job_name is provided."""
+        data = {ATTR_JOB_NAME: "my-job"}
+        result = _validate_job_schema(data)
+        assert result is data
+
+    def test_valid_with_job_names(self):
+        """Test passes validation when job_names is provided."""
+        data = {ATTR_JOB_NAMES: ["job-a", "job-b"]}
+        result = _validate_job_schema(data)
+        assert result is data
+
+    def test_valid_with_both_fields(self):
+        """Test passes validation when both job_name and job_names are provided."""
+        data = {ATTR_JOB_NAME: "job-a", ATTR_JOB_NAMES: ["job-b"]}
+        result = _validate_job_schema(data)
+        assert result is data
+
+    def test_invalid_with_neither_field(self):
+        """Test raises vol.Invalid when neither field is provided."""
+        import voluptuous as vol
+
+        with pytest.raises(vol.Invalid, match="Either job_name or job_names"):
+            _validate_job_schema({})
+
+    def test_invalid_with_unrelated_keys(self):
+        """Test raises vol.Invalid when only unrelated keys are present."""
+        import voluptuous as vol
+
+        with pytest.raises(vol.Invalid, match="Either job_name or job_names"):
+            _validate_job_schema({"namespace": "default"})
+
+
 class TestCollectJobNames:
     """Tests for _collect_job_names helper."""
 
@@ -1975,19 +2012,35 @@ class TestDeleteJobService:
     async def test_no_job_names_is_noop(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test calling delete_job with no job names early-returns without calling the client."""
+        """Test calling delete_job with an empty job_names list early-returns without calling the client."""
         await async_setup_services(hass)
 
-        # Call the service with no job_name/job_names — the handler must early-return
-        # because _collect_job_names is empty. No exception should be raised.
+        # Call the service with an empty job_names list — the key-presence validator passes
+        # (ATTR_JOB_NAMES is present), but _collect_job_names returns [] so the handler
+        # early-returns without invoking the client.
         await hass.services.async_call(
             DOMAIN,
             SERVICE_DELETE_JOB,
-            {ATTR_NAMESPACE: "default"},
+            {ATTR_JOB_NAMES: [], ATTR_NAMESPACE: "default"},
             blocking=True,
         )
 
         mock_client.delete_job.assert_not_called()
+
+    async def test_delete_job_requires_a_name(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test that the schema rejects a call with neither job_name nor job_names."""
+        import voluptuous as vol
+
+        await async_setup_services(hass)
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_DELETE_JOB,
+                {"namespace": "default"},
+                blocking=True,
+            )
 
     async def test_delete_job_logs_error_on_failure(
         self, hass: HomeAssistant, mock_client, setup_domain_data
