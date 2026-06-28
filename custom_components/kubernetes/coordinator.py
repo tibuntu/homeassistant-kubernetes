@@ -810,7 +810,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         """Tail the events API and dispatch events (no state stored)."""
         resource_version = "0"
         failure_streak = 0
-        rt = "events"
+        rt = f"events:{url}"
         while not self._watch_stop_event.is_set():
             try:
                 if resource_version == "0":

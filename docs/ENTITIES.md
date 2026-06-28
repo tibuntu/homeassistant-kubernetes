@@ -311,6 +311,8 @@ By default only **Warning**-type Kubernetes events are dispatched. To also recei
 
 > **Note:** The watch loop anchors to the current resource version on startup so that existing events in the cluster are not replayed. Only events that occur after the integration starts are fired.
 
+> **Note:** Recurring conditions fire repeatedly — Kubernetes increments an existing event's count, so e.g. a CrashLoopBackOff pod emits an event on each retry.
+
 ### Example automation
 
 ```yaml
