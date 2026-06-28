@@ -58,6 +58,38 @@ WATCH_MAX_RECONNECT_DELAY = 60  # cap on the jittered backoff (seconds)
 WATCH_RECONNECT_JITTER = 1.0  # max random jitter added to each backoff (seconds)
 WATCH_MAX_FAILURE_STREAK = 5  # consecutive failures before raising a repair issue
 
+# Event platform (experimental, opt-in)
+CONF_ENABLE_EVENTS = "enable_events"
+DEFAULT_ENABLE_EVENTS = False
+CONF_EVENT_TYPES = "event_types"
+EVENT_TYPES_WARNING = "warning"  # fire only Warning-type events (default)
+EVENT_TYPES_ALL = "all"  # fire all events (Normal + Warning)
+DEFAULT_EVENT_TYPES = EVENT_TYPES_WARNING
+# k8s event reasons surfaced as distinct HA event_types; anything else -> EVENT_TYPE_OTHER
+EVENT_CURATED_REASONS = (
+    "OOMKilling",
+    "BackOff",
+    "Failed",
+    "FailedScheduling",
+    "FailedMount",
+    "FailedAttachVolume",
+    "Unhealthy",
+    "Evicted",
+    "FailedCreatePodSandBox",
+    "NodeNotReady",
+    "ImagePullBackOff",
+    "ErrImagePull",
+    "Preempted",
+    "FailedKillPod",
+)
+EVENT_TYPE_OTHER = "other"
+
+
+def event_signal(entry_id: str) -> str:
+    """Dispatcher signal carrying a fired k8s event for a config entry."""
+    return f"{DOMAIN}_event_{entry_id}"
+
+
 # Sensor types
 SENSOR_TYPE_PODS = "pods"
 SENSOR_TYPE_POD = "pod"
