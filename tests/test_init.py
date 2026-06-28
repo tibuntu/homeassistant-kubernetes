@@ -776,6 +776,47 @@ class TestAsyncSetupEntryWatchEnabled:
             assert result is True
             mock_coordinator.async_start_watch_tasks.assert_not_called()
 
+    async def test_event_watch_tasks_started_when_enabled(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test that event watch tasks are started when enable_events is True."""
+        hass.config_entries.async_update_entry(
+            mock_config_entry, options={"enable_events": True}
+        )
+
+        with (
+            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
+            patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
+            patch(
+                "custom_components.kubernetes.KubernetesDataCoordinator"
+            ) as mock_coordinator_class,
+            patch(
+                "custom_components.kubernetes.async_setup_services",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
+            ),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            mock_coordinator = MagicMock()
+            mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+            mock_coordinator.async_start_watch_tasks = AsyncMock()
+            mock_coordinator.async_start_event_watch_tasks = AsyncMock()
+            mock_coordinator_class.return_value = mock_coordinator
+
+            result = await async_setup_entry(hass, mock_config_entry)
+
+            assert result is True
+            mock_coordinator.async_start_event_watch_tasks.assert_called_once()
+
 
 class TestAsyncUnloadEntryWatchCleanup:
     """Tests for async_unload_entry watch task cleanup."""

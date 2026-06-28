@@ -2690,3 +2690,115 @@ class TestEventWatchLoop:
 
         for coro in created_coros:
             coro.close()
+
+    # ------------------------------------------------------------------
+    # Additional coverage: repair-issue threshold, stop-during-backoff,
+    # in-stream early-return, and namespace fallback from metadata.
+    # ------------------------------------------------------------------
+
+    async def test_event_failure_streak_raises_repair_issue(
+        self, coord_warning, mock_client
+    ):
+        """After WATCH_MAX_FAILURE_STREAK consecutive failures the repair issue is raised."""
+        call_count = 0
+
+        async def _list_side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count <= WATCH_MAX_FAILURE_STREAK:
+                raise ConnectionError("down")
+            coord_warning._watch_stop_event.set()
+            return [], "200"
+
+        mock_client.list_resource_with_version.side_effect = _list_side_effect
+
+        created = []
+        with (
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_create_issue",
+                side_effect=lambda *a, **k: created.append(a),
+            ),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue",
+            ),
+        ):
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        assert created, "expected watch_connection_failing issue to be created"
+        assert any("watch_connection_failing" in str(a) for a in created)
+
+    async def test_event_stop_event_during_backoff_exits_cleanly(
+        self, coord_warning, mock_client
+    ):
+        """If stop event fires during backoff wait, the event loop exits cleanly."""
+
+        async def _list_raises(url):
+            raise ConnectionError("fail")
+
+        mock_client.list_resource_with_version.side_effect = _list_raises
+
+        async def _mock_wait_for(coro, timeout):
+            coord_warning._watch_stop_event.set()
+            return None
+
+        with patch("asyncio.wait_for", side_effect=_mock_wait_for):
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        mock_client.list_resource_with_version.assert_called_once()
+
+    async def test_event_stop_check_before_dispatch(self, coord_warning, mock_client):
+        """Stop event set before iteration of stream prevents dispatch."""
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        async def _stream_with_stop(url, rv):
+            coord_warning._watch_stop_event.set()
+            yield {
+                "type": "ADDED",
+                "object": {
+                    "type": "Warning",
+                    "reason": "OOMKilling",
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "name": "p",
+                        "namespace": "default",
+                    },
+                    "message": "oom",
+                    "metadata": {"resourceVersion": "101", "namespace": "default"},
+                },
+            }
+
+        mock_client.watch_stream = _stream_with_stop
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+            mock_send.assert_not_called()
+
+    async def test_dispatch_event_namespace_fallback_from_metadata(self, coord_warning):
+        """When involvedObject.namespace is absent, namespace falls back to metadata.namespace."""
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            coord_warning._dispatch_event(
+                {
+                    "type": "Warning",
+                    "reason": "Evicted",
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "name": "p",
+                    },
+                    "metadata": {"namespace": "ns-from-meta"},
+                    "message": "evicted",
+                }
+            )
+            mock_send.assert_called_once()
+            _hass, signal, payload = mock_send.call_args[0]
+            assert payload["namespace"] == "ns-from-meta"
