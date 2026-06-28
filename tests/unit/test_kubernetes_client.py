@@ -5687,6 +5687,42 @@ class TestDeletePod:
         assert result is False
 
 
+class TestDeleteJob:
+    """Tests for the delete_job client method."""
+
+    async def test_delete_job_aiohttp_success(self, mock_client):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=None)
+        sess = MagicMock()
+        sess.__aenter__ = AsyncMock(return_value=sess)
+        sess.__aexit__ = AsyncMock(return_value=None)
+        sess.delete = MagicMock(return_value=mock_resp)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=sess,
+        ):
+            assert await mock_client.delete_job("j1", "default") is True
+        assert "propagationPolicy=Background" in sess.delete.call_args[0][0]
+
+    async def test_delete_job_falls_back_to_official_client(self, mock_client):
+        mock_client._delete_job_aiohttp = AsyncMock(return_value=False)
+        mock_client._delete_job_kubernetes = AsyncMock(return_value=True)
+        assert await mock_client.delete_job("j1", "default") is True
+        mock_client._delete_job_kubernetes.assert_called_once()
+
+    async def test_delete_job_kubernetes_uses_background(self, mock_client):
+        mock_client.batch_v1 = MagicMock()
+        assert await mock_client._delete_job_kubernetes("j1", "default") is True
+        _, kwargs = mock_client.batch_v1.delete_namespaced_job.call_args
+        assert kwargs.get("propagation_policy") == "Background"
+
+    async def test_delete_job_exception_returns_false(self, mock_client):
+        mock_client._delete_job_aiohttp = AsyncMock(side_effect=Exception("boom"))
+        assert await mock_client.delete_job("j1", "default") is False
+
+
 class TestRolloutRestart:
     """Tests for rollout restart methods."""
 
