@@ -729,6 +729,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 self._sync_watch_repair_issue(resource_type, failing=False)
 
             except asyncio.CancelledError:
+                self._failing_watch_loops.discard(resource_type)
                 return
 
             except Exception as ex:
@@ -749,6 +750,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 try:
                     await asyncio.wait_for(self._watch_stop_event.wait(), timeout=delay)
                     # stop_event was set — exit gracefully
+                    self._failing_watch_loops.discard(resource_type)
                     return
                 except TimeoutError:
                     pass

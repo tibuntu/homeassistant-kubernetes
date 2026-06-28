@@ -5454,7 +5454,7 @@ class TestParseMemoryInvalidOutputType:
     def test_invalid_output_type_with_warning(self, mock_client):
         """Test _parse_memory logs warning for invalid output_type."""
         with patch(
-            "custom_components.kubernetes.kubernetes_client._LOGGER"
+            "custom_components.kubernetes.metrics_parser._LOGGER"
         ) as mock_logger:
             result = mock_client._parse_memory("1Gi", "BadUnit")
             mock_logger.warning.assert_called()
@@ -5473,7 +5473,7 @@ class TestParseCpuInvalidOutputType:
     def test_invalid_output_type_with_warning(self, mock_client):
         """Test _parse_cpu logs warning for invalid output_type."""
         with patch(
-            "custom_components.kubernetes.kubernetes_client._LOGGER"
+            "custom_components.kubernetes.metrics_parser._LOGGER"
         ) as mock_logger:
             result = mock_client._parse_cpu("500m", "BadUnit")
             mock_logger.warning.assert_called()
