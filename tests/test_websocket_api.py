@@ -14,6 +14,7 @@ from custom_components.kubernetes.websocket_api import (
     _get_nodes_list_data,
     _get_pods_list_data,
     _get_workloads_list_data,
+    _handle_delete_job,
     _handle_delete_pod,
     _handle_restart_workload,
     async_register_websocket_commands,
@@ -135,7 +136,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 7
+            assert mock_ws_api.async_register_command.call_count == 8
 
 
 class TestWebsocketClusterOverview:
@@ -2164,6 +2165,120 @@ class TestWebsocketDeletePod:
         }
 
         await _handle_delete_pod(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1, "not_found", "Coordinator not found"
+        )
+
+
+class TestWebsocketDeleteJob:
+    """Tests for the kubernetes/jobs/delete command."""
+
+    async def test_delete_job_success(self, mock_hass, sample_coordinator_data):
+        """Test successful job deletion."""
+        mock_client = MagicMock()
+        mock_client.delete_job = AsyncMock(return_value=True)
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+        coordinator.async_request_refresh = AsyncMock()
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/jobs/delete",
+            "entry_id": "entry_1",
+            "job_name": "my-job-abc123",
+            "namespace": "default",
+        }
+
+        await _handle_delete_job(mock_hass, connection, msg)
+
+        mock_client.delete_job.assert_called_once_with("my-job-abc123", "default")
+        coordinator.async_request_refresh.assert_called_once()
+        connection.send_result.assert_called_once_with(1, {"success": True})
+
+    async def test_delete_job_failure(self, mock_hass, sample_coordinator_data):
+        """Test job deletion failure returns error."""
+        mock_client = MagicMock()
+        mock_client.delete_job = AsyncMock(return_value=False)
+        coordinator = _make_coordinator(sample_coordinator_data)
+        coordinator.client = mock_client
+
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": coordinator,
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/jobs/delete",
+            "entry_id": "entry_1",
+            "job_name": "my-job-abc123",
+            "namespace": "default",
+        }
+
+        await _handle_delete_job(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1,
+            "delete_failed",
+            "Failed to delete job my-job-abc123 in namespace default",
+        )
+
+    async def test_delete_job_entry_not_found(self, mock_hass):
+        """Test job deletion with invalid entry_id."""
+        mock_hass.data = {DOMAIN: {}}
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/jobs/delete",
+            "entry_id": "nonexistent",
+            "job_name": "test-job",
+            "namespace": "default",
+        }
+
+        await _handle_delete_job(mock_hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            1, "not_found", "Config entry not found"
+        )
+
+    async def test_delete_job_no_coordinator(self, mock_hass):
+        """Test job deletion when coordinator is missing."""
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    # No coordinator
+                },
+            }
+        }
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "kubernetes/jobs/delete",
+            "entry_id": "entry_1",
+            "job_name": "test-job",
+            "namespace": "default",
+        }
+
+        await _handle_delete_job(mock_hass, connection, msg)
 
         connection.send_error.assert_called_once_with(
             1, "not_found", "Coordinator not found"
