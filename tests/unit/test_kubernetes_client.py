@@ -6144,3 +6144,18 @@ class TestParsePodContainerState:
         assert pod["container_waiting_reason"] is None
         assert pod["last_terminated_reason"] is None
         assert pod["problem"] is False
+
+    def test_pending_scheduled_condition_no_problem(self, mock_client):
+        """Pending pod whose PodScheduled condition is True → no pending_reason / problem."""
+        pod = {
+            "metadata": {"name": "p-pending-ok", "namespace": "default"},
+            "spec": {"nodeName": "n1"},
+            "status": {
+                "phase": "Pending",
+                "containerStatuses": [],
+                "conditions": [{"type": "PodScheduled", "status": "True"}],
+            },
+        }
+        parsed = mock_client._parse_pods_data([pod])[0]
+        assert parsed["pending_reason"] is None
+        assert parsed["problem"] is False
