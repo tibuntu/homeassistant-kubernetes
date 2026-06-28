@@ -1154,7 +1154,7 @@ class KubernetesClient:
             target_namespace = namespace or self.namespace
 
             # Get the current deployment
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             deployment = await loop.run_in_executor(
                 None,
                 self.apps_v1.read_namespaced_deployment,
@@ -1320,7 +1320,7 @@ class KubernetesClient:
             target_namespace = namespace or self.namespace
 
             # Get the current StatefulSet
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             statefulset = await loop.run_in_executor(
                 None,
                 self.apps_v1.read_namespaced_stateful_set,
@@ -1867,7 +1867,7 @@ class KubernetesClient:
         # Test both methods
         try:
             # Test kubernetes client
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.core_v1.get_api_resources)
             result["kubernetes_client"]["success"] = True
             result["kubernetes_client"]["error"] = None
@@ -1914,7 +1914,7 @@ class KubernetesClient:
 
         # Test with kubernetes client first
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.core_v1.get_api_resources)
             result["authenticated"] = True
             result["method"] = "kubernetes_client"
@@ -2336,7 +2336,7 @@ class KubernetesClient:
             # Fallback to kubernetes client
             try:
                 # First, get the CronJob to extract the job template
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 cronjob = await loop.run_in_executor(
                     None,
                     self.batch_v1.read_namespaced_cron_job,
@@ -2430,7 +2430,7 @@ class KubernetesClient:
                 # Create a patch to set suspend=true
                 patch_body = {"spec": {"suspend": True}}
 
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 await loop.run_in_executor(
                     None,
                     self.batch_v1.patch_namespaced_cron_job,
@@ -2501,7 +2501,7 @@ class KubernetesClient:
                 # Create a patch to set suspend=false
                 patch_body = {"spec": {"suspend": False}}
 
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 await loop.run_in_executor(
                     None,
                     self.batch_v1.patch_namespaced_cron_job,
