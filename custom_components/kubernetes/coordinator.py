@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import timedelta
 import logging
+import random
 import time
 from typing import Any
 
@@ -23,6 +24,9 @@ from .const import (
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_WATCH_RECONNECT_DELAY,
     DOMAIN,
+    WATCH_MAX_FAILURE_STREAK,
+    WATCH_MAX_RECONNECT_DELAY,
+    WATCH_RECONNECT_JITTER,
 )
 from .device import cleanup_orphaned_namespace_devices, get_all_namespaces
 from .kubernetes_client import KubernetesClient, ResourceVersionExpired
@@ -31,6 +35,11 @@ _LOGGER = logging.getLogger(__name__)
 
 ISSUE_METRICS_SERVER_UNAVAILABLE = "metrics_server_unavailable"
 METRICS_SERVER_LEARN_MORE_URL = "https://github.com/kubernetes-sigs/metrics-server"
+ISSUE_WATCH_CONNECTION_FAILING = "watch_connection_failing"
+WATCH_LEARN_MORE_URL = (
+    "https://kubernetes.io/docs/reference/using-api/api-concepts/"
+    "#efficient-detection-of-changes"
+)
 
 
 class KubernetesDataCoordinator(DataUpdateCoordinator):
@@ -74,6 +83,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._data_lock: asyncio.Lock = asyncio.Lock()
 
         self._metrics_issue_active: bool = False
+        self._watch_issue_active: bool = False
+        self._failing_watch_loops: set[str] = set()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via Kubernetes client.
@@ -527,12 +538,51 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
             self._metrics_issue_active = False
 
+    def _watch_issue_id(self) -> str:
+        """Issue id for the per-entry watch-connection-failing repair issue."""
+        return f"{ISSUE_WATCH_CONNECTION_FAILING}_{self.config_entry.entry_id}"
+
+    @callback
+    def _sync_watch_repair_issue(self, resource_type: str, failing: bool) -> None:
+        """Raise/dismiss the watch-connection-failing issue from per-loop health.
+
+        Each watch loop reports its own state; the issue is active while *any*
+        loop is in a sustained-failure state, and clears once all recover.
+        """
+        if failing:
+            self._failing_watch_loops.add(resource_type)
+        else:
+            self._failing_watch_loops.discard(resource_type)
+
+        should_be_active = bool(self._failing_watch_loops)
+        if should_be_active and not self._watch_issue_active:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                self._watch_issue_id(),
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=ISSUE_WATCH_CONNECTION_FAILING,
+                translation_placeholders={
+                    "cluster": getattr(self.client, "cluster_name", "") or "unknown",
+                },
+                learn_more_url=WATCH_LEARN_MORE_URL,
+            )
+            self._watch_issue_active = True
+        elif not should_be_active and self._watch_issue_active:
+            ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
+            self._watch_issue_active = False
+
     @callback
     def async_clear_repair_issues(self) -> None:
         """Remove repair issues owned by this coordinator on unload."""
         if self._metrics_issue_active:
             ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
             self._metrics_issue_active = False
+        if self._watch_issue_active:
+            ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
+            self._watch_issue_active = False
+        self._failing_watch_loops.clear()
 
     def _populate_from_list(
         self,
@@ -619,7 +669,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
     ) -> None:
         """Run the watch loop for a single resource type with reconnect logic."""
         resource_version = "0"
-        reconnect_delay = DEFAULT_WATCH_RECONNECT_DELAY
+        failure_streak = 0
 
         while not self._watch_stop_event.is_set():
             try:
@@ -638,6 +688,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         len(items),
                         resource_version,
                     )
+                    failure_streak = 0
+                    self._sync_watch_repair_issue(resource_type, failing=False)
 
                 async for event in self.client.watch_stream(url, resource_version):
                     if self._watch_stop_event.is_set():
@@ -660,7 +712,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         )
 
                 # Stream ended cleanly (timeoutSeconds expired); reconnect immediately
-                reconnect_delay = DEFAULT_WATCH_RECONNECT_DELAY
+                failure_streak = 0
+                self._sync_watch_repair_issue(resource_type, failing=False)
                 _LOGGER.debug(
                     "Watch %s: stream ended cleanly, reconnecting", resource_type
                 )
@@ -672,24 +725,30 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     resource_version,
                 )
                 resource_version = "0"
-                reconnect_delay = DEFAULT_WATCH_RECONNECT_DELAY
+                failure_streak = 0
+                self._sync_watch_repair_issue(resource_type, failing=False)
 
             except asyncio.CancelledError:
                 return
 
             except Exception as ex:
+                failure_streak += 1
+                delay = min(
+                    DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
+                    WATCH_MAX_RECONNECT_DELAY,
+                ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
+                if failure_streak >= WATCH_MAX_FAILURE_STREAK:
+                    self._sync_watch_repair_issue(resource_type, failing=True)
                 _LOGGER.warning(
-                    "Watch %s error: %s — reconnecting in %d s",
+                    "Watch %s error: %s — reconnect attempt %d in %.1f s",
                     resource_type,
                     ex,
-                    reconnect_delay,
+                    failure_streak,
+                    delay,
                 )
                 try:
-                    await asyncio.wait_for(
-                        self._watch_stop_event.wait(), timeout=reconnect_delay
-                    )
+                    await asyncio.wait_for(self._watch_stop_event.wait(), timeout=delay)
                     # stop_event was set — exit gracefully
                     return
                 except TimeoutError:
                     pass
-                reconnect_delay = min(reconnect_delay * 2, 60)

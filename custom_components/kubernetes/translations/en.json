@@ -151,6 +151,10 @@
     "metrics_server_unavailable": {
       "title": "Metrics server unavailable for {cluster}",
       "description": "The cluster `{cluster}` did not return CPU/memory metrics. Either the metrics-server addon is not installed, or the integration's ClusterRole is missing `get`/`list` permissions on the `metrics.k8s.io` API. Install metrics-server (see the Learn more link) or grant the additional RBAC permissions. This message clears automatically once metrics are returned."
+    },
+    "watch_connection_failing": {
+      "title": "Watch connection failing for {cluster}",
+      "description": "The integration's watch connection to cluster `{cluster}` has failed repeatedly and is retrying with backoff. Live updates may be delayed while the watch connection retries with backoff; the integration continues periodic polling in the meantime. Check that the cluster API is reachable and that the ServiceAccount still has `watch` permission. This message clears automatically once the watch reconnects."
     }
   }
 }

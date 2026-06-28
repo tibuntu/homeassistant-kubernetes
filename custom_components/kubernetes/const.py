@@ -54,6 +54,9 @@ DEFAULT_ENABLE_WATCH = False
 DEFAULT_WATCH_TIMEOUT_SECONDS = 300  # ?timeoutSeconds for each watch stream
 DEFAULT_WATCH_RECONNECT_DELAY = 5  # initial reconnect backoff in seconds
 DEFAULT_FALLBACK_POLL_INTERVAL = 300  # coordinator poll interval when watch is active
+WATCH_MAX_RECONNECT_DELAY = 60  # cap on the jittered backoff (seconds)
+WATCH_RECONNECT_JITTER = 1.0  # max random jitter added to each backoff (seconds)
+WATCH_MAX_FAILURE_STREAK = 5  # consecutive failures before raising a repair issue
 
 # Sensor types
 SENSOR_TYPE_PODS = "pods"
