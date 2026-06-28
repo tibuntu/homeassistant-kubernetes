@@ -13,7 +13,9 @@ from custom_components.kubernetes.const import (
     CONF_ENABLE_WATCH,
     DEFAULT_FALLBACK_POLL_INTERVAL,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
+    DEFAULT_WATCH_RECONNECT_DELAY,
     DOMAIN,
+    WATCH_MAX_FAILURE_STREAK,
 )
 from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
 from custom_components.kubernetes.kubernetes_client import ResourceVersionExpired
@@ -1916,6 +1918,79 @@ class TestRunWatchLoopExtended:
         # The stream ended cleanly the first time, so it reconnected.
         # The second stream set the stop event, proving reconnection happened.
         assert stream_count == 2
+
+    async def test_backoff_is_jittered_and_grows(self, coord, mock_client):
+        """Each consecutive failure waits longer and includes a jitter component."""
+        captured = []
+        call_count = 0
+
+        async def _list_side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 4:
+                coord._watch_stop_event.set()
+                return [], "200"
+            raise ConnectionError("network down")
+
+        mock_client.list_resource_with_version.side_effect = _list_side_effect
+
+        async def _capture_wait_for(coro, timeout):
+            captured.append(timeout)
+            raise TimeoutError
+
+        with (
+            patch(
+                "custom_components.kubernetes.coordinator.random.uniform",
+                return_value=0.5,
+            ),
+            patch("asyncio.wait_for", side_effect=_capture_wait_for),
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert captured == [
+            DEFAULT_WATCH_RECONNECT_DELAY * 1 + 0.5,
+            DEFAULT_WATCH_RECONNECT_DELAY * 2 + 0.5,
+            DEFAULT_WATCH_RECONNECT_DELAY * 4 + 0.5,
+        ]
+
+    async def test_failure_streak_raises_and_clears_repair_issue(
+        self, coord, mock_client
+    ):
+        """Sustained failures raise the repair issue; recovery clears it."""
+        call_count = 0
+
+        async def _list_side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count <= WATCH_MAX_FAILURE_STREAK:
+                raise ConnectionError("down")
+            coord._watch_stop_event.set()
+            return [], "200"
+
+        mock_client.list_resource_with_version.side_effect = _list_side_effect
+
+        created, deleted = [], []
+        with (
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_create_issue",
+                side_effect=lambda *a, **k: created.append(a),
+            ),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue",
+                side_effect=lambda *a, **k: deleted.append(a),
+            ),
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert created, "expected watch_connection_failing issue to be created"
+        assert deleted, "expected the issue to clear after recovery"
+        assert coord._watch_issue_active is False
+        assert coord._failing_watch_loops == set()
 
 
 class TestBuildWatchConfigs:
