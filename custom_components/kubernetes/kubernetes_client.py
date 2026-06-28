@@ -40,6 +40,7 @@ from .const import (
     DEFAULT_WATCH_TIMEOUT_SECONDS,
     IN_CLUSTER_TOKEN_PATH,
 )
+from .metrics_parser import parse_cpu_quantity, parse_memory_quantity
 
 # How long to cache a freshly-read in-cluster token before re-reading the file.
 # Projected SA tokens rotate roughly hourly by default; 60 s keeps us responsive
@@ -769,105 +770,12 @@ class KubernetesClient:
             return []
 
     def _parse_memory(self, memory_str: str, output_type: str = "MiB") -> float:
-        """Parse Kubernetes memory string to specified unit (KiB, MiB, or GiB)"""
-        try:
-            # Binary prefix multipliers (Ki, Mi, Gi, Ti, Pi, Ei)
-            binary_prefixes = {
-                "Ki": 1024,
-                "Mi": 1024**2,
-                "Gi": 1024**3,
-                "Ti": 1024**4,
-                "Pi": 1024**5,
-                "Ei": 1024**6,
-            }
-            # Decimal prefix multipliers (k, M, G, T, P, E)
-            decimal_prefixes = {
-                "k": 1000,
-                "M": 1000**2,
-                "G": 1000**3,
-                "T": 1000**4,
-                "P": 1000**5,
-                "E": 1000**6,
-            }
-
-            # Convert to bytes
-            bytes_value = 0.0
-            for suffix, multiplier in binary_prefixes.items():
-                if memory_str.endswith(suffix):
-                    bytes_value = float(memory_str[: -len(suffix)]) * multiplier
-                    break
-            else:
-                for suffix, multiplier in decimal_prefixes.items():
-                    if memory_str.endswith(suffix):
-                        bytes_value = float(memory_str[: -len(suffix)]) * multiplier
-                        break
-                else:
-                    # Plain bytes
-                    bytes_value = float(memory_str)
-
-            # Convert to requested output type
-            output_multipliers = {
-                "KiB": 1024,
-                "MiB": 1024**2,
-                "GiB": 1024**3,
-            }
-            multiplier = output_multipliers.get(output_type, 1024**2)
-            if output_type not in output_multipliers:
-                _LOGGER.warning(
-                    "Invalid output type '%s', defaulting to MiB", output_type
-                )
-            value = bytes_value / multiplier
-
-            # Round up to 2 decimal places
-            return round(value, 2)
-
-        except (ValueError, IndexError):
-            _LOGGER.warning("Failed to parse memory string: %s", memory_str)
-            return 0.0
+        """Parse Kubernetes memory string to specified unit (KiB, MiB, or GiB)."""
+        return parse_memory_quantity(memory_str, output_type)
 
     def _parse_cpu(self, cpu_str: str, output_type: str = "cores") -> float:
-        """Parse Kubernetes CPU string to specified unit (n, u, m, or cores)"""
-        try:
-            # Input multipliers (to nanocores)
-            input_multipliers = {
-                "n": 1,
-                "u": 1000,
-                "m": 1_000_000,
-            }
-            # Output divisors (from nanocores)
-            output_divisors = {
-                "n": 1,
-                "u": 1000,
-                "m": 1_000_000,
-                "cores": 1_000_000_000,
-            }
-
-            # Parse input to nanocores
-            nanocores = 0.0
-            for suffix, multiplier in input_multipliers.items():
-                if cpu_str.endswith(suffix):
-                    nanocores = float(cpu_str[: -len(suffix)]) * multiplier
-                    break
-            else:
-                # Cores to nanocores
-                nanocores = float(cpu_str) * 1_000_000_000
-
-            # Convert to requested output type
-            divisor = output_divisors.get(output_type, 1_000_000_000)
-            if output_type not in output_divisors:
-                _LOGGER.warning(
-                    "Invalid output type '%s', defaulting to cores", output_type
-                )
-            value = nanocores / divisor
-
-            # Round based on output type - cores get whole numbers, others get 2 decimal places
-            if output_type == "cores" or output_type not in output_divisors:
-                return int(round(value))
-            return round(value, 2)
-
-        except (ValueError, IndexError):
-            _LOGGER.warning("Failed to parse CPU string: %s", cpu_str)
-            return 0.0
+        """Parse Kubernetes CPU string to specified unit (n, u, m, or cores)."""
+        return parse_cpu_quantity(cpu_str, output_type)
 
     def _parse_node_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
         """Parse a single raw node API object into the internal representation."""
