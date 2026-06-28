@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
+import functools
 import ipaddress
 import json
 import logging
@@ -1442,6 +1443,87 @@ class KubernetesClient:
             return True
         except Exception as ex:
             self._log_error(f"official client delete pod {pod_name}", ex)
+            return False
+
+    async def delete_job(self, job_name: str, namespace: str | None = None) -> bool:
+        """Delete a job by name (cascade-deletes its pods via Background propagation)."""
+        try:
+            result = await self._delete_job_aiohttp(job_name, namespace)
+            if result:
+                _LOGGER.info(
+                    "Successfully deleted job %s in namespace %s",
+                    job_name,
+                    namespace or self.namespace,
+                )
+                return result
+            _LOGGER.debug(
+                "aiohttp failed, trying official Kubernetes client for job deletion"
+            )
+            result = await self._delete_job_kubernetes(job_name, namespace)
+            if result:
+                _LOGGER.info(
+                    "Successfully deleted job %s in namespace %s using official client",
+                    job_name,
+                    namespace or self.namespace,
+                )
+            return result
+        except Exception as ex:
+            self._log_error(f"delete job {job_name}", ex)
+            return False
+
+    async def _delete_job_aiohttp(
+        self, job_name: str, namespace: str | None = None
+    ) -> bool:
+        """Delete a job using aiohttp (Background propagation cascades to its pods)."""
+        try:
+            target_namespace = namespace or self.namespace
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+            }
+            url = (
+                f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/"
+                f"{target_namespace}/jobs/{job_name}?propagationPolicy=Background"
+            )
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(
+                    url,
+                    headers=headers,
+                    ssl=await self._get_ssl_param(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status in [200, 202]:
+                        return True
+                    response_text = await response.text()
+                    _LOGGER.error(
+                        "aiohttp delete job failed with status %s: %s",
+                        response.status,
+                        response_text,
+                    )
+                    return False
+        except Exception as ex:
+            self._log_error(f"aiohttp delete job {job_name}", ex)
+            return False
+
+    async def _delete_job_kubernetes(
+        self, job_name: str, namespace: str | None = None
+    ) -> bool:
+        """Delete a job using the official Kubernetes client (Background cascade)."""
+        try:
+            target_namespace = namespace or self.namespace
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self.batch_v1.delete_namespaced_job,
+                    job_name,
+                    target_namespace,
+                    propagation_policy="Background",
+                ),
+            )
+            return True
+        except Exception as ex:
+            self._log_error(f"official client delete job {job_name}", ex)
             return False
 
     # Rollout restart methods
