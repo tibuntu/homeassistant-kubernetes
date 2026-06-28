@@ -557,19 +557,21 @@ export class K8sOverview extends LitElement {
               </div>
             </span>
           </div>
-          ${totalAlerts > 0
-            ? this._renderAlerts(cluster.alerts)
-            : html`
-                <div class="no-alerts">
-                  <ha-icon icon="mdi:check-circle"></ha-icon>
-                  <div class="no-alerts-text">
-                    <div class="no-alerts-title">No active alerts</div>
-                    <div class="no-alerts-detail">
-                      All nodes, workloads, and pods are operating normally.
+          ${
+            totalAlerts > 0
+              ? this._renderAlerts(cluster.alerts)
+              : html`
+                  <div class="no-alerts">
+                    <ha-icon icon="mdi:check-circle"></ha-icon>
+                    <div class="no-alerts-text">
+                      <div class="no-alerts-title">No active alerts</div>
+                      <div class="no-alerts-detail">
+                        All nodes, workloads, and pods are operating normally.
+                      </div>
                     </div>
                   </div>
-                </div>
-              `}
+                `
+          }
         </div>
 
         ${this._renderNamespaceSection(cluster)}

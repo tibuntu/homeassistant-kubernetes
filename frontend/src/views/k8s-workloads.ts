@@ -66,12 +66,7 @@ interface WorkloadsResponse {
 }
 
 type WorkloadCategory =
-  | "all"
-  | "deployments"
-  | "statefulsets"
-  | "daemonsets"
-  | "cronjobs"
-  | "jobs";
+  "all" | "deployments" | "statefulsets" | "daemonsets" | "cronjobs" | "jobs";
 type StatusFilter = "all" | "healthy" | "degraded" | "stopped";
 
 @customElement("k8s-workloads")
@@ -556,22 +551,24 @@ export class K8sWorkloads extends LitElement {
     }
 
     return html`
-      ${this._actionError
-        ? html`
-            <div class="action-error">
-              <span>${this._actionError}</span>
-              <button
-                class="dismiss-btn"
-                @click=${() => {
-                  this._actionError = null;
-                }}
-                title="Dismiss"
-              >
-                <ha-icon icon="mdi:close"></ha-icon>
-              </button>
-            </div>
-          `
-        : nothing}
+      ${
+        this._actionError
+          ? html`
+              <div class="action-error">
+                <span>${this._actionError}</span>
+                <button
+                  class="dismiss-btn"
+                  @click=${() => {
+                    this._actionError = null;
+                  }}
+                  title="Dismiss"
+                >
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>
+              </div>
+            `
+          : nothing
+      }
       ${this._data.clusters.map((c) => this._renderCluster(c))}
     `;
   }
@@ -581,9 +578,11 @@ export class K8sWorkloads extends LitElement {
 
     return html`
       <div class="cluster-section">
-        ${this._data!.clusters.length > 1
-          ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
-          : nothing}
+        ${
+          this._data!.clusters.length > 1
+            ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
+            : nothing
+        }
 
         <div class="filters">
           <input
@@ -638,18 +637,26 @@ export class K8sWorkloads extends LitElement {
           )}
         </div>
 
-        ${this._shouldShowCategory("deployments")
-          ? this._renderDeployments(cluster.deployments, cluster.entry_id)
-          : nothing}
-        ${this._shouldShowCategory("statefulsets")
-          ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id)
-          : nothing}
-        ${this._shouldShowCategory("daemonsets")
-          ? this._renderDaemonSets(cluster.daemonsets, cluster.entry_id)
-          : nothing}
-        ${this._shouldShowCategory("cronjobs")
-          ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id)
-          : nothing}
+        ${
+          this._shouldShowCategory("deployments")
+            ? this._renderDeployments(cluster.deployments, cluster.entry_id)
+            : nothing
+        }
+        ${
+          this._shouldShowCategory("statefulsets")
+            ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id)
+            : nothing
+        }
+        ${
+          this._shouldShowCategory("daemonsets")
+            ? this._renderDaemonSets(cluster.daemonsets, cluster.entry_id)
+            : nothing
+        }
+        ${
+          this._shouldShowCategory("cronjobs")
+            ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id)
+            : nothing
+        }
         ${this._shouldShowCategory("jobs") ? this._renderJobs(cluster.jobs) : nothing}
       </div>
     `;
@@ -745,45 +752,47 @@ export class K8sWorkloads extends LitElement {
             ${this._statusLabel(status)}
           </span>
           <div class="workload-actions">
-            ${d.replicas === 0
-              ? html`
-                  <button
-                    class="action-btn start"
-                    title="Start (scale to 1)"
-                    ?disabled=${busy}
-                    @click=${() =>
-                      this._callService(
-                        "start_workload",
-                        {
-                          workload_name: d.name,
-                          namespace: d.namespace,
-                          entry_id: entryId,
-                        },
-                        actionKey,
-                      )}
-                  >
-                    <ha-icon icon="mdi:play"></ha-icon>
-                  </button>
-                `
-              : html`
-                  <button
-                    class="action-btn stop"
-                    title="Stop (scale to 0)"
-                    ?disabled=${busy}
-                    @click=${() =>
-                      this._callService(
-                        "stop_workload",
-                        {
-                          workload_name: d.name,
-                          namespace: d.namespace,
-                          entry_id: entryId,
-                        },
-                        actionKey,
-                      )}
-                  >
-                    <ha-icon icon="mdi:stop"></ha-icon>
-                  </button>
-                `}
+            ${
+              d.replicas === 0
+                ? html`
+                    <button
+                      class="action-btn start"
+                      title="Start (scale to 1)"
+                      ?disabled=${busy}
+                      @click=${() =>
+                        this._callService(
+                          "start_workload",
+                          {
+                            workload_name: d.name,
+                            namespace: d.namespace,
+                            entry_id: entryId,
+                          },
+                          actionKey,
+                        )}
+                    >
+                      <ha-icon icon="mdi:play"></ha-icon>
+                    </button>
+                  `
+                : html`
+                    <button
+                      class="action-btn stop"
+                      title="Stop (scale to 0)"
+                      ?disabled=${busy}
+                      @click=${() =>
+                        this._callService(
+                          "stop_workload",
+                          {
+                            workload_name: d.name,
+                            namespace: d.namespace,
+                            entry_id: entryId,
+                          },
+                          actionKey,
+                        )}
+                    >
+                      <ha-icon icon="mdi:stop"></ha-icon>
+                    </button>
+                  `
+            }
             <button
               class="action-btn restart"
               title="Rolling restart"
@@ -851,45 +860,47 @@ export class K8sWorkloads extends LitElement {
             ${this._statusLabel(status)}
           </span>
           <div class="workload-actions">
-            ${s.replicas === 0
-              ? html`
-                  <button
-                    class="action-btn start"
-                    title="Start (scale to 1)"
-                    ?disabled=${busy}
-                    @click=${() =>
-                      this._callService(
-                        "start_workload",
-                        {
-                          workload_name: s.name,
-                          namespace: s.namespace,
-                          entry_id: entryId,
-                        },
-                        actionKey,
-                      )}
-                  >
-                    <ha-icon icon="mdi:play"></ha-icon>
-                  </button>
-                `
-              : html`
-                  <button
-                    class="action-btn stop"
-                    title="Stop (scale to 0)"
-                    ?disabled=${busy}
-                    @click=${() =>
-                      this._callService(
-                        "stop_workload",
-                        {
-                          workload_name: s.name,
-                          namespace: s.namespace,
-                          entry_id: entryId,
-                        },
-                        actionKey,
-                      )}
-                  >
-                    <ha-icon icon="mdi:stop"></ha-icon>
-                  </button>
-                `}
+            ${
+              s.replicas === 0
+                ? html`
+                    <button
+                      class="action-btn start"
+                      title="Start (scale to 1)"
+                      ?disabled=${busy}
+                      @click=${() =>
+                        this._callService(
+                          "start_workload",
+                          {
+                            workload_name: s.name,
+                            namespace: s.namespace,
+                            entry_id: entryId,
+                          },
+                          actionKey,
+                        )}
+                    >
+                      <ha-icon icon="mdi:play"></ha-icon>
+                    </button>
+                  `
+                : html`
+                    <button
+                      class="action-btn stop"
+                      title="Stop (scale to 0)"
+                      ?disabled=${busy}
+                      @click=${() =>
+                        this._callService(
+                          "stop_workload",
+                          {
+                            workload_name: s.name,
+                            namespace: s.namespace,
+                            entry_id: entryId,
+                          },
+                          actionKey,
+                        )}
+                    >
+                      <ha-icon icon="mdi:stop"></ha-icon>
+                    </button>
+                  `
+            }
             <button
               class="action-btn restart"
               title="Rolling restart"
@@ -1024,19 +1035,25 @@ export class K8sWorkloads extends LitElement {
             <div class="workload-namespace">${cj.namespace}</div>
           </div>
           <span class="schedule-info">${cj.schedule}</span>
-          ${cj.active_jobs_count > 0
-            ? html`<span class="badge badge-active"
-                >${cj.active_jobs_count} active</span
-              >`
-            : nothing}
-          ${cj.suspend
-            ? html`<span class="badge badge-suspended">Suspended</span>`
-            : html`<span class="badge badge-healthy">Active</span>`}
-          ${cj.last_schedule_time
-            ? html`<span class="last-schedule"
-                >Last: ${this._formatAge(cj.last_schedule_time)}</span
-              >`
-            : nothing}
+          ${
+            cj.active_jobs_count > 0
+              ? html`<span class="badge badge-active"
+                  >${cj.active_jobs_count} active</span
+                >`
+              : nothing
+          }
+          ${
+            cj.suspend
+              ? html`<span class="badge badge-suspended">Suspended</span>`
+              : html`<span class="badge badge-healthy">Active</span>`
+          }
+          ${
+            cj.last_schedule_time
+              ? html`<span class="last-schedule"
+                  >Last: ${this._formatAge(cj.last_schedule_time)}</span
+                >`
+              : nothing
+          }
           <div class="workload-actions">
             <button
               class="action-btn start"
@@ -1107,20 +1124,28 @@ export class K8sWorkloads extends LitElement {
             <div class="workload-namespace">${j.namespace}</div>
           </div>
           <span class="replica-info"> ${j.succeeded}/${j.completions} completed </span>
-          ${j.active > 0
-            ? html`<span class="badge badge-active">${j.active} active</span>`
-            : nothing}
-          ${hasFailed
-            ? html`<span class="badge badge-failed">${j.failed} failed</span>`
-            : nothing}
-          ${isComplete
-            ? html`<span class="badge badge-complete">Complete</span>`
-            : nothing}
-          ${j.start_time
-            ? html`<span class="last-schedule"
-                >Started: ${this._formatAge(j.start_time)}</span
-              >`
-            : nothing}
+          ${
+            j.active > 0
+              ? html`<span class="badge badge-active">${j.active} active</span>`
+              : nothing
+          }
+          ${
+            hasFailed
+              ? html`<span class="badge badge-failed">${j.failed} failed</span>`
+              : nothing
+          }
+          ${
+            isComplete
+              ? html`<span class="badge badge-complete">Complete</span>`
+              : nothing
+          }
+          ${
+            j.start_time
+              ? html`<span class="last-schedule"
+                  >Started: ${this._formatAge(j.start_time)}</span
+                >`
+              : nothing
+          }
         </div>
       </ha-card>
     `;

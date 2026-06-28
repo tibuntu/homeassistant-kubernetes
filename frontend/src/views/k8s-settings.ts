@@ -354,26 +354,28 @@ export class K8sSettings extends LitElement {
             >${this._renderBool(entry.monitor_all_namespaces)}</span
           >
         </div>
-        ${!entry.monitor_all_namespaces && entry.namespaces.length > 0
-          ? html`
-              <div class="setting-row">
-                <span class="setting-label">Selected</span>
-                <span class="setting-value">
-                  <div class="namespace-tags">
-                    ${entry.namespaces.map(
-                      (ns) => html`<span class="ns-tag">${ns}</span>`,
-                    )}
-                  </div>
-                </span>
-              </div>
-            `
-          : nothing}
+        ${
+          !entry.monitor_all_namespaces && entry.namespaces.length > 0
+            ? html`
+                <div class="setting-row">
+                  <span class="setting-label">Selected</span>
+                  <span class="setting-value">
+                    <div class="namespace-tags">
+                      ${entry.namespaces.map(
+                        (ns) => html`<span class="ns-tag">${ns}</span>`,
+                      )}
+                    </div>
+                  </span>
+                </div>
+              `
+            : nothing
+        }
         <div class="setting-row">
           <span class="setting-label">Device Grouping</span>
           <span class="setting-value"
-            >${entry.device_grouping_mode === "namespace"
-              ? "By Namespace"
-              : "By Cluster"}</span
+            >${
+              entry.device_grouping_mode === "namespace" ? "By Namespace" : "By Cluster"
+            }</span
           >
         </div>
       </ha-card>
