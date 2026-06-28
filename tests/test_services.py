@@ -1989,6 +1989,22 @@ class TestDeleteJobService:
 
         mock_client.delete_job.assert_not_called()
 
+    async def test_delete_job_logs_error_on_failure(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test that the error-log branch executes when delete_job returns False."""
+        mock_client.delete_job = AsyncMock(return_value=False)
+
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "j1", ATTR_NAMESPACE: "default"},
+            blocking=True,
+        )
+
+        mock_client.delete_job.assert_awaited_once_with("j1", "default")
+
     async def test_service_registered_and_unregistered(self, hass: HomeAssistant):
         """Test that delete_job service is registered and removed with others."""
         await async_setup_services(hass)
