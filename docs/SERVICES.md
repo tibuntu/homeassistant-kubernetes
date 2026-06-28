@@ -4,14 +4,15 @@ This document describes all services provided by the Kubernetes integration for 
 
 ## Available Services
 
-The integration provides the following generic services that work with multiple workload types:
+The integration provides the following services for controlling Kubernetes resources:
 
-| Service | Description | Supported Workloads |
+| Service | Description | Supported Resources |
 |---------|-------------|---------------------|
 | **Scale Workload** | Scale a workload to a specific number of replicas | Deployments, StatefulSets |
 | **Start Workload** | Start a workload by scaling to specified replicas, or trigger CronJobs | Deployments, StatefulSets, CronJobs |
 | **Stop Workload** | Stop a workload by scaling to 0 replicas | Deployments, StatefulSets |
 | **Restart Workload** | Perform a rolling restart (equivalent to `kubectl rollout restart`) | Deployments, StatefulSets, DaemonSets |
+| **Delete Job** | Delete one or more Jobs (useful for clearing failed Jobs) | Jobs |
 
 > **Note**: CronJobs are not affected by `scale_workload` or `stop_workload`. Use the switch entity to suspend/resume CronJobs, or use `start_workload` to trigger them.
 
@@ -173,6 +174,46 @@ service: kubernetes.restart_workload
 data:
   workload_name: web-app
   namespace: production
+```
+
+### Delete Job
+
+**Service**: `kubernetes.delete_job`
+
+Delete one or more Kubernetes Jobs. This is useful for removing failed Jobs or cleaning up completed Jobs. Deletes the Job and its pods using a Background propagation policy (pods are also deleted).
+
+**Parameters**:
+
+- `job_name` (string, optional): Single Job name
+- `job_names` (list, optional): Multiple Job names
+- `namespace` (string, optional): Kubernetes namespace (resolved from monitored data if Job exists, falls back to configured default)
+- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
+
+**Supported Resources**: Jobs
+
+**Note**: This service deletes Jobs by name (not entity IDs). At least one of `job_name` or `job_names` must be provided. The Job's pods are automatically deleted as part of the background propagation policy.
+
+**Examples**:
+
+```yaml
+# Delete a single Job
+service: kubernetes.delete_job
+data:
+  job_name: backup-job-abc123
+  namespace: production
+
+# Delete multiple Jobs
+service: kubernetes.delete_job
+data:
+  job_names:
+    - failed-job-1
+    - failed-job-2
+  namespace: production
+
+# Delete using monitored data and default namespace
+service: kubernetes.delete_job
+data:
+  job_name: backup-job-xyz789
 ```
 
 ## Using Entity IDs vs. Workload Names

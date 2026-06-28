@@ -155,13 +155,13 @@ rules:
 - apiGroups: ["apps"]
   resources: ["statefulsets/status"]
   verbs: ["get", "patch", "update"]
-# Batch API permissions for CronJobs
+# Batch API permissions for CronJobs and Jobs
 - apiGroups: ["batch"]
   resources: ["cronjobs", "jobs"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["batch"]
   resources: ["cronjobs", "cronjobs/status", "jobs"]
-  verbs: ["get", "patch", "update", "create"]
+  verbs: ["get", "patch", "update", "create", "delete"]
 # Metrics API for real-time CPU and memory usage
 - apiGroups: ["metrics.k8s.io"]
   resources: ["nodes", "pods"]
@@ -185,7 +185,7 @@ rules:
 | **apps** | **daemonsets** | `get`, `list`, `watch` | Monitor daemonset status and count |
 | **batch** | **cronjobs** | `get`, `list`, `watch` | Monitor CronJob status and metadata |
 | **batch** | **cronjobs/status** | `get`, `patch`, `update` | Update and monitor CronJob status |
-| **batch** | **jobs** | `get`, `list`, `watch`, `create` | Monitor and create jobs (for CronJob triggering) |
+| **batch** | **jobs** | `get`, `list`, `watch`, `create`, `delete` | Monitor, create, and delete Jobs (for CronJob triggering and Job cleanup) |
 | **metrics.k8s.io** | **nodes** | `get`, `list` | Real-time node CPU and memory usage |
 | **metrics.k8s.io** | **pods** | `get`, `list` | Workload CPU and memory usage sensors |
 | **extensions** | **deployments** | `get`, `list`, `watch` | Legacy API compatibility for older clusters |
