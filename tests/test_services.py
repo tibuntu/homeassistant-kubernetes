@@ -8,12 +8,15 @@ import pytest
 import yaml
 
 from custom_components.kubernetes.const import (
+    ATTR_JOB_NAME,
+    ATTR_JOB_NAMES,
     ATTR_NAMESPACE,
     ATTR_REPLICAS,
     ATTR_WORKLOAD_NAME,
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
+    SERVICE_DELETE_JOB,
     SERVICE_RESTART_WORKLOAD,
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
@@ -25,6 +28,7 @@ from custom_components.kubernetes.const import (
 )
 from custom_components.kubernetes.services import (
     _collect_entity_ids,
+    _collect_job_names,
     _extract_entity_ids_from_value,
     _extract_workload_info,
     _get_entry_data,
@@ -57,6 +61,7 @@ def mock_client():
     client.rollout_restart_deployment = AsyncMock(return_value=True)
     client.rollout_restart_statefulset = AsyncMock(return_value=True)
     client.rollout_restart_daemonset = AsyncMock(return_value=True)
+    client.delete_job = AsyncMock(return_value=True)
     return client
 
 
@@ -1828,3 +1833,166 @@ class TestValidateWorkloadSchema:
         }
         result = _validate_workload_schema(data)
         assert result is data
+
+
+class TestCollectJobNames:
+    """Tests for _collect_job_names helper."""
+
+    def test_single_job_name(self):
+        """Test a single job_name is returned as a one-element list."""
+        result = _collect_job_names({ATTR_JOB_NAME: "my-job"})
+        assert result == ["my-job"]
+
+    def test_job_names_string(self):
+        """Test job_names as a plain string returns a one-element list."""
+        result = _collect_job_names({ATTR_JOB_NAMES: "my-job"})
+        assert result == ["my-job"]
+
+    def test_job_names_list(self):
+        """Test job_names as a list returns all entries."""
+        result = _collect_job_names({ATTR_JOB_NAMES: ["job-a", "job-b"]})
+        assert result == ["job-a", "job-b"]
+
+    def test_both_fields_deduped(self):
+        """Test that duplicates across job_name and job_names are removed."""
+        result = _collect_job_names(
+            {ATTR_JOB_NAME: "job-a", ATTR_JOB_NAMES: ["job-a", "job-b"]}
+        )
+        assert result == ["job-a", "job-b"]
+
+    def test_empty_returns_empty(self):
+        """Test that an empty call_data returns an empty list."""
+        result = _collect_job_names({})
+        assert result == []
+
+
+class TestDeleteJobService:
+    """Tests for the delete_job service."""
+
+    async def test_delete_single_job_explicit_namespace(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test deleting a single job with an explicit namespace."""
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "my-job", ATTR_NAMESPACE: "prod"},
+            blocking=True,
+        )
+
+        mock_client.delete_job.assert_called_once_with("my-job", "prod")
+
+    async def test_delete_multiple_jobs_via_job_names(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test deleting multiple jobs via job_names list."""
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAMES: ["job-a", "job-b"], ATTR_NAMESPACE: "ns"},
+            blocking=True,
+        )
+
+        assert mock_client.delete_job.call_count == 2
+        mock_client.delete_job.assert_any_call("job-a", "ns")
+        mock_client.delete_job.assert_any_call("job-b", "ns")
+
+    async def test_namespace_resolved_from_coordinator(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test that namespace is resolved via get_job_data when not provided."""
+        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator.get_job_data = MagicMock(
+            return_value={"name": "my-job", "namespace": "resolved-ns"}
+        )
+
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "my-job"},
+            blocking=True,
+        )
+
+        coordinator.get_job_data.assert_called_once_with("my-job")
+        mock_client.delete_job.assert_called_once_with("my-job", "resolved-ns")
+
+    async def test_namespace_falls_back_to_config_when_job_not_in_coordinator(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test namespace falls back to config data when job not found in coordinator."""
+        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator.get_job_data = MagicMock(return_value=None)
+
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "unknown-job"},
+            blocking=True,
+        )
+
+        mock_client.delete_job.assert_called_once_with("unknown-job", "default")
+
+    async def test_entry_id_selects_correct_entry(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Test that entry_id routes to the correct cluster's client."""
+        mock_coordinator_a = MagicMock()
+        mock_coordinator_a.client = mock_client
+        mock_coordinator_a.get_job_data = MagicMock(return_value=None)
+
+        other_client = MagicMock()
+        other_client.delete_job = AsyncMock(return_value=True)
+        mock_coordinator_b = MagicMock()
+        mock_coordinator_b.client = other_client
+        mock_coordinator_b.get_job_data = MagicMock(return_value=None)
+
+        hass.data[DOMAIN] = {
+            "entry-a": {
+                "config": {"namespace": "default"},
+                "coordinator": mock_coordinator_a,
+            },
+            "entry-b": {
+                "config": {"namespace": "other"},
+                "coordinator": mock_coordinator_b,
+            },
+        }
+
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "my-job", ATTR_NAMESPACE: "other", "entry_id": "entry-b"},
+            blocking=True,
+        )
+
+        other_client.delete_job.assert_called_once_with("my-job", "other")
+        mock_client.delete_job.assert_not_called()
+
+    async def test_no_job_names_is_noop(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test calling delete_job with no job names early-returns without calling the client."""
+        await async_setup_services(hass)
+
+        # Call the service with no job_name/job_names — the handler must early-return
+        # because _collect_job_names is empty. No exception should be raised.
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_NAMESPACE: "default"},
+            blocking=True,
+        )
+
+        mock_client.delete_job.assert_not_called()
+
+    async def test_service_registered_and_unregistered(self, hass: HomeAssistant):
+        """Test that delete_job service is registered and removed with others."""
+        await async_setup_services(hass)
+        assert hass.services.has_service(DOMAIN, SERVICE_DELETE_JOB)
+
+        await async_unload_services(hass)
+        assert not hass.services.has_service(DOMAIN, SERVICE_DELETE_JOB)

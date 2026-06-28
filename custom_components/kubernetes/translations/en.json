@@ -143,6 +143,30 @@
       }
     }
   },
+  "services": {
+    "delete_job": {
+      "name": "Delete Job",
+      "description": "Delete one or more Kubernetes Jobs (also deletes their pods). Useful for clearing failed Jobs.",
+      "fields": {
+        "job_name": {
+          "name": "Job Name",
+          "description": "The name of a single Job to delete (use job_names for multiple)."
+        },
+        "job_names": {
+          "name": "Job Names",
+          "description": "A list of Job names to delete (use job_name for a single Job)."
+        },
+        "namespace": {
+          "name": "Namespace",
+          "description": "The namespace of the Job(s). If omitted, it is resolved from monitored data, then the configured default."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target a specific configured cluster (optional; defaults to the first)."
+        }
+      }
+    }
+  },
   "issues": {
     "kubernetes_package_missing": {
       "title": "Kubernetes Python package is not installed",
