@@ -328,6 +328,13 @@ def _validate_workload_schema(data: dict) -> dict:
     return data
 
 
+def _validate_job_schema(data: dict[str, Any]) -> dict[str, Any]:
+    """Require at least one of job_name / job_names for delete_job."""
+    if ATTR_JOB_NAME not in data and ATTR_JOB_NAMES not in data:
+        raise vol.Invalid("Either job_name or job_names must be provided")
+    return data
+
+
 # Generic service schemas
 SCALE_WORKLOAD_SCHEMA = vol.Schema(
     vol.All(
@@ -402,15 +409,18 @@ RESTART_WORKLOAD_SCHEMA = vol.Schema(
 )
 
 DELETE_JOB_SCHEMA = vol.Schema(
-    {
-        vol.Optional(ATTR_JOB_NAME): cv.string,
-        vol.Optional(ATTR_JOB_NAMES): vol.Any(
-            cv.string,
-            vol.All(cv.ensure_list, [cv.string]),
-        ),
-        vol.Optional(ATTR_NAMESPACE): cv.string,
-        vol.Optional("entry_id"): cv.string,
-    }
+    vol.All(
+        {
+            vol.Optional(ATTR_JOB_NAME): cv.string,
+            vol.Optional(ATTR_JOB_NAMES): vol.Any(
+                cv.string,
+                vol.All(cv.ensure_list, [cv.string]),
+            ),
+            vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional("entry_id"): cv.string,
+        },
+        _validate_job_schema,
+    )
 )
 
 
