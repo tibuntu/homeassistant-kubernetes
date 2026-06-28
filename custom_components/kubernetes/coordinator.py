@@ -675,6 +675,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         """Run the watch loop for a single resource type with reconnect logic."""
         resource_version = "0"
         failure_streak = 0
+        # Per-loop key for repair-issue tracking. In per-namespace mode multiple
+        # loops share a resource_type (e.g. "pods" for several namespaces), so the
+        # failing-loop state must be keyed per (resource_type, url) — otherwise one
+        # namespace recovering would clear the repair issue while another is still
+        # failing. resource_type itself stays the data-bucket key.
+        loop_key = f"{resource_type}:{url}"
 
         while not self._watch_stop_event.is_set():
             try:
@@ -694,7 +700,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         resource_version,
                     )
                     failure_streak = 0
-                    self._sync_watch_repair_issue(resource_type, failing=False)
+                    self._sync_watch_repair_issue(loop_key, failing=False)
 
                 async for event in self.client.watch_stream(url, resource_version):
                     if self._watch_stop_event.is_set():
@@ -718,7 +724,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
                 # Stream ended cleanly (timeoutSeconds expired); reconnect immediately
                 failure_streak = 0
-                self._sync_watch_repair_issue(resource_type, failing=False)
+                self._sync_watch_repair_issue(loop_key, failing=False)
                 _LOGGER.debug(
                     "Watch %s: stream ended cleanly, reconnecting", resource_type
                 )
@@ -731,10 +737,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 )
                 resource_version = "0"
                 failure_streak = 0
-                self._sync_watch_repair_issue(resource_type, failing=False)
+                self._sync_watch_repair_issue(loop_key, failing=False)
 
             except asyncio.CancelledError:
-                self._failing_watch_loops.discard(resource_type)
+                self._failing_watch_loops.discard(loop_key)
                 return
 
             except Exception as ex:
@@ -744,7 +750,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     WATCH_MAX_RECONNECT_DELAY,
                 ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
                 if failure_streak >= WATCH_MAX_FAILURE_STREAK:
-                    self._sync_watch_repair_issue(resource_type, failing=True)
+                    self._sync_watch_repair_issue(loop_key, failing=True)
                 _LOGGER.warning(
                     "Watch %s error: %s — reconnect attempt %d in %.1f s",
                     resource_type,
@@ -755,7 +761,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 try:
                     await asyncio.wait_for(self._watch_stop_event.wait(), timeout=delay)
                     # stop_event was set — exit gracefully
-                    self._failing_watch_loops.discard(resource_type)
+                    self._failing_watch_loops.discard(loop_key)
                     return
                 except TimeoutError:
                     pass

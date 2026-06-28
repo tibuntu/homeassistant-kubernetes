@@ -2031,6 +2031,47 @@ class TestRunWatchLoopExtended:
 
         assert coord._failing_watch_loops == set()
 
+    async def test_watch_loop_uses_per_url_repair_key(self, coord, mock_client):
+        """The loop keys repair state per (resource_type, url), not by the bare
+        resource_type — so per-namespace loops sharing a type stay independent."""
+        url = "https://host/api/v1/namespaces/ns1/pods"
+        keys = []
+
+        def _record(key, failing):
+            keys.append(key)
+            coord._watch_stop_event.set()
+
+        with patch.object(coord, "_sync_watch_repair_issue", side_effect=_record):
+            await coord._run_watch_loop("pods", url, mock_client._parse_pod_item)
+
+        assert keys, "expected the loop to sync its repair-issue state"
+        assert keys[0] == f"pods:{url}"
+        assert "pods" not in keys  # never keyed by the bare resource_type
+
+    async def test_per_namespace_loops_track_repair_independently(self, coord):
+        """One namespace recovering must not clear the repair issue while another
+        namespace's loop for the same resource type is still failing."""
+        key_ns1 = "pods:https://host/api/v1/namespaces/ns1/pods"
+        key_ns2 = "pods:https://host/api/v1/namespaces/ns2/pods"
+
+        with (
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch("custom_components.kubernetes.coordinator.ir.async_delete_issue"),
+        ):
+            coord._sync_watch_repair_issue(key_ns1, failing=True)
+            coord._sync_watch_repair_issue(key_ns2, failing=True)
+            assert coord._watch_issue_active is True
+
+            # ns2 recovers — issue stays active because ns1 is still failing
+            coord._sync_watch_repair_issue(key_ns2, failing=False)
+            assert coord._watch_issue_active is True
+            assert coord._failing_watch_loops == {key_ns1}
+
+            # ns1 recovers too — only now does the issue clear
+            coord._sync_watch_repair_issue(key_ns1, failing=False)
+            assert coord._watch_issue_active is False
+            assert coord._failing_watch_loops == set()
+
 
 class TestBuildWatchConfigs:
     """Tests for _build_watch_configs method."""
