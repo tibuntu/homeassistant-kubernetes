@@ -5966,3 +5966,181 @@ class TestPatchCronjobConsolidation:
         mock_client._patch_cronjob_aiohttp.assert_called_once_with(
             "cj", "default", {"spec": {"suspend": False}}, "resume"
         )
+
+
+class TestParsePodContainerState:
+    """Tests for container-state reason extraction and problem flag in _parse_pods_data."""
+
+    def _make_raw_pod(self, phase="Running", container_statuses=None, conditions=None):
+        """Build a minimal raw pod dict for _parse_pods_data."""
+        status: dict = {"phase": phase}
+        if container_statuses is not None:
+            status["containerStatuses"] = container_statuses
+        if conditions is not None:
+            status["conditions"] = conditions
+        return {
+            "metadata": {
+                "name": "test-pod",
+                "namespace": "default",
+                "uid": "abc-123",
+                "creationTimestamp": "2024-01-01T00:00:00Z",
+                "labels": {},
+            },
+            "spec": {"nodeName": "node-1"},
+            "status": status,
+        }
+
+    def test_crash_loop_back_off(self, mock_client):
+        """CrashLoopBackOff waiting reason → problem True."""
+        raw = self._make_raw_pod(
+            phase="Running",
+            container_statuses=[
+                {
+                    "ready": False,
+                    "restartCount": 5,
+                    "state": {"waiting": {"reason": "CrashLoopBackOff"}},
+                }
+            ],
+        )
+        result = mock_client._parse_pods_data([raw])
+        assert len(result) == 1
+        pod = result[0]
+        assert pod["container_waiting_reason"] == "CrashLoopBackOff"
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "CrashLoopBackOff"
+
+    def test_image_pull_back_off(self, mock_client):
+        """ImagePullBackOff waiting reason → problem True."""
+        raw = self._make_raw_pod(
+            phase="Running",
+            container_statuses=[
+                {
+                    "ready": False,
+                    "restartCount": 0,
+                    "state": {"waiting": {"reason": "ImagePullBackOff"}},
+                }
+            ],
+        )
+        result = mock_client._parse_pods_data([raw])
+        pod = result[0]
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "ImagePullBackOff"
+
+    def test_container_creating_benign(self, mock_client):
+        """ContainerCreating is benign → problem False."""
+        raw = self._make_raw_pod(
+            phase="Pending",
+            container_statuses=[
+                {
+                    "ready": False,
+                    "restartCount": 0,
+                    "state": {"waiting": {"reason": "ContainerCreating"}},
+                }
+            ],
+        )
+        result = mock_client._parse_pods_data([raw])
+        pod = result[0]
+        assert pod["container_waiting_reason"] == "ContainerCreating"
+        assert pod["problem"] is False
+        assert pod["problem_reason"] is None
+
+    def test_failed_phase_sets_problem(self, mock_client):
+        """Failed phase with no container statuses (e.g. evicted) → problem True."""
+        raw = self._make_raw_pod(phase="Failed", container_statuses=[])
+        result = mock_client._parse_pods_data([raw])
+        pod = result[0]
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "Failed"
+
+    def test_oomkilled_current(self, mock_client):
+        """Container currently terminated with OOMKilled → problem True."""
+        raw = self._make_raw_pod(
+            phase="Running",
+            container_statuses=[
+                {
+                    "ready": False,
+                    "restartCount": 3,
+                    "state": {"terminated": {"reason": "OOMKilled", "exitCode": 137}},
+                }
+            ],
+        )
+        result = mock_client._parse_pods_data([raw])
+        pod = result[0]
+        assert pod["container_terminated_reason"] == "OOMKilled"
+        assert pod["container_terminated_exit_code"] == 137
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "OOMKilled"
+
+    def test_oomkilled_recovered(self, mock_client):
+        """Pod recovered from OOMKill (now running) → last_terminated set, problem False."""
+        raw = self._make_raw_pod(
+            phase="Running",
+            container_statuses=[
+                {
+                    "ready": True,
+                    "restartCount": 1,
+                    "state": {"running": {"startedAt": "2024-01-01T01:00:00Z"}},
+                    "lastState": {
+                        "terminated": {"reason": "OOMKilled", "exitCode": 137}
+                    },
+                }
+            ],
+        )
+        result = mock_client._parse_pods_data([raw])
+        pod = result[0]
+        assert pod["last_terminated_reason"] == "OOMKilled"
+        assert pod["last_terminated_exit_code"] == 137
+        assert pod["problem"] is False
+
+    def test_pending_unschedulable(self, mock_client):
+        """Pending pod with Unschedulable PodScheduled condition → problem True."""
+        raw = self._make_raw_pod(
+            phase="Pending",
+            conditions=[
+                {
+                    "type": "PodScheduled",
+                    "status": "False",
+                    "reason": "Unschedulable",
+                }
+            ],
+        )
+        result = mock_client._parse_pods_data([raw])
+        pod = result[0]
+        assert pod["pending_reason"] == "Unschedulable"
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "Unschedulable"
+
+    def test_completed_exit_zero(self, mock_client):
+        """Succeeded phase with exitCode 0 → Completed reason captured, problem False."""
+        raw = self._make_raw_pod(
+            phase="Succeeded",
+            container_statuses=[
+                {
+                    "ready": False,
+                    "restartCount": 0,
+                    "state": {"terminated": {"reason": "Completed", "exitCode": 0}},
+                }
+            ],
+        )
+        result = mock_client._parse_pods_data([raw])
+        pod = result[0]
+        assert pod["container_terminated_reason"] == "Completed"
+        assert pod["problem"] is False
+
+    def test_healthy_running(self, mock_client):
+        """Healthy running pod → all reason fields None, problem False."""
+        raw = self._make_raw_pod(
+            phase="Running",
+            container_statuses=[
+                {
+                    "ready": True,
+                    "restartCount": 0,
+                    "state": {"running": {"startedAt": "2024-01-01T00:00:00Z"}},
+                }
+            ],
+        )
+        result = mock_client._parse_pods_data([raw])
+        pod = result[0]
+        assert pod["container_waiting_reason"] is None
+        assert pod["last_terminated_reason"] is None
+        assert pod["problem"] is False

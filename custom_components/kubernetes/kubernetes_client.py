@@ -50,6 +50,9 @@ IN_CLUSTER_TOKEN_CACHE_TTL = 60.0
 
 _LOGGER = logging.getLogger(__name__)
 
+# Waiting reasons that are transient and expected during normal startup — not problems.
+_BENIGN_WAITING_REASONS = frozenset({"ContainerCreating", "PodInitializing"})
+
 
 def normalize_host(host: str) -> str:
     """Bracket a bare IPv6 literal so it is safe to interpolate into URLs.
@@ -549,6 +552,56 @@ class KubernetesClient:
                     owner_kind = owner.get("kind", "N/A")
                     owner_name = owner.get("name", "N/A")
 
+                # Container state reasons (waiting / current+last terminated) for observability.
+                container_waiting_reason = None
+                container_terminated_reason = None
+                container_terminated_exit_code = None
+                last_terminated_reason = None
+                last_terminated_exit_code = None
+                for cs in container_statuses:
+                    state = cs.get("state", {})
+                    waiting = state.get("waiting")
+                    terminated = state.get("terminated")
+                    if waiting and container_waiting_reason is None:
+                        container_waiting_reason = waiting.get("reason")
+                    if terminated and container_terminated_reason is None:
+                        container_terminated_reason = terminated.get("reason")
+                        container_terminated_exit_code = terminated.get("exitCode")
+                    last_term = cs.get("lastState", {}).get("terminated")
+                    if last_term and last_terminated_reason is None:
+                        last_terminated_reason = last_term.get("reason")
+                        last_terminated_exit_code = last_term.get("exitCode")
+
+                # Scheduling reason when stuck Pending (e.g. Unschedulable).
+                pending_reason = None
+                if phase == "Pending":
+                    for cond in status.get("conditions", []):
+                        if (
+                            cond.get("type") == "PodScheduled"
+                            and cond.get("status") == "False"
+                        ):
+                            pending_reason = cond.get("reason")
+                            break
+
+                # Derive a single automation-friendly problem flag/reason (current state).
+                problem = False
+                problem_reason = None
+                if (
+                    container_waiting_reason
+                    and container_waiting_reason not in _BENIGN_WAITING_REASONS
+                ):
+                    problem = True
+                    problem_reason = container_waiting_reason
+                elif container_terminated_exit_code not in (None, 0):
+                    problem = True
+                    problem_reason = container_terminated_reason or "Error"
+                elif phase == "Failed":
+                    problem = True
+                    problem_reason = "Failed"
+                elif phase == "Pending" and pending_reason:
+                    problem = True
+                    problem_reason = pending_reason
+
                 parsed_pod = {
                     "name": metadata.get("name", "Unknown"),
                     "namespace": metadata.get("namespace", "default"),
@@ -563,6 +616,14 @@ class KubernetesClient:
                     "owner_kind": owner_kind,
                     "owner_name": owner_name,
                     "uid": metadata.get("uid", ""),
+                    "container_waiting_reason": container_waiting_reason,
+                    "container_terminated_reason": container_terminated_reason,
+                    "container_terminated_exit_code": container_terminated_exit_code,
+                    "last_terminated_reason": last_terminated_reason,
+                    "last_terminated_exit_code": last_terminated_exit_code,
+                    "pending_reason": pending_reason,
+                    "problem": problem,
+                    "problem_reason": problem_reason,
                 }
 
                 parsed_pods.append(parsed_pod)
