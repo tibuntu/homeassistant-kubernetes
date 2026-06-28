@@ -32,7 +32,12 @@ from .kubernetes_client import KubernetesClient
 from .services import async_setup_services, async_unload_services
 from .websocket_api import async_register_websocket_commands
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SWITCH]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.SWITCH,
+    Platform.EVENT,
+]
 
 DOMAIN = "kubernetes"
 
