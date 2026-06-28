@@ -10,11 +10,15 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.const import (
+    CONF_ENABLE_EVENTS,
     CONF_ENABLE_WATCH,
+    CONF_EVENT_TYPES,
     DEFAULT_FALLBACK_POLL_INTERVAL,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_WATCH_RECONNECT_DELAY,
     DOMAIN,
+    EVENT_TYPES_ALL,
+    EVENT_TYPES_WARNING,
     WATCH_MAX_FAILURE_STREAK,
 )
 from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
@@ -2259,3 +2263,430 @@ class TestStartStopWatchTasksExtended:
         assert coord._watch_tasks == []
         task1.cancel.assert_called_once()
         task2.cancel.assert_called_once()
+
+
+class TestEventWatchLoop:
+    """Tests for the event watch loop and dispatcher."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client for event watch tests."""
+        client = MagicMock()
+        client.host = "test-cluster.example.com"
+        client.port = 6443
+        client.monitor_all_namespaces = True
+        client.namespaces = ["default"]
+        client.list_resource_with_version = AsyncMock(return_value=([], "100"))
+
+        async def _empty_stream(url, rv):
+            return
+            yield  # make it an async generator
+
+        client.watch_stream = _empty_stream
+        return client
+
+    @pytest.fixture
+    def mock_config_entry_warning(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Mock config entry with event_types=warning (default)."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_EVENTS: True, CONF_EVENT_TYPES: EVENT_TYPES_WARNING},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    @pytest.fixture
+    def mock_config_entry_all(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Mock config entry with event_types=all."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_EVENTS: True, CONF_EVENT_TYPES: EVENT_TYPES_ALL},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    @pytest.fixture
+    def coord_warning(
+        self, hass: HomeAssistant, mock_config_entry_warning, mock_client
+    ):
+        """Coordinator with event_types=warning."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            c = KubernetesDataCoordinator(hass, mock_config_entry_warning, mock_client)
+        c.async_update_listeners = MagicMock()
+        return c
+
+    @pytest.fixture
+    def coord_all(self, hass: HomeAssistant, mock_config_entry_all, mock_client):
+        """Coordinator with event_types=all."""
+        with patch("homeassistant.helpers.frame.report_usage"):
+            c = KubernetesDataCoordinator(hass, mock_config_entry_all, mock_client)
+        c.async_update_listeners = MagicMock()
+        return c
+
+    # ------------------------------------------------------------------
+    # _dispatch_event filter tests
+    # ------------------------------------------------------------------
+
+    async def test_dispatch_event_warning_filter_blocks_normal(self, coord_warning):
+        """event_types=warning must NOT dispatch Normal events."""
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            coord_warning._dispatch_event(
+                {
+                    "type": "Normal",
+                    "reason": "Started",
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "name": "p",
+                        "namespace": "default",
+                    },
+                    "message": "Started container",
+                }
+            )
+            mock_send.assert_not_called()
+
+    async def test_dispatch_event_warning_filter_allows_warning(self, coord_warning):
+        """event_types=warning MUST dispatch Warning events with correct payload."""
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            coord_warning._dispatch_event(
+                {
+                    "type": "Warning",
+                    "reason": "OOMKilling",
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "name": "p",
+                        "namespace": "default",
+                    },
+                    "message": "m",
+                }
+            )
+            mock_send.assert_called_once()
+            _hass, signal, payload = mock_send.call_args[0]
+            assert "test-entry-id" in signal
+            assert payload["reason"] == "OOMKilling"
+            assert payload["type"] == "Warning"
+            assert payload["involved_kind"] == "Pod"
+            assert payload["involved_name"] == "p"
+            assert payload["namespace"] == "default"
+            assert payload["message"] == "m"
+
+    async def test_dispatch_event_all_filter_allows_normal(self, coord_all):
+        """event_types=all must dispatch Normal events too."""
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            coord_all._dispatch_event(
+                {
+                    "type": "Normal",
+                    "reason": "Started",
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "name": "p",
+                        "namespace": "default",
+                    },
+                    "message": "container started",
+                }
+            )
+            mock_send.assert_called_once()
+            _hass, signal, payload = mock_send.call_args[0]
+            assert payload["type"] == "Normal"
+            assert payload["reason"] == "Started"
+
+    async def test_dispatch_event_all_filter_allows_warning(self, coord_all):
+        """event_types=all must dispatch Warning events too."""
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            coord_all._dispatch_event(
+                {
+                    "type": "Warning",
+                    "reason": "OOMKilling",
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "name": "p",
+                        "namespace": "default",
+                    },
+                    "message": "m",
+                }
+            )
+            mock_send.assert_called_once()
+            _hass, signal, payload = mock_send.call_args[0]
+            assert payload["type"] == "Warning"
+            assert payload["reason"] == "OOMKilling"
+
+    # ------------------------------------------------------------------
+    # _run_event_watch_loop behavioural tests
+    # ------------------------------------------------------------------
+
+    async def test_event_watch_loop_anchors_without_firing_backlog(
+        self, coord_warning, mock_client
+    ):
+        """The initial list should only anchor the rv; its items must NOT be dispatched."""
+        # Simulate a non-empty backlog from the initial list
+        mock_client.list_resource_with_version.return_value = (
+            [
+                {"metadata": {"name": "old-event", "namespace": "default"}},
+                {"metadata": {"name": "old-event-2", "namespace": "default"}},
+            ],
+            "100",
+        )
+
+        # Empty stream that sets stop event so the loop exits after the list
+        async def _stop_stream(url, rv):
+            coord_warning._watch_stop_event.set()
+            return
+            yield
+
+        mock_client.watch_stream = _stop_stream
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+            mock_send.assert_not_called()
+
+    async def test_event_watch_loop_dispatches_streamed_event(
+        self, coord_warning, mock_client
+    ):
+        """ADDED Warning events from the stream must be dispatched; backlog silenced."""
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        async def _one_event_stream(url, rv):
+            yield {
+                "type": "ADDED",
+                "object": {
+                    "type": "Warning",
+                    "reason": "OOMKilling",
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "name": "my-pod",
+                        "namespace": "default",
+                    },
+                    "message": "OOM killed",
+                    "metadata": {"resourceVersion": "101", "namespace": "default"},
+                },
+            }
+            coord_warning._watch_stop_event.set()
+
+        mock_client.watch_stream = _one_event_stream
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+            mock_send.assert_called_once()
+            _hass, signal, payload = mock_send.call_args[0]
+            assert payload["reason"] == "OOMKilling"
+
+    async def test_event_watch_loop_skips_deleted_events(self, coord_all, mock_client):
+        """DELETED event type should not be dispatched (only ADDED/MODIFIED)."""
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        async def _deleted_stream(url, rv):
+            yield {
+                "type": "DELETED",
+                "object": {
+                    "type": "Warning",
+                    "reason": "SomeReason",
+                    "involvedObject": {"kind": "Pod", "name": "p", "namespace": "ns"},
+                    "message": "gone",
+                    "metadata": {"resourceVersion": "102", "namespace": "ns"},
+                },
+            }
+            coord_all._watch_stop_event.set()
+
+        mock_client.watch_stream = _deleted_stream
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            await coord_all._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+            mock_send.assert_not_called()
+
+    async def test_event_watch_loop_handles_cancel(self, coord_warning, mock_client):
+        """CancelledError during the initial list should exit the loop cleanly."""
+
+        async def _raise_cancel(url):
+            raise asyncio.CancelledError
+
+        mock_client.list_resource_with_version.side_effect = _raise_cancel
+
+        # Should return without raising
+        await coord_warning._run_event_watch_loop(
+            "https://test-cluster.example.com:6443/api/v1/events"
+        )
+
+    async def test_event_watch_loop_handles_resource_version_expired(
+        self, coord_warning, mock_client
+    ):
+        """A 410 from the watch stream resets rv to '0' and triggers a relist.
+
+        In production only watch_stream raises ResourceVersionExpired, never the
+        initial list — mirror the state-watch mid-stream 410 path here.
+        """
+        call_count = 0
+
+        async def _list_side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                coord_warning._watch_stop_event.set()
+            return [], str(call_count * 100)
+
+        mock_client.list_resource_with_version.side_effect = _list_side_effect
+
+        first_stream = True
+
+        async def _stream_raises_expired(url, rv):
+            nonlocal first_stream
+            if first_stream:
+                first_stream = False
+                raise ResourceVersionExpired("410 Gone")
+            return
+            yield
+
+        mock_client.watch_stream = _stream_raises_expired
+
+        await coord_warning._run_event_watch_loop(
+            "https://test-cluster.example.com:6443/api/v1/events"
+        )
+
+        # Listed twice: once initially, once after the mid-stream rv expired
+        assert call_count == 2
+
+    async def test_event_watch_loop_generic_exception_triggers_backoff(
+        self, coord_warning, mock_client
+    ):
+        """Non-cancelled exceptions should trigger a backoff reconnect."""
+        call_count = 0
+
+        async def _list_side_effect(url):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ConnectionError("network down")
+            # Second call: stop after listing
+            coord_warning._watch_stop_event.set()
+            return [], "200"
+
+        mock_client.list_resource_with_version.side_effect = _list_side_effect
+
+        # Patch wait_for to simulate immediate timeout (no actual sleep)
+        with patch("asyncio.wait_for", side_effect=TimeoutError):
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        assert call_count == 2
+
+    async def test_event_watch_loop_dispatches_modified_event(
+        self, coord_warning, mock_client
+    ):
+        """MODIFIED Warning events from the stream must be dispatched."""
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        async def _modified_event_stream(url, rv):
+            yield {
+                "type": "MODIFIED",
+                "object": {
+                    "type": "Warning",
+                    "reason": "BackOff",
+                    "involvedObject": {
+                        "kind": "Pod",
+                        "name": "my-pod",
+                        "namespace": "default",
+                    },
+                    "message": "Back-off restarting failed container",
+                    "metadata": {"resourceVersion": "103", "namespace": "default"},
+                },
+            }
+            coord_warning._watch_stop_event.set()
+
+        mock_client.watch_stream = _modified_event_stream
+
+        with patch(
+            "custom_components.kubernetes.coordinator.async_dispatcher_send"
+        ) as mock_send:
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+            mock_send.assert_called_once()
+            _hass, signal, payload = mock_send.call_args[0]
+            assert payload["reason"] == "BackOff"
+            assert payload["type"] == "Warning"
+
+    # ------------------------------------------------------------------
+    # async_start_event_watch_tasks wiring test
+    # ------------------------------------------------------------------
+
+    async def test_start_event_watch_tasks_creates_task_per_url(
+        self, hass: HomeAssistant, coord_warning, mock_client
+    ):
+        """async_start_event_watch_tasks should create one task for monitor_all_namespaces=True."""
+        created_coros = []
+
+        def _mock_create(coro, name):
+            created_coros.append(coro)
+            return MagicMock()
+
+        with patch.object(
+            hass, "async_create_background_task", side_effect=_mock_create
+        ):
+            await coord_warning.async_start_event_watch_tasks()
+
+        assert len(coord_warning._watch_tasks) == 1
+        assert any(
+            "k8s_events_" in name
+            for name in [
+                f"k8s_events_https://{mock_client.host}:{mock_client.port}/api/v1/events"
+            ]
+        )
+
+        for coro in created_coros:
+            coro.close()
+
+    async def test_start_event_watch_tasks_per_namespace(
+        self, hass: HomeAssistant, coord_warning, mock_client
+    ):
+        """When not monitoring all namespaces, one task per namespace should be created."""
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["default", "kube-system"]
+
+        created_coros = []
+
+        def _mock_create(coro, name):
+            created_coros.append(coro)
+            return MagicMock()
+
+        with patch.object(
+            hass, "async_create_background_task", side_effect=_mock_create
+        ):
+            await coord_warning.async_start_event_watch_tasks()
+
+        assert len(coord_warning._watch_tasks) == 2
+
+        for coro in created_coros:
+            coro.close()

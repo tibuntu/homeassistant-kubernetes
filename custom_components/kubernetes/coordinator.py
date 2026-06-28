@@ -13,20 +13,25 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
     CONF_ENABLE_WATCH,
+    CONF_EVENT_TYPES,
     CONF_SWITCH_UPDATE_INTERVAL,
     DEFAULT_ENABLE_WATCH,
+    DEFAULT_EVENT_TYPES,
     DEFAULT_FALLBACK_POLL_INTERVAL,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_WATCH_RECONNECT_DELAY,
     DOMAIN,
+    EVENT_TYPES_ALL,
     WATCH_MAX_FAILURE_STREAK,
     WATCH_MAX_RECONNECT_DELAY,
     WATCH_RECONNECT_JITTER,
+    event_signal,
 )
 from .device import cleanup_orphaned_namespace_devices, get_all_namespaces
 from .kubernetes_client import KubernetesClient, ResourceVersionExpired
@@ -751,6 +756,108 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     await asyncio.wait_for(self._watch_stop_event.wait(), timeout=delay)
                     # stop_event was set — exit gracefully
                     self._failing_watch_loops.discard(resource_type)
+                    return
+                except TimeoutError:
+                    pass
+
+    # -------------------------------------------------------------------------
+    # Event watch API support (opt-in, independent of state watch)
+    # -------------------------------------------------------------------------
+
+    async def async_start_event_watch_tasks(self) -> None:
+        """Start the cluster-events watch task(s) (opt-in, independent of state watch)."""
+        self._watch_stop_event.clear()
+        base = f"https://{self.client.host}:{self.client.port}"
+        if self.client.monitor_all_namespaces:
+            urls = [f"{base}/api/v1/events"]
+        else:
+            urls = [
+                f"{base}/api/v1/namespaces/{ns}/events" for ns in self.client.namespaces
+            ]
+        for url in urls:
+            self._watch_tasks.append(
+                self.hass.async_create_background_task(
+                    self._run_event_watch_loop(url), f"k8s_events_{url}"
+                )
+            )
+
+    @callback
+    def _dispatch_event(self, obj: dict[str, Any]) -> None:
+        """Filter + dispatch a single k8s event object to the event entity."""
+        event_types = self.config_entry.options.get(
+            CONF_EVENT_TYPES, DEFAULT_EVENT_TYPES
+        )
+        ev_type = obj.get("type", "Normal")
+        if event_types != EVENT_TYPES_ALL and ev_type != "Warning":
+            return
+        involved = obj.get("involvedObject", {})
+        payload = {
+            "reason": obj.get("reason"),
+            "type": ev_type,
+            "involved_kind": involved.get("kind"),
+            "involved_name": involved.get("name"),
+            "namespace": involved.get("namespace")
+            or obj.get("metadata", {}).get("namespace"),
+            "message": obj.get("message"),
+            "count": obj.get("count"),
+            "event_time": obj.get("lastTimestamp") or obj.get("eventTime"),
+        }
+        async_dispatcher_send(
+            self.hass, event_signal(self.config_entry.entry_id), payload
+        )
+
+    async def _run_event_watch_loop(self, url: str) -> None:
+        """Tail the events API and dispatch events (no state stored)."""
+        resource_version = "0"
+        failure_streak = 0
+        rt = "events"
+        while not self._watch_stop_event.is_set():
+            try:
+                if resource_version == "0":
+                    # Anchor rv only; do NOT fire the existing backlog.
+                    (
+                        _,
+                        resource_version,
+                    ) = await self.client.list_resource_with_version(url)
+                    failure_streak = 0
+                    self._sync_watch_repair_issue(rt, failing=False)
+                async for event in self.client.watch_stream(url, resource_version):
+                    if self._watch_stop_event.is_set():
+                        return
+                    obj = event.get("object", {})
+                    new_rv = obj.get("metadata", {}).get("resourceVersion")
+                    if new_rv:
+                        resource_version = new_rv
+                    if event.get("type", "") in ("ADDED", "MODIFIED"):
+                        self._dispatch_event(obj)
+                failure_streak = 0
+                self._sync_watch_repair_issue(rt, failing=False)
+                _LOGGER.debug("Event watch: stream ended cleanly, reconnecting")
+            except ResourceVersionExpired:
+                _LOGGER.info(
+                    "Event watch: resource version %r expired (HTTP 410), relisting",
+                    resource_version,
+                )
+                resource_version = "0"
+                failure_streak = 0
+                self._sync_watch_repair_issue(rt, failing=False)
+            except asyncio.CancelledError:
+                self._failing_watch_loops.discard(rt)
+                return
+            except Exception as ex:
+                failure_streak += 1
+                delay = min(
+                    DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
+                    WATCH_MAX_RECONNECT_DELAY,
+                ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
+                if failure_streak >= WATCH_MAX_FAILURE_STREAK:
+                    self._sync_watch_repair_issue(rt, failing=True)
+                _LOGGER.warning(
+                    "Event watch error: %s — reconnect in %.1f s", ex, delay
+                )
+                try:
+                    await asyncio.wait_for(self._watch_stop_event.wait(), timeout=delay)
+                    self._failing_watch_loops.discard(rt)
                     return
                 except TimeoutError:
                     pass

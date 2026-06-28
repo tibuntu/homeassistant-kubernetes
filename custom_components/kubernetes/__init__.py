@@ -17,8 +17,10 @@ from homeassistant.helpers import config_validation as cv, issue_registry as ir
 
 from .config_flow import KubernetesConfigFlow  # noqa: F401
 from .const import (
+    CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
+    DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DOMAIN_META_KEYS,
@@ -103,6 +105,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # are delivered to already-registered entity listeners.
     if entry.options.get(CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH):
         await coordinator.async_start_watch_tasks()
+
+    if entry.options.get(CONF_ENABLE_EVENTS, DEFAULT_ENABLE_EVENTS):
+        await coordinator.async_start_event_watch_tasks()
 
     # Reload the config entry when the user changes options so that the watch
     # tasks (or lack thereof) are correctly started/stopped.
