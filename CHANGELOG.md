@@ -2,29 +2,26 @@
 
 ## [1.4.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.5...v1.4.0) (2026-06-28)
 
+This release is about **observability** — understanding *why* something in your cluster is unhealthy, not just *that* it is — and adds the ability to clean up failed Jobs straight from Home Assistant. Everything new is either opt-in or purely additive, so existing setups keep working unchanged after upgrading.
 
-### Features
+### New features
 
-* add delete_job client method (aiohttp + fallback, Background propagation) ([2c0454f](https://github.com/tibuntu/homeassistant-kubernetes/commit/2c0454fb2414c30efd40c9298d0b6b8d46db2694))
-* add enable_events / event_types config options ([1e56ffa](https://github.com/tibuntu/homeassistant-kubernetes/commit/1e56ffaf086f458e3d27e71a6793c2d31ade09ed))
-* add Kubernetes cluster event platform (EventEntity) ([026fad6](https://github.com/tibuntu/homeassistant-kubernetes/commit/026fad6ca4ed314a1c5a403adf360c8860ddc595))
-* add kubernetes.delete_job service ([d543ccf](https://github.com/tibuntu/homeassistant-kubernetes/commit/d543ccfbd0443c6b8184b82f23ef554405909394))
-* add kubernetes/jobs/delete websocket command ([c9efebc](https://github.com/tibuntu/homeassistant-kubernetes/commit/c9efebc3698a1ed67e48e4ee38912ff7e7fb984c))
-* coordinator event-watch loop dispatching cluster events ([befa142](https://github.com/tibuntu/homeassistant-kubernetes/commit/befa142beb021e97ffcee7f7f05c592bbe8bc350))
-* expose pod container-state reasons + problem flag on pod sensor ([3fa8d59](https://github.com/tibuntu/homeassistant-kubernetes/commit/3fa8d59081f309196ee382c9a74876dc80a436b5))
-* jittered watch backoff and failure-streak repair issue ([3f0d666](https://github.com/tibuntu/homeassistant-kubernetes/commit/3f0d666507fdd34716094510dbbeb67d577303de))
-* panel delete button + confirm for Jobs (rebuild bundle) ([b8a7c81](https://github.com/tibuntu/homeassistant-kubernetes/commit/b8a7c8146bedc8156d34f076b9251af3d7208485))
-* surface pod container-state reasons (CrashLoopBackOff/OOMKilled/pending) + problem flag ([b3063c5](https://github.com/tibuntu/homeassistant-kubernetes/commit/b3063c5dbcad91d6ee0785da17e314524334db4a))
+**Cluster events in Home Assistant (opt-in).** A new *Cluster events* entity turns noteworthy Kubernetes activity into Home Assistant events you can build automations and notifications on — OOM kills, failed scheduling, image-pull failures, evictions, failing health probes, and more. It's **off by default**; enable it under the integration's *Configure* dialog, where you can also choose between *Warning only* (the default) and *All events*. Great for "notify me whenever any pod gets OOM-killed".
 
+**Delete Jobs without `kubectl`.** Failed or finished Jobs can now be removed directly from Home Assistant — there's a delete button (with a confirmation prompt) on each Job in the dashboard panel, plus a new `kubernetes.delete_job` service for automations. Deleting a Job also cleans up the pods it created.
 
-### Bug Fixes
+**See *why* a pod is unhealthy.** Pod sensors now expose the reason behind a problem instead of just a status — the container's waiting reason (e.g. `CrashLoopBackOff`, `ImagePullBackOff`), its termination reason and exit code, the *previous* run's termination reason (so a pod that was OOM-killed and then recovered is still visible), and the scheduling reason for pods stuck in *Pending*. A roll-up `problem` / `problem_reason` attribute lets you alert on "this pod is genuinely broken" in a single automation.
 
-* add delete verb to jobs RBAC manifest; require job name in delete_job schema ([065c761](https://github.com/tibuntu/homeassistant-kubernetes/commit/065c761cfd8b604ab27844bf2f7021350bafb086))
-* **ci:** ensure Frontend job always runs to avoid blocking merge checks ([7c76808](https://github.com/tibuntu/homeassistant-kubernetes/commit/7c76808caf4d56e5ce88a69852ea8f49817b1a87))
-* event_types dropdown selector + per-namespace event repair key; clarify watch/event wording and recurring events ([df1151c](https://github.com/tibuntu/homeassistant-kubernetes/commit/df1151c31832a1ac7dc87386f3bb9f050e6b5539))
-* key state-watch repair issue per (resource_type, url) ([74f6f99](https://github.com/tibuntu/homeassistant-kubernetes/commit/74f6f9946867c25ecf8f5aa0d11c6c9bb2463a24))
-* patch metrics_parser logger in parser tests; tidy watch failing-set on exit ([18185b2](https://github.com/tibuntu/homeassistant-kubernetes/commit/18185b29c6ef8dfbca446d0b72b55f9dbef985d5))
-* use asyncio.get_running_loop() instead of deprecated get_event_loop() ([13a8527](https://github.com/tibuntu/homeassistant-kubernetes/commit/13a852705198b6456575c7ed588fcba32b1273a9))
+**More reliable live updates.** The experimental Watch API now reconnects with jittered exponential backoff and raises a Home Assistant *Repair* if the connection keeps failing — so a degraded real-time feed surfaces clearly instead of silently falling back to polling.
+
+### Fixes & improvements
+
+* The cluster-events option is now a proper dropdown, and the watch/event Repair message and recurring-event behaviour read more clearly.
+* Watch *Repair* issues are tracked per resource **and** namespace, so one namespace reconnecting no longer hides another that's still failing.
+* Replaced a deprecated `asyncio` call to stay compatible with current Python and Home Assistant releases.
+* Internal logging and test tidy-ups.
+
+> **Upgrading — RBAC:** the two headline features need a little extra access — reading `events` (for the Cluster events entity) and `delete` on `jobs` (for deleting Jobs). If you deploy the bundled **full** RBAC manifest you already have both; minimal or custom manifests need updating to use these features. Everything else works as before.
 
 ## [1.3.5](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.4...v1.3.5) (2026-06-13)
 
