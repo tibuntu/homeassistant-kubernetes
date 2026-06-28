@@ -5,15 +5,9 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "frontend/**"
-      - "custom_components/kubernetes/frontend/**"
   pull_request:
     branches-ignore:
       - release-please--branches--main
-    paths:
-      - "frontend/**"
-      - "custom_components/kubernetes/frontend/**"
   workflow_dispatch:
 
 permissions:
@@ -27,7 +21,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Detect frontend changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            frontend:
+              - "frontend/**"
+              - "custom_components/kubernetes/frontend/**"
+
       - name: Set up Node.js
+        if: steps.changes.outputs.frontend == 'true'
         uses: actions/setup-node@v6
         with:
           node-version: "24"
@@ -35,28 +39,38 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
+        if: steps.changes.outputs.frontend == 'true'
         run: npm ci
         working-directory: frontend
 
       - name: Lint with ESLint
+        if: steps.changes.outputs.frontend == 'true'
         run: npm run lint
         working-directory: frontend
 
       - name: Check formatting with Prettier
+        if: steps.changes.outputs.frontend == 'true'
         run: npm run format:check
         working-directory: frontend
 
       - name: Build
+        if: steps.changes.outputs.frontend == 'true'
         run: npm run build
         working-directory: frontend
 
       - name: Verify bundle exists
+        if: steps.changes.outputs.frontend == 'true'
         run: test -f custom_components/kubernetes/frontend/kubernetes-panel.js
 
       - name: Verify committed bundle is up to date
+        if: steps.changes.outputs.frontend == 'true'
         run: |
           if ! git diff --quiet custom_components/kubernetes/frontend/kubernetes-panel.js; then
             echo "::error::The committed kubernetes-panel.js is out of date. Run 'cd frontend && npm run build' and commit the result."
             git diff --stat custom_components/kubernetes/frontend/kubernetes-panel.js
             exit 1
           fi
+
+      - name: No frontend changes
+        if: steps.changes.outputs.frontend != 'true'
+        run: echo "No frontend files changed — skipping lint & build."
