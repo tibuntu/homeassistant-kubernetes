@@ -102,3 +102,20 @@ When enabled, the integration establishes long-lived HTTP streams to the Kuberne
 > ⚠️ **Experimental**: The watch feature requires the service account to have `watch` permission on all monitored resources. See the [RBAC guide](RBAC.md) for details.
 
 Changing this option reloads the integration automatically.
+
+### Cluster Events
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| **Enable Cluster Events** | Create a "Cluster events" event entity that fires Home Assistant events for Kubernetes cluster activity | `false` |
+| **Event Types** | Which Kubernetes event types to surface — `warning` (Warning-type events only) or `all` (Warning and Normal) | `warning` |
+
+When **Enable Cluster Events** is on, the integration creates one `event` entity per cluster named **Cluster events**. It tails the Kubernetes Events API using the same hardened watch infrastructure as the Watch API feature and dispatches matching events to Home Assistant.
+
+The Kubernetes event `reason` becomes the HA `event_type`. A curated set of reasons (OOMKilling, FailedScheduling, BackOff, Evicted, Unhealthy, ImagePullBackOff, and others) are surfaced as distinct types; any unrecognised reason maps to `other`. Each event carries attributes for the involved object kind, name, namespace, message, count, and timestamp.
+
+> **Note:** The cluster event watch loop is independent of the Watch API toggle — enabling one does not enable the other.
+
+**RBAC:** Reading Kubernetes events requires `get`, `list`, and `watch` verbs on the core `v1` `events` resource. The `manifests/full/` ClusterRole already grants these permissions. The `manifests/minimal/` ClusterRole does **not** include events; if you use the minimal manifest and enable cluster events, add an `events` rule manually. See the [RBAC guide](RBAC.md) for details.
+
+Changing these options reloads the integration automatically.

@@ -256,6 +256,80 @@ Each switch includes detailed attributes:
 - **CPU Usage**: CPU usage in millicores (for Deployments and StatefulSets)
 - **Memory Usage**: Memory usage in MiB (for Deployments and StatefulSets)
 
+## Cluster Events
+
+The integration provides an opt-in `event` entity per cluster that fires Home Assistant events whenever the Kubernetes cluster emits an event (e.g. a pod is OOM-killed, scheduling fails, a container enters CrashLoopBackOff).
+
+### Entity
+
+| Entity | Description |
+|--------|-------------|
+| **Cluster events** | Fires a Home Assistant event for each matching Kubernetes cluster event |
+
+The entity is only created when **Enable Cluster Events** is turned on under **Settings → Devices & Services → Kubernetes → Configure**. It is disabled by default.
+
+### Event types
+
+Each fired Home Assistant event has an `event_type` derived from the Kubernetes event `reason`. A curated set of reasons are surfaced as distinct types; any unrecognised reason maps to `other`:
+
+| `event_type` | Kubernetes reason |
+|---|---|
+| `OOMKilling` | Container killed by the OOM killer |
+| `BackOff` | Container image pull or restart back-off |
+| `Failed` | Generic failure (e.g. mount failure, exec failure) |
+| `FailedScheduling` | Scheduler could not place the pod |
+| `FailedMount` | Volume mount failure |
+| `FailedAttachVolume` | Volume attachment failure |
+| `Unhealthy` | Liveness or readiness probe failure |
+| `Evicted` | Pod evicted from the node |
+| `FailedCreatePodSandBox` | Container runtime sandbox creation failure |
+| `NodeNotReady` | Node transitioned to NotReady |
+| `ImagePullBackOff` | Image pull back-off |
+| `ErrImagePull` | Image pull error |
+| `Preempted` | Pod preempted by a higher-priority pod |
+| `FailedKillPod` | Pod termination failure |
+| `other` | Any Kubernetes reason not in the list above |
+
+### Event attributes
+
+Each fired event carries the following attributes:
+
+| Attribute | Description | Example |
+|-----------|-------------|---------|
+| `reason` | Raw Kubernetes event reason | `OOMKilling` |
+| `type` | Kubernetes event type | `Warning` / `Normal` |
+| `involved_kind` | Kind of the involved object | `Pod` / `Node` |
+| `involved_name` | Name of the involved object | `my-app-7d4b8c9f6b-xv2p1` |
+| `namespace` | Namespace of the event | `default` |
+| `message` | Full event message from Kubernetes | `Killing container with id ...` |
+| `count` | How many times this event has been seen | `3` |
+| `event_time` | Last occurrence timestamp | `2025-01-01T12:00:00Z` |
+
+### Filtering
+
+By default only **Warning**-type Kubernetes events are dispatched. To also receive `Normal`-type events, set **Event Types** to `all` in **Configure → Event Types**.
+
+> **Note:** The watch loop anchors to the current resource version on startup so that existing events in the cluster are not replayed. Only events that occur after the integration starts are fired.
+
+### Example automation
+
+```yaml
+automation:
+  - alias: Notify on pod OOMKill
+    trigger:
+      - platform: state
+        entity_id: event.my_cluster_cluster_events
+    condition:
+      - condition: template
+        value_template: "{{ trigger.to_state.attributes.event_type == 'OOMKilling' }}"
+    action:
+      - service: notify.notify
+        data:
+          message: >-
+            OOMKilled: {{ trigger.to_state.attributes.involved_name }}
+            in {{ trigger.to_state.attributes.namespace }}
+```
+
 ## Device Organization
 
 The integration organizes entities using Home Assistant's device system, creating a hierarchical structure that makes it easier to manage large clusters:
@@ -273,6 +347,7 @@ Cluster Device (e.g., "production-cluster")
 │   ├── DaemonSets Count (sensor)
 │   ├── CronJobs Count (sensor)
 │   ├── Jobs Count (sensor)
+│   ├── Cluster events (event — opt-in, only when enable_events is on)
 │   ├── Individual Node sensors (one per node)
 │   └── Node condition binary sensors (4 per node: Memory/Disk/PID Pressure, Network Unavailable)
 │
