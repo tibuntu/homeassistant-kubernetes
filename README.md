@@ -26,6 +26,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **System Health**: Cluster reachability and aggregate pod/node counts shown in *Settings → System → Repairs → System Information*
 - **Repair Issues**: Surfaces silent failures (missing kubernetes Python package, metrics-server unavailable, watch connection failing) as actionable repair issues with auto-clear once resolved
 - **In-Cluster ServiceAccount Support**: When Home Assistant runs inside the Kubernetes cluster, the config flow auto-fills host/port/token/CA cert from the pod's ServiceAccount, and an opt-in runtime mode re-reads the bearer token on each request to handle automatic projected-token rotation
+- **Cluster Event Platform**: Opt-in HA event entity ("Cluster events") per cluster that fires Home Assistant events for Kubernetes cluster activity — OOMKilling, FailedScheduling, BackOff, Evicted, Unhealthy, ImagePullBackOff, and more. Use events to drive automations and alerts. Warning-type events only by default; configurable to include all events. Enable via **Configure → Enable Cluster Events**
 
 ## Installation
 
