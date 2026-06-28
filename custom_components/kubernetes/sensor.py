@@ -940,6 +940,16 @@ class KubernetesPodSensor(KubernetesBaseSensor):
             "creation_timestamp": pod_data.get("creation_timestamp", "N/A"),
             "owner_kind": pod_data.get("owner_kind", "N/A"),
             "owner_name": pod_data.get("owner_name", "N/A"),
+            "container_waiting_reason": pod_data.get("container_waiting_reason"),
+            "container_terminated_reason": pod_data.get("container_terminated_reason"),
+            "container_terminated_exit_code": pod_data.get(
+                "container_terminated_exit_code"
+            ),
+            "last_terminated_reason": pod_data.get("last_terminated_reason"),
+            "last_terminated_exit_code": pod_data.get("last_terminated_exit_code"),
+            "pending_reason": pod_data.get("pending_reason"),
+            "problem": pod_data.get("problem", False),
+            "problem_reason": pod_data.get("problem_reason"),
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_POD,
         }
 
