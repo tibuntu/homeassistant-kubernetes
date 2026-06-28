@@ -1334,6 +1334,74 @@ class TestKubernetesPodSensor:
         }
         assert device_info["name"] == "test-cluster: default"
 
+    def test_pod_sensor_container_state_attributes(
+        self, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Pod sensor surfaces container-state reasons + problem flag."""
+        namespace = "default"
+        pod_name = "test-pod"
+        mock_coordinator.get_pod_data.return_value = {
+            "name": pod_name,
+            "namespace": namespace,
+            "phase": "Running",
+            "ready_containers": 0,
+            "total_containers": 1,
+            "restart_count": 7,
+            "node_name": "worker-1",
+            "pod_ip": "10.0.0.1",
+            "creation_timestamp": "2023-01-01T00:00:00Z",
+            "owner_kind": "ReplicaSet",
+            "owner_name": "rs",
+            "container_waiting_reason": "CrashLoopBackOff",
+            "container_terminated_reason": None,
+            "container_terminated_exit_code": None,
+            "last_terminated_reason": "OOMKilled",
+            "last_terminated_exit_code": 137,
+            "pending_reason": None,
+            "problem": True,
+            "problem_reason": "CrashLoopBackOff",
+        }
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+        attrs = sensor.extra_state_attributes
+        assert attrs["problem"] is True
+        assert attrs["problem_reason"] == "CrashLoopBackOff"
+        assert attrs["container_waiting_reason"] == "CrashLoopBackOff"
+        assert attrs["last_terminated_reason"] == "OOMKilled"
+        assert attrs["last_terminated_exit_code"] == 137
+
+    def test_pod_sensor_state_attrs_graceful_defaults(
+        self, mock_config_entry, mock_coordinator, mock_client
+    ):
+        """Without the new keys, problem defaults to False and reasons to None."""
+        namespace = "default"
+        pod_name = "test-pod"
+        mock_coordinator.get_pod_data.return_value = {
+            "name": pod_name,
+            "namespace": namespace,
+            "phase": "Running",
+            "ready_containers": 1,
+            "total_containers": 1,
+            "restart_count": 0,
+            "node_name": "worker-1",
+            "pod_ip": "10.0.0.1",
+            "creation_timestamp": "2023-01-01T00:00:00Z",
+            "owner_kind": "ReplicaSet",
+            "owner_name": "rs",
+        }
+        sensor = KubernetesPodSensor(
+            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+        )
+        attrs = sensor.extra_state_attributes
+        assert attrs["problem"] is False
+        assert attrs["problem_reason"] is None
+        assert attrs["container_waiting_reason"] is None
+        assert attrs["last_terminated_reason"] is None
+        assert attrs["container_terminated_reason"] is None
+        assert attrs["container_terminated_exit_code"] is None
+        assert attrs["pending_reason"] is None
+
 
 class TestKubernetesWorkloadMetricSensor:
     """Test CPU/memory metric sensors for deployments and statefulsets."""
