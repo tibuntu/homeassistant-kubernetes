@@ -548,16 +548,17 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         return f"{ISSUE_WATCH_CONNECTION_FAILING}_{self.config_entry.entry_id}"
 
     @callback
-    def _sync_watch_repair_issue(self, resource_type: str, failing: bool) -> None:
+    def _sync_watch_repair_issue(self, loop_key: str, failing: bool) -> None:
         """Raise/dismiss the watch-connection-failing issue from per-loop health.
 
-        Each watch loop reports its own state; the issue is active while *any*
-        loop is in a sustained-failure state, and clears once all recover.
+        Each watch loop reports its own state under a per-`(resource_type, url)`
+        key; the issue is active while *any* loop is in a sustained-failure state,
+        and clears once all recover.
         """
         if failing:
-            self._failing_watch_loops.add(resource_type)
+            self._failing_watch_loops.add(loop_key)
         else:
-            self._failing_watch_loops.discard(resource_type)
+            self._failing_watch_loops.discard(loop_key)
 
         should_be_active = bool(self._failing_watch_loops)
         if should_be_active and not self._watch_issue_active:
