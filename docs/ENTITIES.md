@@ -138,16 +138,18 @@ Each pod sensor provides comprehensive information about the pod:
 | **creation_timestamp** | When the pod was created | `2023-01-01T00:00:00Z` |
 | **owner_kind** | Type of resource that owns this pod | `ReplicaSet` |
 | **owner_name** | Name of the resource that owns this pod | `my-app-7d4b8c9f6b` |
-| **container_waiting_reason** | Reason the primary container is waiting (present only when waiting) | `CrashLoopBackOff` / `ImagePullBackOff` / `ContainerCreating` |
-| **container_terminated_reason** | Reason the primary container terminated in the current run (present only when terminated) | `OOMKilled` / `Error` |
+| **container_waiting_reason** | Reason the first container found in a waiting state is waiting (present only when waiting) | `CrashLoopBackOff` / `ImagePullBackOff` / `ContainerCreating` |
+| **container_terminated_reason** | Reason the first container found terminated in the current run (present only when terminated) | `OOMKilled` / `Error` |
 | **container_terminated_exit_code** | Exit code of the current container termination | `137` |
-| **last_terminated_reason** | Reason the primary container terminated in its **previous** run — catches an OOMKilled that has already restarted | `OOMKilled` |
+| **last_terminated_reason** | Reason the first container found terminated in its **previous** run — catches an OOMKilled that has already restarted | `OOMKilled` |
 | **last_terminated_exit_code** | Exit code of the previous container termination | `137` |
 | **pending_reason** | Reason the pod is stuck in Pending (present only when Pending) | `Unschedulable` |
 | **problem** | `true` when the pod is currently in a broken state (non-benign waiting reason, non-zero exit code, phase Failed, or Unschedulable Pending); `false` otherwise — recovered OOMKills and transient `ContainerCreating` do **not** set this | `true` / `false` |
 | **problem_reason** | Human-readable explanation of why `problem` is `true`; absent when `problem` is `false` | `CrashLoopBackOff` / `OOMKilled` / `Unschedulable` |
 
 > **Note on `problem`/`problem_reason`**: These derived attributes are designed for automations and alerts. A pod that OOMKilled but has since restarted successfully will have `last_terminated_reason: OOMKilled` yet `problem: false` — the flag only fires when the pod is *currently* broken, not for historical events.
+
+> **Note on container selection**: These attributes reflect the pod's application containers (`containerStatuses`); init-container failures are not currently inspected.
 
 ### Individual Job Sensors
 
