@@ -10,12 +10,15 @@ from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
 from .const import (
+    ATTR_JOB_NAME,
+    ATTR_JOB_NAMES,
     ATTR_NAMESPACE,
     ATTR_REPLICAS,
     ATTR_WORKLOAD_NAME,
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
+    SERVICE_DELETE_JOB,
     SERVICE_RESTART_WORKLOAD,
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
@@ -398,6 +401,44 @@ RESTART_WORKLOAD_SCHEMA = vol.Schema(
     )
 )
 
+DELETE_JOB_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_JOB_NAME): cv.string,
+        vol.Optional(ATTR_JOB_NAMES): vol.Any(
+            cv.string,
+            vol.All(cv.ensure_list, [cv.string]),
+        ),
+        vol.Optional(ATTR_NAMESPACE): cv.string,
+        vol.Optional("entry_id"): cv.string,
+    }
+)
+
+
+def _collect_job_names(call_data: dict[str, Any]) -> list[str]:
+    """Collect job names from call data (job_name and/or job_names), deduped, order-preserving."""
+    seen: set[str] = set()
+    result: list[str] = []
+
+    def _add(name: str) -> None:
+        name = name.strip()
+        if name and name not in seen:
+            seen.add(name)
+            result.append(name)
+
+    single = call_data.get(ATTR_JOB_NAME)
+    if single:
+        _add(single)
+
+    multi = call_data.get(ATTR_JOB_NAMES)
+    if multi:
+        if isinstance(multi, str):
+            _add(multi)
+        else:
+            for name in multi:
+                _add(name)
+
+    return result
+
 
 def _get_entry_data(
     hass: HomeAssistant, call_data: dict[str, Any]
@@ -685,6 +726,38 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         if len(workloads) > 1:
             _LOGGER.info("Completed restart operation for %d workloads", len(workloads))
 
+    async def delete_job(call: ServiceCall) -> None:
+        """Delete one or more Kubernetes Jobs (cascades to their pods)."""
+        job_names = _collect_job_names(call.data)
+        if not job_names:
+            _LOGGER.warning("delete_job called with no job_name/job_names")
+            return
+        entry_data = _get_entry_data(hass, call.data)
+        if not entry_data:
+            return
+        coordinator = entry_data["coordinator"]
+        client = coordinator.client
+        config_data = entry_data["config"]
+        provided_ns = call.data.get(ATTR_NAMESPACE)
+        for job_name in job_names:
+            namespace = provided_ns
+            if not namespace:
+                job_data = coordinator.get_job_data(job_name)
+                namespace = (
+                    job_data.get("namespace")
+                    if job_data
+                    else config_data.get("namespace", "default")
+                )
+            success = await client.delete_job(job_name, namespace)
+            if success:
+                _LOGGER.info(
+                    "Successfully deleted job %s in namespace %s", job_name, namespace
+                )
+            else:
+                _LOGGER.error(
+                    "Failed to delete job %s in namespace %s", job_name, namespace
+                )
+
     # Register the generic services
     hass.services.async_register(
         DOMAIN,
@@ -714,6 +787,13 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         schema=RESTART_WORKLOAD_SCHEMA,
     )
 
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DELETE_JOB,
+        delete_job,
+        schema=DELETE_JOB_SCHEMA,
+    )
+
 
 async def async_unload_services(hass: HomeAssistant) -> None:
     """Unload the Kubernetes services."""
@@ -721,3 +801,4 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, SERVICE_START_WORKLOAD)
     hass.services.async_remove(DOMAIN, SERVICE_STOP_WORKLOAD)
     hass.services.async_remove(DOMAIN, SERVICE_RESTART_WORKLOAD)
+    hass.services.async_remove(DOMAIN, SERVICE_DELETE_JOB)
