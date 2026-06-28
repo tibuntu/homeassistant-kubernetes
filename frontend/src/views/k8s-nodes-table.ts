@@ -473,9 +473,11 @@ export class K8sNodesTable extends LitElement {
 
     return html`
       <div class="cluster-section">
-        ${this._data!.clusters.length > 1
-          ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
-          : nothing}
+        ${
+          this._data!.clusters.length > 1
+            ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
+            : nothing
+        }
 
         <div class="filters">
           <input
@@ -504,14 +506,18 @@ export class K8sNodesTable extends LitElement {
 
         <div class="node-count">
           ${readyCount}/${cluster.nodes.length} nodes ready
-          ${filtered.length !== cluster.nodes.length
-            ? html` &middot; showing ${filtered.length}`
-            : nothing}
+          ${
+            filtered.length !== cluster.nodes.length
+              ? html` &middot; showing ${filtered.length}`
+              : nothing
+          }
         </div>
 
-        ${filtered.length === 0
-          ? html`<div class="empty">No nodes match your filters.</div>`
-          : filtered.map((node) => this._renderNode(cluster.entry_id, node))}
+        ${
+          filtered.length === 0
+            ? html`<div class="empty">No nodes match your filters.</div>`
+            : filtered.map((node) => this._renderNode(cluster.entry_id, node))
+        }
       </div>
     `;
   }
@@ -540,15 +546,19 @@ export class K8sNodesTable extends LitElement {
               icon=${expanded ? "mdi:chevron-down" : "mdi:chevron-right"}
             ></ha-icon>
             ${node.name}
-            ${!node.schedulable
-              ? html`<span class="badge badge-unschedulable">Unschedulable</span>`
-              : nothing}
-            ${conditions.length > 0
-              ? html`<span class="badge badge-condition"
-                  >${conditions.length}
-                  condition${conditions.length > 1 ? "s" : ""}</span
-                >`
-              : nothing}
+            ${
+              !node.schedulable
+                ? html`<span class="badge badge-unschedulable">Unschedulable</span>`
+                : nothing
+            }
+            ${
+              conditions.length > 0
+                ? html`<span class="badge badge-condition"
+                    >${conditions.length}
+                    condition${conditions.length > 1 ? "s" : ""}</span
+                  >`
+                : nothing
+            }
           </div>
           <span
             class="badge ${node.status === "Ready" ? "badge-ready" : "badge-not-ready"}"
@@ -557,32 +567,35 @@ export class K8sNodesTable extends LitElement {
           </span>
           <span class="node-ip">${node.internal_ip}</span>
           <div class="node-resources">
-            ${hasMetrics
-              ? html`
-                  <div class="resource-bar-container" title="CPU usage">
-                    <span class="resource-label">CPU</span>
-                    <div class="resource-bar">
-                      <div
-                        class="resource-bar-fill ${cpuPercent > 80 ? "bar-warn" : ""}"
-                        style="width: ${Math.min(cpuPercent, 100)}%"
-                      ></div>
+            ${
+              hasMetrics
+                ? html`
+                    <div class="resource-bar-container" title="CPU usage">
+                      <span class="resource-label">CPU</span>
+                      <div class="resource-bar">
+                        <div
+                          class="resource-bar-fill ${cpuPercent > 80 ? "bar-warn" : ""}"
+                          style="width: ${Math.min(cpuPercent, 100)}%"
+                        ></div>
+                      </div>
+                      <span>${cpuPercent}%</span>
                     </div>
-                    <span>${cpuPercent}%</span>
-                  </div>
-                  <div class="resource-bar-container" title="Memory usage">
-                    <span class="resource-label">MEM</span>
-                    <div class="resource-bar">
-                      <div
-                        class="resource-bar-fill ${memPercent > 80 ? "bar-warn" : ""}"
-                        style="width: ${Math.min(memPercent, 100)}%"
-                      ></div>
+                    <div class="resource-bar-container" title="Memory usage">
+                      <span class="resource-label">MEM</span>
+                      <div class="resource-bar">
+                        <div
+                          class="resource-bar-fill ${memPercent > 80 ? "bar-warn" : ""}"
+                          style="width: ${Math.min(memPercent, 100)}%"
+                        ></div>
+                      </div>
+                      <span>${memPercent}%</span>
                     </div>
-                    <span>${memPercent}%</span>
-                  </div>
-                `
-              : html`<span
-                  >${node.cpu_cores} CPU &middot; ${node.memory_capacity_gib} GiB</span
-                >`}
+                  `
+                : html`<span
+                    >${node.cpu_cores} CPU &middot; ${node.memory_capacity_gib}
+                    GiB</span
+                  >`
+            }
           </div>
           <span class="node-age">${this._formatAge(node.creation_timestamp)}</span>
         </div>
@@ -613,16 +626,18 @@ export class K8sNodesTable extends LitElement {
             <span class="detail-label">CPU Cores</span>
             <span class="detail-value">${node.cpu_cores}</span>
           </div>
-          ${hasMetrics
-            ? html`
-                <div class="detail-item">
-                  <span class="detail-label">CPU Usage</span>
-                  <span class="detail-value"
-                    >${node.cpu_usage_millicores}m / ${node.cpu_cores * 1000}m</span
-                  >
-                </div>
-              `
-            : nothing}
+          ${
+            hasMetrics
+              ? html`
+                  <div class="detail-item">
+                    <span class="detail-label">CPU Usage</span>
+                    <span class="detail-value"
+                      >${node.cpu_usage_millicores}m / ${node.cpu_cores * 1000}m</span
+                    >
+                  </div>
+                `
+              : nothing
+          }
           <div class="detail-item">
             <span class="detail-label">Memory Capacity</span>
             <span class="detail-value">${node.memory_capacity_gib} GiB</span>
@@ -631,16 +646,18 @@ export class K8sNodesTable extends LitElement {
             <span class="detail-label">Memory Allocatable</span>
             <span class="detail-value">${node.memory_allocatable_gib} GiB</span>
           </div>
-          ${hasMetrics
-            ? html`
-                <div class="detail-item">
-                  <span class="detail-label">Memory Usage</span>
-                  <span class="detail-value"
-                    >${memUsageGib} / ${node.memory_capacity_gib} GiB</span
-                  >
-                </div>
-              `
-            : nothing}
+          ${
+            hasMetrics
+              ? html`
+                  <div class="detail-item">
+                    <span class="detail-label">Memory Usage</span>
+                    <span class="detail-value"
+                      >${memUsageGib} / ${node.memory_capacity_gib} GiB</span
+                    >
+                  </div>
+                `
+              : nothing
+          }
           <div class="detail-item">
             <span class="detail-label">OS Image</span>
             <span class="detail-value">${node.os_image}</span>
@@ -666,19 +683,21 @@ export class K8sNodesTable extends LitElement {
             <span class="detail-value">${node.creation_timestamp}</span>
           </div>
         </div>
-        ${conditions.length > 0
-          ? html`
-              <div class="conditions-row">
-                ${conditions.map(
-                  (c) => html`
-                    <span class="badge badge-condition">
-                      ${CONDITION_LABELS[c] || c}
-                    </span>
-                  `,
-                )}
-              </div>
-            `
-          : nothing}
+        ${
+          conditions.length > 0
+            ? html`
+                <div class="conditions-row">
+                  ${conditions.map(
+                    (c) => html`
+                      <span class="badge badge-condition">
+                        ${CONDITION_LABELS[c] || c}
+                      </span>
+                    `,
+                  )}
+                </div>
+              `
+            : nothing
+        }
       </div>
     `;
   }

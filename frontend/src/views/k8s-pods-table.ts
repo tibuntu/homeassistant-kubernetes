@@ -588,9 +588,11 @@ export class K8sPodsTable extends LitElement {
 
     return html`
       <div class="cluster-section">
-        ${this._data!.clusters.length > 1
-          ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
-          : nothing}
+        ${
+          this._data!.clusters.length > 1
+            ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
+            : nothing
+        }
 
         <div class="filters">
           <input
@@ -640,74 +642,94 @@ export class K8sPodsTable extends LitElement {
 
         <div class="pod-count">${filtered.length}/${cluster.pods.length} pods</div>
 
-        ${filtered.length === 0
-          ? html`<div class="empty">No pods match your filters.</div>`
-          : html`
-              <ha-card>
-                <div class="table-wrapper">
-                  <table class="pods-table">
-                    <thead>
-                      <tr>
-                        <th @click=${() => this._handleSort("namespace")}>
-                          Namespace
-                          ${this._sortIcon("namespace")
-                            ? html`<ha-icon
-                                icon=${this._sortIcon("namespace")}
-                              ></ha-icon>`
-                            : nothing}
-                        </th>
-                        <th @click=${() => this._handleSort("name")}>
-                          Name
-                          ${this._sortIcon("name")
-                            ? html`<ha-icon icon=${this._sortIcon("name")}></ha-icon>`
-                            : nothing}
-                        </th>
-                        <th @click=${() => this._handleSort("phase")}>
-                          Phase
-                          ${this._sortIcon("phase")
-                            ? html`<ha-icon icon=${this._sortIcon("phase")}></ha-icon>`
-                            : nothing}
-                        </th>
-                        <th>Ready</th>
-                        <th @click=${() => this._handleSort("restarts")}>
-                          Restarts
-                          ${this._sortIcon("restarts")
-                            ? html`<ha-icon
-                                icon=${this._sortIcon("restarts")}
-                              ></ha-icon>`
-                            : nothing}
-                        </th>
-                        <th
-                          class="col-node"
-                          @click=${() => this._handleSort("node_name")}
-                        >
-                          Node
-                          ${this._sortIcon("node_name")
-                            ? html`<ha-icon
-                                icon=${this._sortIcon("node_name")}
-                              ></ha-icon>`
-                            : nothing}
-                        </th>
-                        <th class="col-ip">IP</th>
-                        <th class="col-owner">Owner</th>
-                        <th @click=${() => this._handleSort("age")}>
-                          Age
-                          ${this._sortIcon("age")
-                            ? html`<ha-icon icon=${this._sortIcon("age")}></ha-icon>`
-                            : nothing}
-                        </th>
-                        <th class="col-actions"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${filtered.map((pod) =>
-                        this._renderPodRow(cluster.entry_id, pod),
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </ha-card>
-            `}
+        ${
+          filtered.length === 0
+            ? html`<div class="empty">No pods match your filters.</div>`
+            : html`
+                <ha-card>
+                  <div class="table-wrapper">
+                    <table class="pods-table">
+                      <thead>
+                        <tr>
+                          <th @click=${() => this._handleSort("namespace")}>
+                            Namespace
+                            ${
+                              this._sortIcon("namespace")
+                                ? html`<ha-icon
+                                    icon=${this._sortIcon("namespace")}
+                                  ></ha-icon>`
+                                : nothing
+                            }
+                          </th>
+                          <th @click=${() => this._handleSort("name")}>
+                            Name
+                            ${
+                              this._sortIcon("name")
+                                ? html`<ha-icon
+                                    icon=${this._sortIcon("name")}
+                                  ></ha-icon>`
+                                : nothing
+                            }
+                          </th>
+                          <th @click=${() => this._handleSort("phase")}>
+                            Phase
+                            ${
+                              this._sortIcon("phase")
+                                ? html`<ha-icon
+                                    icon=${this._sortIcon("phase")}
+                                  ></ha-icon>`
+                                : nothing
+                            }
+                          </th>
+                          <th>Ready</th>
+                          <th @click=${() => this._handleSort("restarts")}>
+                            Restarts
+                            ${
+                              this._sortIcon("restarts")
+                                ? html`<ha-icon
+                                    icon=${this._sortIcon("restarts")}
+                                  ></ha-icon>`
+                                : nothing
+                            }
+                          </th>
+                          <th
+                            class="col-node"
+                            @click=${() => this._handleSort("node_name")}
+                          >
+                            Node
+                            ${
+                              this._sortIcon("node_name")
+                                ? html`<ha-icon
+                                    icon=${this._sortIcon("node_name")}
+                                  ></ha-icon>`
+                                : nothing
+                            }
+                          </th>
+                          <th class="col-ip">IP</th>
+                          <th class="col-owner">Owner</th>
+                          <th @click=${() => this._handleSort("age")}>
+                            Age
+                            ${
+                              this._sortIcon("age")
+                                ? html`<ha-icon
+                                    icon=${this._sortIcon("age")}
+                                  ></ha-icon>`
+                                : nothing
+                            }
+                          </th>
+                          <th class="col-actions"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${filtered.map((pod) =>
+                          this._renderPodRow(cluster.entry_id, pod),
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </ha-card>
+              `
+        }
       </div>
     `;
   }
@@ -727,9 +749,13 @@ export class K8sPodsTable extends LitElement {
         <td class="col-node">${pod.node_name}</td>
         <td class="col-ip mono">${pod.pod_ip}</td>
         <td class="col-owner">
-          ${pod.owner_kind !== "N/A"
-            ? html`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>`
-            : html`<span class="owner-info">-</span>`}
+          ${
+            pod.owner_kind !== "N/A"
+              ? html`<span class="owner-info"
+                  >${pod.owner_kind}/${pod.owner_name}</span
+                >`
+              : html`<span class="owner-info">-</span>`
+          }
         </td>
         <td>${this._formatAge(pod.creation_timestamp)}</td>
         <td>

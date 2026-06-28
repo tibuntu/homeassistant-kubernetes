@@ -1137,16 +1137,16 @@ var K8sOverview = class K8sOverview extends i {
             </span>
           </div>
           ${totalAlerts > 0 ? this._renderAlerts(cluster.alerts) : b`
-                <div class="no-alerts">
-                  <ha-icon icon="mdi:check-circle"></ha-icon>
-                  <div class="no-alerts-text">
-                    <div class="no-alerts-title">No active alerts</div>
-                    <div class="no-alerts-detail">
-                      All nodes, workloads, and pods are operating normally.
+                  <div class="no-alerts">
+                    <ha-icon icon="mdi:check-circle"></ha-icon>
+                    <div class="no-alerts-text">
+                      <div class="no-alerts-title">No active alerts</div>
+                      <div class="no-alerts-detail">
+                        All nodes, workloads, and pods are operating normally.
+                      </div>
                     </div>
                   </div>
-                </div>
-              `}
+                `}
         </div>
 
         ${this._renderNamespaceSection(cluster)}
@@ -1704,9 +1704,9 @@ var K8sNodesTable = class K8sNodesTable extends i {
             ${node.name}
             ${!node.schedulable ? b`<span class="badge badge-unschedulable">Unschedulable</span>` : A}
             ${conditions.length > 0 ? b`<span class="badge badge-condition"
-                  >${conditions.length}
-                  condition${conditions.length > 1 ? "s" : ""}</span
-                >` : A}
+                    >${conditions.length}
+                    condition${conditions.length > 1 ? "s" : ""}</span
+                  >` : A}
           </div>
           <span
             class="badge ${node.status === "Ready" ? "badge-ready" : "badge-not-ready"}"
@@ -1716,29 +1716,30 @@ var K8sNodesTable = class K8sNodesTable extends i {
           <span class="node-ip">${node.internal_ip}</span>
           <div class="node-resources">
             ${hasMetrics ? b`
-                  <div class="resource-bar-container" title="CPU usage">
-                    <span class="resource-label">CPU</span>
-                    <div class="resource-bar">
-                      <div
-                        class="resource-bar-fill ${cpuPercent > 80 ? "bar-warn" : ""}"
-                        style="width: ${Math.min(cpuPercent, 100)}%"
-                      ></div>
+                    <div class="resource-bar-container" title="CPU usage">
+                      <span class="resource-label">CPU</span>
+                      <div class="resource-bar">
+                        <div
+                          class="resource-bar-fill ${cpuPercent > 80 ? "bar-warn" : ""}"
+                          style="width: ${Math.min(cpuPercent, 100)}%"
+                        ></div>
+                      </div>
+                      <span>${cpuPercent}%</span>
                     </div>
-                    <span>${cpuPercent}%</span>
-                  </div>
-                  <div class="resource-bar-container" title="Memory usage">
-                    <span class="resource-label">MEM</span>
-                    <div class="resource-bar">
-                      <div
-                        class="resource-bar-fill ${memPercent > 80 ? "bar-warn" : ""}"
-                        style="width: ${Math.min(memPercent, 100)}%"
-                      ></div>
+                    <div class="resource-bar-container" title="Memory usage">
+                      <span class="resource-label">MEM</span>
+                      <div class="resource-bar">
+                        <div
+                          class="resource-bar-fill ${memPercent > 80 ? "bar-warn" : ""}"
+                          style="width: ${Math.min(memPercent, 100)}%"
+                        ></div>
+                      </div>
+                      <span>${memPercent}%</span>
                     </div>
-                    <span>${memPercent}%</span>
-                  </div>
-                ` : b`<span
-                  >${node.cpu_cores} CPU &middot; ${node.memory_capacity_gib} GiB</span
-                >`}
+                  ` : b`<span
+                    >${node.cpu_cores} CPU &middot; ${node.memory_capacity_gib}
+                    GiB</span
+                  >`}
           </div>
           <span class="node-age">${this._formatAge(node.creation_timestamp)}</span>
         </div>
@@ -1765,13 +1766,13 @@ var K8sNodesTable = class K8sNodesTable extends i {
             <span class="detail-value">${node.cpu_cores}</span>
           </div>
           ${hasMetrics ? b`
-                <div class="detail-item">
-                  <span class="detail-label">CPU Usage</span>
-                  <span class="detail-value"
-                    >${node.cpu_usage_millicores}m / ${node.cpu_cores * 1e3}m</span
-                  >
-                </div>
-              ` : A}
+                  <div class="detail-item">
+                    <span class="detail-label">CPU Usage</span>
+                    <span class="detail-value"
+                      >${node.cpu_usage_millicores}m / ${node.cpu_cores * 1e3}m</span
+                    >
+                  </div>
+                ` : A}
           <div class="detail-item">
             <span class="detail-label">Memory Capacity</span>
             <span class="detail-value">${node.memory_capacity_gib} GiB</span>
@@ -1781,13 +1782,13 @@ var K8sNodesTable = class K8sNodesTable extends i {
             <span class="detail-value">${node.memory_allocatable_gib} GiB</span>
           </div>
           ${hasMetrics ? b`
-                <div class="detail-item">
-                  <span class="detail-label">Memory Usage</span>
-                  <span class="detail-value"
-                    >${memUsageGib} / ${node.memory_capacity_gib} GiB</span
-                  >
-                </div>
-              ` : A}
+                  <div class="detail-item">
+                    <span class="detail-label">Memory Usage</span>
+                    <span class="detail-value"
+                      >${memUsageGib} / ${node.memory_capacity_gib} GiB</span
+                    >
+                  </div>
+                ` : A}
           <div class="detail-item">
             <span class="detail-label">OS Image</span>
             <span class="detail-value">${node.os_image}</span>
@@ -1814,14 +1815,14 @@ var K8sNodesTable = class K8sNodesTable extends i {
           </div>
         </div>
         ${conditions.length > 0 ? b`
-              <div class="conditions-row">
-                ${conditions.map((c) => b`
-                    <span class="badge badge-condition">
-                      ${CONDITION_LABELS[c] || c}
-                    </span>
-                  `)}
-              </div>
-            ` : A}
+                <div class="conditions-row">
+                  ${conditions.map((c) => b`
+                      <span class="badge badge-condition">
+                        ${CONDITION_LABELS[c] || c}
+                      </span>
+                    `)}
+                </div>
+              ` : A}
       </div>
     `;
 	}
@@ -2389,57 +2390,63 @@ var K8sPodsTable = class K8sPodsTable extends i {
         <div class="pod-count">${filtered.length}/${cluster.pods.length} pods</div>
 
         ${filtered.length === 0 ? b`<div class="empty">No pods match your filters.</div>` : b`
-              <ha-card>
-                <div class="table-wrapper">
-                  <table class="pods-table">
-                    <thead>
-                      <tr>
-                        <th @click=${() => this._handleSort("namespace")}>
-                          Namespace
-                          ${this._sortIcon("namespace") ? b`<ha-icon
-                                icon=${this._sortIcon("namespace")}
-                              ></ha-icon>` : A}
-                        </th>
-                        <th @click=${() => this._handleSort("name")}>
-                          Name
-                          ${this._sortIcon("name") ? b`<ha-icon icon=${this._sortIcon("name")}></ha-icon>` : A}
-                        </th>
-                        <th @click=${() => this._handleSort("phase")}>
-                          Phase
-                          ${this._sortIcon("phase") ? b`<ha-icon icon=${this._sortIcon("phase")}></ha-icon>` : A}
-                        </th>
-                        <th>Ready</th>
-                        <th @click=${() => this._handleSort("restarts")}>
-                          Restarts
-                          ${this._sortIcon("restarts") ? b`<ha-icon
-                                icon=${this._sortIcon("restarts")}
-                              ></ha-icon>` : A}
-                        </th>
-                        <th
-                          class="col-node"
-                          @click=${() => this._handleSort("node_name")}
-                        >
-                          Node
-                          ${this._sortIcon("node_name") ? b`<ha-icon
-                                icon=${this._sortIcon("node_name")}
-                              ></ha-icon>` : A}
-                        </th>
-                        <th class="col-ip">IP</th>
-                        <th class="col-owner">Owner</th>
-                        <th @click=${() => this._handleSort("age")}>
-                          Age
-                          ${this._sortIcon("age") ? b`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : A}
-                        </th>
-                        <th class="col-actions"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      ${filtered.map((pod) => this._renderPodRow(cluster.entry_id, pod))}
-                    </tbody>
-                  </table>
-                </div>
-              </ha-card>
-            `}
+                <ha-card>
+                  <div class="table-wrapper">
+                    <table class="pods-table">
+                      <thead>
+                        <tr>
+                          <th @click=${() => this._handleSort("namespace")}>
+                            Namespace
+                            ${this._sortIcon("namespace") ? b`<ha-icon
+                                    icon=${this._sortIcon("namespace")}
+                                  ></ha-icon>` : A}
+                          </th>
+                          <th @click=${() => this._handleSort("name")}>
+                            Name
+                            ${this._sortIcon("name") ? b`<ha-icon
+                                    icon=${this._sortIcon("name")}
+                                  ></ha-icon>` : A}
+                          </th>
+                          <th @click=${() => this._handleSort("phase")}>
+                            Phase
+                            ${this._sortIcon("phase") ? b`<ha-icon
+                                    icon=${this._sortIcon("phase")}
+                                  ></ha-icon>` : A}
+                          </th>
+                          <th>Ready</th>
+                          <th @click=${() => this._handleSort("restarts")}>
+                            Restarts
+                            ${this._sortIcon("restarts") ? b`<ha-icon
+                                    icon=${this._sortIcon("restarts")}
+                                  ></ha-icon>` : A}
+                          </th>
+                          <th
+                            class="col-node"
+                            @click=${() => this._handleSort("node_name")}
+                          >
+                            Node
+                            ${this._sortIcon("node_name") ? b`<ha-icon
+                                    icon=${this._sortIcon("node_name")}
+                                  ></ha-icon>` : A}
+                          </th>
+                          <th class="col-ip">IP</th>
+                          <th class="col-owner">Owner</th>
+                          <th @click=${() => this._handleSort("age")}>
+                            Age
+                            ${this._sortIcon("age") ? b`<ha-icon
+                                    icon=${this._sortIcon("age")}
+                                  ></ha-icon>` : A}
+                          </th>
+                          <th class="col-actions"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${filtered.map((pod) => this._renderPodRow(cluster.entry_id, pod))}
+                      </tbody>
+                    </table>
+                  </div>
+                </ha-card>
+              `}
       </div>
     `;
 	}
@@ -2457,7 +2464,9 @@ var K8sPodsTable = class K8sPodsTable extends i {
         <td class="col-node">${pod.node_name}</td>
         <td class="col-ip mono">${pod.pod_ip}</td>
         <td class="col-owner">
-          ${pod.owner_kind !== "N/A" ? b`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>` : b`<span class="owner-info">-</span>`}
+          ${pod.owner_kind !== "N/A" ? b`<span class="owner-info"
+                  >${pod.owner_kind}/${pod.owner_name}</span
+                >` : b`<span class="owner-info">-</span>`}
         </td>
         <td>${this._formatAge(pod.creation_timestamp)}</td>
         <td>
@@ -2965,19 +2974,19 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		if (!this._data?.clusters.length) return b`<div class="empty">No Kubernetes clusters configured.</div>`;
 		return b`
       ${this._actionError ? b`
-            <div class="action-error">
-              <span>${this._actionError}</span>
-              <button
-                class="dismiss-btn"
-                @click=${() => {
+              <div class="action-error">
+                <span>${this._actionError}</span>
+                <button
+                  class="dismiss-btn"
+                  @click=${() => {
 			this._actionError = null;
 		}}
-                title="Dismiss"
-              >
-                <ha-icon icon="mdi:close"></ha-icon>
-              </button>
-            </div>
-          ` : A}
+                  title="Dismiss"
+                >
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>
+              </div>
+            ` : A}
       ${this._data.clusters.map((c) => this._renderCluster(c))}
     `;
 	}
@@ -3121,32 +3130,32 @@ var K8sWorkloads = class K8sWorkloads extends i {
           </span>
           <div class="workload-actions">
             ${d.replicas === 0 ? b`
-                  <button
-                    class="action-btn start"
-                    title="Start (scale to 1)"
-                    ?disabled=${busy}
-                    @click=${() => this._callService("start_workload", {
+                    <button
+                      class="action-btn start"
+                      title="Start (scale to 1)"
+                      ?disabled=${busy}
+                      @click=${() => this._callService("start_workload", {
 			workload_name: d.name,
 			namespace: d.namespace,
 			entry_id: entryId
 		}, actionKey)}
-                  >
-                    <ha-icon icon="mdi:play"></ha-icon>
-                  </button>
-                ` : b`
-                  <button
-                    class="action-btn stop"
-                    title="Stop (scale to 0)"
-                    ?disabled=${busy}
-                    @click=${() => this._callService("stop_workload", {
+                    >
+                      <ha-icon icon="mdi:play"></ha-icon>
+                    </button>
+                  ` : b`
+                    <button
+                      class="action-btn stop"
+                      title="Stop (scale to 0)"
+                      ?disabled=${busy}
+                      @click=${() => this._callService("stop_workload", {
 			workload_name: d.name,
 			namespace: d.namespace,
 			entry_id: entryId
 		}, actionKey)}
-                  >
-                    <ha-icon icon="mdi:stop"></ha-icon>
-                  </button>
-                `}
+                    >
+                      <ha-icon icon="mdi:stop"></ha-icon>
+                    </button>
+                  `}
             <button
               class="action-btn restart"
               title="Rolling restart"
@@ -3198,32 +3207,32 @@ var K8sWorkloads = class K8sWorkloads extends i {
           </span>
           <div class="workload-actions">
             ${s.replicas === 0 ? b`
-                  <button
-                    class="action-btn start"
-                    title="Start (scale to 1)"
-                    ?disabled=${busy}
-                    @click=${() => this._callService("start_workload", {
+                    <button
+                      class="action-btn start"
+                      title="Start (scale to 1)"
+                      ?disabled=${busy}
+                      @click=${() => this._callService("start_workload", {
 			workload_name: s.name,
 			namespace: s.namespace,
 			entry_id: entryId
 		}, actionKey)}
-                  >
-                    <ha-icon icon="mdi:play"></ha-icon>
-                  </button>
-                ` : b`
-                  <button
-                    class="action-btn stop"
-                    title="Stop (scale to 0)"
-                    ?disabled=${busy}
-                    @click=${() => this._callService("stop_workload", {
+                    >
+                      <ha-icon icon="mdi:play"></ha-icon>
+                    </button>
+                  ` : b`
+                    <button
+                      class="action-btn stop"
+                      title="Stop (scale to 0)"
+                      ?disabled=${busy}
+                      @click=${() => this._callService("stop_workload", {
 			workload_name: s.name,
 			namespace: s.namespace,
 			entry_id: entryId
 		}, actionKey)}
-                  >
-                    <ha-icon icon="mdi:stop"></ha-icon>
-                  </button>
-                `}
+                    >
+                      <ha-icon icon="mdi:stop"></ha-icon>
+                    </button>
+                  `}
             <button
               class="action-btn restart"
               title="Rolling restart"
@@ -3323,12 +3332,12 @@ var K8sWorkloads = class K8sWorkloads extends i {
           </div>
           <span class="schedule-info">${cj.schedule}</span>
           ${cj.active_jobs_count > 0 ? b`<span class="badge badge-active"
-                >${cj.active_jobs_count} active</span
-              >` : A}
+                  >${cj.active_jobs_count} active</span
+                >` : A}
           ${cj.suspend ? b`<span class="badge badge-suspended">Suspended</span>` : b`<span class="badge badge-healthy">Active</span>`}
           ${cj.last_schedule_time ? b`<span class="last-schedule"
-                >Last: ${this._formatAge(cj.last_schedule_time)}</span
-              >` : A}
+                  >Last: ${this._formatAge(cj.last_schedule_time)}</span
+                >` : A}
           <div class="workload-actions">
             <button
               class="action-btn start"
@@ -3383,8 +3392,8 @@ var K8sWorkloads = class K8sWorkloads extends i {
           ${hasFailed ? b`<span class="badge badge-failed">${j.failed} failed</span>` : A}
           ${isComplete ? b`<span class="badge badge-complete">Complete</span>` : A}
           ${j.start_time ? b`<span class="last-schedule"
-                >Started: ${this._formatAge(j.start_time)}</span
-              >` : A}
+                  >Started: ${this._formatAge(j.start_time)}</span
+                >` : A}
         </div>
       </ha-card>
     `;
@@ -3713,15 +3722,15 @@ var K8sSettings = class K8sSettings extends i {
           >
         </div>
         ${!entry.monitor_all_namespaces && entry.namespaces.length > 0 ? b`
-              <div class="setting-row">
-                <span class="setting-label">Selected</span>
-                <span class="setting-value">
-                  <div class="namespace-tags">
-                    ${entry.namespaces.map((ns) => b`<span class="ns-tag">${ns}</span>`)}
-                  </div>
-                </span>
-              </div>
-            ` : A}
+                <div class="setting-row">
+                  <span class="setting-label">Selected</span>
+                  <span class="setting-value">
+                    <div class="namespace-tags">
+                      ${entry.namespaces.map((ns) => b`<span class="ns-tag">${ns}</span>`)}
+                    </div>
+                  </span>
+                </div>
+              ` : A}
         <div class="setting-row">
           <span class="setting-label">Device Grouping</span>
           <span class="setting-value"
