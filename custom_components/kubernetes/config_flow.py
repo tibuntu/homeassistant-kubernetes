@@ -860,7 +860,21 @@ class KubernetesOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_EVENT_TYPES,
                     default=current.get(CONF_EVENT_TYPES, DEFAULT_EVENT_TYPES),
-                ): vol.In([EVENT_TYPES_WARNING, EVENT_TYPES_ALL]),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            SelectOptionDict(
+                                value=EVENT_TYPES_WARNING,
+                                label="Warning only",
+                            ),
+                            SelectOptionDict(
+                                value=EVENT_TYPES_ALL,
+                                label="All events",
+                            ),
+                        ],
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

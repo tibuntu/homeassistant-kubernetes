@@ -104,7 +104,7 @@
           "enable_panel": "Show the Kubernetes dashboard panel in the Home Assistant sidebar. The panel provides an overview of your cluster, nodes, pods, workloads, and integration settings. Disable this if you prefer to use only the standard Home Assistant entities and services.",
           "enable_watch": "⚠️ Experimental: Use the Kubernetes watch API for real-time state updates instead of polling. When enabled, pod and resource state changes appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback. Requires the service account to have 'watch' permission on all monitored resources.",
           "enable_events": "Create a 'Cluster events' event entity that fires Home Assistant events for Kubernetes cluster activity (OOMKilling, FailedScheduling, BackOff, Evicted, Unhealthy, ImagePullBackOff, and more). Use these events to trigger automations and alerts. Requires get/list/watch permission on core v1 events (granted by manifests/full/).",
-          "event_types": "Which Kubernetes event types to surface. 'Warning only' (default) limits events to Warning-type Kubernetes events such as OOM kills and scheduling failures. 'All events' also includes Normal-type informational events."
+          "event_types": "Which Kubernetes event types to surface. 'Warning only' (default) limits events to Warning-type Kubernetes events such as OOM kills and scheduling failures. 'All events' also includes Normal-type informational events. Note: recurring conditions (e.g. CrashLoopBackOff) fire an event on each Kubernetes count increment."
         }
       }
     }
@@ -182,7 +182,7 @@
     },
     "watch_connection_failing": {
       "title": "Watch connection failing for {cluster}",
-      "description": "The integration's watch connection to cluster `{cluster}` has failed repeatedly and is retrying with backoff. Live updates may be delayed while the watch connection retries with backoff; the integration continues periodic polling in the meantime. Check that the cluster API is reachable and that the ServiceAccount still has `watch` permission. This message clears automatically once the watch reconnects."
+      "description": "The integration's watch/event-stream connection to cluster `{cluster}` has failed repeatedly and is retrying with backoff (used by the experimental Watch API and the cluster event stream). Live updates may be delayed while the connection retries with backoff; the integration continues periodic polling in the meantime. Check that the cluster API is reachable and that the ServiceAccount still has `watch` permission. This message clears automatically once the watch reconnects."
     }
   }
 }
