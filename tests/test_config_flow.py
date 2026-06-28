@@ -19,8 +19,10 @@ from custom_components.kubernetes.const import (
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
+    CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
+    CONF_EVENT_TYPES,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_SCALE_COOLDOWN,
@@ -28,14 +30,18 @@ from custom_components.kubernetes.const import (
     CONF_SWITCH_UPDATE_INTERVAL,
     CONF_VERIFY_SSL,
     DEFAULT_DEVICE_GROUPING_MODE,
+    DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
+    DEFAULT_EVENT_TYPES,
     DEFAULT_PORT,
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    EVENT_TYPES_ALL,
+    EVENT_TYPES_WARNING,
 )
 
 
@@ -1299,6 +1305,46 @@ class TestKubernetesOptionsFlow:
         )
         assert result["type"] is FlowResultType.CREATE_ENTRY
         assert result["data"][CONF_ENABLE_PANEL] is False
+
+    async def test_options_flow_includes_enable_events(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Options form should include the enable_events and event_types fields."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        assert result["type"] is FlowResultType.FORM
+        schema_keys = [str(k) for k in result["data_schema"].schema]
+        assert any(CONF_ENABLE_EVENTS in k for k in schema_keys)
+        assert any(CONF_EVENT_TYPES in k for k in schema_keys)
+
+    def test_options_flow_defaults_events_disabled(self):
+        """Default value for enable_events should be False."""
+        assert DEFAULT_ENABLE_EVENTS is False
+
+    def test_options_flow_defaults_event_types_warning(self):
+        """Default value for event_types should be 'warning'."""
+        assert DEFAULT_EVENT_TYPES == EVENT_TYPES_WARNING
+
+    async def test_options_flow_saves_enable_events_true_and_event_types_all(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Submitting enable_events=True and event_types='all' saves those values."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_ENABLE_PANEL: True,
+                CONF_ENABLE_WATCH: False,
+                CONF_ENABLE_EVENTS: True,
+                CONF_EVENT_TYPES: EVENT_TYPES_ALL,
+            },
+        )
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_ENABLE_EVENTS] is True
+        assert result["data"][CONF_EVENT_TYPES] == EVENT_TYPES_ALL
 
 
 # ---------------------------------------------------------------------------
