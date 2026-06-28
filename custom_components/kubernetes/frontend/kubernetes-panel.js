@@ -2538,6 +2538,8 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		this._searchQuery = "";
 		this._actionInProgress = /* @__PURE__ */ new Set();
 		this._actionError = null;
+		this._jobDeleteConfirm = null;
+		this._deletingJob = false;
 		this._loadingInFlight = false;
 		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 	}
@@ -2943,6 +2945,87 @@ var K8sWorkloads = class K8sWorkloads extends i {
       background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
     }
 
+    .action-btn.delete:hover {
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+      color: var(--error-color, #f44336);
+    }
+
+    .confirm-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+    }
+
+    .confirm-dialog {
+      background: var(--card-background-color, #fff);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .confirm-dialog h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      color: var(--primary-text-color);
+    }
+
+    .confirm-dialog p {
+      margin: 0 0 20px;
+      color: var(--secondary-text-color);
+      font-size: 14px;
+    }
+
+    .confirm-dialog .job-ref {
+      font-family: monospace;
+      font-weight: 500;
+      color: var(--primary-text-color);
+    }
+
+    .confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .confirm-actions button {
+      padding: 8px 20px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      border: 1px solid var(--divider-color);
+      background: transparent;
+      color: var(--primary-text-color);
+    }
+
+    .confirm-actions button:hover {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+    }
+
+    .confirm-actions .delete-action {
+      background: var(--error-color, #f44336);
+      color: #fff;
+      border-color: var(--error-color, #f44336);
+    }
+
+    .confirm-actions .delete-action:hover {
+      opacity: 0.9;
+      background: var(--error-color, #f44336);
+    }
+
+    .confirm-actions .delete-action:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     @media (max-width: 768px) {
       .workload-row {
         flex-wrap: wrap;
@@ -2988,6 +3071,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
               </div>
             ` : A}
       ${this._data.clusters.map((c) => this._renderCluster(c))}
+      ${this._jobDeleteConfirm ? this._renderJobDeleteDialog() : A}
     `;
 	}
 	_renderCluster(cluster) {
@@ -3055,7 +3139,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
         ${this._shouldShowCategory("statefulsets") ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id) : A}
         ${this._shouldShowCategory("daemonsets") ? this._renderDaemonSets(cluster.daemonsets, cluster.entry_id) : A}
         ${this._shouldShowCategory("cronjobs") ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id) : A}
-        ${this._shouldShowCategory("jobs") ? this._renderJobs(cluster.jobs) : A}
+        ${this._shouldShowCategory("jobs") ? this._renderJobs(cluster.entry_id, cluster.jobs) : A}
       </div>
     `;
 	}
@@ -3356,7 +3440,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
       </ha-card>
     `;
 	}
-	_renderJobs(jobs) {
+	_renderJobs(entryId, jobs) {
 		const filtered = jobs.filter((j) => this._matchesNamespace(j.namespace) && this._matchesSearch(j.name));
 		const statusFiltered = this._statusFilter === "all" ? filtered : filtered.filter((j) => {
 			if (this._statusFilter === "healthy") return j.succeeded >= j.completions;
@@ -3373,11 +3457,11 @@ var K8sWorkloads = class K8sWorkloads extends i {
           Jobs
           <span class="category-count">(${statusFiltered.length})</span>
         </div>
-        ${statusFiltered.map((j) => this._renderJobCard(j))}
+        ${statusFiltered.map((j) => this._renderJobCard(entryId, j))}
       </div>
     `;
 	}
-	_renderJobCard(j) {
+	_renderJobCard(entryId, j) {
 		const isComplete = j.succeeded >= j.completions;
 		const hasFailed = j.failed > 0;
 		return b`
@@ -3394,8 +3478,77 @@ var K8sWorkloads = class K8sWorkloads extends i {
           ${j.start_time ? b`<span class="last-schedule"
                   >Started: ${this._formatAge(j.start_time)}</span
                 >` : A}
+          <div class="workload-actions">
+            <button
+              class="action-btn delete"
+              title="Delete Job"
+              ?disabled=${this._deletingJob}
+              @click=${() => this._requestJobDelete(entryId, j)}
+            >
+              <ha-icon icon="mdi:delete-outline"></ha-icon>
+            </button>
+          </div>
         </div>
       </ha-card>
+    `;
+	}
+	_requestJobDelete(entryId, j) {
+		this._jobDeleteConfirm = {
+			entry_id: entryId,
+			job_name: j.name,
+			namespace: j.namespace
+		};
+	}
+	_cancelJobDelete() {
+		this._jobDeleteConfirm = null;
+	}
+	async _confirmJobDelete() {
+		if (!this._jobDeleteConfirm) return;
+		this._deletingJob = true;
+		try {
+			await this.hass.callWS({
+				type: "kubernetes/jobs/delete",
+				entry_id: this._jobDeleteConfirm.entry_id,
+				job_name: this._jobDeleteConfirm.job_name,
+				namespace: this._jobDeleteConfirm.namespace
+			});
+			this._jobDeleteConfirm = null;
+			await this._loadData();
+		} catch (err) {
+			this._actionError = err?.message || "Failed to delete job";
+			this._jobDeleteConfirm = null;
+		} finally {
+			this._deletingJob = false;
+		}
+	}
+	_renderJobDeleteDialog() {
+		const confirm = this._jobDeleteConfirm;
+		return b`
+      <div
+        class="confirm-overlay"
+        @click=${this._deletingJob ? A : this._cancelJobDelete}
+      >
+        <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
+          <h3>Delete Job</h3>
+          <p>
+            Are you sure you want to delete
+            <span class="job-ref">${confirm.namespace}/${confirm.job_name}</span>? This
+            action cannot be undone.
+          </p>
+          <div class="confirm-actions">
+            <button @click=${this._cancelJobDelete} ?disabled=${this._deletingJob}>
+              Cancel
+            </button>
+            <button
+              class="delete-action"
+              @click=${this._confirmJobDelete}
+              ?disabled=${this._deletingJob}
+            >
+              ${this._deletingJob ? "Deleting..." : "Delete"}
+            </button>
+          </div>
+        </div>
+      </div>
     `;
 	}
 };
@@ -3409,6 +3562,8 @@ __decorate([r()], K8sWorkloads.prototype, "_statusFilter", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_searchQuery", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_actionInProgress", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_actionError", void 0);
+__decorate([r()], K8sWorkloads.prototype, "_jobDeleteConfirm", void 0);
+__decorate([r()], K8sWorkloads.prototype, "_deletingJob", void 0);
 K8sWorkloads = __decorate([t("k8s-workloads")], K8sWorkloads);
 //#endregion
 //#region src/views/k8s-settings.ts
