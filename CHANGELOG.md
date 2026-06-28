@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.4.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.5...v1.4.0) (2026-06-28)
+
+
+### Features
+
+* add delete_job client method (aiohttp + fallback, Background propagation) ([2c0454f](https://github.com/tibuntu/homeassistant-kubernetes/commit/2c0454fb2414c30efd40c9298d0b6b8d46db2694))
+* add enable_events / event_types config options ([1e56ffa](https://github.com/tibuntu/homeassistant-kubernetes/commit/1e56ffaf086f458e3d27e71a6793c2d31ade09ed))
+* add Kubernetes cluster event platform (EventEntity) ([026fad6](https://github.com/tibuntu/homeassistant-kubernetes/commit/026fad6ca4ed314a1c5a403adf360c8860ddc595))
+* add kubernetes.delete_job service ([d543ccf](https://github.com/tibuntu/homeassistant-kubernetes/commit/d543ccfbd0443c6b8184b82f23ef554405909394))
+* add kubernetes/jobs/delete websocket command ([c9efebc](https://github.com/tibuntu/homeassistant-kubernetes/commit/c9efebc3698a1ed67e48e4ee38912ff7e7fb984c))
+* coordinator event-watch loop dispatching cluster events ([befa142](https://github.com/tibuntu/homeassistant-kubernetes/commit/befa142beb021e97ffcee7f7f05c592bbe8bc350))
+* expose pod container-state reasons + problem flag on pod sensor ([3fa8d59](https://github.com/tibuntu/homeassistant-kubernetes/commit/3fa8d59081f309196ee382c9a74876dc80a436b5))
+* jittered watch backoff and failure-streak repair issue ([3f0d666](https://github.com/tibuntu/homeassistant-kubernetes/commit/3f0d666507fdd34716094510dbbeb67d577303de))
+* panel delete button + confirm for Jobs (rebuild bundle) ([b8a7c81](https://github.com/tibuntu/homeassistant-kubernetes/commit/b8a7c8146bedc8156d34f076b9251af3d7208485))
+* surface pod container-state reasons (CrashLoopBackOff/OOMKilled/pending) + problem flag ([b3063c5](https://github.com/tibuntu/homeassistant-kubernetes/commit/b3063c5dbcad91d6ee0785da17e314524334db4a))
+
+
+### Bug Fixes
+
+* add delete verb to jobs RBAC manifest; require job name in delete_job schema ([065c761](https://github.com/tibuntu/homeassistant-kubernetes/commit/065c761cfd8b604ab27844bf2f7021350bafb086))
+* **ci:** ensure Frontend job always runs to avoid blocking merge checks ([7c76808](https://github.com/tibuntu/homeassistant-kubernetes/commit/7c76808caf4d56e5ce88a69852ea8f49817b1a87))
+* event_types dropdown selector + per-namespace event repair key; clarify watch/event wording and recurring events ([df1151c](https://github.com/tibuntu/homeassistant-kubernetes/commit/df1151c31832a1ac7dc87386f3bb9f050e6b5539))
+* key state-watch repair issue per (resource_type, url) ([74f6f99](https://github.com/tibuntu/homeassistant-kubernetes/commit/74f6f9946867c25ecf8f5aa0d11c6c9bb2463a24))
+* patch metrics_parser logger in parser tests; tidy watch failing-set on exit ([18185b2](https://github.com/tibuntu/homeassistant-kubernetes/commit/18185b29c6ef8dfbca446d0b72b55f9dbef985d5))
+* use asyncio.get_running_loop() instead of deprecated get_event_loop() ([13a8527](https://github.com/tibuntu/homeassistant-kubernetes/commit/13a852705198b6456575c7ed588fcba32b1273a9))
+
 ## [1.3.5](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.4...v1.3.5) (2026-06-13)
 
 
