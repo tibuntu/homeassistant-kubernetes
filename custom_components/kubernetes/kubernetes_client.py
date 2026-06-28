@@ -2011,10 +2011,14 @@ class KubernetesClient:
             self._log_error("get_cronjobs", ex)
             return []
 
-    async def _suspend_cronjob_aiohttp(
-        self, cronjob_name: str, namespace: str
+    async def _patch_cronjob_aiohttp(
+        self,
+        cronjob_name: str,
+        namespace: str,
+        patch_body: dict[str, Any],
+        operation: str,
     ) -> dict[str, Any]:
-        """Suspend a CronJob using aiohttp."""
+        """Apply a strategic-merge patch to a CronJob via aiohttp."""
         try:
             headers = {
                 "Authorization": f"Bearer {self.api_token}",
@@ -2022,7 +2026,6 @@ class KubernetesClient:
                 "Content-Type": "application/strategic-merge-patch+json",
             }
             url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs/{cronjob_name}"
-            patch_body = {"spec": {"suspend": True}}
 
             async with aiohttp.ClientSession() as session:
                 async with session.patch(
@@ -2034,7 +2037,8 @@ class KubernetesClient:
                 ) as response:
                     if response.status == 200:
                         _LOGGER.info(
-                            "Successfully suspended CronJob '%s' in namespace '%s' via aiohttp",
+                            "Successfully applied %s to CronJob '%s' in namespace '%s' via aiohttp",
+                            operation,
                             cronjob_name,
                             namespace,
                         )
@@ -2043,79 +2047,41 @@ class KubernetesClient:
                             "cronjob_name": cronjob_name,
                             "namespace": namespace,
                         }
-                    else:
-                        error_msg = f"Failed to suspend CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
-                        _LOGGER.error(error_msg)
-                        return {
-                            "success": False,
-                            "error": error_msg,
-                            "cronjob_name": cronjob_name,
-                            "namespace": namespace,
-                        }
+                    error_msg = f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
+                    _LOGGER.error(error_msg)
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "cronjob_name": cronjob_name,
+                        "namespace": namespace,
+                    }
         except Exception as ex:
             error_msg = (
-                f"Failed to suspend CronJob '{cronjob_name}' via aiohttp: {str(ex)}"
+                f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: {str(ex)}"
             )
-            self._log_error("_suspend_cronjob_aiohttp", ex)
+            self._log_error(f"_{operation}_cronjob_aiohttp", ex)
             return {
                 "success": False,
                 "error": error_msg,
                 "cronjob_name": cronjob_name,
                 "namespace": namespace,
             }
+
+    async def _suspend_cronjob_aiohttp(
+        self, cronjob_name: str, namespace: str
+    ) -> dict[str, Any]:
+        """Suspend a CronJob using aiohttp."""
+        return await self._patch_cronjob_aiohttp(
+            cronjob_name, namespace, {"spec": {"suspend": True}}, "suspend"
+        )
 
     async def _resume_cronjob_aiohttp(
         self, cronjob_name: str, namespace: str
     ) -> dict[str, Any]:
         """Resume a CronJob using aiohttp."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-                "Content-Type": "application/strategic-merge-patch+json",
-            }
-            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs/{cronjob_name}"
-            patch_body = {"spec": {"suspend": False}}
-
-            async with aiohttp.ClientSession() as session:
-                async with session.patch(
-                    url,
-                    headers=headers,
-                    json=patch_body,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        _LOGGER.info(
-                            "Successfully resumed CronJob '%s' in namespace '%s' via aiohttp",
-                            cronjob_name,
-                            namespace,
-                        )
-                        return {
-                            "success": True,
-                            "cronjob_name": cronjob_name,
-                            "namespace": namespace,
-                        }
-                    else:
-                        error_msg = f"Failed to resume CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
-                        _LOGGER.error(error_msg)
-                        return {
-                            "success": False,
-                            "error": error_msg,
-                            "cronjob_name": cronjob_name,
-                            "namespace": namespace,
-                        }
-        except Exception as ex:
-            error_msg = (
-                f"Failed to resume CronJob '{cronjob_name}' via aiohttp: {str(ex)}"
-            )
-            self._log_error("_resume_cronjob_aiohttp", ex)
-            return {
-                "success": False,
-                "error": error_msg,
-                "cronjob_name": cronjob_name,
-                "namespace": namespace,
-            }
+        return await self._patch_cronjob_aiohttp(
+            cronjob_name, namespace, {"spec": {"suspend": False}}, "resume"
+        )
 
     async def _trigger_cronjob_aiohttp(
         self, cronjob_name: str, namespace: str
