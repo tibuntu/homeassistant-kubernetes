@@ -6159,3 +6159,25 @@ class TestParsePodContainerState:
         parsed = mock_client._parse_pods_data([pod])[0]
         assert parsed["pending_reason"] is None
         assert parsed["problem"] is False
+
+    def test_multi_container_first_waiting_wins(self, mock_client):
+        """With multiple containers, the first one in a waiting state sets the reason."""
+        pod = {
+            "metadata": {"name": "multi", "namespace": "default"},
+            "spec": {"nodeName": "n1"},
+            "status": {
+                "phase": "Running",
+                "containerStatuses": [
+                    {"ready": True, "restartCount": 0, "state": {"running": {}}},
+                    {
+                        "ready": False,
+                        "restartCount": 3,
+                        "state": {"waiting": {"reason": "CrashLoopBackOff"}},
+                    },
+                ],
+            },
+        }
+        parsed = mock_client._parse_pods_data([pod])[0]
+        assert parsed["container_waiting_reason"] == "CrashLoopBackOff"
+        assert parsed["problem"] is True
+        assert parsed["problem_reason"] == "CrashLoopBackOff"
