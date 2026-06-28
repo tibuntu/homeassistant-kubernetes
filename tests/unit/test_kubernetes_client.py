@@ -5872,3 +5872,27 @@ class TestRolloutRestart:
             result = await mock_client.rollout_restart_deployment("nginx")
 
         assert result is True
+
+
+class TestPatchCronjobConsolidation:
+    """Verify _suspend_cronjob_aiohttp and _resume_cronjob_aiohttp delegate to _patch_cronjob_aiohttp."""
+
+    async def test_suspend_uses_shared_patch_helper(self, mock_client):
+        """suspend must delegate to the shared patch helper with suspend=True."""
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
+            return_value={"success": True, "cronjob_name": "cj", "namespace": "default"}
+        )
+        await mock_client._suspend_cronjob_aiohttp("cj", "default")
+        mock_client._patch_cronjob_aiohttp.assert_called_once_with(
+            "cj", "default", {"spec": {"suspend": True}}, "suspend"
+        )
+
+    async def test_resume_uses_shared_patch_helper(self, mock_client):
+        """resume must delegate to the shared patch helper with suspend=False."""
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
+            return_value={"success": True, "cronjob_name": "cj", "namespace": "default"}
+        )
+        await mock_client._resume_cronjob_aiohttp("cj", "default")
+        mock_client._patch_cronjob_aiohttp.assert_called_once_with(
+            "cj", "default", {"spec": {"suspend": False}}, "resume"
+        )
