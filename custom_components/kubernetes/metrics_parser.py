@@ -13,6 +13,9 @@ import logging
 _LOGGER = logging.getLogger(__name__)
 
 # CPU: input suffix -> nanocores; output type -> divisor from nanocores.
+# Suffixes are matched by str.endswith in dict order; a value with an
+# unrecognized/compound suffix falls through to float(), which raises and is
+# caught below (returning 0.0). Single-char CPU suffixes (n/u/m) are unambiguous.
 _CPU_INPUT_MULTIPLIERS = {"n": 1, "u": 1000, "m": 1_000_000}
 _CPU_OUTPUT_DIVISORS = {"n": 1, "u": 1000, "m": 1_000_000, "cores": 1_000_000_000}
 

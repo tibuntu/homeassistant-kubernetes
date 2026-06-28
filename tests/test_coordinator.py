@@ -1988,8 +1988,43 @@ class TestRunWatchLoopExtended:
             )
 
         assert created, "expected watch_connection_failing issue to be created"
+        assert any("watch_connection_failing" in str(a) for a in created), (
+            "the created issue should be watch_connection_failing"
+        )
         assert deleted, "expected the issue to clear after recovery"
         assert coord._watch_issue_active is False
+        assert coord._failing_watch_loops == set()
+
+    async def test_failing_loop_cleans_set_on_stop(self, coord, mock_client):
+        """A loop exiting while in a failing state must not leave a stale set entry."""
+
+        async def _always_fail(url):
+            raise ConnectionError("always down")
+
+        mock_client.list_resource_with_version.side_effect = _always_fail
+
+        wait_calls = 0
+
+        async def _wait_for(coro, timeout):
+            nonlocal wait_calls
+            wait_calls += 1
+            # Allow the streak to cross the threshold (resource_type added to the
+            # failing set + issue raised), then fire the stop event so wait_for
+            # returns and the loop takes the stop-during-backoff return path.
+            if wait_calls > WATCH_MAX_FAILURE_STREAK:
+                coord._watch_stop_event.set()
+                return None
+            raise TimeoutError
+
+        with (
+            patch("asyncio.wait_for", side_effect=_wait_for),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch("custom_components.kubernetes.coordinator.ir.async_delete_issue"),
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
         assert coord._failing_watch_loops == set()
 
 
