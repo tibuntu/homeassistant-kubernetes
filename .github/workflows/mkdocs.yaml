@@ -3,6 +3,12 @@ on:
   push:
     branches:
       - main
+    # Only rebuild+redeploy the site when the docs sources or build config
+    # actually change — not on every unrelated push to main.
+    paths:
+      - "docs/**"
+      - "zensical.toml"
+      - ".github/workflows/mkdocs.yaml"
 
 permissions:
   contents: read

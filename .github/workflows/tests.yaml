@@ -14,14 +14,44 @@ permissions:
   contents: read
   pull-requests: write
 
+# Cancel superseded PR runs; never cancel the post-merge run on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   PYTHON_VERSION: "3.14"
 
 jobs:
+  # Skip the post-merge re-run on main when the commit already arrived via a
+  # merged PR (validated there). Direct pushes to main still run.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" != "push" ] || [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          prs=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq 'length')
+          if [ "$prs" -gt 0 ]; then
+            echo "From a merged PR — already validated; skipping main re-run."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: Lint, Type Check & Security
+    needs: gate
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main'
+    if: >-
+      needs.gate.outputs.run == 'true' &&
+      (github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main')
 
     steps:
       - uses: actions/checkout@v7
@@ -62,8 +92,11 @@ jobs:
 
   test:
     name: Test & Coverage
+    needs: gate
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main'
+    if: >-
+      needs.gate.outputs.run == 'true' &&
+      (github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main')
 
     steps:
       - uses: actions/checkout@v7
