@@ -72,6 +72,11 @@
       "semanticCommitScope": "deps-frontend"
     },
     {
+      "description": "Pin TypeScript <7 until typescript-eslint supports it (peer: >=4.8.4 <6.1.0). Remove this rule once @typescript-eslint/eslint-plugin allows TS 7.",
+      "matchDepNames": ["typescript"],
+      "allowedVersions": "<7"
+    },
+    {
       "matchFileNames": ["frontend/package.json"],
       "matchDepTypes": ["dependencies"],
       "groupName": "frontend runtime dependencies",
