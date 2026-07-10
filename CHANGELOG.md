@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.4.0...v1.4.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* distinguish same-named workloads across namespaces ([67d43b2](https://github.com/tibuntu/homeassistant-kubernetes/commit/67d43b2ea55e121527236f97b29f9cad7fd12b98)), closes [#302](https://github.com/tibuntu/homeassistant-kubernetes/issues/302)
+
 ## [1.4.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.3.5...v1.4.0) (2026-06-28)
 
 This release is about **observability** — understanding *why* something in your cluster is unhealthy, not just *that* it is — and adds the ability to clean up failed Jobs straight from Home Assistant. Everything new is either opt-in or purely additive, so existing setups keep working unchanged after upgrading.
