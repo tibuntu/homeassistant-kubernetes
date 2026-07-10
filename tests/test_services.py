@@ -334,7 +334,7 @@ class TestRestartWorkloadService:
         coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
         coordinator.data = {
             "daemonsets": {
-                "fluentd": {
+                "kube-system_fluentd": {
                     "name": "fluentd",
                     "namespace": "kube-system",
                 }
@@ -449,7 +449,7 @@ class TestRestartWorkloadService:
         coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
         coordinator.data = {
             "daemonsets": {
-                "fluentd": {
+                "kube-system_fluentd": {
                     "name": "fluentd",
                     "namespace": "kube-system",
                 }
@@ -1389,7 +1389,7 @@ class TestResolveRawWorkloadName:
         coordinator = self._make_coordinator_with_data(
             {
                 "deployments": {
-                    "nginx": {"name": "nginx", "namespace": "default"},
+                    "default_nginx": {"name": "nginx", "namespace": "default"},
                 },
                 "statefulsets": {},
                 "cronjobs": {},
@@ -1408,7 +1408,7 @@ class TestResolveRawWorkloadName:
             {
                 "deployments": {},
                 "statefulsets": {
-                    "redis": {"name": "redis", "namespace": "cache"},
+                    "cache_redis": {"name": "redis", "namespace": "cache"},
                 },
                 "cronjobs": {},
             }
@@ -1427,7 +1427,7 @@ class TestResolveRawWorkloadName:
                 "deployments": {},
                 "statefulsets": {},
                 "cronjobs": {
-                    "backup": {"name": "backup", "namespace": "default"},
+                    "default_backup": {"name": "backup", "namespace": "default"},
                 },
             }
         )
@@ -1445,7 +1445,10 @@ class TestResolveRawWorkloadName:
                 "deployments": {},
                 "statefulsets": {},
                 "daemonsets": {
-                    "fluentd": {"name": "fluentd", "namespace": "kube-system"},
+                    "kube-system_fluentd": {
+                        "name": "fluentd",
+                        "namespace": "kube-system",
+                    },
                 },
                 "cronjobs": {},
             }
@@ -1462,8 +1465,8 @@ class TestResolveRawWorkloadName:
         coordinator = self._make_coordinator_with_data(
             {
                 "deployments": {
-                    "nginx-default": {"name": "nginx", "namespace": "default"},
-                    "nginx-prod": {"name": "nginx", "namespace": "production"},
+                    "default_nginx": {"name": "nginx", "namespace": "default"},
+                    "production_nginx": {"name": "nginx", "namespace": "production"},
                 },
                 "statefulsets": {},
                 "cronjobs": {},
@@ -1503,7 +1506,7 @@ class TestResolveRawWorkloadName:
         coordinator = self._make_coordinator_with_data(
             {
                 "deployments": {
-                    "nginx": {"name": "nginx", "namespace": "default"},
+                    "default_nginx": {"name": "nginx", "namespace": "default"},
                 },
                 "statefulsets": {},
                 "cronjobs": {},
@@ -1939,11 +1942,13 @@ class TestDeleteJobService:
     async def test_namespace_resolved_from_coordinator(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test that namespace is resolved via get_job_data when not provided."""
+        """Test that namespace is resolved by scanning coordinator.data['jobs'] when not provided."""
         coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
-        coordinator.get_job_data = MagicMock(
-            return_value={"name": "my-job", "namespace": "resolved-ns"}
-        )
+        coordinator.data = {
+            "jobs": {
+                "resolved-ns_my-job": {"name": "my-job", "namespace": "resolved-ns"},
+            }
+        }
 
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -1953,15 +1958,66 @@ class TestDeleteJobService:
             blocking=True,
         )
 
-        coordinator.get_job_data.assert_called_once_with("my-job")
         mock_client.delete_job.assert_called_once_with("my-job", "resolved-ns")
+
+    async def test_namespace_resolved_by_name_when_two_namespaces_share_it(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test resolution scans by name across namespaces when no namespace is given.
+
+        Two jobs share the same name in different namespaces; without an explicit
+        namespace the code takes the first match from coordinator.data["jobs"].values().
+        This only asserts that *a* valid match is used, not which one wins.
+        """
+        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator.data = {
+            "jobs": {
+                "ns-a_my-job": {"name": "my-job", "namespace": "ns-a"},
+                "ns-b_my-job": {"name": "my-job", "namespace": "ns-b"},
+            }
+        }
+
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "my-job"},
+            blocking=True,
+        )
+
+        mock_client.delete_job.assert_called_once()
+        called_name, called_ns = mock_client.delete_job.call_args[0]
+        assert called_name == "my-job"
+        assert called_ns in ("ns-a", "ns-b")
+
+    async def test_explicit_namespace_disambiguates_same_named_jobs(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test an explicit namespace picks the matching job when two namespaces share a name."""
+        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator.data = {
+            "jobs": {
+                "ns-a_my-job": {"name": "my-job", "namespace": "ns-a"},
+                "ns-b_my-job": {"name": "my-job", "namespace": "ns-b"},
+            }
+        }
+
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "my-job", ATTR_NAMESPACE: "ns-b"},
+            blocking=True,
+        )
+
+        mock_client.delete_job.assert_called_once_with("my-job", "ns-b")
 
     async def test_namespace_falls_back_to_config_when_job_not_in_coordinator(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test namespace falls back to config data when job not found in coordinator."""
         coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
-        coordinator.get_job_data = MagicMock(return_value=None)
+        coordinator.data = {"jobs": {}}
 
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -1979,13 +2035,13 @@ class TestDeleteJobService:
         """Test that entry_id routes to the correct cluster's client."""
         mock_coordinator_a = MagicMock()
         mock_coordinator_a.client = mock_client
-        mock_coordinator_a.get_job_data = MagicMock(return_value=None)
+        mock_coordinator_a.data = {"jobs": {}}
 
         other_client = MagicMock()
         other_client.delete_job = AsyncMock(return_value=True)
         mock_coordinator_b = MagicMock()
         mock_coordinator_b.client = other_client
-        mock_coordinator_b.get_job_data = MagicMock(return_value=None)
+        mock_coordinator_b.data = {"jobs": {}}
 
         hass.data[DOMAIN] = {
             "entry-a": {

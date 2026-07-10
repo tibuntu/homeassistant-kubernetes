@@ -141,19 +141,21 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     node_names = [node.get("name", "Unknown") for node in nodes]
                     _LOGGER.debug("Fetched nodes: %s", node_names)
 
-                # Create a lookup dictionary for quick access
+                # Create a lookup dictionary for quick access. Namespaced
+                # resources are keyed by "{namespace}_{name}" so that
+                # same-named workloads in different namespaces don't collide.
                 data = {
                     "deployments": {
-                        deployment["name"]: deployment for deployment in deployments
+                        f"{d['namespace']}_{d['name']}": d for d in deployments
                     },
                     "statefulsets": {
-                        statefulset["name"]: statefulset for statefulset in statefulsets
+                        f"{s['namespace']}_{s['name']}": s for s in statefulsets
                     },
                     "daemonsets": {
-                        daemonset["name"]: daemonset for daemonset in daemonsets
+                        f"{d['namespace']}_{d['name']}": d for d in daemonsets
                     },
-                    "cronjobs": {cronjob["name"]: cronjob for cronjob in cronjobs},
-                    "jobs": {job["name"]: job for job in jobs},
+                    "cronjobs": {f"{c['namespace']}_{c['name']}": c for c in cronjobs},
+                    "jobs": {f"{j['namespace']}_{j['name']}": j for j in jobs},
                     "nodes": {node["name"]: node for node in nodes},
                     "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                     "pods_count": pods_count,
@@ -189,35 +191,43 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to update Kubernetes data: %s", ex)
                 raise UpdateFailed(f"Failed to update Kubernetes data: {ex}") from ex
 
-    def get_deployment_data(self, deployment_name: str) -> dict[str, Any] | None:
-        """Get deployment data by name."""
+    def get_deployment_data(
+        self, namespace: str, deployment_name: str
+    ) -> dict[str, Any] | None:
+        """Get deployment data by namespace and name."""
         if not self.data or "deployments" not in self.data:
             return None
-        return self.data["deployments"].get(deployment_name)
+        return self.data["deployments"].get(f"{namespace}_{deployment_name}")
 
-    def get_statefulset_data(self, statefulset_name: str) -> dict[str, Any] | None:
-        """Get statefulset data by name."""
+    def get_statefulset_data(
+        self, namespace: str, statefulset_name: str
+    ) -> dict[str, Any] | None:
+        """Get statefulset data by namespace and name."""
         if not self.data or "statefulsets" not in self.data:
             return None
-        return self.data["statefulsets"].get(statefulset_name)
+        return self.data["statefulsets"].get(f"{namespace}_{statefulset_name}")
 
-    def get_daemonset_data(self, daemonset_name: str) -> dict[str, Any] | None:
-        """Get daemonset data by name."""
+    def get_daemonset_data(
+        self, namespace: str, daemonset_name: str
+    ) -> dict[str, Any] | None:
+        """Get daemonset data by namespace and name."""
         if not self.data or "daemonsets" not in self.data:
             return None
-        return self.data["daemonsets"].get(daemonset_name)
+        return self.data["daemonsets"].get(f"{namespace}_{daemonset_name}")
 
-    def get_cronjob_data(self, cronjob_name: str) -> dict[str, Any] | None:
-        """Get cronjob data by name."""
+    def get_cronjob_data(
+        self, namespace: str, cronjob_name: str
+    ) -> dict[str, Any] | None:
+        """Get cronjob data by namespace and name."""
         if not self.data or "cronjobs" not in self.data:
             return None
-        return self.data["cronjobs"].get(cronjob_name)
+        return self.data["cronjobs"].get(f"{namespace}_{cronjob_name}")
 
-    def get_job_data(self, job_name: str) -> dict[str, Any] | None:
-        """Get job data by name."""
+    def get_job_data(self, namespace: str, job_name: str) -> dict[str, Any] | None:
+        """Get job data by namespace and name."""
         if not self.data or "jobs" not in self.data:
             return None
-        return self.data["jobs"].get(job_name)
+        return self.data["jobs"].get(f"{namespace}_{job_name}")
 
     def get_node_data(self, node_name: str) -> dict[str, Any] | None:
         """Get node data by name."""
@@ -312,35 +322,35 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             pod_name = pod_data.get("name", pod_key)
             expected.add(f"{eid}_pod_{namespace}_{pod_name}")
 
-        # Deployment switches: {name}_deployment
-        # Deployment metric sensors: {name}_deployment_{metric}
-        for name in current_data.get("deployments", {}):
-            expected.add(f"{eid}_{name}_deployment")
-            for metric in ("cpu", "memory"):
-                expected.add(f"{eid}_{name}_deployment_{metric}")
+        # Deployment/StatefulSet switches: {namespace}_{name}_{type}
+        # Status sensors: {namespace}_{name}_{type}_status
+        # Metric sensors: {namespace}_{name}_{type}_{metric}
+        for workload_type in ("deployment", "statefulset"):
+            for data in current_data.get(f"{workload_type}s", {}).values():
+                namespace = data.get("namespace", "default")
+                name = data.get("name", "")
+                expected.add(f"{eid}_{namespace}_{name}_{workload_type}")
+                expected.add(f"{eid}_{namespace}_{name}_{workload_type}_status")
+                for metric in ("cpu", "memory"):
+                    expected.add(f"{eid}_{namespace}_{name}_{workload_type}_{metric}")
 
-        # StatefulSet switches: {name}_statefulset
-        # StatefulSet metric sensors: {name}_statefulset_{metric}
-        for name in current_data.get("statefulsets", {}):
-            expected.add(f"{eid}_{name}_statefulset")
-            for metric in ("cpu", "memory"):
-                expected.add(f"{eid}_{name}_statefulset_{metric}")
-
-        # DaemonSet sensors: daemonset_{name}
-        for name in current_data.get("daemonsets", {}):
-            expected.add(f"{eid}_daemonset_{name}")
+        # DaemonSet sensors: daemonset_{namespace}_{name}
+        for data in current_data.get("daemonsets", {}).values():
+            namespace = data.get("namespace", "default")
+            expected.add(f"{eid}_daemonset_{namespace}_{data.get('name', '')}")
 
         # CronJob sensors: cronjob_{namespace}_{name}
         # CronJob switches: {namespace}_{name}_cronjob
-        for name, data in current_data.get("cronjobs", {}).items():
+        for data in current_data.get("cronjobs", {}).values():
             namespace = data.get("namespace", "default")
+            name = data.get("name", "")
             expected.add(f"{eid}_cronjob_{namespace}_{name}")
             expected.add(f"{eid}_{namespace}_{name}_cronjob")
 
         # Job sensors: job_{namespace}_{name}
-        for name, data in current_data.get("jobs", {}).items():
+        for data in current_data.get("jobs", {}).values():
             namespace = data.get("namespace", "default")
-            expected.add(f"{eid}_job_{namespace}_{name}")
+            expected.add(f"{eid}_job_{namespace}_{data.get('name', '')}")
 
         return expected
 
@@ -604,10 +614,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             try:
                 result = parse_fn(item)
                 if result:
-                    if resource_type == "pods":
-                        key = f"{result['namespace']}_{result['name']}"
-                    else:
+                    if resource_type == "nodes":
                         key = result["name"]
+                    else:
+                        # Namespaced resources are keyed "{namespace}_{name}"
+                        key = f"{result['namespace']}_{result['name']}"
                     parsed[key] = result
             except Exception as ex:
                 _LOGGER.warning(
@@ -636,7 +647,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         metadata = obj.get("metadata", {})
         name = metadata.get("name", "")
         namespace = metadata.get("namespace", "")
-        key = f"{namespace}_{name}" if resource_type == "pods" else name
+        key = name if resource_type == "nodes" else f"{namespace}_{name}"
 
         if event_type in ("ADDED", "MODIFIED"):
             try:

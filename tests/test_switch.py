@@ -52,7 +52,7 @@ def mock_coordinator():
     coordinator.last_update_success = True
     coordinator.data = {
         "cronjobs": {
-            "test-cronjob": {
+            "default_test-cronjob": {
                 "name": "test-cronjob",
                 "namespace": "default",
                 "schedule": "0 2 * * *",
@@ -110,7 +110,7 @@ class TestSwitchSetup:
         coordinator.last_update_success = True
         coordinator.data = {
             "deployments": {
-                "test-deployment": {
+                "default_test-deployment": {
                     "name": "test-deployment",
                     "namespace": "default",
                     "replicas": 1,
@@ -118,7 +118,7 @@ class TestSwitchSetup:
                 }
             },
             "statefulsets": {
-                "test-statefulset": {
+                "default_test-statefulset": {
                     "name": "test-statefulset",
                     "namespace": "default",
                     "replicas": 1,
@@ -126,7 +126,7 @@ class TestSwitchSetup:
                 }
             },
             "cronjobs": {
-                "test-cronjob": {
+                "default_test-cronjob": {
                     "name": "test-cronjob",
                     "namespace": "default",
                     "suspend": False,
@@ -354,7 +354,7 @@ class TestKubernetesCronJobSwitch:
         # Setup coordinator data for enabled CronJob
         mock_coordinator.data = {
             "cronjobs": {
-                "test-cronjob": {
+                "default_test-cronjob": {
                     "name": "test-cronjob",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -368,7 +368,7 @@ class TestKubernetesCronJobSwitch:
 
         # Mock the get_cronjob_data method
         mock_coordinator.get_cronjob_data = MagicMock(
-            return_value=mock_coordinator.data["cronjobs"]["test-cronjob"]
+            return_value=mock_coordinator.data["cronjobs"]["default_test-cronjob"]
         )
 
         # Execute
@@ -389,7 +389,7 @@ class TestKubernetesCronJobSwitch:
         # Setup coordinator data for suspended CronJob
         mock_coordinator.data = {
             "cronjobs": {
-                "test-cronjob": {
+                "default_test-cronjob": {
                     "name": "test-cronjob",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -403,7 +403,7 @@ class TestKubernetesCronJobSwitch:
 
         # Mock the get_cronjob_data method
         mock_coordinator.get_cronjob_data = MagicMock(
-            return_value=mock_coordinator.data["cronjobs"]["test-cronjob"]
+            return_value=mock_coordinator.data["cronjobs"]["default_test-cronjob"]
         )
 
         # Execute
@@ -437,7 +437,7 @@ class TestKubernetesCronJobSwitch:
         # Setup coordinator data with string suspend value
         mock_coordinator.data = {
             "cronjobs": {
-                "test-cronjob": {
+                "default_test-cronjob": {
                     "name": "test-cronjob",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -451,7 +451,7 @@ class TestKubernetesCronJobSwitch:
 
         # Mock the get_cronjob_data method
         mock_coordinator.get_cronjob_data = MagicMock(
-            return_value=mock_coordinator.data["cronjobs"]["test-cronjob"]
+            return_value=mock_coordinator.data["cronjobs"]["default_test-cronjob"]
         )
 
         # Execute
@@ -468,7 +468,7 @@ class TestKubernetesCronJobSwitch:
         # Setup coordinator data with None suspend value
         mock_coordinator.data = {
             "cronjobs": {
-                "test-cronjob": {
+                "default_test-cronjob": {
                     "name": "test-cronjob",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -482,7 +482,7 @@ class TestKubernetesCronJobSwitch:
 
         # Mock the get_cronjob_data method
         mock_coordinator.get_cronjob_data = MagicMock(
-            return_value=mock_coordinator.data["cronjobs"]["test-cronjob"]
+            return_value=mock_coordinator.data["cronjobs"]["default_test-cronjob"]
         )
 
         # Execute
@@ -542,7 +542,7 @@ def deployment_coordinator():
     coordinator.last_update_success = True
     coordinator.data = {
         "deployments": {
-            "nginx": {
+            "default_nginx": {
                 "name": "nginx",
                 "namespace": "default",
                 "replicas": 2,
@@ -586,7 +586,10 @@ class TestKubernetesDeploymentSwitch:
         assert deployment_switch.deployment_name == "nginx"
         assert deployment_switch.namespace == "default"
         assert deployment_switch._attr_name == "nginx"
-        assert "nginx_deployment" in deployment_switch._attr_unique_id
+        assert (
+            deployment_switch._attr_unique_id
+            == "test_entry_id_default_nginx_deployment"
+        )
         assert deployment_switch._attr_icon == "mdi:kubernetes"
         assert deployment_switch._is_on is False
         assert deployment_switch._replicas == 0
@@ -662,7 +665,7 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Test _handle_coordinator_update when data is present."""
         deployment_switch.async_write_ha_state = MagicMock()
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 3,
             "is_running": True,
             "cpu_usage": 200.0,
@@ -690,7 +693,7 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch.async_write_ha_state = MagicMock()
         deployment_switch._cpu_usage = 10.0
         deployment_switch._memory_usage = 64.0
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 200.0,
@@ -762,7 +765,7 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Test async_update with coordinator data."""
         deployment_switch._last_scale_time = 0.0
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 3,
             "is_running": True,
             "cpu_usage": 100.0,
@@ -799,7 +802,7 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch._last_scale_time = 0.0
         deployment_switch._replicas = 1
         deployment_switch._is_on = True
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 3,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -814,7 +817,7 @@ class TestKubernetesDeploymentSwitch:
         """Test async_update logs state changes."""
         deployment_switch._last_scale_time = 0.0
         deployment_switch._is_on = False
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -830,7 +833,7 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch._last_scale_time = 0.0
         deployment_switch._replicas = 2
         deployment_switch._is_on = True
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 2,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -846,7 +849,7 @@ class TestKubernetesDeploymentSwitch:
         """Test _verify_scaling succeeds when target replicas reached."""
         deployment_switch._scale_verification_timeout = 10
         deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 1,
             "is_running": True,
         }
@@ -870,7 +873,7 @@ class TestKubernetesDeploymentSwitch:
         """Test _verify_scaling logs debug when still scaling."""
         deployment_switch._scale_verification_timeout = 10
         deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 0,
             "is_running": False,
         }
@@ -894,7 +897,7 @@ class TestKubernetesDeploymentSwitch:
         """Test _verify_scaling times out when target never reached."""
         deployment_switch._scale_verification_timeout = 15
         deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.data["deployments"]["nginx"] = {
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 0,
             "is_running": False,
         }
@@ -915,7 +918,7 @@ def statefulset_coordinator():
     coordinator.last_update_success = True
     coordinator.data = {
         "statefulsets": {
-            "redis": {
+            "default_redis": {
                 "name": "redis",
                 "namespace": "default",
                 "replicas": 1,
@@ -959,7 +962,10 @@ class TestKubernetesStatefulSetSwitch:
         assert statefulset_switch.statefulset_name == "redis"
         assert statefulset_switch.namespace == "default"
         assert statefulset_switch._attr_name == "redis"
-        assert "redis_statefulset" in statefulset_switch._attr_unique_id
+        assert (
+            statefulset_switch._attr_unique_id
+            == "test_entry_id_default_redis_statefulset"
+        )
         assert statefulset_switch._attr_icon == "mdi:kubernetes"
         assert statefulset_switch._is_on is False
         assert statefulset_switch._replicas == 0
@@ -1033,7 +1039,7 @@ class TestKubernetesStatefulSetSwitch:
     ):
         """Test _handle_coordinator_update when data is present."""
         statefulset_switch.async_write_ha_state = MagicMock()
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 2,
             "is_running": True,
             "cpu_usage": 100.0,
@@ -1060,7 +1066,7 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch.async_write_ha_state = MagicMock()
         statefulset_switch._cpu_usage = 5.0
         statefulset_switch._memory_usage = 32.0
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 150.0,
@@ -1131,7 +1137,7 @@ class TestKubernetesStatefulSetSwitch:
     ):
         """Test async_update with coordinator data."""
         statefulset_switch._last_scale_time = 0.0
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 2,
             "is_running": True,
             "cpu_usage": 50.0,
@@ -1166,7 +1172,7 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch._last_scale_time = 0.0
         statefulset_switch._replicas = 1
         statefulset_switch._is_on = True
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 3,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -1181,7 +1187,7 @@ class TestKubernetesStatefulSetSwitch:
         """Test async_update logs state changes."""
         statefulset_switch._last_scale_time = 0.0
         statefulset_switch._is_on = False
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -1197,7 +1203,7 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch._last_scale_time = 0.0
         statefulset_switch._replicas = 1
         statefulset_switch._is_on = True
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 1,
             "is_running": True,
             "cpu_usage": 0.0,
@@ -1213,7 +1219,7 @@ class TestKubernetesStatefulSetSwitch:
         """Test _verify_scaling succeeds when target replicas reached."""
         statefulset_switch._scale_verification_timeout = 10
         statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 1,
             "is_running": True,
         }
@@ -1237,7 +1243,7 @@ class TestKubernetesStatefulSetSwitch:
         """Test _verify_scaling logs debug when still scaling."""
         statefulset_switch._scale_verification_timeout = 10
         statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 0,
             "is_running": False,
         }
@@ -1261,12 +1267,82 @@ class TestKubernetesStatefulSetSwitch:
         """Test _verify_scaling times out gracefully."""
         statefulset_switch._scale_verification_timeout = 15
         statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.data["statefulsets"]["redis"] = {
+        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 0,
             "is_running": False,
         }
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await statefulset_switch._verify_scaling(1)
+
+
+# ---------------------------------------------------------------------------
+# Regression test for #302: same-named workloads in different namespaces
+# ---------------------------------------------------------------------------
+
+
+class TestStatefulSetNamespaceCollisionRegression:
+    """Two StatefulSets sharing a name across namespaces must not collide."""
+
+    async def test_same_name_different_namespace_statefulsets_are_distinct(
+        self, mock_config_entry
+    ):
+        """Same-named 'bot' StatefulSets in 'c3po' and 'toothless' stay independent."""
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        coordinator.data = {
+            "statefulsets": {
+                "c3po_bot": {
+                    "name": "bot",
+                    "namespace": "c3po",
+                    "replicas": 10,
+                    "is_running": True,
+                    "cpu_usage": 100.0,
+                    "memory_usage": 200.0,
+                },
+                "toothless_bot": {
+                    "name": "bot",
+                    "namespace": "toothless",
+                    "replicas": 0,
+                    "is_running": False,
+                    "cpu_usage": 0.0,
+                    "memory_usage": 0.0,
+                },
+            }
+        }
+
+        switch_c3po = KubernetesStatefulSetSwitch(
+            coordinator, mock_config_entry, "bot", "c3po"
+        )
+        switch_toothless = KubernetesStatefulSetSwitch(
+            coordinator, mock_config_entry, "bot", "toothless"
+        )
+
+        # unique_ids must differ despite the identical workload name
+        assert switch_c3po._attr_unique_id != switch_toothless._attr_unique_id
+        assert switch_c3po._attr_unique_id == "test_entry_id_c3po_bot_statefulset"
+        assert (
+            switch_toothless._attr_unique_id
+            == "test_entry_id_toothless_bot_statefulset"
+        )
+
+        # Each switch must resolve its own namespace's workload data
+        c3po_data = switch_c3po._get_workload_data()
+        toothless_data = switch_toothless._get_workload_data()
+        assert c3po_data["replicas"] == 10
+        assert c3po_data["is_running"] is True
+        assert toothless_data["replicas"] == 0
+        assert toothless_data["is_running"] is False
+
+        # async_update must reflect independent, non-colliding state per namespace
+        switch_c3po._last_scale_time = 0.0
+        switch_toothless._last_scale_time = 0.0
+        await switch_c3po.async_update()
+        await switch_toothless.async_update()
+
+        assert switch_c3po.is_on is True
+        assert switch_c3po._replicas == 10
+        assert switch_toothless.is_on is False
+        assert switch_toothless._replicas == 0
 
 
 # ---------------------------------------------------------------------------
@@ -1307,7 +1383,7 @@ class TestDiscoverAndAddNewEntities:
         coordinator = MagicMock()
         coordinator.data = {
             "deployments": {
-                "new-deploy": {
+                "default_new-deploy": {
                     "name": "new-deploy",
                     "namespace": "default",
                     "replicas": 1,
@@ -1350,7 +1426,7 @@ class TestDiscoverAndAddNewEntities:
         coordinator.data = {
             "deployments": {},
             "statefulsets": {
-                "new-sts": {
+                "default_new-sts": {
                     "name": "new-sts",
                     "namespace": "default",
                     "replicas": 1,
@@ -1393,7 +1469,7 @@ class TestDiscoverAndAddNewEntities:
             "deployments": {},
             "statefulsets": {},
             "cronjobs": {
-                "new-cron": {
+                "default_new-cron": {
                     "name": "new-cron",
                     "namespace": "default",
                     "schedule": "0 1 * * *",
@@ -1433,7 +1509,7 @@ class TestDiscoverAndAddNewEntities:
         coordinator = MagicMock()
         coordinator.data = {
             "deployments": {
-                "existing-deploy": {
+                "default_existing-deploy": {
                     "name": "existing-deploy",
                     "namespace": "default",
                 }
@@ -1445,7 +1521,7 @@ class TestDiscoverAndAddNewEntities:
         # Simulate existing entity with the same unique_id
         existing_entity = MagicMock()
         existing_entity.unique_id = (
-            f"{mock_config_entry.entry_id}_existing-deploy_deployment"
+            f"{mock_config_entry.entry_id}_default_existing-deploy_deployment"
         )
 
         entity_registry = MagicMock()
@@ -1526,7 +1602,7 @@ class TestDiscoverAndAddNewEntities:
         coordinator = MagicMock()
         coordinator.data = {
             "deployments": {
-                "my-deploy": {
+                "default_my-deploy": {
                     "name": "my-deploy",
                     "namespace": "default",
                     "replicas": 1,
@@ -1611,7 +1687,7 @@ class TestCronJobOperations:
         coordinator.last_update_success = True
         coordinator.data = {
             "cronjobs": {
-                "test-cronjob": {
+                "default_test-cronjob": {
                     "name": "test-cronjob",
                     "namespace": "default",
                     "schedule": "0 2 * * *",

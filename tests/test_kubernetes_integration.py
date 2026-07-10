@@ -138,7 +138,7 @@ def mock_coordinator(mock_kubernetes_client):
     coordinator.last_update_success = True
     coordinator.data = {
         "deployments": {
-            "nginx-deployment": {
+            "default_nginx-deployment": {
                 "name": "nginx-deployment",
                 "namespace": "default",
                 "replicas": 3,
@@ -146,7 +146,7 @@ def mock_coordinator(mock_kubernetes_client):
                 "ready_replicas": 3,
                 "is_running": True,
             },
-            "api-deployment": {
+            "default_api-deployment": {
                 "name": "api-deployment",
                 "namespace": "default",
                 "replicas": 0,
@@ -156,7 +156,7 @@ def mock_coordinator(mock_kubernetes_client):
             },
         },
         "statefulsets": {
-            "redis-statefulset": {
+            "default_redis-statefulset": {
                 "name": "redis-statefulset",
                 "namespace": "default",
                 "replicas": 3,
@@ -166,7 +166,7 @@ def mock_coordinator(mock_kubernetes_client):
             }
         },
         "daemonsets": {
-            "kube-proxy": {
+            "kube-system_kube-proxy": {
                 "name": "kube-proxy",
                 "namespace": "kube-system",
                 "desired_number_scheduled": 3,
@@ -180,11 +180,11 @@ def mock_coordinator(mock_kubernetes_client):
     }
 
     # Mock the get_deployment_data method
-    def get_deployment_data(name):
-        return coordinator.data["deployments"].get(name)
+    def get_deployment_data(namespace, name):
+        return coordinator.data["deployments"].get(f"{namespace}_{name}")
 
-    def get_statefulset_data(name):
-        return coordinator.data["statefulsets"].get(name)
+    def get_statefulset_data(namespace, name):
+        return coordinator.data["statefulsets"].get(f"{namespace}_{name}")
 
     coordinator.get_deployment_data = get_deployment_data
     coordinator.get_statefulset_data = get_statefulset_data
@@ -238,7 +238,7 @@ async def test_deployment_switch_initialization(mock_coordinator, mock_config_en
     assert switch.deployment_name == "nginx-deployment"
     assert switch.namespace == "default"
     assert switch.name == "nginx-deployment"
-    assert switch.unique_id == "test_entry_id_nginx-deployment_deployment"
+    assert switch.unique_id == "test_entry_id_default_nginx-deployment_deployment"
 
     # Test attributes
     attributes = switch.extra_state_attributes
@@ -381,7 +381,7 @@ async def test_statefulset_switch_initialization(mock_coordinator, mock_config_e
     assert switch.statefulset_name == "redis-statefulset"
     assert switch.namespace == "default"
     assert switch.name == "redis-statefulset"
-    assert switch.unique_id == "test_entry_id_redis-statefulset_statefulset"
+    assert switch.unique_id == "test_entry_id_default_redis-statefulset_statefulset"
 
     # Test attributes
     attributes = switch.extra_state_attributes
@@ -462,6 +462,54 @@ async def test_statefulset_switch_turn_off(mock_coordinator, mock_config_entry):
 
     # Verify that _verify_scaling was called
     switch._verify_scaling.assert_called_once_with(0)
+
+
+async def test_same_name_statefulsets_in_different_namespaces(
+    mock_coordinator, mock_config_entry
+):
+    """Regression test for issue #302: same-named statefulsets in different
+    namespaces must not collide — each switch reads its own namespace's data."""
+    mock_coordinator.data = {
+        "statefulsets": {
+            "c3po_bot": {
+                "name": "bot",
+                "namespace": "c3po",
+                "replicas": 10,
+                "available_replicas": 10,
+                "ready_replicas": 10,
+                "is_running": True,
+            },
+            "toothless_bot": {
+                "name": "bot",
+                "namespace": "toothless",
+                "replicas": 0,
+                "available_replicas": 0,
+                "ready_replicas": 0,
+                "is_running": False,
+            },
+        },
+    }
+
+    switch_c3po = KubernetesStatefulSetSwitch(
+        mock_coordinator, mock_config_entry, "bot", "c3po"
+    )
+    switch_toothless = KubernetesStatefulSetSwitch(
+        mock_coordinator, mock_config_entry, "bot", "toothless"
+    )
+
+    # Unique IDs must differ (pre-fix they would both be name-based)
+    assert switch_c3po.unique_id != switch_toothless.unique_id
+    assert switch_c3po.unique_id == "test_entry_id_c3po_bot_statefulset"
+    assert switch_toothless.unique_id == "test_entry_id_toothless_bot_statefulset"
+
+    await switch_c3po.async_update()
+    await switch_toothless.async_update()
+
+    # Each switch reflects its own namespace's data, not the other's
+    assert switch_c3po.is_on is True
+    assert switch_c3po._replicas == 10
+    assert switch_toothless.is_on is False
+    assert switch_toothless._replicas == 0
 
 
 def test_constants():
