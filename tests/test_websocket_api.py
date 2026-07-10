@@ -26,7 +26,7 @@ def sample_coordinator_data():
     """Sample coordinator data for testing."""
     return {
         "deployments": {
-            "nginx": {
+            "default_nginx": {
                 "name": "nginx",
                 "namespace": "default",
                 "replicas": 3,
@@ -34,7 +34,7 @@ def sample_coordinator_data():
                 "ready_replicas": 3,
                 "is_running": True,
             },
-            "api": {
+            "production_api": {
                 "name": "api",
                 "namespace": "production",
                 "replicas": 2,
@@ -44,7 +44,7 @@ def sample_coordinator_data():
             },
         },
         "statefulsets": {
-            "postgres": {
+            "default_postgres": {
                 "name": "postgres",
                 "namespace": "default",
                 "replicas": 1,
@@ -54,7 +54,7 @@ def sample_coordinator_data():
             },
         },
         "daemonsets": {
-            "fluentd": {
+            "kube-system_fluentd": {
                 "name": "fluentd",
                 "namespace": "kube-system",
                 "desired_number_scheduled": 3,
@@ -65,13 +65,13 @@ def sample_coordinator_data():
             },
         },
         "cronjobs": {
-            "backup": {
+            "default_backup": {
                 "name": "backup",
                 "namespace": "default",
             },
         },
         "jobs": {
-            "migration": {
+            "production_migration": {
                 "name": "migration",
                 "namespace": "production",
             },
@@ -927,7 +927,7 @@ class TestWebsocketWorkloadsList:
                 "nodes": {},
                 "pods": {},
                 "deployments": {
-                    "web": {
+                    "staging_web": {
                         "name": "web",
                         "namespace": "staging",
                         "replicas": 1,
@@ -1007,7 +1007,7 @@ class TestWebsocketWorkloadsList:
                 "deployments": {},
                 "statefulsets": {},
                 "daemonsets": {},
-                "cronjobs": {"nightly-backup": cronjob_data},
+                "cronjobs": {"prod_nightly-backup": cronjob_data},
                 "jobs": {},
                 "pods_count": 0,
                 "nodes_count": 0,
@@ -2055,6 +2055,79 @@ class TestConfigListEdgeCases:
         assert entry["cluster_name"] == "default"
         assert entry["host"] == ""
         assert entry["namespaces"] == []
+
+
+class TestSameNameDifferentNamespace:
+    """Regression tests for issue #302: same-named workloads in different
+    namespaces must not collide in coordinator data."""
+
+    @pytest.fixture
+    def colliding_data(self):
+        """Coordinator data with two statefulsets both named 'bot'."""
+        return {
+            "deployments": {},
+            "statefulsets": {
+                "c3po_bot": {
+                    "name": "bot",
+                    "namespace": "c3po",
+                    "replicas": 10,
+                    "available_replicas": 10,
+                    "ready_replicas": 10,
+                    "is_running": True,
+                },
+                "toothless_bot": {
+                    "name": "bot",
+                    "namespace": "toothless",
+                    "replicas": 0,
+                    "available_replicas": 0,
+                    "ready_replicas": 0,
+                    "is_running": False,
+                },
+            },
+            "daemonsets": {},
+            "cronjobs": {},
+            "jobs": {},
+            "nodes": {},
+            "pods": {},
+            "pods_count": 0,
+            "nodes_count": 0,
+            "last_update": 1700000000.0,
+        }
+
+    def _hass_with(self, mock_hass, data):
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "test"},
+                    "coordinator": _make_coordinator(data),
+                },
+            }
+        }
+        return mock_hass
+
+    def test_overview_counts_both_statefulsets(self, mock_hass, colliding_data):
+        """Both same-named statefulsets are counted (was 1 before the fix)."""
+        hass = self._hass_with(mock_hass, colliding_data)
+        result = _get_cluster_overview_data(hass)
+        assert result["clusters"][0]["counts"]["statefulsets"] == 2
+
+    def test_namespace_breakdown_one_per_namespace(self, colliding_data):
+        """Each namespace reports its own statefulset."""
+        result = _build_namespace_breakdown(colliding_data)
+        assert result["c3po"]["statefulsets"] == 1
+        assert result["toothless"]["statefulsets"] == 1
+
+    def test_workloads_list_returns_both(self, mock_hass, colliding_data):
+        """Workloads list returns both entries with their own data."""
+        hass = self._hass_with(mock_hass, colliding_data)
+        result = _get_workloads_list_data(hass)
+        statefulsets = result["clusters"][0]["statefulsets"]
+        assert len(statefulsets) == 2
+        by_ns = {s["namespace"]: s for s in statefulsets}
+        assert by_ns["c3po"]["name"] == "bot"
+        assert by_ns["c3po"]["replicas"] == 10
+        assert by_ns["toothless"]["name"] == "bot"
+        assert by_ns["toothless"]["replicas"] == 0
 
 
 class TestWebsocketDeletePod:

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -11,6 +12,7 @@ from custom_components.kubernetes import (
     DOMAIN,
     PLATFORMS,
     _any_entry_wants_panel,
+    _async_migrate_unique_ids,
     _async_register_panel,
     _async_remove_panel,
     _count_config_entries,
@@ -997,3 +999,149 @@ class TestAsyncSetupEntryUpdateListener:
 
             # Verify that the entry has update listeners registered
             assert len(mock_config_entry.update_listeners) > 0
+
+
+class TestMigrateUniqueIds:
+    """Tests for _async_migrate_unique_ids (namespace-aware unique_id migration)."""
+
+    def _make_coordinator(self, data: dict) -> MagicMock:
+        coordinator = MagicMock()
+        coordinator.data = data
+        return coordinator
+
+    def _register(self, hass, entry, domain: str, unique_id: str):
+        registry = async_get_entity_registry(hass)
+        return registry.async_get_or_create(
+            domain, DOMAIN, unique_id, config_entry=entry
+        )
+
+    async def test_migrates_deployment_switch_and_sensors(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Old name-only unique_ids get the namespace inserted."""
+        eid = mock_config_entry.entry_id
+        registry = async_get_entity_registry(hass)
+        old_ids = {
+            "switch": [f"{eid}_web_deployment"],
+            "sensor": [
+                f"{eid}_web_deployment_status",
+                f"{eid}_web_deployment_cpu",
+                f"{eid}_web_deployment_memory",
+                f"{eid}_daemonset_fluentd",
+            ],
+        }
+        entity_ids = [
+            self._register(hass, mock_config_entry, domain, uid).entity_id
+            for domain, uids in old_ids.items()
+            for uid in uids
+        ]
+        coordinator = self._make_coordinator(
+            {
+                "deployments": {
+                    "prod_web": {"name": "web", "namespace": "prod"},
+                },
+                "statefulsets": {},
+                "daemonsets": {
+                    "kube-system_fluentd": {
+                        "name": "fluentd",
+                        "namespace": "kube-system",
+                    },
+                },
+            }
+        )
+
+        _async_migrate_unique_ids(hass, mock_config_entry, coordinator)
+
+        migrated = {registry.async_get(e).unique_id for e in entity_ids}
+        assert migrated == {
+            f"{eid}_prod_web_deployment",
+            f"{eid}_prod_web_deployment_status",
+            f"{eid}_prod_web_deployment_cpu",
+            f"{eid}_prod_web_deployment_memory",
+            f"{eid}_daemonset_kube-system_fluentd",
+        }
+
+    async def test_ambiguous_name_not_migrated(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """A name present in multiple namespaces cannot be resolved and is skipped."""
+        eid = mock_config_entry.entry_id
+        registry = async_get_entity_registry(hass)
+        entity_id = self._register(
+            hass, mock_config_entry, "switch", f"{eid}_bot_statefulset"
+        ).entity_id
+        coordinator = self._make_coordinator(
+            {
+                "statefulsets": {
+                    "c3po_bot": {"name": "bot", "namespace": "c3po"},
+                    "toothless_bot": {"name": "bot", "namespace": "toothless"},
+                },
+            }
+        )
+
+        _async_migrate_unique_ids(hass, mock_config_entry, coordinator)
+
+        assert registry.async_get(entity_id).unique_id == f"{eid}_bot_statefulset"
+
+    async def test_new_format_and_unrelated_ids_untouched(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Already-namespaced and non-workload unique_ids stay as they are."""
+        eid = mock_config_entry.entry_id
+        registry = async_get_entity_registry(hass)
+        untouched = [
+            ("switch", f"{eid}_prod_web_deployment"),
+            ("switch", f"{eid}_prod_backup_cronjob"),
+            ("sensor", f"{eid}_pod_prod_web-abc"),
+            ("sensor", f"{eid}_pods_count"),
+        ]
+        entity_ids = [
+            self._register(hass, mock_config_entry, domain, uid).entity_id
+            for domain, uid in untouched
+        ]
+        coordinator = self._make_coordinator(
+            {
+                "deployments": {"prod_web": {"name": "web", "namespace": "prod"}},
+            }
+        )
+
+        _async_migrate_unique_ids(hass, mock_config_entry, coordinator)
+
+        assert [registry.async_get(e).unique_id for e in entity_ids] == [
+            uid for _, uid in untouched
+        ]
+
+    async def test_collision_with_existing_new_id_skipped(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """If the target unique_id already exists, the old entity is left alone."""
+        eid = mock_config_entry.entry_id
+        registry = async_get_entity_registry(hass)
+        self._register(hass, mock_config_entry, "switch", f"{eid}_prod_web_deployment")
+        old_entity_id = self._register(
+            hass, mock_config_entry, "switch", f"{eid}_web_deployment"
+        ).entity_id
+        coordinator = self._make_coordinator(
+            {
+                "deployments": {"prod_web": {"name": "web", "namespace": "prod"}},
+            }
+        )
+
+        _async_migrate_unique_ids(hass, mock_config_entry, coordinator)
+
+        assert registry.async_get(old_entity_id).unique_id == f"{eid}_web_deployment"
+
+    async def test_no_coordinator_data(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """No data (first refresh failed) leaves the registry untouched."""
+        eid = mock_config_entry.entry_id
+        registry = async_get_entity_registry(hass)
+        entity_id = self._register(
+            hass, mock_config_entry, "switch", f"{eid}_web_deployment"
+        ).entity_id
+        coordinator = self._make_coordinator(None)
+
+        _async_migrate_unique_ids(hass, mock_config_entry, coordinator)
+
+        assert registry.async_get(entity_id).unique_id == f"{eid}_web_deployment"

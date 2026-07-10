@@ -596,9 +596,12 @@ class TestCronJobsSensor:
         # Mock coordinator data with CronJobs
         mock_coordinator.data = {
             "cronjobs": {
-                "backup-job": {"name": "backup-job", "namespace": "default"},
-                "cleanup-job": {"name": "cleanup-job", "namespace": "default"},
-                "monitoring-job": {"name": "monitoring-job", "namespace": "default"},
+                "default_backup-job": {"name": "backup-job", "namespace": "default"},
+                "default_cleanup-job": {"name": "cleanup-job", "namespace": "default"},
+                "default_monitoring-job": {
+                    "name": "monitoring-job",
+                    "namespace": "default",
+                },
             }
         }
 
@@ -1421,7 +1424,7 @@ class TestKubernetesWorkloadMetricSensor:
         )
 
         assert sensor.name == "my-app CPU Usage"
-        assert sensor.unique_id == "test_entry_id_my-app_deployment_cpu"
+        assert sensor.unique_id == "test_entry_id_default_my-app_deployment_cpu"
         assert sensor.native_unit_of_measurement == "m"
         assert sensor.icon == "mdi:cpu-64-bit"
         assert sensor.state_class == SensorStateClass.MEASUREMENT
@@ -1441,7 +1444,7 @@ class TestKubernetesWorkloadMetricSensor:
         )
 
         assert sensor.name == "my-db Memory Usage"
-        assert sensor.unique_id == "test_entry_id_my-db_statefulset_memory"
+        assert sensor.unique_id == "test_entry_id_production_my-db_statefulset_memory"
         assert sensor.native_unit_of_measurement == "MiB"
         assert sensor.icon == "mdi:memory"
 
@@ -1506,7 +1509,7 @@ class TestKubernetesWorkloadMetricSensor:
         """Test CPU native value is read from coordinator data."""
         mock_coordinator.data = {
             "deployments": {
-                "my-app": {
+                "default_my-app": {
                     "name": "my-app",
                     "namespace": "default",
                     "cpu_usage": 142.5,
@@ -1531,7 +1534,7 @@ class TestKubernetesWorkloadMetricSensor:
         """Test memory native value is read from coordinator data."""
         mock_coordinator.data = {
             "deployments": {
-                "my-app": {
+                "default_my-app": {
                     "name": "my-app",
                     "namespace": "default",
                     "cpu_usage": 142.5,
@@ -1587,7 +1590,9 @@ class TestKubernetesWorkloadMetricSensor:
     ):
         """Test native value returns None when metric key is absent from workload data."""
         mock_coordinator.data = {
-            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}}
+            "deployments": {
+                "default_my-app": {"name": "my-app", "namespace": "default"}
+            }
         }
         cpu_sensor = KubernetesWorkloadMetricSensor(
             mock_coordinator,
@@ -1616,7 +1621,7 @@ class TestKubernetesWorkloadMetricSensor:
         """Test that native value is rounded to 2 decimal places."""
         mock_coordinator.data = {
             "deployments": {
-                "my-app": {
+                "default_my-app": {
                     "name": "my-app",
                     "namespace": "default",
                     "cpu_usage": 142.5678,
@@ -1640,7 +1645,7 @@ class TestKubernetesWorkloadMetricSensor:
         """Test metric sensor reads from the statefulsets key in coordinator data."""
         mock_coordinator.data = {
             "statefulsets": {
-                "my-db": {
+                "production_my-db": {
                     "name": "my-db",
                     "namespace": "production",
                     "cpu_usage": 55.0,
@@ -1678,7 +1683,9 @@ class TestDiscoverWorkloadMetricSensors:
     ):
         """Test that both CPU and memory sensors are created for a new deployment."""
         mock_coordinator.data = {
-            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "deployments": {
+                "default_my-app": {"name": "my-app", "namespace": "default"}
+            },
             "statefulsets": {},
         }
         new_sensors = _discover_new_workload_metric_sensors(
@@ -1687,24 +1694,28 @@ class TestDiscoverWorkloadMetricSensors:
 
         assert len(new_sensors) == 2
         unique_ids = {s.unique_id for s in new_sensors}
-        assert "test_entry_id_my-app_deployment_cpu" in unique_ids
-        assert "test_entry_id_my-app_deployment_memory" in unique_ids
+        assert "test_entry_id_default_my-app_deployment_cpu" in unique_ids
+        assert "test_entry_id_default_my-app_deployment_memory" in unique_ids
 
     def test_skips_already_existing_sensor(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
         """Test that an already-registered sensor unique ID is not duplicated."""
         mock_coordinator.data = {
-            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "deployments": {
+                "default_my-app": {"name": "my-app", "namespace": "default"}
+            },
             "statefulsets": {},
         }
-        existing_ids = {"test_entry_id_my-app_deployment_cpu"}
+        existing_ids = {"test_entry_id_default_my-app_deployment_cpu"}
         new_sensors = _discover_new_workload_metric_sensors(
             mock_coordinator, mock_client, mock_config_entry, existing_ids
         )
 
         assert len(new_sensors) == 1
-        assert new_sensors[0].unique_id == "test_entry_id_my-app_deployment_memory"
+        assert (
+            new_sensors[0].unique_id == "test_entry_id_default_my-app_deployment_memory"
+        )
 
     def test_discovers_sensors_for_statefulsets(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -1712,7 +1723,9 @@ class TestDiscoverWorkloadMetricSensors:
         """Test that sensors are discovered for statefulsets."""
         mock_coordinator.data = {
             "deployments": {},
-            "statefulsets": {"my-db": {"name": "my-db", "namespace": "production"}},
+            "statefulsets": {
+                "production_my-db": {"name": "my-db", "namespace": "production"}
+            },
         }
         new_sensors = _discover_new_workload_metric_sensors(
             mock_coordinator, mock_client, mock_config_entry, set()
@@ -1720,8 +1733,8 @@ class TestDiscoverWorkloadMetricSensors:
 
         assert len(new_sensors) == 2
         unique_ids = {s.unique_id for s in new_sensors}
-        assert "test_entry_id_my-db_statefulset_cpu" in unique_ids
-        assert "test_entry_id_my-db_statefulset_memory" in unique_ids
+        assert "test_entry_id_production_my-db_statefulset_cpu" in unique_ids
+        assert "test_entry_id_production_my-db_statefulset_memory" in unique_ids
 
     def test_discovers_sensors_for_multiple_workloads(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -1729,11 +1742,11 @@ class TestDiscoverWorkloadMetricSensors:
         """Test discovery across multiple deployments and statefulsets."""
         mock_coordinator.data = {
             "deployments": {
-                "app-a": {"name": "app-a", "namespace": "default"},
-                "app-b": {"name": "app-b", "namespace": "default"},
+                "default_app-a": {"name": "app-a", "namespace": "default"},
+                "default_app-b": {"name": "app-b", "namespace": "default"},
             },
             "statefulsets": {
-                "db-a": {"name": "db-a", "namespace": "default"},
+                "default_db-a": {"name": "db-a", "namespace": "default"},
             },
         }
         new_sensors = _discover_new_workload_metric_sensors(
@@ -1758,12 +1771,14 @@ class TestDiscoverWorkloadMetricSensors:
     ):
         """Test that nothing is returned when all sensors are already registered."""
         mock_coordinator.data = {
-            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "deployments": {
+                "default_my-app": {"name": "my-app", "namespace": "default"}
+            },
             "statefulsets": {},
         }
         existing_ids = {
-            "test_entry_id_my-app_deployment_cpu",
-            "test_entry_id_my-app_deployment_memory",
+            "test_entry_id_default_my-app_deployment_cpu",
+            "test_entry_id_default_my-app_deployment_memory",
         }
         new_sensors = _discover_new_workload_metric_sensors(
             mock_coordinator, mock_client, mock_config_entry, existing_ids
@@ -1783,7 +1798,7 @@ class TestKubernetesDaemonSetSensor:
         )
 
         assert sensor.name == "fluentd"
-        assert sensor.unique_id == "test_entry_id_daemonset_fluentd"
+        assert sensor.unique_id == "test_entry_id_daemonset_kube-system_fluentd"
         assert sensor.native_unit_of_measurement is None
         assert sensor.icon == "mdi:layers"
         assert sensor.state_class is None
@@ -1805,7 +1820,7 @@ class TestKubernetesDaemonSetSensor:
         """Test native value is 'Ready' when all desired pods are running."""
         mock_coordinator.data = {
             "daemonsets": {
-                "fluentd": {
+                "kube-system_fluentd": {
                     "name": "fluentd",
                     "namespace": "kube-system",
                     "desired_number_scheduled": 3,
@@ -1826,7 +1841,7 @@ class TestKubernetesDaemonSetSensor:
         """Test native value is 'Degraded' when only some pods are ready."""
         mock_coordinator.data = {
             "daemonsets": {
-                "fluentd": {
+                "kube-system_fluentd": {
                     "name": "fluentd",
                     "namespace": "kube-system",
                     "desired_number_scheduled": 3,
@@ -1847,7 +1862,7 @@ class TestKubernetesDaemonSetSensor:
         """Test native value is 'Not Ready' when no pods are ready."""
         mock_coordinator.data = {
             "daemonsets": {
-                "fluentd": {
+                "kube-system_fluentd": {
                     "name": "fluentd",
                     "namespace": "kube-system",
                     "desired_number_scheduled": 3,
@@ -1888,7 +1903,7 @@ class TestKubernetesDaemonSetSensor:
         """Test native value is 'Unknown' when desired count is 0."""
         mock_coordinator.data = {
             "daemonsets": {
-                "fluentd": {
+                "kube-system_fluentd": {
                     "name": "fluentd",
                     "namespace": "kube-system",
                     "desired_number_scheduled": 0,
@@ -1907,7 +1922,7 @@ class TestKubernetesDaemonSetSensor:
         """Test extra state attributes contain scheduling information."""
         mock_coordinator.data = {
             "daemonsets": {
-                "fluentd": {
+                "kube-system_fluentd": {
                     "name": "fluentd",
                     "namespace": "kube-system",
                     "desired_number_scheduled": 3,
@@ -1947,14 +1962,16 @@ class TestDiscoverDaemonSetSensors:
     ):
         """Test that a sensor is created for a new DaemonSet."""
         mock_coordinator.data = {
-            "daemonsets": {"fluentd": {"name": "fluentd", "namespace": "kube-system"}}
+            "daemonsets": {
+                "kube-system_fluentd": {"name": "fluentd", "namespace": "kube-system"}
+            }
         }
         new_sensors = _discover_new_daemonset_sensors(
             mock_coordinator, mock_client, mock_config_entry, set()
         )
 
         assert len(new_sensors) == 1
-        assert new_sensors[0].unique_id == "test_entry_id_daemonset_fluentd"
+        assert new_sensors[0].unique_id == "test_entry_id_daemonset_kube-system_fluentd"
         assert new_sensors[0].daemonset_name == "fluentd"
         assert new_sensors[0].namespace == "kube-system"
 
@@ -1964,11 +1981,14 @@ class TestDiscoverDaemonSetSensors:
         """Test that an already-registered sensor is not duplicated."""
         mock_coordinator.data = {
             "daemonsets": {
-                "fluentd": {"name": "fluentd", "namespace": "kube-system"},
-                "node-exporter": {"name": "node-exporter", "namespace": "monitoring"},
+                "kube-system_fluentd": {"name": "fluentd", "namespace": "kube-system"},
+                "monitoring_node-exporter": {
+                    "name": "node-exporter",
+                    "namespace": "monitoring",
+                },
             }
         }
-        existing_ids = {"test_entry_id_daemonset_fluentd"}
+        existing_ids = {"test_entry_id_daemonset_kube-system_fluentd"}
         new_sensors = _discover_new_daemonset_sensors(
             mock_coordinator, mock_client, mock_config_entry, existing_ids
         )
@@ -1982,9 +2002,12 @@ class TestDiscoverDaemonSetSensors:
         """Test discovery across multiple DaemonSets."""
         mock_coordinator.data = {
             "daemonsets": {
-                "fluentd": {"name": "fluentd", "namespace": "kube-system"},
-                "node-exporter": {"name": "node-exporter", "namespace": "monitoring"},
-                "calico": {"name": "calico", "namespace": "kube-system"},
+                "kube-system_fluentd": {"name": "fluentd", "namespace": "kube-system"},
+                "monitoring_node-exporter": {
+                    "name": "node-exporter",
+                    "namespace": "monitoring",
+                },
+                "kube-system_calico": {"name": "calico", "namespace": "kube-system"},
             }
         }
         new_sensors = _discover_new_daemonset_sensors(
@@ -2010,9 +2033,11 @@ class TestDiscoverDaemonSetSensors:
     ):
         """Test that nothing is returned when all sensors are already registered."""
         mock_coordinator.data = {
-            "daemonsets": {"fluentd": {"name": "fluentd", "namespace": "kube-system"}}
+            "daemonsets": {
+                "kube-system_fluentd": {"name": "fluentd", "namespace": "kube-system"}
+            }
         }
-        existing_ids = {"test_entry_id_daemonset_fluentd"}
+        existing_ids = {"test_entry_id_daemonset_kube-system_fluentd"}
         new_sensors = _discover_new_daemonset_sensors(
             mock_coordinator, mock_client, mock_config_entry, existing_ids
         )
@@ -2036,7 +2061,7 @@ class TestKubernetesWorkloadStatusSensor:
         )
 
         assert sensor.name == "my-app"
-        assert sensor.unique_id == "test_entry_id_my-app_deployment_status"
+        assert sensor.unique_id == "test_entry_id_default_my-app_deployment_status"
         assert sensor.native_unit_of_measurement is None
         assert sensor.icon == "mdi:kubernetes"
         assert sensor.state_class is None
@@ -2085,7 +2110,8 @@ class TestKubernetesWorkloadStatusSensor:
         """Test native value is 'Ready' when all replicas are ready."""
         mock_coordinator.data = {
             "deployments": {
-                "my-app": {
+                "default_my-app": {
+                    "name": "my-app",
                     "namespace": "default",
                     "replicas": 3,
                     "ready_replicas": 3,
@@ -2109,7 +2135,8 @@ class TestKubernetesWorkloadStatusSensor:
         """Test native value is 'Degraded' when only some replicas are ready."""
         mock_coordinator.data = {
             "deployments": {
-                "my-app": {
+                "default_my-app": {
+                    "name": "my-app",
                     "namespace": "default",
                     "replicas": 3,
                     "ready_replicas": 1,
@@ -2133,7 +2160,8 @@ class TestKubernetesWorkloadStatusSensor:
         """Test native value is 'Not Ready' when no replicas are ready."""
         mock_coordinator.data = {
             "deployments": {
-                "my-app": {
+                "default_my-app": {
+                    "name": "my-app",
                     "namespace": "default",
                     "replicas": 3,
                     "ready_replicas": 0,
@@ -2157,7 +2185,8 @@ class TestKubernetesWorkloadStatusSensor:
         """Test native value is 'Scaled Down' when replicas is zero."""
         mock_coordinator.data = {
             "deployments": {
-                "my-app": {
+                "default_my-app": {
+                    "name": "my-app",
                     "namespace": "default",
                     "replicas": 0,
                     "ready_replicas": 0,
@@ -2211,7 +2240,8 @@ class TestKubernetesWorkloadStatusSensor:
         """Test extra state attributes contain replica counts."""
         mock_coordinator.data = {
             "deployments": {
-                "my-app": {
+                "default_my-app": {
+                    "name": "my-app",
                     "namespace": "default",
                     "replicas": 3,
                     "ready_replicas": 2,
@@ -2255,7 +2285,8 @@ class TestKubernetesWorkloadStatusSensor:
         """Test that a statefulset sensor reads from the statefulsets key."""
         mock_coordinator.data = {
             "statefulsets": {
-                "my-db": {
+                "default_my-db": {
+                    "name": "my-db",
                     "namespace": "default",
                     "replicas": 1,
                     "ready_replicas": 1,
@@ -2282,7 +2313,9 @@ class TestDiscoverWorkloadStatusSensors:
     ):
         """Test that a status sensor is created for a new deployment."""
         mock_coordinator.data = {
-            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "deployments": {
+                "default_my-app": {"name": "my-app", "namespace": "default"}
+            },
             "statefulsets": {},
         }
         new_sensors = _discover_new_workload_status_sensors(
@@ -2290,7 +2323,9 @@ class TestDiscoverWorkloadStatusSensors:
         )
 
         assert len(new_sensors) == 1
-        assert new_sensors[0].unique_id == "test_entry_id_my-app_deployment_status"
+        assert (
+            new_sensors[0].unique_id == "test_entry_id_default_my-app_deployment_status"
+        )
 
     def test_discovers_sensor_for_statefulset(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -2298,24 +2333,31 @@ class TestDiscoverWorkloadStatusSensors:
         """Test that a status sensor is created for a statefulset."""
         mock_coordinator.data = {
             "deployments": {},
-            "statefulsets": {"my-db": {"name": "my-db", "namespace": "production"}},
+            "statefulsets": {
+                "production_my-db": {"name": "my-db", "namespace": "production"}
+            },
         }
         new_sensors = _discover_new_workload_status_sensors(
             mock_coordinator, mock_client, mock_config_entry, set()
         )
 
         assert len(new_sensors) == 1
-        assert new_sensors[0].unique_id == "test_entry_id_my-db_statefulset_status"
+        assert (
+            new_sensors[0].unique_id
+            == "test_entry_id_production_my-db_statefulset_status"
+        )
 
     def test_skips_existing_sensor(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
         """Test that an already-registered sensor is not duplicated."""
         mock_coordinator.data = {
-            "deployments": {"my-app": {"name": "my-app", "namespace": "default"}},
+            "deployments": {
+                "default_my-app": {"name": "my-app", "namespace": "default"}
+            },
             "statefulsets": {},
         }
-        existing_ids = {"test_entry_id_my-app_deployment_status"}
+        existing_ids = {"test_entry_id_default_my-app_deployment_status"}
         new_sensors = _discover_new_workload_status_sensors(
             mock_coordinator, mock_client, mock_config_entry, existing_ids
         )
@@ -2327,11 +2369,11 @@ class TestDiscoverWorkloadStatusSensors:
         """Test discovery across multiple deployments and statefulsets."""
         mock_coordinator.data = {
             "deployments": {
-                "app-a": {"name": "app-a", "namespace": "default"},
-                "app-b": {"name": "app-b", "namespace": "default"},
+                "default_app-a": {"name": "app-a", "namespace": "default"},
+                "default_app-b": {"name": "app-b", "namespace": "default"},
             },
             "statefulsets": {
-                "db-a": {"name": "db-a", "namespace": "default"},
+                "default_db-a": {"name": "db-a", "namespace": "default"},
             },
         }
         new_sensors = _discover_new_workload_status_sensors(
@@ -2520,7 +2562,7 @@ class TestDiscoverCronJobSensors:
         """Test that a sensor is created for a new cronjob."""
         mock_coordinator.data = {
             "cronjobs": {
-                "nightly-backup": {
+                "default_nightly-backup": {
                     "name": "nightly-backup",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -2547,7 +2589,7 @@ class TestDiscoverCronJobSensors:
         """Test that an already-registered sensor is not duplicated."""
         mock_coordinator.data = {
             "cronjobs": {
-                "nightly-backup": {
+                "default_nightly-backup": {
                     "name": "nightly-backup",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -2570,7 +2612,7 @@ class TestDiscoverCronJobSensors:
         """Test discovery of multiple CronJobs across namespaces."""
         mock_coordinator.data = {
             "cronjobs": {
-                "nightly-backup": {
+                "default_nightly-backup": {
                     "name": "nightly-backup",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -2579,7 +2621,7 @@ class TestDiscoverCronJobSensors:
                     "last_schedule_time": None,
                     "next_schedule_time": None,
                 },
-                "weekly-report": {
+                "production_weekly-report": {
                     "name": "weekly-report",
                     "namespace": "production",
                     "schedule": "0 9 * * 1",
@@ -2638,8 +2680,8 @@ class TestKubernetesJobsSensor:
         """Test that native_value returns the number of jobs."""
         mock_coordinator.data = {
             "jobs": {
-                "backup-job": {"namespace": "default"},
-                "import-job": {"namespace": "production"},
+                "default_backup-job": {"namespace": "default"},
+                "production_import-job": {"namespace": "production"},
             }
         }
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
@@ -2839,7 +2881,8 @@ class TestDiscoverJobSensors:
         """Test that a new sensor is created for a job not yet in the registry."""
         mock_coordinator.data = {
             "jobs": {
-                "backup-job": {
+                "default_backup-job": {
+                    "name": "backup-job",
                     "namespace": "default",
                     "completions": 1,
                     "succeeded": 0,
@@ -2864,7 +2907,8 @@ class TestDiscoverJobSensors:
         """Test that existing sensors are not duplicated."""
         mock_coordinator.data = {
             "jobs": {
-                "backup-job": {
+                "default_backup-job": {
+                    "name": "backup-job",
                     "namespace": "default",
                     "completions": 1,
                     "succeeded": 1,
@@ -2887,7 +2931,8 @@ class TestDiscoverJobSensors:
         """Test discovery of multiple new job sensors."""
         mock_coordinator.data = {
             "jobs": {
-                "backup-job": {
+                "default_backup-job": {
+                    "name": "backup-job",
                     "namespace": "default",
                     "completions": 1,
                     "succeeded": 0,
@@ -2896,7 +2941,8 @@ class TestDiscoverJobSensors:
                     "start_time": None,
                     "completion_time": None,
                 },
-                "import-job": {
+                "production_import-job": {
+                    "name": "import-job",
                     "namespace": "production",
                     "completions": 1,
                     "succeeded": 0,
@@ -3250,7 +3296,8 @@ class TestKubernetesWorkloadStatusSensorExtended:
         """Test extra state attributes use defaults for missing keys."""
         mock_coordinator.data = {
             "deployments": {
-                "web-app": {
+                "staging_web-app": {
+                    "name": "web-app",
                     "namespace": "staging",
                 }
             }
@@ -3269,7 +3316,8 @@ class TestKubernetesWorkloadStatusSensorExtended:
         """Test native_value returns 'Scaled Down' when replicas key is missing."""
         mock_coordinator.data = {
             "deployments": {
-                "web-app": {
+                "staging_web-app": {
+                    "name": "web-app",
                     "namespace": "staging",
                 }
             }
@@ -3284,7 +3332,8 @@ class TestKubernetesWorkloadStatusSensorExtended:
         """Test statefulset sensor reads from statefulsets key and returns correct status."""
         mock_coordinator.data = {
             "statefulsets": {
-                "web-app": {
+                "staging_web-app": {
+                    "name": "web-app",
                     "namespace": "staging",
                     "replicas": 2,
                     "ready_replicas": 1,
@@ -3338,10 +3387,10 @@ class TestAsyncSetupEntryWithResources:
                 },
             },
             "daemonsets": {
-                "fluentd": {"name": "fluentd", "namespace": "kube-system"},
+                "kube-system_fluentd": {"name": "fluentd", "namespace": "kube-system"},
             },
             "deployments": {
-                "web-app": {
+                "default_web-app": {
                     "name": "web-app",
                     "namespace": "default",
                     "replicas": 2,
@@ -3349,7 +3398,7 @@ class TestAsyncSetupEntryWithResources:
                 },
             },
             "statefulsets": {
-                "my-db": {
+                "default_my-db": {
                     "name": "my-db",
                     "namespace": "default",
                     "replicas": 1,
@@ -3357,7 +3406,7 @@ class TestAsyncSetupEntryWithResources:
                 },
             },
             "cronjobs": {
-                "nightly-backup": {
+                "default_nightly-backup": {
                     "name": "nightly-backup",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -3365,7 +3414,7 @@ class TestAsyncSetupEntryWithResources:
                 },
             },
             "jobs": {
-                "import-job": {
+                "default_import-job": {
                     "name": "import-job",
                     "namespace": "default",
                     "completions": 1,
@@ -3727,7 +3776,7 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
             "deployments": {},
             "statefulsets": {},
             "cronjobs": {
-                "backup": {
+                "ops_backup": {
                     "name": "backup",
                     "namespace": "ops",
                     "schedule": "0 2 * * *",
@@ -3735,7 +3784,7 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
                 },
             },
             "jobs": {
-                "migrate-data": {
+                "ops_migrate-data": {
                     "name": "migrate-data",
                     "namespace": "ops",
                     "completions": 1,
@@ -3799,10 +3848,10 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
             "nodes": {},
             "pods": {},
             "daemonsets": {
-                "log-collector": {"name": "log-collector", "namespace": "infra"},
+                "infra_log-collector": {"name": "log-collector", "namespace": "infra"},
             },
             "deployments": {
-                "frontend": {"name": "frontend", "namespace": "web"},
+                "web_frontend": {"name": "frontend", "namespace": "web"},
             },
             "statefulsets": {},
             "cronjobs": {},
@@ -4205,3 +4254,128 @@ class TestAggregateSensorFallbackExceptions:
         sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
         await sensor.async_update()
         assert sensor._attr_native_value == 0
+
+
+class TestSameNameDifferentNamespace:
+    """Regression tests for issue #302: same-named workloads in different
+    namespaces must not collide (coordinator data is keyed by namespace_name)."""
+
+    def test_status_sensors_do_not_collide(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Two statefulsets named 'bot' in different namespaces stay distinct."""
+        mock_coordinator.data = {
+            "statefulsets": {
+                "c3po_bot": {
+                    "name": "bot",
+                    "namespace": "c3po",
+                    "replicas": 10,
+                    "ready_replicas": 10,
+                    "cpu_usage": 250.0,
+                    "memory_usage": 512.0,
+                },
+                "toothless_bot": {
+                    "name": "bot",
+                    "namespace": "toothless",
+                    "replicas": 0,
+                    "ready_replicas": 0,
+                    "cpu_usage": 0.0,
+                    "memory_usage": 0.0,
+                },
+            }
+        }
+        c3po_sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "bot",
+            "c3po",
+            "statefulset",
+        )
+        toothless_sensor = KubernetesWorkloadStatusSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "bot",
+            "toothless",
+            "statefulset",
+        )
+
+        assert c3po_sensor.unique_id != toothless_sensor.unique_id
+        # Before the fix both sensors read the same (last-written) entry.
+        assert c3po_sensor.native_value == "Ready"
+        assert toothless_sensor.native_value == "Scaled Down"
+
+    def test_metric_sensors_do_not_collide(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """CPU metric sensors for same-named workloads read their own namespace."""
+        mock_coordinator.data = {
+            "statefulsets": {
+                "c3po_bot": {
+                    "name": "bot",
+                    "namespace": "c3po",
+                    "cpu_usage": 250.0,
+                    "memory_usage": 512.0,
+                },
+                "toothless_bot": {
+                    "name": "bot",
+                    "namespace": "toothless",
+                    "cpu_usage": 0.0,
+                    "memory_usage": 0.0,
+                },
+            }
+        }
+        c3po_sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "bot",
+            "c3po",
+            "statefulset",
+            "cpu",
+        )
+        toothless_sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "bot",
+            "toothless",
+            "statefulset",
+            "cpu",
+        )
+
+        assert c3po_sensor.unique_id != toothless_sensor.unique_id
+        assert c3po_sensor.native_value == 250.0
+        assert toothless_sensor.native_value == 0.0
+
+    def test_daemonset_sensors_do_not_collide(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """DaemonSets with the same name in two namespaces stay distinct."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "c3po_agent": {
+                    "name": "agent",
+                    "namespace": "c3po",
+                    "desired_number_scheduled": 3,
+                    "number_ready": 3,
+                },
+                "toothless_agent": {
+                    "name": "agent",
+                    "namespace": "toothless",
+                    "desired_number_scheduled": 3,
+                    "number_ready": 0,
+                },
+            }
+        }
+        c3po_sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "agent", "c3po"
+        )
+        toothless_sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "agent", "toothless"
+        )
+
+        assert c3po_sensor.unique_id != toothless_sensor.unique_id
+        assert c3po_sensor.native_value == "Ready"
+        assert toothless_sensor.native_value == "Not Ready"

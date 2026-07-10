@@ -231,13 +231,13 @@ def _build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
             nodes_with_pressure.append({"name": node_name, "conditions": conditions})
 
     # Check degraded deployments
-    for name, deploy in data.get("deployments", {}).items():
+    for deploy in data.get("deployments", {}).values():
         desired = deploy.get("replicas", 0)
         available = deploy.get("available_replicas") or 0
         if desired > 0 and available < desired:
             degraded_workloads.append(
                 {
-                    "name": name,
+                    "name": deploy.get("name", ""),
                     "type": "Deployment",
                     "namespace": deploy.get("namespace", "unknown"),
                     "ready": available,
@@ -246,13 +246,13 @@ def _build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
             )
 
     # Check degraded statefulsets
-    for name, sts in data.get("statefulsets", {}).items():
+    for sts in data.get("statefulsets", {}).values():
         desired = sts.get("replicas", 0)
         ready = sts.get("ready_replicas") or 0
         if desired > 0 and ready < desired:
             degraded_workloads.append(
                 {
-                    "name": name,
+                    "name": sts.get("name", ""),
                     "type": "StatefulSet",
                     "namespace": sts.get("namespace", "unknown"),
                     "ready": ready,
@@ -261,13 +261,13 @@ def _build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
             )
 
     # Check degraded daemonsets
-    for name, ds in data.get("daemonsets", {}).items():
+    for ds in data.get("daemonsets", {}).values():
         desired = ds.get("desired_number_scheduled", 0)
         available = ds.get("number_available") or 0
         if desired > 0 and available < desired:
             degraded_workloads.append(
                 {
-                    "name": name,
+                    "name": ds.get("name", ""),
                     "type": "DaemonSet",
                     "namespace": ds.get("namespace", "unknown"),
                     "ready": available,

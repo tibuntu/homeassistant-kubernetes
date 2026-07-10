@@ -151,12 +151,13 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
 
         # Check for new deployments
         if coordinator.data and "deployments" in coordinator.data:
-            for deployment_name, deployment_data in coordinator.data[
-                "deployments"
-            ].items():
-                unique_id = f"{config_entry.entry_id}_{deployment_name}_deployment"
+            for deployment_data in coordinator.data["deployments"].values():
+                deployment_name = deployment_data.get("name", "")
+                namespace = deployment_data.get("namespace", "default")
+                unique_id = (
+                    f"{config_entry.entry_id}_{namespace}_{deployment_name}_deployment"
+                )
                 if unique_id not in existing_unique_ids:
-                    namespace = deployment_data.get("namespace", "default")
                     await get_or_create_namespace_device(hass, config_entry, namespace)
                     _LOGGER.info(
                         "Adding new entity for deployment: %s", deployment_name
@@ -172,12 +173,11 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
 
         # Check for new StatefulSets
         if coordinator.data and "statefulsets" in coordinator.data:
-            for statefulset_name, statefulset_data in coordinator.data[
-                "statefulsets"
-            ].items():
-                unique_id = f"{config_entry.entry_id}_{statefulset_name}_statefulset"
+            for statefulset_data in coordinator.data["statefulsets"].values():
+                statefulset_name = statefulset_data.get("name", "")
+                namespace = statefulset_data.get("namespace", "default")
+                unique_id = f"{config_entry.entry_id}_{namespace}_{statefulset_name}_statefulset"
                 if unique_id not in existing_unique_ids:
-                    namespace = statefulset_data.get("namespace", "default")
                     await get_or_create_namespace_device(hass, config_entry, namespace)
                     _LOGGER.info(
                         "Adding new entity for StatefulSet: %s", statefulset_name
@@ -193,7 +193,8 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
 
         # Check for new CronJobs
         if coordinator.data and "cronjobs" in coordinator.data:
-            for cronjob_name, cronjob_data in coordinator.data["cronjobs"].items():
+            for cronjob_data in coordinator.data["cronjobs"].values():
+                cronjob_name = cronjob_data.get("name", "")
                 namespace = cronjob_data.get("namespace", "default")
                 unique_id = (
                     f"{config_entry.entry_id}_{namespace}_{cronjob_name}_cronjob"
@@ -254,7 +255,7 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         self._attr_has_entity_name = True
         self._attr_name = workload_name
         self._attr_unique_id = (
-            f"{config_entry.entry_id}_{workload_name}_{unique_id_suffix}"
+            f"{config_entry.entry_id}_{namespace}_{workload_name}_{unique_id_suffix}"
         )
         self._attr_icon = "mdi:kubernetes"
         self._is_on = False
@@ -274,7 +275,9 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         """Get workload data from coordinator."""
         if not self.coordinator.data or self._resource_key not in self.coordinator.data:
             return None
-        return self.coordinator.data[self._resource_key].get(self.workload_name)
+        return self.coordinator.data[self._resource_key].get(
+            f"{self.namespace}_{self.workload_name}"
+        )
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -691,7 +694,9 @@ class KubernetesCronJobSwitch(SwitchEntity):
     async def async_update(self) -> None:
         """Update the switch state from coordinator data."""
         # Get data from coordinator
-        cronjob_data = self.coordinator.get_cronjob_data(self.cronjob_name)
+        cronjob_data = self.coordinator.get_cronjob_data(
+            self.namespace, self.cronjob_name
+        )
 
         if cronjob_data is None:
             _LOGGER.warning(

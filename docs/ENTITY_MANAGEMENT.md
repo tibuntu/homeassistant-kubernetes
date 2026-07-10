@@ -33,8 +33,8 @@ The integration now automatically removes orphaned entities during each polling 
    - Automatically removes orphaned entities from the entity registry
 
 2. **Entity Identification**:
-   - Uses unique IDs in the format: `{config_entry_id}_{resource_name}_{resource_type}`
-   - Supports complex resource names containing underscores
+   - Uses unique IDs in the format: `{config_entry_id}_{namespace}_{resource_name}_{resource_type}`
+   - Including the namespace means workloads with the same name in different namespaces get distinct entities
    - Handles both deployments and statefulsets
 
 3. **Cleanup Process**:

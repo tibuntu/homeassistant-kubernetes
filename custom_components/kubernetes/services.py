@@ -752,7 +752,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         for job_name in job_names:
             namespace = provided_ns
             if not namespace:
-                job_data = coordinator.get_job_data(job_name)
+                # Search monitored jobs by name (keys are "{namespace}_{name}")
+                job_data = next(
+                    (
+                        job
+                        for job in (coordinator.data or {}).get("jobs", {}).values()
+                        if job.get("name") == job_name
+                    ),
+                    None,
+                )
                 namespace = (
                     job_data.get("namespace")
                     if job_data

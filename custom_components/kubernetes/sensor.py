@@ -106,7 +106,8 @@ async def async_setup_entry(
         )
 
         daemonset_sensors_created = 0
-        for daemonset_name, daemonset_data in daemonsets_data.items():
+        for daemonset_data in daemonsets_data.values():
+            daemonset_name = daemonset_data.get("name", "")
             namespace = daemonset_data.get("namespace", "default")
             await get_or_create_namespace_device(hass, config_entry, namespace)
             daemonset_sensor = KubernetesDaemonSetSensor(
@@ -120,7 +121,8 @@ async def async_setup_entry(
         status_sensors_created = 0
         for workload_type in ("deployment", "statefulset"):
             resource_key = f"{workload_type}s"
-            for workload_name, workload_data in data.get(resource_key, {}).items():
+            for workload_data in data.get(resource_key, {}).values():
+                workload_name = workload_data.get("name", "")
                 namespace = workload_data.get("namespace", "default")
                 await get_or_create_namespace_device(hass, config_entry, namespace)
                 sensors.append(
@@ -150,7 +152,8 @@ async def async_setup_entry(
 
         # Create individual sensors for each CronJob
         cronjob_sensors_created = 0
-        for cronjob_name, cronjob_data in data.get("cronjobs", {}).items():
+        for cronjob_data in data.get("cronjobs", {}).values():
+            cronjob_name = cronjob_data.get("name", "")
             namespace = cronjob_data.get("namespace", "default")
             await get_or_create_namespace_device(hass, config_entry, namespace)
             sensors.append(
@@ -162,7 +165,8 @@ async def async_setup_entry(
 
         # Create individual sensors for each Job
         job_sensors_created = 0
-        for job_name, job_data in data.get("jobs", {}).items():
+        for job_data in data.get("jobs", {}).values():
+            job_name = job_data.get("name", "")
             namespace = job_data.get("namespace", "default")
             await get_or_create_namespace_device(hass, config_entry, namespace)
             sensors.append(
@@ -266,10 +270,13 @@ def _discover_new_daemonset_sensors(
     """Discover new individual DaemonSet sensors."""
     new_entities = []
     if coordinator.data and "daemonsets" in coordinator.data:
-        for daemonset_name, daemonset_data in coordinator.data["daemonsets"].items():
-            unique_id = f"{config_entry.entry_id}_daemonset_{daemonset_name}"
+        for daemonset_data in coordinator.data["daemonsets"].values():
+            daemonset_name = daemonset_data.get("name", "")
+            namespace = daemonset_data.get("namespace", "default")
+            unique_id = (
+                f"{config_entry.entry_id}_daemonset_{namespace}_{daemonset_name}"
+            )
             if unique_id not in existing_unique_ids:
-                namespace = daemonset_data.get("namespace", "default")
                 _LOGGER.info("Adding new daemonset sensor for: %s", daemonset_name)
                 new_entities.append(
                     KubernetesDaemonSetSensor(
@@ -290,12 +297,11 @@ def _discover_new_workload_status_sensors(
     for workload_type in ("deployment", "statefulset"):
         resource_key = f"{workload_type}s"
         if coordinator.data and resource_key in coordinator.data:
-            for workload_name, workload_data in coordinator.data[resource_key].items():
-                unique_id = (
-                    f"{config_entry.entry_id}_{workload_name}_{workload_type}_status"
-                )
+            for workload_data in coordinator.data[resource_key].values():
+                workload_name = workload_data.get("name", "")
+                namespace = workload_data.get("namespace", "default")
+                unique_id = f"{config_entry.entry_id}_{namespace}_{workload_name}_{workload_type}_status"
                 if unique_id not in existing_unique_ids:
-                    namespace = workload_data.get("namespace", "default")
                     _LOGGER.info(
                         "Adding new status sensor for %s: %s",
                         workload_type,
@@ -325,10 +331,11 @@ def _discover_new_workload_metric_sensors(
     for workload_type in ("deployment", "statefulset"):
         resource_key = f"{workload_type}s"
         if coordinator.data and resource_key in coordinator.data:
-            for workload_name, workload_data in coordinator.data[resource_key].items():
+            for workload_data in coordinator.data[resource_key].values():
+                workload_name = workload_data.get("name", "")
                 namespace = workload_data.get("namespace", "default")
                 for metric in ("cpu", "memory"):
-                    unique_id = f"{config_entry.entry_id}_{workload_name}_{workload_type}_{metric}"
+                    unique_id = f"{config_entry.entry_id}_{namespace}_{workload_name}_{workload_type}_{metric}"
                     if unique_id not in existing_unique_ids:
                         _LOGGER.info(
                             "Adding new %s metric sensor for %s: %s",
@@ -359,7 +366,8 @@ def _discover_new_cronjob_sensors(
     """Discover new individual CronJob sensors."""
     new_entities = []
     if coordinator.data and "cronjobs" in coordinator.data:
-        for cronjob_name, cronjob_data in coordinator.data["cronjobs"].items():
+        for cronjob_data in coordinator.data["cronjobs"].values():
+            cronjob_name = cronjob_data.get("name", "")
             namespace = cronjob_data.get("namespace", "default")
             unique_id = f"{config_entry.entry_id}_cronjob_{namespace}_{cronjob_name}"
             if unique_id not in existing_unique_ids:
@@ -381,7 +389,8 @@ def _discover_new_job_sensors(
     """Discover new individual Job sensors."""
     new_entities = []
     if coordinator.data and "jobs" in coordinator.data:
-        for job_name, job_data in coordinator.data["jobs"].items():
+        for job_data in coordinator.data["jobs"].values():
+            job_name = job_data.get("name", "")
             namespace = job_data.get("namespace", "default")
             unique_id = f"{config_entry.entry_id}_job_{namespace}_{job_name}"
             if unique_id not in existing_unique_ids:
@@ -998,9 +1007,7 @@ class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
             self._attr_native_unit_of_measurement = "MiB"
             self._attr_icon = "mdi:memory"
 
-        self._attr_unique_id = (
-            f"{config_entry.entry_id}_{workload_name}_{workload_type}_{metric}"
-        )
+        self._attr_unique_id = f"{config_entry.entry_id}_{namespace}_{workload_name}_{workload_type}_{metric}"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -1013,7 +1020,7 @@ class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
         if not self.coordinator.data:
             return None
         workload_data = self.coordinator.data.get(f"{self._workload_type}s", {}).get(
-            self.workload_name
+            f"{self.namespace}_{self.workload_name}"
         )
         if workload_data is None:
             return None
@@ -1042,9 +1049,7 @@ class KubernetesWorkloadStatusSensor(KubernetesBaseSensor):
         self.namespace = namespace
         self._workload_type = workload_type
         self._attr_name = workload_name
-        self._attr_unique_id = (
-            f"{config_entry.entry_id}_{workload_name}_{workload_type}_status"
-        )
+        self._attr_unique_id = f"{config_entry.entry_id}_{namespace}_{workload_name}_{workload_type}_status"
         self._attr_native_unit_of_measurement = None
         self._attr_icon = "mdi:kubernetes"
         self._attr_state_class = None
@@ -1060,7 +1065,7 @@ class KubernetesWorkloadStatusSensor(KubernetesBaseSensor):
         if not self.coordinator.data:
             return "Unknown"
         workload_data = self.coordinator.data.get(f"{self._workload_type}s", {}).get(
-            self.workload_name
+            f"{self.namespace}_{self.workload_name}"
         )
         if workload_data is None:
             return "Unknown"
@@ -1082,7 +1087,7 @@ class KubernetesWorkloadStatusSensor(KubernetesBaseSensor):
         if not self.coordinator.data:
             return {}
         workload_data = self.coordinator.data.get(f"{self._workload_type}s", {}).get(
-            self.workload_name
+            f"{self.namespace}_{self.workload_name}"
         )
         if not workload_data:
             return {}
@@ -1111,7 +1116,9 @@ class KubernetesDaemonSetSensor(KubernetesBaseSensor):
         self.daemonset_name = daemonset_name
         self.namespace = namespace
         self._attr_name = daemonset_name
-        self._attr_unique_id = f"{config_entry.entry_id}_daemonset_{daemonset_name}"
+        self._attr_unique_id = (
+            f"{config_entry.entry_id}_daemonset_{namespace}_{daemonset_name}"
+        )
         self._attr_native_unit_of_measurement = None
         self._attr_icon = "mdi:layers"
         self._attr_state_class = None
@@ -1125,7 +1132,9 @@ class KubernetesDaemonSetSensor(KubernetesBaseSensor):
     def native_value(self) -> str:
         """Return the status of the DaemonSet."""
         daemonset_data = (
-            self.coordinator.data.get("daemonsets", {}).get(self.daemonset_name)
+            self.coordinator.data.get("daemonsets", {}).get(
+                f"{self.namespace}_{self.daemonset_name}"
+            )
             if self.coordinator.data
             else None
         )
@@ -1149,7 +1158,7 @@ class KubernetesDaemonSetSensor(KubernetesBaseSensor):
         if not self.coordinator.data:
             return {}
         daemonset_data = self.coordinator.data.get("daemonsets", {}).get(
-            self.daemonset_name
+            f"{self.namespace}_{self.daemonset_name}"
         )
         if not daemonset_data:
             return {}
@@ -1194,7 +1203,9 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
     @property
     def native_value(self) -> str:
         """Return the status of the CronJob."""
-        cronjob_data = self.coordinator.get_cronjob_data(self.cronjob_name)
+        cronjob_data = self.coordinator.get_cronjob_data(
+            self.namespace, self.cronjob_name
+        )
         if cronjob_data is None:
             return "Unknown"
 
@@ -1215,7 +1226,9 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes for the CronJob."""
-        cronjob_data = self.coordinator.get_cronjob_data(self.cronjob_name)
+        cronjob_data = self.coordinator.get_cronjob_data(
+            self.namespace, self.cronjob_name
+        )
         if not cronjob_data:
             return {}
 
@@ -1295,7 +1308,7 @@ class KubernetesJobSensor(KubernetesBaseSensor):
     @property
     def native_value(self) -> str:
         """Return the status of the Job."""
-        job_data = self.coordinator.get_job_data(self.job_name)
+        job_data = self.coordinator.get_job_data(self.namespace, self.job_name)
         if job_data is None:
             return "Unknown"
 
@@ -1315,7 +1328,7 @@ class KubernetesJobSensor(KubernetesBaseSensor):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return additional state attributes for the Job."""
-        job_data = self.coordinator.get_job_data(self.job_name)
+        job_data = self.coordinator.get_job_data(self.namespace, self.job_name)
         if not job_data:
             return {}
 

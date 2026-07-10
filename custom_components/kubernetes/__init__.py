@@ -14,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, issue_registry as ir
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 from .config_flow import KubernetesConfigFlow  # noqa: F401
 from .const import (
@@ -99,6 +100,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Start the coordinator
     await coordinator.async_config_entry_first_refresh()
 
+    # Migrate pre-namespaced unique_ids before entities are created
+    _async_migrate_unique_ids(hass, entry, coordinator)
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Start watch tasks after platforms are set up so that the first watch events
@@ -114,6 +118,84 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     entry.async_on_unload(entry.add_update_listener(_async_update_options))
 
     return True
+
+
+def _async_migrate_unique_ids(
+    hass: HomeAssistant, entry: ConfigEntry, coordinator: KubernetesDataCoordinator
+) -> None:
+    """Migrate unique_ids that predate namespace-aware keying.
+
+    Older versions keyed deployment/statefulset switches, status/metric
+    sensors, and daemonset sensors by workload name only, so same-named
+    workloads in different namespaces collided. The new unique_ids include
+    the namespace. A workload name is migrated only when it resolves to
+    exactly one namespace in the current cluster data; ambiguous names are
+    left for the coordinator's orphan cleanup (their entities were pointing
+    at arbitrary data anyway).
+    """
+    data = coordinator.data or {}
+    registry = async_get_entity_registry(hass)
+    eid = entry.entry_id
+
+    def _namespaces_by_name(resource_key: str) -> dict[str, set[str]]:
+        by_name: dict[str, set[str]] = {}
+        for item in data.get(resource_key, {}).values():
+            by_name.setdefault(item.get("name", ""), set()).add(
+                item.get("namespace", "default")
+            )
+        return by_name
+
+    workload_maps = {
+        "deployment": _namespaces_by_name("deployments"),
+        "statefulset": _namespaces_by_name("statefulsets"),
+    }
+    daemonsets = _namespaces_by_name("daemonsets")
+
+    def _resolve(namespaces: set[str] | None) -> str | None:
+        return next(iter(namespaces)) if namespaces and len(namespaces) == 1 else None
+
+    migrated = 0
+    for reg_entry in list(registry.entities.get_entries_for_config_entry_id(eid)):
+        uid = reg_entry.unique_id or ""
+        if not uid.startswith(f"{eid}_"):
+            continue
+        rest = uid[len(eid) + 1 :]
+
+        new_uid = None
+        if rest.startswith("daemonset_"):
+            name = rest[len("daemonset_") :]
+            namespace = _resolve(daemonsets.get(name))
+            if namespace:
+                new_uid = f"{eid}_daemonset_{namespace}_{name}"
+        else:
+            for workload_type, by_name in workload_maps.items():
+                for suffix in ("", "_status", "_cpu", "_memory"):
+                    tail = f"_{workload_type}{suffix}"
+                    if not rest.endswith(tail):
+                        continue
+                    # K8s names cannot contain "_", so a new-format id
+                    # ("{ns}_{name}{tail}") never resolves here.
+                    name = rest[: -len(tail)]
+                    namespace = _resolve(by_name.get(name))
+                    if namespace:
+                        new_uid = f"{eid}_{namespace}_{name}{tail}"
+                    break
+                if new_uid:
+                    break
+
+        if new_uid and new_uid != uid:
+            try:
+                registry.async_update_entity(reg_entry.entity_id, new_unique_id=new_uid)
+                migrated += 1
+            except ValueError:
+                _LOGGER.debug(
+                    "Skipping unique_id migration for %s: %s already exists",
+                    reg_entry.entity_id,
+                    new_uid,
+                )
+
+    if migrated:
+        _LOGGER.info("Migrated %d entities to namespaced unique_ids", migrated)
 
 
 async def _async_sync_panel(hass: HomeAssistant, entry: ConfigEntry) -> None:

@@ -187,22 +187,31 @@ class TestKubernetesDataCoordinator:
         assert "nodes_count" in result
         assert "last_update" in result
 
-        assert "nginx-deployment" in result["deployments"]
-        assert result["deployments"]["nginx-deployment"]["name"] == "nginx-deployment"
-        assert result["deployments"]["nginx-deployment"]["namespace"] == "default"
-        assert result["deployments"]["nginx-deployment"]["replicas"] == 3
-
-        assert "redis-statefulset" in result["statefulsets"]
+        assert "default_nginx-deployment" in result["deployments"]
         assert (
-            result["statefulsets"]["redis-statefulset"]["name"] == "redis-statefulset"
+            result["deployments"]["default_nginx-deployment"]["name"]
+            == "nginx-deployment"
         )
-        assert result["statefulsets"]["redis-statefulset"]["namespace"] == "default"
-        assert result["statefulsets"]["redis-statefulset"]["replicas"] == 1
+        assert (
+            result["deployments"]["default_nginx-deployment"]["namespace"] == "default"
+        )
+        assert result["deployments"]["default_nginx-deployment"]["replicas"] == 3
 
-        assert "backup-job" in result["cronjobs"]
-        assert result["cronjobs"]["backup-job"]["name"] == "backup-job"
-        assert result["cronjobs"]["backup-job"]["namespace"] == "default"
-        assert result["cronjobs"]["backup-job"]["schedule"] == "0 2 * * *"
+        assert "default_redis-statefulset" in result["statefulsets"]
+        assert (
+            result["statefulsets"]["default_redis-statefulset"]["name"]
+            == "redis-statefulset"
+        )
+        assert (
+            result["statefulsets"]["default_redis-statefulset"]["namespace"]
+            == "default"
+        )
+        assert result["statefulsets"]["default_redis-statefulset"]["replicas"] == 1
+
+        assert "default_backup-job" in result["cronjobs"]
+        assert result["cronjobs"]["default_backup-job"]["name"] == "backup-job"
+        assert result["cronjobs"]["default_backup-job"]["namespace"] == "default"
+        assert result["cronjobs"]["default_backup-job"]["schedule"] == "0 2 * * *"
 
         assert "worker-node-1" in result["nodes"]
         assert result["nodes"]["worker-node-1"]["name"] == "worker-node-1"
@@ -333,7 +342,7 @@ class TestKubernetesDataCoordinator:
         """Test getting deployment data."""
         coordinator.data = {
             "deployments": {
-                "nginx-deployment": {
+                "default_nginx-deployment": {
                     "name": "nginx-deployment",
                     "namespace": "default",
                     "replicas": 3,
@@ -341,19 +350,19 @@ class TestKubernetesDataCoordinator:
             }
         }
 
-        result = coordinator.get_deployment_data("nginx-deployment")
+        result = coordinator.get_deployment_data("default", "nginx-deployment")
         assert result is not None
         assert result["name"] == "nginx-deployment"
         assert result["replicas"] == 3
 
-        result = coordinator.get_deployment_data("non-existent")
+        result = coordinator.get_deployment_data("default", "non-existent")
         assert result is None
 
     async def test_get_statefulset_data(self, coordinator):
         """Test getting StatefulSet data."""
         coordinator.data = {
             "statefulsets": {
-                "redis-statefulset": {
+                "default_redis-statefulset": {
                     "name": "redis-statefulset",
                     "namespace": "default",
                     "replicas": 1,
@@ -361,19 +370,19 @@ class TestKubernetesDataCoordinator:
             }
         }
 
-        result = coordinator.get_statefulset_data("redis-statefulset")
+        result = coordinator.get_statefulset_data("default", "redis-statefulset")
         assert result is not None
         assert result["name"] == "redis-statefulset"
         assert result["replicas"] == 1
 
-        result = coordinator.get_statefulset_data("non-existent")
+        result = coordinator.get_statefulset_data("default", "non-existent")
         assert result is None
 
     async def test_get_cronjob_data(self, coordinator):
         """Test getting CronJob data."""
         coordinator.data = {
             "cronjobs": {
-                "backup-job": {
+                "default_backup-job": {
                     "name": "backup-job",
                     "namespace": "default",
                     "schedule": "0 2 * * *",
@@ -382,12 +391,12 @@ class TestKubernetesDataCoordinator:
             }
         }
 
-        result = coordinator.get_cronjob_data("backup-job")
+        result = coordinator.get_cronjob_data("default", "backup-job")
         assert result is not None
         assert result["name"] == "backup-job"
         assert result["schedule"] == "0 2 * * *"
 
-        result = coordinator.get_cronjob_data("non-existent")
+        result = coordinator.get_cronjob_data("default", "non-existent")
         assert result is None
 
     async def test_get_node_data(self, coordinator):
@@ -468,7 +477,7 @@ class TestKubernetesDataCoordinator:
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_orphaned-deployment_deployment",
+            "test-entry-id_default_orphaned-deployment_deployment",
             "switch.orphaned_deployment",
         )
 
@@ -485,7 +494,7 @@ class TestKubernetesDataCoordinator:
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_orphaned-statefulset_statefulset",
+            "test-entry-id_default_orphaned-statefulset_statefulset",
             "switch.orphaned_statefulset",
         )
 
@@ -519,7 +528,7 @@ class TestKubernetesDataCoordinator:
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_nginx-deployment_deployment",
+            "test-entry-id_default_nginx-deployment_deployment",
             "switch.nginx_deployment",
         )
         _create_entity(
@@ -530,8 +539,15 @@ class TestKubernetesDataCoordinator:
         )
 
         current_data = {
-            "deployments": {"nginx-deployment": {"name": "nginx-deployment"}},
-            "cronjobs": {"backup-job": {"name": "backup-job"}},
+            "deployments": {
+                "default_nginx-deployment": {
+                    "name": "nginx-deployment",
+                    "namespace": "default",
+                }
+            },
+            "cronjobs": {
+                "default_backup-job": {"name": "backup-job", "namespace": "default"}
+            },
         }
 
         await coordinator._cleanup_orphaned_entities(current_data)
@@ -635,28 +651,28 @@ class TestKubernetesDataCoordinator:
         assert registry.async_get("sensor.current_node") is not None
 
     async def test_get_daemonset_data(self, coordinator):
-        """Test getting DaemonSet data by name."""
+        """Test getting DaemonSet data by namespace and name."""
         coordinator.data = {
             "daemonsets": {
-                "fluentd": {"name": "fluentd", "namespace": "logging"},
+                "logging_fluentd": {"name": "fluentd", "namespace": "logging"},
             }
         }
-        result = coordinator.get_daemonset_data("fluentd")
+        result = coordinator.get_daemonset_data("logging", "fluentd")
         assert result is not None
         assert result["name"] == "fluentd"
 
-        result = coordinator.get_daemonset_data("non-existent")
+        result = coordinator.get_daemonset_data("logging", "non-existent")
         assert result is None
 
         coordinator.data = None
-        result = coordinator.get_daemonset_data("fluentd")
+        result = coordinator.get_daemonset_data("logging", "fluentd")
         assert result is None
 
     async def test_get_job_data(self, coordinator):
-        """Test getting Job data by name."""
+        """Test getting Job data by namespace and name."""
         coordinator.data = {
             "jobs": {
-                "backup-job": {
+                "default_backup-job": {
                     "name": "backup-job",
                     "namespace": "default",
                     "succeeded": 1,
@@ -664,15 +680,15 @@ class TestKubernetesDataCoordinator:
                 }
             }
         }
-        result = coordinator.get_job_data("backup-job")
+        result = coordinator.get_job_data("default", "backup-job")
         assert result is not None
         assert result["name"] == "backup-job"
 
-        result = coordinator.get_job_data("non-existent")
+        result = coordinator.get_job_data("default", "non-existent")
         assert result is None
 
         coordinator.data = None
-        result = coordinator.get_job_data("backup-job")
+        result = coordinator.get_job_data("default", "backup-job")
         assert result is None
 
     async def test_get_pod_data(self, coordinator):
@@ -743,11 +759,11 @@ class TestKubernetesDataCoordinator:
     async def test_cleanup_orphaned_entities_removes_daemonset_sensor_format(
         self, hass: HomeAssistant, coordinator, mock_config_entry
     ):
-        """Test cleanup removes orphaned DaemonSet sensor (sensor format: daemonset_{name})."""
+        """Test cleanup removes orphaned DaemonSet sensor (sensor format: daemonset_{ns}_{name})."""
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_daemonset_fluentd",
+            "test-entry-id_daemonset_default_fluentd",
             "sensor.fluentd_daemonset",
         )
 
@@ -760,15 +776,19 @@ class TestKubernetesDataCoordinator:
     async def test_cleanup_orphaned_entities_keeps_existing_daemonset_sensor_format(
         self, hass: HomeAssistant, coordinator, mock_config_entry
     ):
-        """Test cleanup keeps existing DaemonSet sensor (sensor format: daemonset_{name})."""
+        """Test cleanup keeps existing DaemonSet sensor (sensor format: daemonset_{ns}_{name})."""
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_daemonset_fluentd",
+            "test-entry-id_daemonset_default_fluentd",
             "sensor.fluentd_daemonset",
         )
 
-        current_data = {"daemonsets": {"fluentd": {"name": "fluentd"}}}
+        current_data = {
+            "daemonsets": {
+                "default_fluentd": {"name": "fluentd", "namespace": "default"}
+            }
+        }
         await coordinator._cleanup_orphaned_entities(current_data)
 
         registry = er.async_get(hass)
@@ -781,7 +801,7 @@ class TestKubernetesDataCoordinator:
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_daemonset_my_custom_ds",
+            "test-entry-id_daemonset_default_my_custom_ds",
             "sensor.my_custom_ds_daemonset",
         )
 
@@ -798,11 +818,18 @@ class TestKubernetesDataCoordinator:
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_daemonset_my_custom_ds",
+            "test-entry-id_daemonset_default_my_custom_ds",
             "sensor.my_custom_ds_daemonset",
         )
 
-        current_data = {"daemonsets": {"my_custom_ds": {"name": "my_custom_ds"}}}
+        current_data = {
+            "daemonsets": {
+                "default_my_custom_ds": {
+                    "name": "my_custom_ds",
+                    "namespace": "default",
+                }
+            }
+        }
         await coordinator._cleanup_orphaned_entities(current_data)
 
         registry = er.async_get(hass)
@@ -836,7 +863,11 @@ class TestKubernetesDataCoordinator:
             "sensor.backup_job",
         )
 
-        current_data = {"jobs": {"backup-job": {"name": "backup-job"}}}
+        current_data = {
+            "jobs": {
+                "default_backup-job": {"name": "backup-job", "namespace": "default"}
+            }
+        }
         await coordinator._cleanup_orphaned_entities(current_data)
 
         registry = er.async_get(hass)
@@ -866,19 +897,19 @@ class TestKubernetesDataCoordinator:
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_nginx_deployment_cpu",
+            "test-entry-id_default_nginx_deployment_cpu",
             "sensor.nginx_cpu",
         )
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_nginx_deployment_memory",
+            "test-entry-id_default_nginx_deployment_memory",
             "sensor.nginx_memory",
         )
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_nginx_deployment_status",
+            "test-entry-id_default_nginx_deployment_status",
             "sensor.nginx_status",
         )
 
@@ -897,7 +928,7 @@ class TestKubernetesDataCoordinator:
         _create_entity(
             hass,
             mock_config_entry,
-            "test-entry-id_redis_statefulset_cpu",
+            "test-entry-id_default_redis_statefulset_cpu",
             "sensor.redis_cpu",
         )
 
@@ -1385,8 +1416,10 @@ class TestPopulateFromList:
 
         assert coord.data is None
 
-    async def test_non_pod_resources_use_name_as_key(self, coord, mock_client):
-        """Non-pod resources should use result['name'] as the dict key."""
+    async def test_non_node_resources_use_namespace_name_as_key(
+        self, coord, mock_client
+    ):
+        """Non-node resources should use '{namespace}_{name}' as the dict key."""
         coord.data = {"deployments": {}}
         mock_client._parse_deployment_item.return_value = {
             "name": "nginx-deploy",
@@ -1395,11 +1428,12 @@ class TestPopulateFromList:
 
         coord._populate_from_list(
             "deployments",
-            [{"metadata": {"name": "nginx-deploy"}}],
+            [{"metadata": {"name": "nginx-deploy", "namespace": "default"}}],
             mock_client._parse_deployment_item,
         )
 
-        assert "nginx-deploy" in coord.data["deployments"]
+        assert "default_nginx-deploy" in coord.data["deployments"]
+        assert "nginx-deploy" not in coord.data["deployments"]
 
     async def test_nodes_count_updated(self, coord, mock_client):
         """_populate_from_list should update nodes_count for nodes."""
@@ -1455,12 +1489,12 @@ class TestPopulateFromList:
 
         coord._populate_from_list(
             "deployments",
-            [{"metadata": {"name": "my-deploy"}}],
+            [{"metadata": {"name": "my-deploy", "namespace": "default"}}],
             mock_client._parse_deployment_item,
         )
 
         assert "deployments" in coord.data
-        assert "my-deploy" in coord.data["deployments"]
+        assert "default_my-deploy" in coord.data["deployments"]
 
     async def test_no_count_update_for_non_pod_non_node(self, coord, mock_client):
         """Deployments should not trigger pods_count or nodes_count updates."""
@@ -1528,18 +1562,20 @@ class TestApplyWatchEventExtended:
 
     async def test_unknown_event_type_ignored(self, coord, mock_client):
         """Unknown event types should return early without modifying data."""
-        coord.data = {"deployments": {"dep1": {"name": "dep1"}}}
+        coord.data = {
+            "deployments": {"default_dep1": {"name": "dep1", "namespace": "default"}}
+        }
         coord.async_update_listeners = MagicMock()
 
         coord._apply_watch_event(
             "deployments",
             "UNKNOWN_TYPE",
-            {"metadata": {"name": "dep1"}},
+            {"metadata": {"name": "dep1", "namespace": "default"}},
             mock_client._parse_deployment_item,
         )
 
         # Data unchanged, listeners not called
-        assert "dep1" in coord.data["deployments"]
+        assert "default_dep1" in coord.data["deployments"]
         coord.async_update_listeners.assert_not_called()
 
     async def test_last_update_timestamp_set(self, coord, mock_client):
@@ -1558,8 +1594,8 @@ class TestApplyWatchEventExtended:
         assert "last_update" in coord.data
         assert isinstance(coord.data["last_update"], float)
 
-    async def test_non_pod_key_uses_name(self, coord, mock_client):
-        """Non-pod resources should use name (not namespace_name) as key."""
+    async def test_non_node_key_uses_namespace_name(self, coord, mock_client):
+        """Non-node resources should use '{namespace}_{name}' as key, like pods."""
         coord.data = {"deployments": {}}
         coord.async_update_listeners = MagicMock()
         mock_client._parse_deployment_item.return_value = {
@@ -1574,9 +1610,9 @@ class TestApplyWatchEventExtended:
             mock_client._parse_deployment_item,
         )
 
-        assert "my-deploy" in coord.data["deployments"]
-        # Should NOT use namespace_name key like pods
-        assert "production_my-deploy" not in coord.data["deployments"]
+        assert "production_my-deploy" in coord.data["deployments"]
+        # Should NOT use the bare name as key
+        assert "my-deploy" not in coord.data["deployments"]
 
     async def test_deleted_event_for_nodes_updates_count(self, coord, mock_client):
         """DELETED event for nodes should decrement nodes_count."""
@@ -1643,7 +1679,7 @@ class TestApplyWatchEventExtended:
         )
 
         assert "deployments" in coord.data
-        assert "new-dep" in coord.data["deployments"]
+        assert "default_new-dep" in coord.data["deployments"]
 
     async def test_deleted_triggers_orphan_cleanup(self, hass, coord, mock_client):
         """DELETED event should schedule orphan entity cleanup."""
@@ -2843,3 +2879,102 @@ class TestEventWatchLoop:
             mock_send.assert_called_once()
             _hass, signal, payload = mock_send.call_args[0]
             assert payload["namespace"] == "ns-from-meta"
+
+
+class TestSameNameDifferentNamespace:
+    """Regression tests for #302: same-named workloads across namespaces must not collide."""
+
+    async def test_statefulsets_same_name_different_namespace_both_kept(
+        self, hass: HomeAssistant, coordinator, mock_client
+    ):
+        """Two StatefulSets both named 'bot' in different namespaces must both survive
+        the poll cycle instead of one clobbering the other in coordinator.data."""
+        mock_client.get_statefulsets.return_value = [
+            {
+                "name": "bot",
+                "namespace": "c3po",
+                "replicas": 10,
+                "ready_replicas": 10,
+                "current_replicas": 10,
+                "updated_replicas": 10,
+            },
+            {
+                "name": "bot",
+                "namespace": "toothless",
+                "replicas": 0,
+                "ready_replicas": 0,
+                "current_replicas": 0,
+                "updated_replicas": 0,
+            },
+        ]
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            result = await coordinator._async_update_data()
+
+        assert "c3po_bot" in result["statefulsets"]
+        assert "toothless_bot" in result["statefulsets"]
+        assert result["statefulsets"]["c3po_bot"]["replicas"] == 10
+        assert result["statefulsets"]["toothless_bot"]["replicas"] == 0
+
+        coordinator.data = result
+
+        c3po_bot = coordinator.get_statefulset_data("c3po", "bot")
+        toothless_bot = coordinator.get_statefulset_data("toothless", "bot")
+
+        assert c3po_bot is not None
+        assert c3po_bot["namespace"] == "c3po"
+        assert c3po_bot["replicas"] == 10
+
+        assert toothless_bot is not None
+        assert toothless_bot["namespace"] == "toothless"
+        assert toothless_bot["replicas"] == 0
+
+    async def test_apply_watch_event_updates_only_matching_namespace(self, coordinator):
+        """A MODIFIED watch event for one namespace's deployment must update only
+        that namespace's entry, leaving the same-named deployment in another
+        namespace untouched."""
+        coordinator.data = {
+            "deployments": {
+                "c3po_bot": {"name": "bot", "namespace": "c3po", "replicas": 10},
+                "toothless_bot": {
+                    "name": "bot",
+                    "namespace": "toothless",
+                    "replicas": 0,
+                },
+            },
+        }
+        coordinator.async_update_listeners = MagicMock()
+
+        def parse_fn(obj: dict) -> dict:
+            metadata = obj["metadata"]
+            return {
+                "name": metadata["name"],
+                "namespace": metadata["namespace"],
+                "replicas": 5,
+            }
+
+        obj = {
+            "metadata": {
+                "name": "bot",
+                "namespace": "c3po",
+                "resourceVersion": "42",
+            }
+        }
+
+        coordinator._apply_watch_event("deployments", "MODIFIED", obj, parse_fn)
+
+        assert coordinator.data["deployments"]["c3po_bot"]["replicas"] == 5
+        assert coordinator.data["deployments"]["toothless_bot"]["replicas"] == 0
