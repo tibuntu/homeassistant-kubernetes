@@ -2,16 +2,15 @@
 
 ## [1.5.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.4.1...v1.5.0) (2026-07-11)
 
+This release adds **Ingress support** and makes the dashboard panel update live. Everything is additive — existing setups keep working unchanged.
 
-### Features
+### New features
 
-* add Ingress fetching and parsing to Kubernetes client ([7fa2f38](https://github.com/tibuntu/homeassistant-kubernetes/commit/7fa2f38cd7f5d0589a728ee21712ae0df144e460))
-* add Ingresses count sensor ([f2b853f](https://github.com/tibuntu/homeassistant-kubernetes/commit/f2b853fd2ac1eac25f210a0b1d193fbdd786f860))
-* add kubernetes/ingresses/list websocket command ([b148b29](https://github.com/tibuntu/homeassistant-kubernetes/commit/b148b296421d8f82ad7439decad5a98b90d75728))
-* add Network tab with clickable Ingress URLs to sidebar panel ([9bdb4bd](https://github.com/tibuntu/homeassistant-kubernetes/commit/9bdb4bd0f48dd3286357d5736bb455108c971e2a))
-* **panel:** add kubernetes/subscribe_updates websocket subscription ([cb660e6](https://github.com/tibuntu/homeassistant-kubernetes/commit/cb660e63d1675539e190055bf713e931b7f93903))
-* **panel:** live view updates via websocket subscription ([e22d66c](https://github.com/tibuntu/homeassistant-kubernetes/commit/e22d66ce1c551382c3da5cd4a515b10273121d4c))
-* poll and watch Ingresses in the data coordinator ([d41b3ae](https://github.com/tibuntu/homeassistant-kubernetes/commit/d41b3aef00399b6f10dc46f46565129d1b2951fe))
+**Ingresses in the dashboard panel.** A new **Network** tab lists every Ingress with its class, backing service, TLS status, age — and clickable URLs derived from each Ingress's rules and TLS configuration, so you can jump straight to your services. Comes with an *Ingresses Count* sensor on the cluster device, and Ingresses are covered by the experimental Watch API for real-time updates.
+
+**Live panel updates.** The panel now subscribes to cluster updates over the websocket, so every tab refreshes the moment new data arrives instead of waiting for the next 30-second poll.
+
+> **Upgrading — RBAC:** Ingress support needs read access to `ingresses` in the `networking.k8s.io` API group. Both bundled manifests (**full** and **minimal**) already include the new rule; custom manifests need `get, list` (plus `watch` for the Watch API) added to see Ingresses.
 
 ## [1.4.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.4.0...v1.4.1) (2026-07-10)
 
