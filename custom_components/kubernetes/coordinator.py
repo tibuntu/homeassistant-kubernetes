@@ -102,12 +102,13 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             try:
                 _LOGGER.debug("Updating Kubernetes data for coordinator")
 
-                # Fetch deployments, statefulsets, daemonsets, cronjobs, jobs, pods count, nodes count, and detailed nodes info
+                # Fetch deployments, statefulsets, daemonsets, cronjobs, jobs, ingresses, pods count, nodes count, and detailed nodes info
                 deployments = await self.client.get_deployments()
                 statefulsets = await self.client.get_statefulsets()
                 daemonsets = await self.client.get_daemonsets()
                 cronjobs = await self.client.get_cronjobs()
                 jobs = await self.client.get_jobs()
+                ingresses = await self.client.get_ingresses()
                 pods_count = await self.client.get_pods_count()
                 nodes_count = await self.client.get_nodes_count()
 
@@ -156,6 +157,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     },
                     "cronjobs": {f"{c['namespace']}_{c['name']}": c for c in cronjobs},
                     "jobs": {f"{j['namespace']}_{j['name']}": j for j in jobs},
+                    "ingresses": {
+                        f"{i['namespace']}_{i['name']}": i for i in ingresses
+                    },
                     "nodes": {node["name"]: node for node in nodes},
                     "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                     "pods_count": pods_count,
@@ -164,12 +168,13 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 }
 
                 _LOGGER.debug(
-                    "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d jobs, %d pods (detailed: %d), %d nodes (detailed: %d)",
+                    "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d jobs, %d ingresses, %d pods (detailed: %d), %d nodes (detailed: %d)",
                     len(deployments),
                     len(statefulsets),
                     len(daemonsets),
                     len(cronjobs),
                     len(jobs),
+                    len(ingresses),
                     pods_count,
                     len(pods),
                     nodes_count,
@@ -228,6 +233,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "jobs" not in self.data:
             return None
         return self.data["jobs"].get(f"{namespace}_{job_name}")
+
+    def get_ingress_data(
+        self, namespace: str, ingress_name: str
+    ) -> dict[str, Any] | None:
+        """Get ingress data by namespace and name."""
+        if not self.data or "ingresses" not in self.data:
+            return None
+        return self.data["ingresses"].get(f"{namespace}_{ingress_name}")
 
     def get_node_data(self, node_name: str) -> dict[str, Any] | None:
         """Get node data by name."""
@@ -299,6 +312,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             "daemonsets_count",
             "cronjobs_count",
             "jobs_count",
+            "ingresses_count",
         ):
             expected.add(f"{eid}_{suffix}")
 
@@ -451,6 +465,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         f"{base_url}/apis/batch/v1/jobs",
                         client._format_job_from_dict,
                     ),
+                    (
+                        "ingresses",
+                        f"{base_url}/apis/networking.k8s.io/v1/ingresses",
+                        client._parse_ingress_item,
+                    ),
                 ]
             )
         else:
@@ -488,6 +507,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             "jobs",
                             f"{base_url}/apis/batch/v1/namespaces/{ns}/jobs",
                             client._format_job_from_dict,
+                        ),
+                        (
+                            "ingresses",
+                            f"{base_url}/apis/networking.k8s.io/v1/namespaces/{ns}/ingresses",
+                            client._parse_ingress_item,
                         ),
                     ]
                 )

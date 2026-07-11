@@ -137,6 +137,15 @@ class TestKubernetesDataCoordinator:
         ]
         mock_client.get_cronjobs.return_value = mock_cronjobs
 
+        mock_ingresses = [
+            {
+                "name": "web",
+                "namespace": "default",
+                "status": "Active",
+            }
+        ]
+        mock_client.get_ingresses.return_value = mock_ingresses
+
         mock_nodes = [
             {
                 "name": "worker-node-1",
@@ -182,6 +191,7 @@ class TestKubernetesDataCoordinator:
         assert "statefulsets" in result
         assert "cronjobs" in result
         assert "jobs" in result
+        assert "ingresses" in result
         assert "nodes" in result
         assert "pods_count" in result
         assert "nodes_count" in result
@@ -212,6 +222,11 @@ class TestKubernetesDataCoordinator:
         assert result["cronjobs"]["default_backup-job"]["name"] == "backup-job"
         assert result["cronjobs"]["default_backup-job"]["namespace"] == "default"
         assert result["cronjobs"]["default_backup-job"]["schedule"] == "0 2 * * *"
+
+        assert "default_web" in result["ingresses"]
+        assert result["ingresses"]["default_web"]["name"] == "web"
+        assert result["ingresses"]["default_web"]["namespace"] == "default"
+        assert result["ingresses"]["default_web"]["status"] == "Active"
 
         assert "worker-node-1" in result["nodes"]
         assert result["nodes"]["worker-node-1"]["name"] == "worker-node-1"
@@ -316,6 +331,7 @@ class TestKubernetesDataCoordinator:
         assert result["statefulsets"] == {}
         assert result["cronjobs"] == {}
         assert result["jobs"] == {}
+        assert result["ingresses"] == {}
         assert result["pods_count"] == 0
         assert result["nodes_count"] == 0
 
@@ -689,6 +705,42 @@ class TestKubernetesDataCoordinator:
 
         coordinator.data = None
         result = coordinator.get_job_data("default", "backup-job")
+        assert result is None
+
+    async def test_get_ingress_data(self, coordinator):
+        """Test getting Ingress data by namespace and name."""
+        coordinator.data = {
+            "ingresses": {
+                "default_web": {
+                    "name": "web",
+                    "namespace": "default",
+                    "status": "Active",
+                },
+                "prod_api": {
+                    "name": "api",
+                    "namespace": "prod",
+                    "status": "Active",
+                },
+            }
+        }
+        result = coordinator.get_ingress_data("default", "web")
+        assert result is not None
+        assert result["name"] == "web"
+        assert result["namespace"] == "default"
+
+        result = coordinator.get_ingress_data("prod", "api")
+        assert result is not None
+        assert result["name"] == "api"
+        assert result["namespace"] == "prod"
+
+        result = coordinator.get_ingress_data("default", "non-existent")
+        assert result is None
+
+        result = coordinator.get_ingress_data("missing", "web")
+        assert result is None
+
+        coordinator.data = None
+        result = coordinator.get_ingress_data("default", "web")
         assert result is None
 
     async def test_get_pod_data(self, coordinator):
@@ -2125,6 +2177,7 @@ class TestBuildWatchConfigs:
         client._parse_daemonset_item = MagicMock()
         client._format_cronjob_from_dict = MagicMock()
         client._format_job_from_dict = MagicMock()
+        client._parse_ingress_item = MagicMock()
         return client
 
     @pytest.fixture
@@ -2168,13 +2221,14 @@ class TestBuildWatchConfigs:
         assert "daemonsets" in resource_types
         assert "cronjobs" in resource_types
         assert "jobs" in resource_types
+        assert "ingresses" in resource_types
 
         # All URLs should be cluster-wide (no /namespaces/ in them)
         for url in urls:
             assert "/namespaces/" not in url
 
-        # 7 resource types total
-        assert len(configs) == 7
+        # 8 resource types total
+        assert len(configs) == 8
 
     async def test_per_namespace_configs_when_not_monitor_all(self, coord, mock_client):
         """When monitor_all_namespaces=False, should return per-namespace URLs."""
@@ -2184,8 +2238,8 @@ class TestBuildWatchConfigs:
 
         configs = coord._build_watch_configs(base_url)
 
-        # Nodes is always cluster-scoped (1 config) plus 6 resource types * 2 namespaces
-        assert len(configs) == 1 + 6 * 2
+        # Nodes is always cluster-scoped (1 config) plus 7 resource types * 2 namespaces
+        assert len(configs) == 1 + 7 * 2
 
         # The nodes URL should be cluster-wide
         nodes_configs = [(rt, url) for rt, url, _ in configs if rt == "nodes"]
@@ -2199,15 +2253,15 @@ class TestBuildWatchConfigs:
         assert any("/namespaces/kube-system/pods" in url for _, url in pod_configs)
 
     async def test_single_namespace_config(self, coord, mock_client):
-        """With one namespace and not monitoring all, should have 7 configs."""
+        """With one namespace and not monitoring all, should have 8 configs."""
         mock_client.monitor_all_namespaces = False
         mock_client.namespaces = ["production"]
         base_url = "https://test-cluster.example.com:6443"
 
         configs = coord._build_watch_configs(base_url)
 
-        # 1 nodes (cluster-wide) + 6 per-namespace resources * 1 namespace
-        assert len(configs) == 7
+        # 1 nodes (cluster-wide) + 7 per-namespace resources * 1 namespace
+        assert len(configs) == 8
 
         # Verify namespace appears in URLs for namespace-scoped resources
         ns_urls = [url for rt, url, _ in configs if rt != "nodes"]
@@ -2230,6 +2284,39 @@ class TestBuildWatchConfigs:
         assert parse_fn_map["daemonsets"] is mock_client._parse_daemonset_item
         assert parse_fn_map["cronjobs"] is mock_client._format_cronjob_from_dict
         assert parse_fn_map["jobs"] is mock_client._format_job_from_dict
+        assert parse_fn_map["ingresses"] is mock_client._parse_ingress_item
+
+    async def test_watch_configs_include_ingresses_all_namespaces(
+        self, coord, mock_client
+    ):
+        """Ingresses are watched cluster-wide when monitoring all namespaces."""
+        mock_client.monitor_all_namespaces = True
+        configs = coord._build_watch_configs("https://host:6443")
+
+        ingress_configs = [c for c in configs if c[0] == "ingresses"]
+        assert len(ingress_configs) == 1
+        assert (
+            ingress_configs[0][1]
+            == "https://host:6443/apis/networking.k8s.io/v1/ingresses"
+        )
+
+    async def test_watch_configs_include_ingresses_per_namespace(
+        self, coord, mock_client
+    ):
+        """Ingresses get one watch per configured namespace."""
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["default", "kube-system"]
+        configs = coord._build_watch_configs("https://host:6443")
+
+        urls = [c[1] for c in configs if c[0] == "ingresses"]
+        assert (
+            "https://host:6443/apis/networking.k8s.io/v1/namespaces/default/ingresses"
+            in urls
+        )
+        assert (
+            "https://host:6443/apis/networking.k8s.io/v1/namespaces/kube-system/ingresses"
+            in urls
+        )
 
 
 class TestStartStopWatchTasksExtended:
@@ -2250,6 +2337,7 @@ class TestStartStopWatchTasksExtended:
         client._parse_daemonset_item = MagicMock()
         client._format_cronjob_from_dict = MagicMock()
         client._format_job_from_dict = MagicMock()
+        client._parse_ingress_item = MagicMock()
         client.list_resource_with_version = AsyncMock(return_value=([], "123"))
 
         async def _empty_stream(url, rv):
@@ -2295,8 +2383,8 @@ class TestStartStopWatchTasksExtended:
         ):
             await coord.async_start_watch_tasks()
 
-        # 7 resource types for monitor_all_namespaces=True
-        assert len(coord._watch_tasks) == 7
+        # 8 resource types for monitor_all_namespaces=True
+        assert len(coord._watch_tasks) == 8
 
         for coro in created_coros:
             coro.close()
