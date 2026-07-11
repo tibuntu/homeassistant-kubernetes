@@ -358,6 +358,22 @@ class TestKubernetesIngressesSensor:
         # The sensor should return 0 when coordinator data is None
         assert sensor.native_value == 0
 
+    async def test_sensor_update_failure(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor update failure."""
+        mock_client.get_ingresses_count.side_effect = Exception("API Error")
+
+        sensor = KubernetesIngressesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        # Should handle exception gracefully
+        await sensor.async_update()
+
+        # Value should be 0 on error
+        assert sensor.native_value == 0
+
 
 class TestKubernetesClusterHealthSensor:
     """Test Kubernetes cluster health binary sensor."""
