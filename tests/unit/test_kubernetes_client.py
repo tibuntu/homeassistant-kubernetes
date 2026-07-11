@@ -588,6 +588,42 @@ async def test_get_ingresses_count_success(mock_client):
     assert count == 4
 
 
+async def test_get_ingresses_count_empty(mock_client):
+    """Test Ingresses count retrieval when no ingresses exist."""
+    mock_client._fetch_resource_count = AsyncMock(return_value=0)
+
+    count = await mock_client.get_ingresses_count()
+
+    assert count == 0
+
+
+async def test_get_ingresses_count_api_exception(mock_client):
+    """Test Ingresses count retrieval when API raises exception."""
+    mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
+
+    count = await mock_client.get_ingresses_count()
+
+    assert count == 0
+
+
+async def test_get_ingresses_api_exception(mock_client):
+    """Test Ingresses retrieval when API raises exception."""
+    mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
+
+    ingresses = await mock_client.get_ingresses()
+
+    assert ingresses == []
+
+
+async def test_get_ingresses_empty(mock_client):
+    """Test Ingresses retrieval when no ingresses exist."""
+    mock_client._fetch_resource_list = AsyncMock(return_value=[])
+
+    ingresses = await mock_client.get_ingresses()
+
+    assert ingresses == []
+
+
 async def test_get_ingresses_success(mock_client):
     """Test successful ingresses retrieval."""
     mock_client._fetch_resource_list = AsyncMock(
