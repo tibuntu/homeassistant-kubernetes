@@ -138,7 +138,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 9
+            assert mock_ws_api.async_register_command.call_count == 10
 
 
 class TestWebsocketClusterOverview:

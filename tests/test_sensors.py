@@ -452,8 +452,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 7 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs) + number of node sensors from coordinator
-        expected_count = 7 + len(mock_coordinator.get_all_nodes_data())
+        # 8 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses) + number of node sensors from coordinator
+        expected_count = 8 + len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
@@ -3610,8 +3610,8 @@ class TestAsyncSetupEntryWithResources:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         sensors = mock_add_entities.call_args[0][0]
-        # 7 aggregate + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 19
-        assert len(sensors) == 19
+        # 8 aggregate + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 20
+        assert len(sensors) == 20
 
     async def test_stores_add_entities_callback(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
