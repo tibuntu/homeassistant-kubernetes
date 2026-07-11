@@ -113,6 +113,7 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 - Inside coroutines always use `asyncio.get_running_loop()`, never `asyncio.get_event_loop()` (deprecated in Python 3.10+ within a running loop)
 - For long-lived aiohttp streams (`total=None`) always set a `sock_read` timeout to guard against stale/half-open TCP connections
 - In `async_setup_entry`, start any background tasks **after** `async_forward_entry_setups()` so entity listeners are registered before the first events can arrive
+- When adding support for a new Kubernetes resource type, always wire it into the Watch API as well (`coordinator._build_watch_configs` + a single-item parse helper on the client) — watch support is preferred over poll-only for every resource
 
 ## CI
 
