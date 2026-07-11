@@ -2600,6 +2600,306 @@ __decorate([r()], K8sPodsTable.prototype, "_deleteConfirm", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_deleting", void 0);
 K8sPodsTable = __decorate([t("k8s-pods-table")], K8sPodsTable);
 //#endregion
+//#region src/views/k8s-network.ts
+var K8sNetwork = class K8sNetwork extends i {
+	constructor(..._args) {
+		super(..._args);
+		this._data = null;
+		this._loading = true;
+		this._error = null;
+		this._searchQuery = "";
+		this._loadingInFlight = false;
+		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+	}
+	firstUpdated(_changedProps) {
+		this._loadData();
+		this._startPolling();
+		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+	}
+	disconnectedCallback() {
+		super.disconnectedCallback();
+		this._stopPolling();
+		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+	}
+	_handleVisibilityChange() {
+		if (document.hidden) this._stopPolling();
+		else {
+			this._loadData();
+			this._startPolling();
+		}
+	}
+	_startPolling() {
+		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+	}
+	_stopPolling() {
+		if (this._refreshInterval) {
+			clearInterval(this._refreshInterval);
+			this._refreshInterval = void 0;
+		}
+	}
+	async _loadData() {
+		if (this._loadingInFlight) return;
+		this._loadingInFlight = true;
+		if (!this._data) this._loading = true;
+		this._error = null;
+		try {
+			const result = await this.hass.callWS({ type: "kubernetes/ingresses/list" });
+			this._data = result;
+		} catch (err) {
+			this._error = err.message || "Failed to load ingress data";
+		} finally {
+			this._loading = false;
+			this._loadingInFlight = false;
+		}
+	}
+	_formatAge(timestamp) {
+		if (!timestamp || timestamp === "N/A") return "N/A";
+		const created = new Date(timestamp).getTime();
+		const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
+		if (diff < 60) return `${diff}s`;
+		if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+		if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+		return `${Math.floor(diff / 86400)}d`;
+	}
+	_getFilteredIngresses(ingresses) {
+		if (!this._searchQuery) return ingresses;
+		const q = this._searchQuery.toLowerCase();
+		return ingresses.filter((i) => i.name.toLowerCase().includes(q) || i.namespace.toLowerCase().includes(q) || i.rules.some((r) => (r.host || "").toLowerCase().includes(q)));
+	}
+	_services(ingress) {
+		return [...new Set(ingress.rules.map((r) => r.service_name))].filter(Boolean).join(", ");
+	}
+	_hasTls(ingress) {
+		return ingress.tls_hosts.length > 0 || ingress.urls.some((u) => u.startsWith("https://"));
+	}
+	static {
+		this.styles = i$3`
+    :host {
+      display: block;
+    }
+
+    .loading {
+      display: flex;
+      justify-content: center;
+      padding: 64px 0;
+    }
+
+    .error-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px;
+      text-align: center;
+      color: var(--error-color, #db4437);
+      --mdc-icon-size: 48px;
+    }
+
+    .error-card p {
+      margin: 16px 0;
+    }
+
+    .retry-btn {
+      cursor: pointer;
+      padding: 8px 24px;
+      border: 1px solid var(--primary-color);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--primary-color);
+      font-size: 14px;
+    }
+
+    .retry-btn:hover {
+      background: var(--primary-color);
+      color: var(--text-primary-color, #fff);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 64px 16px;
+      color: var(--secondary-text-color);
+      font-size: 16px;
+    }
+
+    .cluster-section {
+      margin-bottom: 24px;
+    }
+
+    .cluster-name {
+      font-size: 20px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+      margin-bottom: 12px;
+    }
+
+    .filters {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .search-input {
+      padding: 8px 12px;
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      background: var(--card-background-color, var(--primary-background-color));
+      color: var(--primary-text-color);
+      font-size: 14px;
+      min-width: 200px;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+
+    .ingress-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .ingress-table th {
+      text-align: left;
+      padding: 10px 12px;
+      color: var(--secondary-text-color);
+      font-weight: 500;
+      border-bottom: 2px solid var(--divider-color);
+      white-space: nowrap;
+    }
+
+    .ingress-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--divider-color);
+      vertical-align: middle;
+    }
+
+    .ingress-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .ingress-table tr:hover td {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
+    }
+
+    .url-link {
+      display: block;
+      color: var(--primary-color);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .url-link:hover {
+      text-decoration: underline;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .badge-tls {
+      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+      color: var(--success-color, #4caf50);
+    }
+
+    .badge-plain {
+      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+      color: var(--warning-color, #ff9800);
+    }
+  `;
+	}
+	render() {
+		if (this._loading) return b`<div class="loading">
+        <ha-circular-progress indeterminate></ha-circular-progress>
+      </div>`;
+		if (this._error) return b`
+        <div class="error-card">
+          <ha-icon icon="mdi:alert-circle"></ha-icon>
+          <p>${this._error}</p>
+          <button class="retry-btn" @click=${() => this._loadData()}>Retry</button>
+        </div>
+      `;
+		const clusters = this._data?.clusters ?? [];
+		if (!clusters.length || clusters.every((c) => !c.ingresses.length)) return b`<div class="empty">No ingresses found.</div>`;
+		return b`
+      <div class="filters">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Search ingresses…"
+          .value=${this._searchQuery}
+          @input=${(e) => this._searchQuery = e.target.value}
+        />
+      </div>
+      ${clusters.map((cluster) => this._renderCluster(cluster))}
+    `;
+	}
+	_renderCluster(cluster) {
+		if (!cluster.ingresses.length) return A;
+		const ingresses = this._getFilteredIngresses(cluster.ingresses);
+		return b`
+      <div class="cluster-section">
+        ${this._data.clusters.length > 1 ? b`<div class="cluster-name">${cluster.cluster_name}</div>` : A}
+        ${ingresses.length === 0 ? b`<div class="empty">No ingresses match your search.</div>` : this._renderTable(ingresses)}
+      </div>
+    `;
+	}
+	_renderTable(ingresses) {
+		return b`
+      <table class="ingress-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Namespace</th>
+            <th>Class</th>
+            <th>URLs</th>
+            <th>Service</th>
+            <th>TLS</th>
+            <th>Age</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${ingresses.map((ingress) => b`
+              <tr>
+                <td>${ingress.name}</td>
+                <td>${ingress.namespace}</td>
+                <td>${ingress.ingress_class || "—"}</td>
+                <td>${this._renderUrls(ingress)}</td>
+                <td>${this._services(ingress) || "—"}</td>
+                <td>${this._renderTlsBadge(ingress)}</td>
+                <td>${this._formatAge(ingress.creation_timestamp)}</td>
+              </tr>
+            `)}
+        </tbody>
+      </table>
+    `;
+	}
+	_renderUrls(ingress) {
+		if (!ingress.urls.length) return "—";
+		return ingress.urls.map((url) => b`
+        <a class="url-link" href=${url} target="_blank" rel="noopener noreferrer"
+          >${url}</a
+        >
+      `);
+	}
+	_renderTlsBadge(ingress) {
+		return this._hasTls(ingress) ? b`<span class="badge badge-tls">TLS</span>` : b`<span class="badge badge-plain">HTTP</span>`;
+	}
+};
+__decorate([n({ attribute: false })], K8sNetwork.prototype, "hass", void 0);
+__decorate([r()], K8sNetwork.prototype, "_data", void 0);
+__decorate([r()], K8sNetwork.prototype, "_loading", void 0);
+__decorate([r()], K8sNetwork.prototype, "_error", void 0);
+__decorate([r()], K8sNetwork.prototype, "_searchQuery", void 0);
+K8sNetwork = __decorate([t("k8s-network")], K8sNetwork);
+//#endregion
 //#region src/views/k8s-workloads.ts
 var K8sWorkloads = class K8sWorkloads extends i {
 	constructor(..._args) {
@@ -4082,6 +4382,11 @@ var KubernetesPanel = class KubernetesPanel extends i {
 				icon: "mdi:cube-outline"
 			},
 			{
+				id: "network",
+				label: "Network",
+				icon: "mdi:lan"
+			},
+			{
 				id: "settings",
 				label: "Settings",
 				icon: "mdi:cog"
@@ -4230,6 +4535,7 @@ var KubernetesPanel = class KubernetesPanel extends i {
 			case "nodes": return b`<k8s-nodes-table .hass=${this.hass}></k8s-nodes-table>`;
 			case "pods": return b`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
 			case "workloads": return b`<k8s-workloads .hass=${this.hass}></k8s-workloads>`;
+			case "network": return b`<k8s-network .hass=${this.hass}></k8s-network>`;
 			case "settings": return b`<k8s-settings .hass=${this.hass}></k8s-settings>`;
 			default: return b`
           <div class="coming-soon">

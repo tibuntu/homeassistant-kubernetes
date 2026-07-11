@@ -5,10 +5,11 @@ import { loadHaElements } from "./utils/load-ha-elements";
 import "./views/k8s-overview";
 import "./views/k8s-nodes-table";
 import "./views/k8s-pods-table";
+import "./views/k8s-network";
 import "./views/k8s-workloads";
 import "./views/k8s-settings";
 
-type Tab = "overview" | "nodes" | "workloads" | "pods" | "settings";
+type Tab = "overview" | "nodes" | "workloads" | "pods" | "network" | "settings";
 
 interface TabDef {
   id: Tab;
@@ -30,6 +31,7 @@ export class KubernetesPanel extends LitElement {
     { id: "nodes", label: "Nodes", icon: "mdi:server" },
     { id: "workloads", label: "Workloads", icon: "mdi:application-cog" },
     { id: "pods", label: "Pods", icon: "mdi:cube-outline" },
+    { id: "network", label: "Network", icon: "mdi:lan" },
     { id: "settings", label: "Settings", icon: "mdi:cog" },
   ];
 
@@ -183,6 +185,8 @@ export class KubernetesPanel extends LitElement {
         return html`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
       case "workloads":
         return html`<k8s-workloads .hass=${this.hass}></k8s-workloads>`;
+      case "network":
+        return html`<k8s-network .hass=${this.hass}></k8s-network>`;
       case "settings":
         return html`<k8s-settings .hass=${this.hass}></k8s-settings>`;
       default:
