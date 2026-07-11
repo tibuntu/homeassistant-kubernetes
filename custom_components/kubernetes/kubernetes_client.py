@@ -959,6 +959,76 @@ class KubernetesClient:
             _LOGGER.warning("Failed to parse daemonset item: %s", ex)
             return None
 
+    def _parse_ingress_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw Ingress API object into the internal representation."""
+        try:
+            metadata = item["metadata"]
+            spec = item.get("spec", {})
+
+            tls_hosts: list[str] = []
+            has_default_tls = False
+            for tls in spec.get("tls") or []:
+                hosts = tls.get("hosts") or []
+                if hosts:
+                    tls_hosts.extend(hosts)
+                else:
+                    # A TLS block without hosts is the default cert for
+                    # this Ingress — it covers every rule host.
+                    has_default_tls = True
+
+            rules: list[dict[str, Any]] = []
+            urls: list[str] = []
+            for rule in spec.get("rules") or []:
+                host = rule.get("host", "")
+                for path_item in (rule.get("http") or {}).get("paths") or []:
+                    path = path_item.get("path") or "/"
+                    service = path_item.get("backend", {}).get("service", {})
+                    port = service.get("port", {})
+                    rules.append(
+                        {
+                            "host": host,
+                            "path": path,
+                            "service_name": service.get("name", ""),
+                            "service_port": port.get("number")
+                            or port.get("name")
+                            or "",
+                        }
+                    )
+                    if host and "*" not in host:
+                        # A TLS block covers the host on exact match or via a
+                        # wildcard cert for the host's parent domain.
+                        wildcard = f"*.{host.split('.', 1)[-1]}"
+                        scheme = (
+                            "https"
+                            if host in tls_hosts
+                            or wildcard in tls_hosts
+                            or has_default_tls
+                            else "http"
+                        )
+                        urls.append(f"{scheme}://{host}{path}")
+
+            load_balancer = ""
+            for lb in (
+                item.get("status", {}).get("loadBalancer", {}).get("ingress") or []
+            ):
+                load_balancer = lb.get("ip") or lb.get("hostname") or ""
+                if load_balancer:
+                    break
+
+            return {
+                "name": metadata["name"],
+                "namespace": metadata["namespace"],
+                "ingress_class": spec.get("ingressClassName", ""),
+                "rules": rules,
+                "tls_hosts": tls_hosts,
+                "urls": urls,
+                "load_balancer": load_balancer,
+                "creation_timestamp": metadata.get("creationTimestamp", ""),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse ingress item: %s", ex)
+            return None
+
     async def _fetch_resource_list(
         self,
         api_path: str,
@@ -2127,6 +2197,33 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get daemonsets", ex)
+            return []
+
+    # Ingress methods
+    async def get_ingresses_count(self) -> int:
+        """Get the count of Ingresses in the namespace(s)."""
+        try:
+            result = await self._fetch_resource_count(
+                "apis/networking.k8s.io/v1", "ingresses"
+            )
+            if result is not None:
+                self._log_success("get ingresses count", f"count: {result}")
+            return result or 0
+        except Exception as ex:
+            self._log_error("get ingresses count", ex)
+            return 0
+
+    async def get_ingresses(self) -> list[dict[str, Any]]:
+        """Get all Ingresses in the namespace(s) with their details."""
+        try:
+            result = await self._fetch_resource_list(
+                "apis/networking.k8s.io/v1", "ingresses", self._parse_ingress_item
+            )
+            if result:
+                self._log_success("get ingresses", f"retrieved {len(result)} ingresses")
+            return result
+        except Exception as ex:
+            self._log_error("get ingresses", ex)
             return []
 
     # CronJob methods
