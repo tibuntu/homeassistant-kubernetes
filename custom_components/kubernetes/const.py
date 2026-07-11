@@ -100,6 +100,7 @@ SENSOR_TYPE_CRONJOB = "cronjob"
 SENSOR_TYPE_CRONJOBS = "cronjobs"
 SENSOR_TYPE_JOB = "job"
 SENSOR_TYPE_JOBS = "jobs"
+SENSOR_TYPE_INGRESSES = "ingresses"
 
 # Binary sensor types
 BINARY_SENSOR_TYPE_CLUSTER_HEALTH = "cluster_health"

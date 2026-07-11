@@ -21,6 +21,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesDaemonSetSensor,
     KubernetesDaemonSetsSensor,
     KubernetesDeploymentsSensor,
+    KubernetesIngressesSensor,
     KubernetesJobSensor,
     KubernetesJobsSensor,
     KubernetesNodeSensor,
@@ -298,6 +299,63 @@ class TestKubernetesDaemonSetsSensor:
         await sensor.async_update()
 
         # Value should be 0 on error
+        assert sensor.native_value == 0
+
+
+class TestKubernetesIngressesSensor:
+    """Test Kubernetes ingresses sensor."""
+
+    def test_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor initialization."""
+        sensor = KubernetesIngressesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        assert sensor.name == "Ingresses Count"
+        assert sensor.unique_id == "test_entry_id_ingresses_count"
+        assert sensor.native_unit_of_measurement == "ingresses"
+
+    async def test_sensor_update_success(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test successful sensor update with coordinator data."""
+        # Set up coordinator data with ingresses
+        mock_coordinator.data = {"ingresses": {"default_web": {}, "prod_web": {}}}
+
+        sensor = KubernetesIngressesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        # The sensor should read from coordinator data
+        assert sensor.native_value == 2
+
+    async def test_sensor_missing_ingresses_bucket(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor when ingresses bucket is missing from coordinator data."""
+        # Set up coordinator data without ingresses bucket
+        mock_coordinator.data = {}
+
+        sensor = KubernetesIngressesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        # The sensor should return 0 when bucket is missing
+        assert sensor.native_value == 0
+
+    async def test_sensor_none_coordinator_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Test sensor when coordinator data is None."""
+        mock_coordinator.data = None
+
+        sensor = KubernetesIngressesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        # The sensor should return 0 when coordinator data is None
         assert sensor.native_value == 0
 
 
