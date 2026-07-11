@@ -92,17 +92,26 @@ export class K8sWorkloads extends LitElement {
   private _refreshInterval?: ReturnType<typeof setInterval>;
   private _loadingInFlight = false;
   private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+  private _unsubUpdates?: () => Promise<void>;
+  private _updateDebounce?: ReturnType<typeof setTimeout>;
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     this._loadData();
     this._startPolling();
     document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+    void this._subscribeUpdates();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._stopPolling();
     document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+    void this._unsubUpdates?.().catch(() => {});
+    this._unsubUpdates = undefined;
+    if (this._updateDebounce) {
+      clearTimeout(this._updateDebounce);
+      this._updateDebounce = undefined;
+    }
   }
 
   private _handleVisibilityChange(): void {
@@ -116,7 +125,7 @@ export class K8sWorkloads extends LitElement {
 
   private _startPolling(): void {
     if (!this._refreshInterval) {
-      this._refreshInterval = setInterval(() => this._loadData(), 30000);
+      this._refreshInterval = setInterval(() => this._loadData(), 60000);
     }
   }
 
@@ -125,6 +134,31 @@ export class K8sWorkloads extends LitElement {
       clearInterval(this._refreshInterval);
       this._refreshInterval = undefined;
     }
+  }
+
+  private async _subscribeUpdates(): Promise<void> {
+    try {
+      const unsub = await this.hass.connection.subscribeMessage(
+        () => this._scheduleLoad(),
+        { type: "kubernetes/subscribe_updates" },
+      );
+      if (!this.isConnected) {
+        void unsub().catch(() => {});
+        return;
+      }
+      this._unsubUpdates = unsub;
+    } catch {
+      // Backend without subscription support — interval polling covers it.
+    }
+  }
+
+  private _scheduleLoad(): void {
+    if (document.hidden) return;
+    if (this._updateDebounce) return;
+    this._updateDebounce = setTimeout(() => {
+      this._updateDebounce = undefined;
+      this._loadData();
+    }, 1000);
   }
 
   private async _loadData(): Promise<void> {
