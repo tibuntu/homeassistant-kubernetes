@@ -162,6 +162,10 @@ rules:
 - apiGroups: ["batch"]
   resources: ["cronjobs", "cronjobs/status", "jobs"]
   verbs: ["get", "patch", "update", "create", "delete"]
+# Networking API for Ingress monitoring (Network tab in the sidebar panel)
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
 # Metrics API for real-time CPU and memory usage
 - apiGroups: ["metrics.k8s.io"]
   resources: ["nodes", "pods"]
@@ -186,6 +190,7 @@ rules:
 | **batch** | **cronjobs** | `get`, `list`, `watch` | Monitor CronJob status and metadata |
 | **batch** | **cronjobs/status** | `get`, `patch`, `update` | Update and monitor CronJob status |
 | **batch** | **jobs** | `get`, `list`, `watch`, `create`, `delete` | Monitor, create, and delete Jobs (for CronJob triggering and Job cleanup) |
+| **networking.k8s.io** | **ingresses** | `get`, `list`, `watch` | Ingresses count sensor + Network tab in the sidebar panel |
 | **metrics.k8s.io** | **nodes** | `get`, `list` | Real-time node CPU and memory usage |
 | **metrics.k8s.io** | **pods** | `get`, `list` | Workload CPU and memory usage sensors |
 | **extensions** | **deployments** | `get`, `list`, `watch` | Legacy API compatibility for older clusters |
@@ -254,6 +259,10 @@ rules:
 - apiGroups: ["batch"]
   resources: ["cronjobs", "cronjobs/status", "jobs"]
   verbs: ["get", "patch", "update", "create"]
+# Networking permissions within namespace
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
 ```
 
 ### 3. Create RoleBinding (instead of ClusterRoleBinding)

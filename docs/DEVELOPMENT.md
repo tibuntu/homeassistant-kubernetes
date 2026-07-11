@@ -152,8 +152,9 @@ homeassistant-kubernetes/
 │       ├── views/
 │       │   ├── k8s-overview.ts      # Overview tab
 │       │   ├── k8s-nodes-table.ts   # Nodes tab
-│       │   ├── k8s-pods-table.ts    # Pods tab
 │       │   ├── k8s-workloads.ts     # Workloads tab
+│       │   ├── k8s-pods-table.ts    # Pods tab
+│       │   ├── k8s-network.ts       # Network tab
 │       │   └── k8s-settings.ts      # Settings tab
 │       └── utils/
 │           └── load-ha-elements.ts  # HA element lazy loader
