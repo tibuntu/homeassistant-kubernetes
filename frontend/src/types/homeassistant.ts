@@ -11,4 +11,10 @@ export interface HomeAssistant {
     service: string,
     data?: Record<string, unknown>,
   ) => Promise<void>;
+  connection: {
+    subscribeMessage: <T>(
+      callback: (msg: T) => void,
+      subscribeMessage: { type: string } & Record<string, unknown>,
+    ) => Promise<() => Promise<void>>;
+  };
 }

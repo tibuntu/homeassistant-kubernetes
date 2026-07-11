@@ -698,11 +698,18 @@ var K8sOverview = class K8sOverview extends i {
 		this._loadData();
 		this._startPolling();
 		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+		this._subscribeUpdates();
 	}
 	disconnectedCallback() {
 		super.disconnectedCallback();
 		this._stopPolling();
 		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+		this._unsubUpdates?.().catch(() => {});
+		this._unsubUpdates = void 0;
+		if (this._updateDebounce) {
+			clearTimeout(this._updateDebounce);
+			this._updateDebounce = void 0;
+		}
 	}
 	_handleVisibilityChange() {
 		if (document.hidden) this._stopPolling();
@@ -712,13 +719,31 @@ var K8sOverview = class K8sOverview extends i {
 		}
 	}
 	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
 	}
 	_stopPolling() {
 		if (this._refreshInterval) {
 			clearInterval(this._refreshInterval);
 			this._refreshInterval = void 0;
 		}
+	}
+	async _subscribeUpdates() {
+		try {
+			const unsub = await this.hass.connection.subscribeMessage(() => this._scheduleLoad(), { type: "kubernetes/subscribe_updates" });
+			if (!this.isConnected) {
+				unsub().catch(() => {});
+				return;
+			}
+			this._unsubUpdates = unsub;
+		} catch {}
+	}
+	_scheduleLoad() {
+		if (document.hidden) return;
+		if (this._updateDebounce) return;
+		this._updateDebounce = setTimeout(() => {
+			this._updateDebounce = void 0;
+			this._loadData();
+		}, 1e3);
 	}
 	async _loadData() {
 		if (this._loadingInFlight) return;
@@ -1277,11 +1302,18 @@ var K8sNodesTable = class K8sNodesTable extends i {
 		this._loadData();
 		this._startPolling();
 		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+		this._subscribeUpdates();
 	}
 	disconnectedCallback() {
 		super.disconnectedCallback();
 		this._stopPolling();
 		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+		this._unsubUpdates?.().catch(() => {});
+		this._unsubUpdates = void 0;
+		if (this._updateDebounce) {
+			clearTimeout(this._updateDebounce);
+			this._updateDebounce = void 0;
+		}
 	}
 	_handleVisibilityChange() {
 		if (document.hidden) this._stopPolling();
@@ -1291,13 +1323,31 @@ var K8sNodesTable = class K8sNodesTable extends i {
 		}
 	}
 	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
 	}
 	_stopPolling() {
 		if (this._refreshInterval) {
 			clearInterval(this._refreshInterval);
 			this._refreshInterval = void 0;
 		}
+	}
+	async _subscribeUpdates() {
+		try {
+			const unsub = await this.hass.connection.subscribeMessage(() => this._scheduleLoad(), { type: "kubernetes/subscribe_updates" });
+			if (!this.isConnected) {
+				unsub().catch(() => {});
+				return;
+			}
+			this._unsubUpdates = unsub;
+		} catch {}
+	}
+	_scheduleLoad() {
+		if (document.hidden) return;
+		if (this._updateDebounce) return;
+		this._updateDebounce = setTimeout(() => {
+			this._updateDebounce = void 0;
+			this._loadData();
+		}, 1e3);
 	}
 	async _loadData() {
 		if (this._loadingInFlight) return;
@@ -1864,11 +1914,18 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		this._loadData();
 		this._startPolling();
 		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+		this._subscribeUpdates();
 	}
 	disconnectedCallback() {
 		super.disconnectedCallback();
 		this._stopPolling();
 		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+		this._unsubUpdates?.().catch(() => {});
+		this._unsubUpdates = void 0;
+		if (this._updateDebounce) {
+			clearTimeout(this._updateDebounce);
+			this._updateDebounce = void 0;
+		}
 	}
 	_handleVisibilityChange() {
 		if (document.hidden) this._stopPolling();
@@ -1878,13 +1935,31 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		}
 	}
 	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
 	}
 	_stopPolling() {
 		if (this._refreshInterval) {
 			clearInterval(this._refreshInterval);
 			this._refreshInterval = void 0;
 		}
+	}
+	async _subscribeUpdates() {
+		try {
+			const unsub = await this.hass.connection.subscribeMessage(() => this._scheduleLoad(), { type: "kubernetes/subscribe_updates" });
+			if (!this.isConnected) {
+				unsub().catch(() => {});
+				return;
+			}
+			this._unsubUpdates = unsub;
+		} catch {}
+	}
+	_scheduleLoad() {
+		if (document.hidden) return;
+		if (this._updateDebounce) return;
+		this._updateDebounce = setTimeout(() => {
+			this._updateDebounce = void 0;
+			this._loadData();
+		}, 1e3);
 	}
 	async _loadData() {
 		if (this._loadingInFlight) return;
@@ -2547,11 +2622,18 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		this._loadData();
 		this._startPolling();
 		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+		this._subscribeUpdates();
 	}
 	disconnectedCallback() {
 		super.disconnectedCallback();
 		this._stopPolling();
 		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+		this._unsubUpdates?.().catch(() => {});
+		this._unsubUpdates = void 0;
+		if (this._updateDebounce) {
+			clearTimeout(this._updateDebounce);
+			this._updateDebounce = void 0;
+		}
 	}
 	_handleVisibilityChange() {
 		if (document.hidden) this._stopPolling();
@@ -2561,13 +2643,31 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		}
 	}
 	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 3e4);
+		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
 	}
 	_stopPolling() {
 		if (this._refreshInterval) {
 			clearInterval(this._refreshInterval);
 			this._refreshInterval = void 0;
 		}
+	}
+	async _subscribeUpdates() {
+		try {
+			const unsub = await this.hass.connection.subscribeMessage(() => this._scheduleLoad(), { type: "kubernetes/subscribe_updates" });
+			if (!this.isConnected) {
+				unsub().catch(() => {});
+				return;
+			}
+			this._unsubUpdates = unsub;
+		} catch {}
+	}
+	_scheduleLoad() {
+		if (document.hidden) return;
+		if (this._updateDebounce) return;
+		this._updateDebounce = setTimeout(() => {
+			this._updateDebounce = void 0;
+			this._loadData();
+		}, 1e3);
 	}
 	async _loadData() {
 		if (this._loadingInFlight) return;
