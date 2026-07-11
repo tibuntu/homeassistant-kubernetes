@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 from typing import Any
 
@@ -54,6 +55,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_delete_pod)
     websocket_api.async_register_command(hass, websocket_delete_job)
     websocket_api.async_register_command(hass, websocket_restart_workload)
+    websocket_api.async_register_command(hass, websocket_subscribe_updates)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/cluster/overview"})
@@ -703,3 +705,47 @@ async def _handle_restart_workload(
             "restart_failed",
             f"Failed to restart {workload_type} {workload_name} in namespace {namespace}",
         )
+
+
+@callback
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/subscribe_updates"})
+def websocket_subscribe_updates(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Push a lightweight event whenever any cluster coordinator updates."""
+    _handle_subscribe_updates(hass, connection, msg)
+
+
+@callback
+def _handle_subscribe_updates(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe the connection to coordinator update pings."""
+
+    @callback
+    def _push_update() -> None:
+        connection.send_message(
+            websocket_api.event_message(msg["id"], {"event": "updated"})
+        )
+
+    unsubs: list[Callable[[], None]] = []
+    domain_data = hass.data.get(DOMAIN, {})
+    for entry_id, entry_data in domain_data.items():
+        if entry_id in DOMAIN_META_KEYS or not isinstance(entry_data, dict):
+            continue
+        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+        if coordinator is None:
+            continue
+        unsubs.append(coordinator.async_add_listener(_push_update))
+
+    @callback
+    def _unsubscribe() -> None:
+        for unsub in unsubs:
+            unsub()
+
+    connection.subscriptions[msg["id"]] = _unsubscribe
+    connection.send_result(msg["id"])

@@ -17,6 +17,7 @@ from custom_components.kubernetes.websocket_api import (
     _handle_delete_job,
     _handle_delete_pod,
     _handle_restart_workload,
+    _handle_subscribe_updates,
     async_register_websocket_commands,
 )
 
@@ -136,7 +137,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 8
+            assert mock_ws_api.async_register_command.call_count == 9
 
 
 class TestWebsocketClusterOverview:
@@ -2582,3 +2583,99 @@ class TestWebsocketRestartWorkload:
             "invalid_type",
             "Unsupported workload type: CronJob",
         )
+
+
+class TestWebsocketSubscribeUpdates:
+    """Tests for the kubernetes/subscribe_updates subscription."""
+
+    @staticmethod
+    def _make_connection():
+        connection = MagicMock()
+        connection.subscriptions = {}
+        return connection
+
+    @staticmethod
+    def _make_listening_coordinator(listeners):
+        coordinator = _make_coordinator({})
+
+        def add_listener(cb):
+            listeners.append(cb)
+            return lambda: listeners.remove(cb)
+
+        coordinator.async_add_listener = MagicMock(side_effect=add_listener)
+        return coordinator
+
+    def test_subscribe_sends_result_and_registers_listener(self, mock_hass):
+        """Test that subscribing acks and hooks the coordinator."""
+        listeners = []
+        coordinator = self._make_listening_coordinator(listeners)
+        mock_hass.data = {
+            DOMAIN: {"entry1": {"coordinator": coordinator, "config": {}}}
+        }
+        connection = self._make_connection()
+        msg = {"id": 42, "type": "kubernetes/subscribe_updates"}
+
+        _handle_subscribe_updates(mock_hass, connection, msg)
+
+        connection.send_result.assert_called_once_with(42)
+        assert 42 in connection.subscriptions
+        assert len(listeners) == 1
+
+    def test_coordinator_update_pushes_event(self, mock_hass):
+        """Test that a coordinator update pushes an 'updated' event."""
+        listeners = []
+        coordinator = self._make_listening_coordinator(listeners)
+        mock_hass.data = {
+            DOMAIN: {"entry1": {"coordinator": coordinator, "config": {}}}
+        }
+        connection = self._make_connection()
+        msg = {"id": 42, "type": "kubernetes/subscribe_updates"}
+
+        _handle_subscribe_updates(mock_hass, connection, msg)
+        listeners[0]()
+
+        connection.send_message.assert_called_once()
+        sent = connection.send_message.call_args[0][0]
+        assert sent["id"] == 42
+        assert sent["event"] == {"event": "updated"}
+
+    def test_unsubscribe_removes_all_listeners(self, mock_hass):
+        """Test that the stored unsubscribe detaches every coordinator."""
+        listeners = []
+        coordinator_a = self._make_listening_coordinator(listeners)
+        coordinator_b = self._make_listening_coordinator(listeners)
+        mock_hass.data = {
+            DOMAIN: {
+                "entry1": {"coordinator": coordinator_a, "config": {}},
+                "entry2": {"coordinator": coordinator_b, "config": {}},
+            }
+        }
+        connection = self._make_connection()
+        msg = {"id": 7, "type": "kubernetes/subscribe_updates"}
+
+        _handle_subscribe_updates(mock_hass, connection, msg)
+        assert len(listeners) == 2
+
+        connection.subscriptions[7]()
+        assert listeners == []
+
+    def test_subscribe_with_no_entries(self, mock_hass):
+        """Test subscribing when no config entries exist."""
+        mock_hass.data = {DOMAIN: {"panel_registered": True}}
+        connection = self._make_connection()
+        msg = {"id": 1, "type": "kubernetes/subscribe_updates"}
+
+        _handle_subscribe_updates(mock_hass, connection, msg)
+
+        connection.send_result.assert_called_once_with(1)
+        connection.send_message.assert_not_called()
+
+    def test_skips_entry_without_coordinator(self, mock_hass):
+        """Test that entries lacking a coordinator are skipped."""
+        mock_hass.data = {DOMAIN: {"entry1": {"config": {}}}}
+        connection = self._make_connection()
+        msg = {"id": 1, "type": "kubernetes/subscribe_updates"}
+
+        _handle_subscribe_updates(mock_hass, connection, msg)
+
+        connection.send_result.assert_called_once_with(1)
