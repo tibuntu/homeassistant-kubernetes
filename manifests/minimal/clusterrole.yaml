@@ -23,6 +23,10 @@ rules:
   - apiGroups: ["batch"]
     resources: ["cronjobs", "jobs"]
     verbs: ["get", "list"]
+  # Networking resources — monitoring only
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list"]
   # Metrics API — real-time CPU and memory usage (requires metrics-server)
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]

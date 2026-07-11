@@ -46,6 +46,11 @@ rules:
     resources: ["cronjobs", "cronjobs/status", "jobs"]
     verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
 
+  # Networking resources — monitoring + watch (Ingress URLs in the panel)
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+
   # Metrics API — real-time CPU and memory usage (requires metrics-server)
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]

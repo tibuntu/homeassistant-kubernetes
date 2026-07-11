@@ -24,6 +24,7 @@ Enables all integration features:
 
 - Sensors and binary sensors (monitoring)
 - Switches (deployment / statefulset scaling, CronJob suspension)
+- Ingress monitoring (Network tab in the sidebar panel, with clickable URLs)
 - Pod deletion from the sidebar panel (requires Home Assistant admin role)
 - Experimental Watch API (real-time updates via `?watch=true`)
 - Legacy API compatibility (Kubernetes < 1.16)
@@ -68,6 +69,12 @@ Read-only access to every resource the integration monitors. No write permission
 | **cronjobs** | `get`, `list`, `watch` | ✅ | `get`, `list` only | CronJob sensors |
 | **cronjobs/status** | `get`, `patch`, `update` | ✅ | ❌ | CronJob switch (suspend/resume) |
 | **jobs** | `get`, `list`, `watch`, `create` | ✅ | `get`, `list` only | Job sensors + CronJob triggering |
+
+### Networking API Group (`networking.k8s.io`)
+
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **ingresses** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Ingresses count sensor + Network tab in the sidebar panel |
 
 ### Metrics API Group (`metrics.k8s.io`)
 
@@ -202,6 +209,9 @@ rules:
 - apiGroups: ["batch"]
   resources: ["cronjobs", "cronjobs/status", "jobs"]
   verbs: ["get", "list", "watch", "patch", "update", "create"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
 ```
 
 ## Troubleshooting RBAC Issues

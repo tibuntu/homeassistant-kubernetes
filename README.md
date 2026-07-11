@@ -13,7 +13,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 ## Features
 
-- **Cluster Monitoring**: Monitor pods, nodes, deployments, statefulsets, daemonsets, and cronjobs
+- **Cluster Monitoring**: Monitor pods, nodes, deployments, statefulsets, daemonsets, cronjobs, and ingresses
 - **Node Sensors**: Per-node sensors for status, IP addresses, memory/CPU resources, real-time usage metrics, and system information
 - **Multi-Namespace Support**: Monitor a single namespace or all namespaces
 - **Workload Control**: Scale, start, stop, and rolling-restart deployments, statefulsets, and daemonsets from Home Assistant
@@ -21,7 +21,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **Job Management**: Delete Jobs (including failed Jobs) via the sidebar panel or `kubernetes.delete_job` service; cascades to pods
 - **CronJob Management**: Control CronJob suspension state and trigger jobs manually via service calls
 - **Dynamic Entity Management**: Automatic entity creation and cleanup as cluster resources change
-- **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts
+- **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts; a Network tab lists Ingresses with clickable URLs, backing service, and TLS status
 - **Diagnostics**: Native Home Assistant Diagnostics download with redacted credentials for easier bug reporting
 - **System Health**: Cluster reachability and aggregate pod/node counts shown in *Settings → System → Repairs → System Information*
 - **Repair Issues**: Surfaces silent failures (missing kubernetes Python package, metrics-server unavailable, watch connection failing) as actionable repair issues with auto-clear once resolved
