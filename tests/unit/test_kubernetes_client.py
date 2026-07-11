@@ -579,6 +579,166 @@ async def test_get_daemonsets_all_namespaces(mock_client):
     assert len(daemonsets) == 2
 
 
+async def test_get_ingresses_count_success(mock_client):
+    """Test successful ingresses count retrieval."""
+    mock_client._fetch_resource_count = AsyncMock(return_value=4)
+
+    count = await mock_client.get_ingresses_count()
+
+    assert count == 4
+
+
+async def test_get_ingresses_success(mock_client):
+    """Test successful ingresses retrieval."""
+    mock_client._fetch_resource_list = AsyncMock(
+        return_value=[
+            {
+                "name": "web",
+                "namespace": "default",
+                "ingress_class": "nginx",
+                "urls": ["https://example.com/"],
+            }
+        ]
+    )
+
+    ingresses = await mock_client.get_ingresses()
+
+    assert len(ingresses) == 1
+    assert ingresses[0]["name"] == "web"
+    assert ingresses[0]["urls"] == ["https://example.com/"]
+
+
+def _ingress_item(**overrides):
+    """Build a raw Ingress API object for parse tests."""
+    item = {
+        "metadata": {
+            "name": "web",
+            "namespace": "default",
+            "creationTimestamp": "2026-01-01T00:00:00Z",
+        },
+        "spec": {
+            "ingressClassName": "nginx",
+            "tls": [{"hosts": ["example.com"]}],
+            "rules": [
+                {
+                    "host": "example.com",
+                    "http": {
+                        "paths": [
+                            {
+                                "path": "/",
+                                "backend": {
+                                    "service": {
+                                        "name": "web-svc",
+                                        "port": {"number": 80},
+                                    }
+                                },
+                            }
+                        ]
+                    },
+                }
+            ],
+        },
+        "status": {"loadBalancer": {"ingress": [{"ip": "10.0.0.1"}]}},
+    }
+    item.update(overrides)
+    return item
+
+
+async def test_parse_ingress_item_tls_url(mock_client):
+    """TLS-covered host yields an https URL."""
+    result = mock_client._parse_ingress_item(_ingress_item())
+
+    assert result["name"] == "web"
+    assert result["namespace"] == "default"
+    assert result["ingress_class"] == "nginx"
+    assert result["urls"] == ["https://example.com/"]
+    assert result["tls_hosts"] == ["example.com"]
+    assert result["load_balancer"] == "10.0.0.1"
+    assert result["rules"][0]["service_name"] == "web-svc"
+    assert result["rules"][0]["service_port"] == 80
+    assert result["creation_timestamp"] == "2026-01-01T00:00:00Z"
+
+
+async def test_parse_ingress_item_no_tls_http_url(mock_client):
+    """Host without TLS coverage yields an http URL."""
+    item = _ingress_item()
+    item["spec"]["tls"] = []
+
+    result = mock_client._parse_ingress_item(item)
+
+    assert result["urls"] == ["http://example.com/"]
+
+
+async def test_parse_ingress_item_wildcard_tls_covers_subdomain(mock_client):
+    """A wildcard TLS host covers concrete subdomains."""
+    item = _ingress_item()
+    item["spec"]["tls"] = [{"hosts": ["*.example.com"]}]
+    item["spec"]["rules"][0]["host"] = "app.example.com"
+
+    result = mock_client._parse_ingress_item(item)
+
+    assert result["urls"] == ["https://app.example.com/"]
+
+
+async def test_parse_ingress_item_wildcard_rule_host_no_url(mock_client):
+    """A wildcard rule host produces no clickable URL."""
+    item = _ingress_item()
+    item["spec"]["rules"][0]["host"] = "*.example.com"
+
+    result = mock_client._parse_ingress_item(item)
+
+    assert result["urls"] == []
+    assert result["rules"][0]["host"] == "*.example.com"
+
+
+async def test_parse_ingress_item_hostless_rule_no_url(mock_client):
+    """A rule without a host produces a rule entry but no URL."""
+    item = _ingress_item()
+    del item["spec"]["rules"][0]["host"]
+
+    result = mock_client._parse_ingress_item(item)
+
+    assert result["urls"] == []
+    assert len(result["rules"]) == 1
+
+
+async def test_parse_ingress_item_default_tls_no_hosts(mock_client):
+    """A hosts-less TLS block (default cert) covers all rule hosts."""
+    item = _ingress_item()
+    item["spec"]["tls"] = [{"secretName": "default-cert"}]
+
+    result = mock_client._parse_ingress_item(item)
+
+    assert result["urls"] == ["https://example.com/"]
+
+
+async def test_parse_ingress_item_named_service_port(mock_client):
+    """A named backend port is exposed as service_port."""
+    item = _ingress_item()
+    item["spec"]["rules"][0]["http"]["paths"][0]["backend"]["service"]["port"] = {
+        "name": "http"
+    }
+
+    result = mock_client._parse_ingress_item(item)
+
+    assert result["rules"][0]["service_port"] == "http"
+
+
+async def test_parse_ingress_item_load_balancer_hostname(mock_client):
+    """Load balancer hostname is used when no IP is present."""
+    item = _ingress_item()
+    item["status"]["loadBalancer"]["ingress"] = [{"hostname": "lb.example.com"}]
+
+    result = mock_client._parse_ingress_item(item)
+
+    assert result["load_balancer"] == "lb.example.com"
+
+
+async def test_parse_ingress_item_malformed_returns_none(mock_client):
+    """Missing metadata returns None instead of raising."""
+    assert mock_client._parse_ingress_item({}) is None
+
+
 async def test_is_cluster_healthy_success(mock_client):
     """Test successful cluster health check."""
     # Mock the connection test to return True
