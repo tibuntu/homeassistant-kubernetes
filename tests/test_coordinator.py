@@ -54,11 +54,13 @@ def mock_client():
     client.get_daemonsets = AsyncMock(return_value=[])
     client.get_cronjobs = AsyncMock(return_value=[])
     client.get_jobs = AsyncMock(return_value=[])
+    client.get_ingresses = AsyncMock(return_value=[])
     client.get_deployments_count = AsyncMock(return_value=0)
     client.get_statefulsets_count = AsyncMock(return_value=0)
     client.get_daemonsets_count = AsyncMock(return_value=0)
     client.get_cronjobs_count = AsyncMock(return_value=0)
     client.get_jobs_count = AsyncMock(return_value=0)
+    client.get_ingresses_count = AsyncMock(return_value=0)
     client.get_pods_count = AsyncMock(return_value=0)
     client.get_pods = AsyncMock(return_value=[])
     client.get_nodes_count = AsyncMock(return_value=0)
@@ -3029,6 +3031,48 @@ class TestSameNameDifferentNamespace:
         assert toothless_bot is not None
         assert toothless_bot["namespace"] == "toothless"
         assert toothless_bot["replicas"] == 0
+
+    async def test_ingresses_same_name_different_namespace_both_kept(
+        self, hass: HomeAssistant, coordinator, mock_client
+    ):
+        """Two Ingresses both named 'web' in different namespaces must both survive
+        the poll cycle instead of one clobbering the other in coordinator.data."""
+        mock_client.get_ingresses.return_value = [
+            {"name": "web", "namespace": "default", "status": "Active"},
+            {"name": "web", "namespace": "prod", "status": "Pending"},
+        ]
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            result = await coordinator._async_update_data()
+
+        assert "default_web" in result["ingresses"]
+        assert "prod_web" in result["ingresses"]
+
+        coordinator.data = result
+
+        default_web = coordinator.get_ingress_data("default", "web")
+        prod_web = coordinator.get_ingress_data("prod", "web")
+
+        assert default_web is not None
+        assert default_web["namespace"] == "default"
+        assert default_web["status"] == "Active"
+
+        assert prod_web is not None
+        assert prod_web["namespace"] == "prod"
+        assert prod_web["status"] == "Pending"
 
     async def test_apply_watch_event_updates_only_matching_namespace(self, coordinator):
         """A MODIFIED watch event for one namespace's deployment must update only
