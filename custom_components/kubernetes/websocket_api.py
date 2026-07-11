@@ -51,6 +51,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_nodes_list)
     websocket_api.async_register_command(hass, websocket_pods_list)
     websocket_api.async_register_command(hass, websocket_workloads_list)
+    websocket_api.async_register_command(hass, websocket_ingresses_list)
     websocket_api.async_register_command(hass, websocket_config_list)
     websocket_api.async_register_command(hass, websocket_delete_pod)
     websocket_api.async_register_command(hass, websocket_delete_job)
@@ -103,6 +104,18 @@ async def websocket_workloads_list(
 ) -> None:
     """Return all workloads from all config entries."""
     result = _get_workloads_list_data(hass)
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/ingresses/list"})
+@websocket_api.async_response
+async def websocket_ingresses_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all ingresses from all config entries."""
+    result = _get_ingresses_list_data(hass)
     connection.send_result(msg["id"], result)
 
 
@@ -437,6 +450,39 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
                 "daemonsets": daemonsets,
                 "cronjobs": cronjobs,
                 "jobs": jobs,
+            }
+        )
+
+    return {"clusters": clusters}
+
+
+def _get_ingresses_list_data(hass: HomeAssistant) -> dict[str, Any]:
+    """Gather ingress data from all config entries."""
+    domain_data = hass.data.get(DOMAIN, {})
+    clusters: list[dict[str, Any]] = []
+
+    for entry_id, entry_data in domain_data.items():
+        if entry_id in DOMAIN_META_KEYS:
+            continue
+        if not isinstance(entry_data, dict):
+            continue
+
+        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+        config: dict[str, Any] = entry_data.get("config", {})
+
+        if coordinator is None:
+            continue
+
+        data = coordinator.data
+        ingresses_list: list[dict[str, Any]] = []
+        if data:
+            ingresses_list = list(data.get("ingresses", {}).values())
+
+        clusters.append(
+            {
+                "entry_id": entry_id,
+                "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
+                "ingresses": ingresses_list,
             }
         )
 

@@ -11,6 +11,7 @@ from custom_components.kubernetes.websocket_api import (
     _build_namespace_breakdown,
     _get_cluster_overview_data,
     _get_config_list_data,
+    _get_ingresses_list_data,
     _get_nodes_list_data,
     _get_pods_list_data,
     _get_workloads_list_data,
@@ -1031,6 +1032,183 @@ class TestWebsocketWorkloadsList:
         assert cj["suspend"] is False
         assert cj["active_jobs_count"] == 0
         assert cj["concurrency_policy"] == "Forbid"
+
+
+class TestWebsocketIngressesList:
+    """Tests for the kubernetes/ingresses/list command logic."""
+
+    def test_returns_empty_when_no_domain_data(self, mock_hass):
+        """Test returns empty clusters list when no DOMAIN data."""
+        mock_hass.data = {}
+        result = _get_ingresses_list_data(mock_hass)
+        assert result == {"clusters": []}
+
+    def test_returns_ingresses_per_cluster(self, mock_hass):
+        """Ingresses from coordinator data are returned per cluster."""
+        coordinator = _make_coordinator(
+            {
+                "ingresses": {
+                    "default_web": {
+                        "name": "web",
+                        "namespace": "default",
+                        "ingress_class": "nginx",
+                        "urls": ["https://example.com/"],
+                    }
+                },
+                "nodes": {},
+                "pods": {},
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {},
+                "jobs": {},
+                "pods_count": 0,
+                "nodes_count": 0,
+                "last_update": 0.0,
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry1": {
+                    "coordinator": coordinator,
+                    "config": {"cluster_name": "test-cluster"},
+                }
+            }
+        }
+
+        result = _get_ingresses_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+        cluster = result["clusters"][0]
+        assert cluster["entry_id"] == "entry1"
+        assert cluster["cluster_name"] == "test-cluster"
+        assert len(cluster["ingresses"]) == 1
+        assert cluster["ingresses"][0]["urls"] == ["https://example.com/"]
+
+    def test_none_coordinator_data(self, mock_hass):
+        """A coordinator with no data yields an empty ingress list."""
+        coordinator = _make_coordinator(None)
+        mock_hass.data = {
+            DOMAIN: {"entry1": {"coordinator": coordinator, "config": {}}}
+        }
+
+        result = _get_ingresses_list_data(mock_hass)
+
+        assert result["clusters"][0]["ingresses"] == []
+
+    def test_skips_entries_without_coordinator(self, mock_hass):
+        """Entries without a coordinator are skipped."""
+        mock_hass.data = {DOMAIN: {"entry1": {"config": {}}}}
+
+        result = _get_ingresses_list_data(mock_hass)
+
+        assert result["clusters"] == []
+
+    def test_skips_metadata_keys(self, mock_hass):
+        """Test skips panel_registered and switch_add_entities keys."""
+        coordinator = _make_coordinator(
+            {
+                "ingresses": {
+                    "default_web": {
+                        "name": "web",
+                        "namespace": "default",
+                        "urls": ["https://example.com/"],
+                    }
+                },
+                "nodes": {},
+                "pods": {},
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {},
+                "jobs": {},
+                "pods_count": 0,
+                "nodes_count": 0,
+                "last_update": 0.0,
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "panel_registered": True,
+                "switch_add_entities": MagicMock(),
+                "entry1": {
+                    "coordinator": coordinator,
+                    "config": {"cluster_name": "test"},
+                },
+            }
+        }
+
+        result = _get_ingresses_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+
+    def test_multi_cluster(self, mock_hass):
+        """Test returns ingresses from multiple clusters."""
+        coordinator_1 = _make_coordinator(
+            {
+                "ingresses": {
+                    "default_web": {
+                        "name": "web",
+                        "namespace": "default",
+                        "urls": ["https://example.com/"],
+                    }
+                },
+                "nodes": {},
+                "pods": {},
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {},
+                "jobs": {},
+                "pods_count": 0,
+                "nodes_count": 0,
+                "last_update": 0.0,
+            }
+        )
+        coordinator_2 = _make_coordinator(
+            {
+                "ingresses": {
+                    "prod_api": {
+                        "name": "api",
+                        "namespace": "prod",
+                        "urls": ["https://api.example.com/"],
+                    },
+                    "prod_web": {
+                        "name": "web",
+                        "namespace": "prod",
+                        "urls": ["https://example.com/"],
+                    },
+                },
+                "nodes": {},
+                "pods": {},
+                "deployments": {},
+                "statefulsets": {},
+                "daemonsets": {},
+                "cronjobs": {},
+                "jobs": {},
+                "pods_count": 0,
+                "nodes_count": 0,
+                "last_update": 0.0,
+            }
+        )
+        mock_hass.data = {
+            DOMAIN: {
+                "entry_1": {
+                    "config": {"cluster_name": "cluster-a"},
+                    "coordinator": coordinator_1,
+                },
+                "entry_2": {
+                    "config": {"cluster_name": "cluster-b"},
+                    "coordinator": coordinator_2,
+                },
+            }
+        }
+
+        result = _get_ingresses_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 2
+        total_ingresses = sum(len(c["ingresses"]) for c in result["clusters"])
+        assert total_ingresses == 3
 
 
 class TestWebsocketConfigList:
