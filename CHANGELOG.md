@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.0...v1.5.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **deps:** update kubernetes to v36.0.3 ([99bfd6c](https://github.com/tibuntu/homeassistant-kubernetes/commit/99bfd6cc276ddbea7b92b99a078bcbd5931087ee))
+
 ## [1.5.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.4.1...v1.5.0) (2026-07-11)
 
 This release adds **Ingress support** and makes the dashboard panel update live. Everything is additive — existing setups keep working unchanged.
