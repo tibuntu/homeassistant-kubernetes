@@ -359,7 +359,7 @@ The integration provides CronJob data in the following format:
     "failed_jobs_history_limit": 1,
     "concurrency_policy": "Allow",
     "uid": "cronjob-uid-123",
-    "creation_timestamp": "2023-01-01T00:00:00Z"
+    "creation_timestamp": "2023-01-01T00:00:00Z",
 }
 ```
 
@@ -373,7 +373,7 @@ When triggering a CronJob using `kubernetes.start_workload`, the service returns
     "job_name": "backup-job-manual-1234567890",
     "namespace": "default",
     "cronjob_name": "backup-job",
-    "job_uid": "job-uid-123"
+    "job_uid": "job-uid-123",
 }
 ```
 
