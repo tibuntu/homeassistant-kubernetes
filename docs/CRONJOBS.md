@@ -384,7 +384,7 @@ Or on failure:
     "success": False,
     "error": "CronJob not found",
     "cronjob_name": "backup-job",
-    "namespace": "default"
+    "namespace": "default",
 }
 ```
 
