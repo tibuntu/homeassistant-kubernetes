@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.1...v1.5.2) (2026-07-25)
+
+
+### Bug Fixes
+
+* **docs:** add missing trailing comma in third CRONJOBS.md example ([96291ad](https://github.com/tibuntu/homeassistant-kubernetes/commit/96291ad76128f828bf1d95c9db5aeee6f18b7ca1))
+* **docs:** add trailing commas to satisfy ruff 0.16.0 markdown formatting ([d76213e](https://github.com/tibuntu/homeassistant-kubernetes/commit/d76213edb012081c4c28fc5229b54771cc478ee4))
+
 ## [1.5.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.0...v1.5.1) (2026-07-19)
 
 
