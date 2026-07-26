@@ -41,7 +41,7 @@ dev = [
     "bandit[toml]==1.9.4",
 
     # Development tools
-    "pre-commit==4.6.0",
+    "pre-commit==4.6.1",
 
     # Documentation
     "zensical",
