@@ -1801,6 +1801,85 @@ class KubernetesClient:
             self._log_error(f"official client rollout restart {name}", ex)
             return False
 
+    async def cordon_node(self, node_name: str) -> bool:
+        """Cordon a node (mark it unschedulable)."""
+        return await self._set_node_schedulable(node_name, schedulable=False)
+
+    async def uncordon_node(self, node_name: str) -> bool:
+        """Uncordon a node (mark it schedulable again)."""
+        return await self._set_node_schedulable(node_name, schedulable=True)
+
+    async def _set_node_schedulable(self, node_name: str, schedulable: bool) -> bool:
+        """Set a node's schedulable state by patching spec.unschedulable."""
+        action = "uncordon" if schedulable else "cordon"
+        result = await self._set_node_schedulable_aiohttp(node_name, schedulable)
+        if result:
+            _LOGGER.info("Successfully %sed node %s", action, node_name)
+            return result
+
+        _LOGGER.debug(
+            "aiohttp failed, trying official Kubernetes client to %s node", action
+        )
+        result = await self._set_node_schedulable_kubernetes(node_name, schedulable)
+        if result:
+            _LOGGER.info(
+                "Successfully %sed node %s using official client", action, node_name
+            )
+        return result
+
+    async def _set_node_schedulable_aiohttp(
+        self, node_name: str, schedulable: bool
+    ) -> bool:
+        """Set a node's schedulable state using aiohttp PATCH."""
+        action = "uncordon" if schedulable else "cordon"
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/strategic-merge-patch+json",
+            }
+
+            patch_data = {"spec": {"unschedulable": not schedulable}}
+
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(
+                    f"https://{self.host}:{self.port}/api/v1/nodes/{node_name}",
+                    headers=headers,
+                    json=patch_data,
+                    ssl=await self._get_ssl_param(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status in [200, 201]:
+                        return True
+                    else:
+                        response_text = await response.text()
+                        _LOGGER.error(
+                            "aiohttp %s node failed with status %s: %s",
+                            action,
+                            response.status,
+                            response_text,
+                        )
+                        return False
+        except Exception as ex:
+            self._log_error(f"aiohttp {action} node {node_name}", ex)
+            return False
+
+    async def _set_node_schedulable_kubernetes(
+        self, node_name: str, schedulable: bool
+    ) -> bool:
+        """Set a node's schedulable state using the official Kubernetes client."""
+        action = "uncordon" if schedulable else "cordon"
+        try:
+            loop = asyncio.get_running_loop()
+            patch_body = {"spec": {"unschedulable": not schedulable}}
+            await loop.run_in_executor(
+                None, self.core_v1.patch_node, node_name, patch_body
+            )
+            return True
+        except Exception as ex:
+            self._log_error(f"official client {action} node {node_name}", ex)
+            return False
+
     async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
         """Get pod metrics (CPU and memory usage)."""
         # Metrics API is usually accessed via /apis/metrics.k8s.io/v1beta1/pods

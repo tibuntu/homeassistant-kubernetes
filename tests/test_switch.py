@@ -18,6 +18,7 @@ from custom_components.kubernetes.const import (
 from custom_components.kubernetes.switch import (
     KubernetesCronJobSwitch,
     KubernetesDeploymentSwitch,
+    KubernetesNodeSchedulableSwitch,
     KubernetesStatefulSetSwitch,
     _async_discover_and_add_new_entities,
     async_setup_entry,
@@ -105,6 +106,9 @@ class TestSwitchSetup:
         client.get_cronjobs = AsyncMock(
             return_value=[{"name": "test-cronjob", "namespace": "default"}]
         )
+        client.get_nodes = AsyncMock(
+            return_value=[{"name": "test-node", "status": "Ready"}]
+        )
 
         coordinator = MagicMock()
         coordinator.last_update_success = True
@@ -148,13 +152,14 @@ class TestSwitchSetup:
         # Verify entities were added
         mock_add_entities.assert_called_once()
         added_entities = mock_add_entities.call_args[0][0]
-        assert len(added_entities) == 3  # deployment, statefulset, cronjob
+        assert len(added_entities) == 4  # deployment, statefulset, cronjob, node
 
         # Verify entity types
         entity_types = [type(entity) for entity in added_entities]
         assert KubernetesDeploymentSwitch in entity_types
         assert KubernetesStatefulSetSwitch in entity_types
         assert KubernetesCronJobSwitch in entity_types
+        assert KubernetesNodeSchedulableSwitch in entity_types
 
     async def test_async_setup_entry_empty_resources(
         self, hass: HomeAssistant, mock_config_entry
@@ -164,6 +169,7 @@ class TestSwitchSetup:
         client.get_deployments = AsyncMock(return_value=[])
         client.get_statefulsets = AsyncMock(return_value=[])
         client.get_cronjobs = AsyncMock(return_value=[])
+        client.get_nodes = AsyncMock(return_value=[])
 
         coordinator = MagicMock()
         coordinator.last_update_success = True
@@ -1992,3 +1998,226 @@ class TestCronJobOperations:
         cronjob_switch._handle_coordinator_update()
 
         cronjob_switch.async_write_ha_state.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# KubernetesNodeSchedulableSwitch tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def node_switch(mock_config_entry, mock_coordinator):
+    """Create a node schedulable switch instance."""
+    return KubernetesNodeSchedulableSwitch(
+        mock_coordinator, mock_config_entry, "worker-node-1"
+    )
+
+
+class TestKubernetesNodeSchedulableSwitch:
+    """Test Kubernetes node schedulable (cordon/uncordon) switch."""
+
+    @pytest.fixture
+    def node_client(self):
+        """Mock client with cordon/uncordon methods."""
+        client = MagicMock()
+        client.cordon_node = AsyncMock(return_value=True)
+        client.uncordon_node = AsyncMock(return_value=True)
+        return client
+
+    def test_initialization(self, node_switch):
+        """Test switch initialization."""
+        assert node_switch.node_name == "worker-node-1"
+        assert node_switch._attr_name == "worker-node-1 Schedulable"
+        assert (
+            node_switch._attr_unique_id
+            == "test_entry_id_node_worker-node-1_schedulable"
+        )
+
+    def test_available(self, node_switch, mock_coordinator):
+        """Test switch availability requires node data."""
+        mock_coordinator.last_update_success = True
+        mock_coordinator.get_node_data.return_value = {"schedulable": True}
+        assert node_switch.available is True
+
+        mock_coordinator.get_node_data.return_value = None
+        assert node_switch.available is False
+
+        mock_coordinator.last_update_success = False
+        mock_coordinator.get_node_data.return_value = {"schedulable": True}
+        assert node_switch.available is False
+
+    def test_is_on_schedulable(self, node_switch, mock_coordinator):
+        """Test is_on when the node is schedulable."""
+        mock_coordinator.get_node_data.return_value = {"schedulable": True}
+        assert node_switch.is_on is True
+        assert node_switch.icon == "mdi:server"
+
+    def test_is_on_cordoned(self, node_switch, mock_coordinator):
+        """Test is_on when the node is cordoned."""
+        mock_coordinator.get_node_data.return_value = {"schedulable": False}
+        assert node_switch.is_on is False
+        assert node_switch.icon == "mdi:server-off"
+
+    def test_is_on_no_data_defaults_schedulable(self, node_switch, mock_coordinator):
+        """Test is_on defaults to True when node data is missing."""
+        mock_coordinator.get_node_data.return_value = None
+        assert node_switch.is_on is True
+
+    def test_extra_state_attributes(self, node_switch, mock_coordinator):
+        """Test extra state attributes."""
+        mock_coordinator.get_node_data.return_value = {
+            "schedulable": False,
+            "status": "Ready",
+        }
+        attributes = node_switch.extra_state_attributes
+        assert attributes["node_name"] == "worker-node-1"
+        assert attributes["status"] == "Ready"
+        assert attributes["schedulable"] is False
+        assert attributes["cordoned"] is True
+
+    async def test_async_turn_off_cordons(
+        self, node_switch, mock_config_entry, mock_coordinator, node_client
+    ):
+        """Test turn off cordons the node."""
+        node_switch.hass = MagicMock()
+        node_switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": node_client}}
+        }
+        node_switch.async_write_ha_state = MagicMock()
+        mock_coordinator.async_request_refresh = AsyncMock()
+
+        await node_switch.async_turn_off()
+
+        node_client.cordon_node.assert_called_once_with("worker-node-1")
+        assert node_switch.is_on is False
+        assert node_switch._last_cordon_time is not None
+        mock_coordinator.async_request_refresh.assert_called_once()
+
+    async def test_async_turn_on_uncordons(
+        self, node_switch, mock_config_entry, mock_coordinator, node_client
+    ):
+        """Test turn on uncordons the node."""
+        node_switch.hass = MagicMock()
+        node_switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": node_client}}
+        }
+        node_switch.async_write_ha_state = MagicMock()
+        mock_coordinator.async_request_refresh = AsyncMock()
+
+        await node_switch.async_turn_on()
+
+        node_client.uncordon_node.assert_called_once_with("worker-node-1")
+        assert node_switch.is_on is True
+        assert node_switch._last_uncordon_time is not None
+        mock_coordinator.async_request_refresh.assert_called_once()
+
+    async def test_async_turn_off_failure_raises(
+        self, node_switch, mock_config_entry, node_client
+    ):
+        """Test turn off raises when the cordon call fails."""
+        node_client.cordon_node = AsyncMock(return_value=False)
+        node_switch.hass = MagicMock()
+        node_switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": node_client}}
+        }
+
+        with pytest.raises(Exception, match="Failed to cordon node"):
+            await node_switch.async_turn_off()
+
+    async def test_async_turn_on_failure_raises(
+        self, node_switch, mock_config_entry, node_client
+    ):
+        """Test turn on raises when the uncordon call fails."""
+        node_client.uncordon_node = AsyncMock(return_value=False)
+        node_switch.hass = MagicMock()
+        node_switch.hass.data = {
+            DOMAIN: {mock_config_entry.entry_id: {"client": node_client}}
+        }
+
+        with pytest.raises(Exception, match="Failed to uncordon node"):
+            await node_switch.async_turn_on()
+
+    def test_optimistic_state_cleared_by_coordinator_update(
+        self, node_switch, mock_coordinator
+    ):
+        """Test fresh coordinator node data supersedes the optimistic state."""
+        node_switch._optimistic_is_on = False
+        mock_coordinator.get_node_data.return_value = {"schedulable": True}
+        node_switch.async_write_ha_state = MagicMock()
+
+        node_switch._handle_coordinator_update()
+
+        assert node_switch._optimistic_is_on is None
+        assert node_switch.is_on is True
+
+
+class TestDiscoverNewNodeSwitches:
+    """Test dynamic discovery of node schedulable switches."""
+
+    async def test_discovers_new_node(self, mock_config_entry):
+        """Test discovering and adding a schedulable switch for a new node."""
+        add_entities_callback = MagicMock()
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+
+        coordinator = MagicMock()
+        coordinator.data = {
+            "deployments": {},
+            "statefulsets": {},
+            "cronjobs": {},
+            "nodes": {
+                "new-node": {"name": "new-node", "status": "Ready"},
+            },
+        }
+
+        entity_registry = MagicMock()
+        entity_registry.entities.get_entries_for_config_entry_id.return_value = []
+
+        with patch(
+            "custom_components.kubernetes.switch.async_get_entity_registry",
+            return_value=entity_registry,
+        ):
+            await _async_discover_and_add_new_entities(
+                hass, mock_config_entry, coordinator, MagicMock()
+            )
+
+        add_entities_callback.assert_called_once()
+        added = add_entities_callback.call_args[0][0]
+        assert len(added) == 1
+        assert isinstance(added[0], KubernetesNodeSchedulableSwitch)
+        assert added[0].node_name == "new-node"
+
+    async def test_existing_node_switch_not_duplicated(self, mock_config_entry):
+        """Test a node switch already in the registry is not re-added."""
+        add_entities_callback = MagicMock()
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+
+        coordinator = MagicMock()
+        coordinator.data = {
+            "deployments": {},
+            "statefulsets": {},
+            "cronjobs": {},
+            "nodes": {
+                "known-node": {"name": "known-node", "status": "Ready"},
+            },
+        }
+
+        existing_entity = MagicMock()
+        existing_entity.unique_id = (
+            f"{mock_config_entry.entry_id}_node_known-node_schedulable"
+        )
+        entity_registry = MagicMock()
+        entity_registry.entities.get_entries_for_config_entry_id.return_value = [
+            existing_entity
+        ]
+
+        with patch(
+            "custom_components.kubernetes.switch.async_get_entity_registry",
+            return_value=entity_registry,
+        ):
+            await _async_discover_and_add_new_entities(
+                hass, mock_config_entry, coordinator, MagicMock()
+            )
+
+        add_entities_callback.assert_not_called()

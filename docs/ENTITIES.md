@@ -235,6 +235,16 @@ The integration automatically creates switches for controlling Kubernetes worklo
   - `on`: StatefulSet is running (replicas > 0)
   - `off`: StatefulSet is stopped (replicas = 0)
 
+### Node Schedulable Switches
+
+- **Entity ID Format**: `switch.[node_name]_schedulable`
+- **Function**: Cordon / uncordon individual nodes (patches `spec.unschedulable`)
+- **States**:
+  - `on`: Node is schedulable (uncordoned)
+  - `off`: Node is cordoned (unschedulable — running pods keep running, no new pods are scheduled)
+- **Attributes**: `node_name`, `status`, `schedulable`, `cordoned`, `last_cordon_time`, `last_uncordon_time`
+- **Requires**: the `patch` verb on `nodes` (included in `manifests/full/`)
+
 ### Switch Features
 
 - **Real-time State**: Switches automatically reflect the actual Kubernetes state through polling

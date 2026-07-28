@@ -20,6 +20,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **Pod Management**: Delete individual pods directly from the sidebar panel (requires HA admin role); per-pod sensors expose container-state diagnostics — CrashLoopBackOff, ImagePullBackOff, OOMKilled (including a recovered OOMKill that already restarted, via `last_terminated_reason`), and scheduling failures — plus a derived `problem`/`problem_reason` attribute for easy automations and alerts
 - **Job Management**: Delete Jobs (including failed Jobs) via the sidebar panel or `kubernetes.delete_job` service; cascades to pods
 - **CronJob Management**: Control CronJob suspension state and trigger jobs manually via service calls
+- **Node Management**: Cordon and uncordon nodes via per-node switches (on = schedulable) or the `kubernetes.cordon_node` / `kubernetes.uncordon_node` services
 - **Dynamic Entity Management**: Automatic entity creation and cleanup as cluster resources change
 - **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts; a Network tab lists Ingresses with clickable URLs, backing service, and TLS status
 - **Diagnostics**: Native Home Assistant Diagnostics download with redacted credentials for easier bug reporting

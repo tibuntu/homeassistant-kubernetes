@@ -46,7 +46,7 @@ Read-only access to every resource the integration monitors. No write permission
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
 | **pods** | `get`, `list`, `watch`, `delete` | ✅ | `get`, `list` only | Pod count and status sensors, pod deletion |
-| **nodes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Node count sensors and binary sensors |
+| **nodes** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Node sensors and binary sensors; `patch` enables cordon/uncordon |
 | **namespaces** | `get`, `list` | ✅ | ✅ | Namespace discovery |
 | **events** | `get`, `list`, `watch` | ✅ | ❌ | Enhanced troubleshooting |
 

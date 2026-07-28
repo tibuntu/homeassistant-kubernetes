@@ -8,7 +8,8 @@ metadata:
   annotations:
     # Full permissions for all integration features:
     #   - Sensors and binary sensors (monitoring)
-    #   - Switches (deployment/statefulset scaling, cronjob suspension)
+    #   - Switches (deployment/statefulset scaling, cronjob suspension,
+    #     node cordon/uncordon)
     #   - Workload rollout restart (deployments, statefulsets, daemonsets)
     #   - Pod deletion from the sidebar panel
     #   - Experimental Watch API (real-time updates via ?watch=true)
@@ -19,6 +20,11 @@ rules:
   - apiGroups: [""]
     resources: ["nodes", "namespaces", "events"]
     verbs: ["get", "list", "watch"]
+
+  # Node cordon/uncordon (patches spec.unschedulable)
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["patch"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "delete"]

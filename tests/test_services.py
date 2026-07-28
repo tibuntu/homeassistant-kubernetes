@@ -11,16 +11,20 @@ from custom_components.kubernetes.const import (
     ATTR_JOB_NAME,
     ATTR_JOB_NAMES,
     ATTR_NAMESPACE,
+    ATTR_NODE_NAME,
+    ATTR_NODE_NAMES,
     ATTR_REPLICAS,
     ATTR_WORKLOAD_NAME,
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
+    SERVICE_CORDON_NODE,
     SERVICE_DELETE_JOB,
     SERVICE_RESTART_WORKLOAD,
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
     SERVICE_STOP_WORKLOAD,
+    SERVICE_UNCORDON_NODE,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DAEMONSET,
     WORKLOAD_TYPE_DEPLOYMENT,
@@ -29,6 +33,7 @@ from custom_components.kubernetes.const import (
 from custom_components.kubernetes.services import (
     _collect_entity_ids,
     _collect_job_names,
+    _collect_node_names,
     _extract_entity_ids_from_value,
     _extract_workload_info,
     _get_entry_data,
@@ -38,6 +43,7 @@ from custom_components.kubernetes.services import (
     _resolve_raw_workload_name,
     _validate_entity_workload_type,
     _validate_job_schema,
+    _validate_node_schema,
     _validate_workload_schema,
     async_setup_services,
     async_unload_services,
@@ -63,6 +69,8 @@ def mock_client():
     client.rollout_restart_statefulset = AsyncMock(return_value=True)
     client.rollout_restart_daemonset = AsyncMock(return_value=True)
     client.delete_job = AsyncMock(return_value=True)
+    client.cordon_node = AsyncMock(return_value=True)
+    client.uncordon_node = AsyncMock(return_value=True)
     return client
 
 
@@ -71,6 +79,7 @@ def setup_domain_data(hass: HomeAssistant, mock_client) -> None:
     """Set up hass.data with kubernetes domain data."""
     mock_coordinator = MagicMock()
     mock_coordinator.client = mock_client
+    mock_coordinator.async_request_refresh = AsyncMock()
     hass.data[DOMAIN] = {
         "test-entry-id": {
             "config": {
@@ -2121,3 +2130,138 @@ class TestDeleteJobService:
 
         await async_unload_services(hass)
         assert not hass.services.has_service(DOMAIN, SERVICE_DELETE_JOB)
+
+
+class TestValidateNodeSchema:
+    """Tests for _validate_node_schema."""
+
+    def test_valid_with_node_name(self):
+        """Test passes validation when node_name is provided."""
+        data = {ATTR_NODE_NAME: "node-1"}
+        assert _validate_node_schema(data) is data
+
+    def test_valid_with_node_names(self):
+        """Test passes validation when node_names is provided."""
+        data = {ATTR_NODE_NAMES: ["node-1", "node-2"]}
+        assert _validate_node_schema(data) is data
+
+    def test_invalid_with_neither_field(self):
+        """Test raises vol.Invalid when neither field is provided."""
+        import voluptuous as vol
+
+        with pytest.raises(vol.Invalid, match="Either node_name or node_names"):
+            _validate_node_schema({})
+
+
+class TestCollectNodeNames:
+    """Tests for _collect_node_names helper."""
+
+    def test_single_node_name(self):
+        """Test a single node_name is returned as a one-element list."""
+        assert _collect_node_names({ATTR_NODE_NAME: "node-1"}) == ["node-1"]
+
+    def test_node_names_list(self):
+        """Test node_names as a list returns all entries."""
+        result = _collect_node_names({ATTR_NODE_NAMES: ["node-1", "node-2"]})
+        assert result == ["node-1", "node-2"]
+
+    def test_both_fields_deduped(self):
+        """Test that duplicates across node_name and node_names are removed."""
+        result = _collect_node_names(
+            {ATTR_NODE_NAME: "node-1", ATTR_NODE_NAMES: ["node-1", "node-2"]}
+        )
+        assert result == ["node-1", "node-2"]
+
+    def test_empty_returns_empty(self):
+        """Test that an empty call_data returns an empty list."""
+        assert _collect_node_names({}) == []
+
+
+class TestNodeCordonServices:
+    """Tests for the cordon_node / uncordon_node services."""
+
+    async def test_services_registered_and_unregistered(self, hass: HomeAssistant):
+        """Test cordon/uncordon services register and unregister."""
+        await async_setup_services(hass)
+        assert hass.services.has_service(DOMAIN, SERVICE_CORDON_NODE)
+        assert hass.services.has_service(DOMAIN, SERVICE_UNCORDON_NODE)
+
+        await async_unload_services(hass)
+        assert not hass.services.has_service(DOMAIN, SERVICE_CORDON_NODE)
+        assert not hass.services.has_service(DOMAIN, SERVICE_UNCORDON_NODE)
+
+    async def test_cordon_single_node(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test cordoning a single node."""
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CORDON_NODE,
+            {ATTR_NODE_NAME: "node-1"},
+            blocking=True,
+        )
+
+        mock_client.cordon_node.assert_called_once_with("node-1")
+        mock_client.uncordon_node.assert_not_called()
+
+    async def test_uncordon_single_node(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test uncordoning a single node."""
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_UNCORDON_NODE,
+            {ATTR_NODE_NAME: "node-1"},
+            blocking=True,
+        )
+
+        mock_client.uncordon_node.assert_called_once_with("node-1")
+        mock_client.cordon_node.assert_not_called()
+
+    async def test_cordon_multiple_nodes(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test cordoning multiple nodes via node_names."""
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CORDON_NODE,
+            {ATTR_NODE_NAMES: ["node-1", "node-2"]},
+            blocking=True,
+        )
+
+        assert mock_client.cordon_node.call_count == 2
+        mock_client.cordon_node.assert_any_call("node-1")
+        mock_client.cordon_node.assert_any_call("node-2")
+
+    async def test_cordon_requires_node_name(
+        self, hass: HomeAssistant, setup_domain_data
+    ):
+        """Test the schema rejects a call without node_name/node_names."""
+        import voluptuous as vol
+
+        await async_setup_services(hass)
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_CORDON_NODE,
+                {},
+                blocking=True,
+            )
+
+    async def test_cordon_failure_logged_not_raised(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test a failed cordon is logged but does not raise."""
+        mock_client.cordon_node = AsyncMock(return_value=False)
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CORDON_NODE,
+            {ATTR_NODE_NAME: "node-1"},
+            blocking=True,
+        )
+
+        mock_client.cordon_node.assert_called_once_with("node-1")
