@@ -2150,6 +2150,35 @@ class TestKubernetesNodeSchedulableSwitch:
         assert node_switch._optimistic_is_on is None
         assert node_switch.is_on is True
 
+    def test_optimistic_state_kept_without_node_data(
+        self, node_switch, mock_coordinator
+    ):
+        """Test the optimistic state is kept while node data is missing."""
+        node_switch._optimistic_is_on = False
+        mock_coordinator.get_node_data.return_value = None
+        node_switch.async_write_ha_state = MagicMock()
+
+        node_switch._handle_coordinator_update()
+
+        assert node_switch._optimistic_is_on is False
+        assert node_switch.is_on is False
+
+    def test_device_info_uses_cluster_device(self, node_switch, mock_config_entry):
+        """Test the switch attaches to the cluster device."""
+        from custom_components.kubernetes.device import get_cluster_device_info
+
+        assert node_switch.device_info == get_cluster_device_info(mock_config_entry)
+
+    async def test_async_added_to_hass_registers_listener(
+        self, node_switch, mock_coordinator
+    ):
+        """Test the switch subscribes to coordinator updates when added."""
+        await node_switch.async_added_to_hass()
+
+        mock_coordinator.async_add_listener.assert_called_once_with(
+            node_switch._handle_coordinator_update
+        )
+
 
 class TestDiscoverNewNodeSwitches:
     """Test dynamic discovery of node schedulable switches."""

@@ -2251,6 +2251,31 @@ class TestNodeCordonServices:
                 blocking=True,
             )
 
+    async def test_cordon_blank_node_name_is_noop(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test a whitespace-only node_name collects to nothing and no-ops."""
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CORDON_NODE,
+            {ATTR_NODE_NAME: "   "},
+            blocking=True,
+        )
+
+        mock_client.cordon_node.assert_not_called()
+
+    async def test_cordon_without_domain_data_is_noop(self, hass: HomeAssistant):
+        """Test the service no-ops when no cluster is configured."""
+        await async_setup_services(hass)
+        # No setup_domain_data fixture -> _get_entry_data finds nothing
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CORDON_NODE,
+            {ATTR_NODE_NAME: "node-1"},
+            blocking=True,
+        )
+
     async def test_cordon_failure_logged_not_raised(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
