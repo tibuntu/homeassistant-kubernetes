@@ -1814,7 +1814,7 @@ class KubernetesClient:
         action = "uncordon" if schedulable else "cordon"
         result = await self._set_node_schedulable_aiohttp(node_name, schedulable)
         if result:
-            _LOGGER.info("Successfully %sed node %s", action, node_name)
+            _LOGGER.debug("Successfully %sed node %s", action, node_name)
             return result
 
         _LOGGER.debug(
@@ -1822,7 +1822,7 @@ class KubernetesClient:
         )
         result = await self._set_node_schedulable_kubernetes(node_name, schedulable)
         if result:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Successfully %sed node %s using official client", action, node_name
             )
         return result

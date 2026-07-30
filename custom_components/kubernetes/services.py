@@ -825,16 +825,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             return
         coordinator = entry_data["coordinator"]
         client = coordinator.client
+        any_success = False
         for node_name in node_names:
             if schedulable:
                 success = await client.uncordon_node(node_name)
             else:
                 success = await client.cordon_node(node_name)
             if success:
+                any_success = True
                 _LOGGER.info("Successfully %sed node %s", action, node_name)
             else:
                 _LOGGER.error("Failed to %s node %s", action, node_name)
-        await coordinator.async_request_refresh()
+        if any_success:
+            await coordinator.async_request_refresh()
 
     async def cordon_node(call: ServiceCall) -> None:
         """Cordon one or more Kubernetes nodes (mark unschedulable)."""

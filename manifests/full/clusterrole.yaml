@@ -17,14 +17,13 @@ metadata:
     # For a read-only setup use manifests/minimal/ instead.
 rules:
   # Core resources — monitoring + watch + pod deletion
-  - apiGroups: [""]
-    resources: ["nodes", "namespaces", "events"]
-    verbs: ["get", "list", "watch"]
-
-  # Node cordon/uncordon (patches spec.unschedulable)
+  # nodes: patch is what cordon/uncordon needs (spec.unschedulable)
   - apiGroups: [""]
     resources: ["nodes"]
-    verbs: ["patch"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces", "events"]
+    verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "delete"]

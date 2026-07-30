@@ -2150,6 +2150,40 @@ class TestKubernetesNodeSchedulableSwitch:
         assert node_switch._optimistic_is_on is None
         assert node_switch.is_on is True
 
+    def test_optimistic_state_cleared_when_confirmed(
+        self, node_switch, mock_coordinator
+    ):
+        """Test the optimistic state clears once the coordinator confirms it."""
+        node_switch._optimistic_is_on = False
+        node_switch._optimistic_stale_allowance = 1
+        mock_coordinator.get_node_data.return_value = {"schedulable": False}
+        node_switch.async_write_ha_state = MagicMock()
+
+        node_switch._handle_coordinator_update()
+
+        assert node_switch._optimistic_is_on is None
+        assert node_switch.is_on is False
+
+    def test_optimistic_state_survives_one_stale_update(
+        self, node_switch, mock_coordinator
+    ):
+        """Test a refresh that raced the patch does not flip the switch back."""
+        node_switch._optimistic_is_on = False
+        node_switch._optimistic_stale_allowance = 1
+        mock_coordinator.get_node_data.return_value = {"schedulable": True}
+        node_switch.async_write_ha_state = MagicMock()
+
+        node_switch._handle_coordinator_update()
+
+        assert node_switch._optimistic_is_on is False
+        assert node_switch.is_on is False
+
+        # A second disagreeing update means the cluster really says otherwise
+        node_switch._handle_coordinator_update()
+
+        assert node_switch._optimistic_is_on is None
+        assert node_switch.is_on is True
+
     def test_optimistic_state_kept_without_node_data(
         self, node_switch, mock_coordinator
     ):

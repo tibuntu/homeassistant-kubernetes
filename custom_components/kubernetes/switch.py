@@ -807,11 +807,17 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
         self._attr_has_entity_name = True
         self._attr_name = f"{node_name} Schedulable"
         self._attr_unique_id = f"{config_entry.entry_id}_node_{node_name}_schedulable"
+        # Purely listener-driven; HA's 30 s poll would be a no-op write per node.
+        self._attr_should_poll = False
         self._last_cordon_time: float | None = None
         self._last_uncordon_time: float | None = None
         # Optimistic state after a cordon/uncordon call, cleared once the
-        # coordinator reports fresh node data.
+        # coordinator confirms the patched value.
         self._optimistic_is_on: bool | None = None
+        # ponytail: one-update grace, so a refresh that raced the patch can't
+        # flip the switch back, while an out-of-band `kubectl cordon` still wins
+        # on the next update instead of leaving the optimistic state stuck.
+        self._optimistic_stale_allowance = 0
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -864,9 +870,14 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        # Fresh node data supersedes the optimistic state
-        if self.coordinator.get_node_data(self.node_name) is not None:
-            self._optimistic_is_on = None
+        node_data = self.coordinator.get_node_data(self.node_name)
+        if node_data is not None and self._optimistic_is_on is not None:
+            if bool(node_data.get("schedulable", True)) == self._optimistic_is_on:
+                self._optimistic_is_on = None
+            elif self._optimistic_stale_allowance > 0:
+                self._optimistic_stale_allowance -= 1
+            else:
+                self._optimistic_is_on = None
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -881,6 +892,7 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
 
             self._last_uncordon_time = time.time()
             self._optimistic_is_on = True
+            self._optimistic_stale_allowance = 1
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
         except Exception as ex:
@@ -899,6 +911,7 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
 
             self._last_cordon_time = time.time()
             self._optimistic_is_on = False
+            self._optimistic_stale_allowance = 1
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
         except Exception as ex:

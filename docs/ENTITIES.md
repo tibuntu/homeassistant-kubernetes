@@ -237,7 +237,7 @@ The integration automatically creates switches for controlling Kubernetes worklo
 
 ### Node Schedulable Switches
 
-- **Entity ID Format**: `switch.[node_name]_schedulable`
+- **Entity ID Format**: `switch.[cluster_name]_[node_name]_schedulable`
 - **Function**: Cordon / uncordon individual nodes (patches `spec.unschedulable`)
 - **States**:
   - `on`: Node is schedulable (uncordoned)
@@ -363,7 +363,8 @@ Cluster Device (e.g., "production-cluster")
 │   ├── Ingresses Count (sensor)
 │   ├── Cluster events (event — opt-in, only when enable_events is on)
 │   ├── Individual Node sensors (one per node)
-│   └── Node condition binary sensors (4 per node: Memory/Disk/PID Pressure, Network Unavailable)
+│   ├── Node condition binary sensors (4 per node: Memory/Disk/PID Pressure, Network Unavailable)
+│   └── Node schedulable switches (one per node: cordon / uncordon)
 │
 └── Namespace Devices (e.g., "production-cluster: default")
     ├── Pod sensors (all pods in this namespace)
@@ -399,6 +400,7 @@ With device-based grouping, entities are automatically named using the following
 - **Cluster-level Sensors**: `sensor.[cluster_name]_[metric_type]` (e.g., `sensor.production_cluster_nodes_count`)
 - **Cluster-level Binary Sensors**: `binary_sensor.[cluster_name]_cluster_health` (e.g., `binary_sensor.production_cluster_cluster_health`)
 - **Node Sensors**: `sensor.[cluster_name]_[node_name]` (e.g., `sensor.production_cluster_worker_node_1`)
+- **Node Schedulable Switches**: `switch.[cluster_name]_[node_name]_schedulable` (e.g., `switch.production_cluster_worker_node_1_schedulable`)
 - **Namespace-level Pod Sensors**: `sensor.[cluster_name]_[namespace]_[pod_name]` (e.g., `sensor.production_cluster_default_my_app_pod`)
 - **Namespace-level Switches**: `switch.[cluster_name]_[namespace]_[resource_name]_[resource_type]` (e.g., `switch.production_cluster_default_my_deployment_deployment`)
 
@@ -416,6 +418,7 @@ The integration automatically discovers and creates entities for:
 - Individual Kubernetes pods in monitored namespaces
 - Individual Kubernetes nodes in the cluster
 - Node condition binary sensors (4 per node: Memory Pressure, Disk Pressure, PID Pressure, Network Unavailable)
+- Node schedulable switches (one per node, for cordon / uncordon)
 - Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs, jobs, ingresses count)
 - Overall cluster health
 

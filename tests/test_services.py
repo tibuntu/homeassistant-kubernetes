@@ -2290,3 +2290,22 @@ class TestNodeCordonServices:
         )
 
         mock_client.cordon_node.assert_called_once_with("node-1")
+        # Nothing changed, so there is nothing to refresh
+        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator.async_request_refresh.assert_not_called()
+
+    async def test_cordon_partial_failure_still_refreshes(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test one successful cordon among failures still triggers a refresh."""
+        mock_client.cordon_node = AsyncMock(side_effect=[False, True])
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_CORDON_NODE,
+            {ATTR_NODE_NAMES: ["node-1", "node-2"]},
+            blocking=True,
+        )
+
+        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator.async_request_refresh.assert_called_once()
