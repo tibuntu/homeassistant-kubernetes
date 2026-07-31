@@ -319,9 +319,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Cluster health binary sensor
         expected.add(f"{eid}_cluster_health")
 
-        # Node sensors + node condition binary sensors
+        # Node sensors + schedulable switches + node condition binary sensors
         for node_name in current_data.get("nodes", {}):
             expected.add(f"{eid}_node_{node_name}")
+            expected.add(f"{eid}_node_{node_name}_schedulable")
             for condition in (
                 "memory_pressure",
                 "disk_pressure",

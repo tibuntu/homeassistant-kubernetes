@@ -539,6 +539,40 @@ class TestKubernetesDataCoordinator:
         registry = er.async_get(hass)
         assert registry.async_get("switch.orphaned_cronjob") is None
 
+    async def test_cleanup_keeps_node_schedulable_switch(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Regression: cleanup must not remove schedulable switches of live nodes."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_node_worker-1_schedulable",
+            "switch.worker_1_schedulable",
+        )
+
+        current_data = {"nodes": {"worker-1": {"name": "worker-1"}}}
+        await coordinator._cleanup_orphaned_entities(current_data)
+
+        registry = er.async_get(hass)
+        assert registry.async_get("switch.worker_1_schedulable") is not None
+
+    async def test_cleanup_removes_schedulable_switch_of_deleted_node(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Test cleanup removes the schedulable switch when its node is gone."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_node_gone-node_schedulable",
+            "switch.gone_node_schedulable",
+        )
+
+        current_data = {"nodes": {}}
+        await coordinator._cleanup_orphaned_entities(current_data)
+
+        registry = er.async_get(hass)
+        assert registry.async_get("switch.gone_node_schedulable") is None
+
     async def test_cleanup_orphaned_entities_keeps_existing_entities(
         self, hass: HomeAssistant, coordinator, mock_config_entry
     ):

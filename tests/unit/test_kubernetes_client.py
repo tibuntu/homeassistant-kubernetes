@@ -6377,3 +6377,88 @@ class TestParsePodContainerState:
         assert parsed["container_waiting_reason"] == "CrashLoopBackOff"
         assert parsed["problem"] is True
         assert parsed["problem_reason"] == "CrashLoopBackOff"
+
+
+class TestNodeCordon:
+    """Tests for cordon_node / uncordon_node."""
+
+    def _mock_session(self, status: int = 200) -> MagicMock:
+        """Build a mock aiohttp session whose PATCH returns *status*."""
+        response = MagicMock()
+        response.status = status
+        response.text = AsyncMock(return_value="error body")
+        response.__aenter__ = AsyncMock(return_value=response)
+        response.__aexit__ = AsyncMock(return_value=None)
+
+        session = MagicMock()
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=None)
+        session.patch = MagicMock(return_value=response)
+        return session
+
+    async def test_cordon_node_aiohttp_success(self, mock_client):
+        """Test cordon_node patches spec.unschedulable=true via aiohttp."""
+        mock_session = self._mock_session(200)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client.cordon_node("node-1")
+
+        assert result is True
+        call = mock_session.patch.call_args
+        assert call.args[0].endswith("/api/v1/nodes/node-1")
+        assert call.kwargs["json"] == {"spec": {"unschedulable": True}}
+
+    async def test_uncordon_node_aiohttp_success(self, mock_client):
+        """Test uncordon_node patches spec.unschedulable=false via aiohttp."""
+        mock_session = self._mock_session(200)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client.uncordon_node("node-1")
+
+        assert result is True
+        call = mock_session.patch.call_args
+        assert call.args[0].endswith("/api/v1/nodes/node-1")
+        assert call.kwargs["json"] == {"spec": {"unschedulable": False}}
+
+    async def test_cordon_node_falls_back_to_official_client(self, mock_client):
+        """Test cordon_node falls back to the official client when aiohttp fails."""
+        mock_session = self._mock_session(500)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client.cordon_node("node-1")
+
+        assert result is True
+        mock_client.core_v1.patch_node.assert_called_once_with(
+            "node-1", {"spec": {"unschedulable": True}}
+        )
+
+    async def test_cordon_node_both_paths_fail(self, mock_client):
+        """Test cordon_node returns False when aiohttp and the client both fail."""
+        mock_client.core_v1.patch_node.side_effect = ApiException(status=403)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            side_effect=aiohttp.ClientError("boom"),
+        ):
+            result = await mock_client.cordon_node("node-1")
+
+        assert result is False
+
+    async def test_uncordon_node_falls_back_to_official_client(self, mock_client):
+        """Test uncordon_node falls back to the official client when aiohttp fails."""
+        mock_session = self._mock_session(500)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client.uncordon_node("node-1")
+
+        assert result is True
+        mock_client.core_v1.patch_node.assert_called_once_with(
+            "node-1", {"spec": {"unschedulable": False}}
+        )

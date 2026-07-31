@@ -8,7 +8,8 @@ metadata:
   annotations:
     # Full permissions for all integration features:
     #   - Sensors and binary sensors (monitoring)
-    #   - Switches (deployment/statefulset scaling, cronjob suspension)
+    #   - Switches (deployment/statefulset scaling, cronjob suspension,
+    #     node cordon/uncordon)
     #   - Workload rollout restart (deployments, statefulsets, daemonsets)
     #   - Pod deletion from the sidebar panel
     #   - Experimental Watch API (real-time updates via ?watch=true)
@@ -16,8 +17,12 @@ metadata:
     # For a read-only setup use manifests/minimal/ instead.
 rules:
   # Core resources — monitoring + watch + pod deletion
+  # nodes: patch is what cordon/uncordon needs (spec.unschedulable)
   - apiGroups: [""]
-    resources: ["nodes", "namespaces", "events"]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["namespaces", "events"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods"]

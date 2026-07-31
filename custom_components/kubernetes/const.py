@@ -124,6 +124,8 @@ SERVICE_START_WORKLOAD = "start_workload"
 SERVICE_STOP_WORKLOAD = "stop_workload"
 SERVICE_RESTART_WORKLOAD = "restart_workload"
 SERVICE_DELETE_JOB = "delete_job"
+SERVICE_CORDON_NODE = "cordon_node"
+SERVICE_UNCORDON_NODE = "uncordon_node"
 
 # Service attributes
 ATTR_WORKLOAD_NAME = "workload_name"
@@ -132,6 +134,8 @@ ATTR_NAMESPACE = "namespace"
 ATTR_REPLICAS = "replicas"
 ATTR_JOB_NAME = "job_name"
 ATTR_JOB_NAMES = "job_names"
+ATTR_NODE_NAME = "node_name"
+ATTR_NODE_NAMES = "node_names"
 ATTR_SUSPEND_TIME = "suspend_time"
 ATTR_RESUME_TIME = "resume_time"
 

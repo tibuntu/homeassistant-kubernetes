@@ -10,6 +10,7 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -26,7 +27,7 @@ from .const import (
     WORKLOAD_TYPE_STATEFULSET,
 )
 from .coordinator import KubernetesDataCoordinator
-from .device import get_namespace_device_info
+from .device import get_cluster_device_info, get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -81,6 +82,13 @@ async def async_setup_entry(
             KubernetesCronJobSwitch(
                 coordinator, config_entry, cronjob["name"], namespace
             )
+        )
+
+    # Get all nodes and create schedulable (cordon/uncordon) switches for them
+    nodes = await client.get_nodes()
+    for node in nodes:
+        switches.append(
+            KubernetesNodeSchedulableSwitch(coordinator, config_entry, node["name"])
         )
 
     # Ensure all namespace devices exist
@@ -208,6 +216,22 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
                             config_entry,
                             cronjob_name,
                             namespace,
+                        )
+                    )
+
+        # Check for new nodes
+        if coordinator.data and "nodes" in coordinator.data:
+            for node_name in coordinator.data["nodes"]:
+                unique_id = f"{config_entry.entry_id}_node_{node_name}_schedulable"
+                if unique_id not in existing_unique_ids:
+                    _LOGGER.info(
+                        "Adding new schedulable switch for node: %s", node_name
+                    )
+                    new_entities.append(
+                        KubernetesNodeSchedulableSwitch(
+                            coordinator,
+                            config_entry,
+                            node_name,
                         )
                     )
 
@@ -761,3 +785,135 @@ class KubernetesCronJobSwitch(SwitchEntity):
                 self._active_jobs_count,
                 self._schedule,
             )
+
+
+class KubernetesNodeSchedulableSwitch(SwitchEntity):
+    """Switch for controlling a Kubernetes node's schedulable state.
+
+    on = schedulable (uncordoned), off = unschedulable (cordoned) — the same
+    semantics as the CronJob switch (on = active, off = suspended).
+    """
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        config_entry: ConfigEntry,
+        node_name: str,
+    ) -> None:
+        """Initialize the node schedulable switch."""
+        self.coordinator = coordinator
+        self.config_entry = config_entry
+        self.node_name = node_name
+        self._attr_has_entity_name = True
+        self._attr_name = f"{node_name} Schedulable"
+        self._attr_unique_id = f"{config_entry.entry_id}_node_{node_name}_schedulable"
+        # Purely listener-driven; HA's 30 s poll would be a no-op write per node.
+        self._attr_should_poll = False
+        self._last_cordon_time: float | None = None
+        self._last_uncordon_time: float | None = None
+        # Optimistic state after a cordon/uncordon call, cleared once the
+        # coordinator confirms the patched value.
+        self._optimistic_is_on: bool | None = None
+        # ponytail: one-update grace, so a refresh that raced the patch can't
+        # flip the switch back, while an out-of-band `kubectl cordon` still wins
+        # on the next update instead of leaving the optimistic state stuck.
+        self._optimistic_stale_allowance = 0
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success
+            and self.coordinator.get_node_data(self.node_name) is not None
+        )
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if the node is schedulable (not cordoned)."""
+        if self._optimistic_is_on is not None:
+            return self._optimistic_is_on
+        node_data = self.coordinator.get_node_data(self.node_name)
+        if node_data:
+            return bool(node_data.get("schedulable", True))
+        return True
+
+    @property
+    def icon(self) -> str:
+        """Return the icon based on the schedulable state."""
+        return "mdi:server" if self.is_on else "mdi:server-off"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return entity specific state attributes."""
+        node_data = self.coordinator.get_node_data(self.node_name) or {}
+        return {
+            "node_name": self.node_name,
+            "status": node_data.get("status", "Unknown"),
+            "schedulable": self.is_on,
+            "cordoned": not self.is_on,
+            "last_cordon_time": self._last_cordon_time,
+            "last_uncordon_time": self._last_uncordon_time,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        node_data = self.coordinator.get_node_data(self.node_name)
+        if node_data is not None and self._optimistic_is_on is not None:
+            if bool(node_data.get("schedulable", True)) == self._optimistic_is_on:
+                self._optimistic_is_on = None
+            elif self._optimistic_stale_allowance > 0:
+                self._optimistic_stale_allowance -= 1
+            else:
+                self._optimistic_is_on = None
+        self.async_write_ha_state()
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Uncordon the node (mark it schedulable)."""
+        try:
+            _LOGGER.info("Uncordoning node: %s", self.node_name)
+            client = self.hass.data[DOMAIN][self.config_entry.entry_id]["client"]
+
+            result = await client.uncordon_node(self.node_name)
+            if not result:
+                raise HomeAssistantError(f"Failed to uncordon node {self.node_name}")
+
+            self._last_uncordon_time = time.time()
+            self._optimistic_is_on = True
+            self._optimistic_stale_allowance = 1
+            self.async_write_ha_state()
+            await self.coordinator.async_request_refresh()
+        except Exception as ex:
+            _LOGGER.error("Failed to uncordon node %s: %s", self.node_name, ex)
+            raise
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Cordon the node (mark it unschedulable)."""
+        try:
+            _LOGGER.info("Cordoning node: %s", self.node_name)
+            client = self.hass.data[DOMAIN][self.config_entry.entry_id]["client"]
+
+            result = await client.cordon_node(self.node_name)
+            if not result:
+                raise HomeAssistantError(f"Failed to cordon node {self.node_name}")
+
+            self._last_cordon_time = time.time()
+            self._optimistic_is_on = False
+            self._optimistic_stale_allowance = 1
+            self.async_write_ha_state()
+            await self.coordinator.async_request_refresh()
+        except Exception as ex:
+            _LOGGER.error("Failed to cordon node %s: %s", self.node_name, ex)
+            raise

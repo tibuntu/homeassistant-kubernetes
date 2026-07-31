@@ -125,7 +125,6 @@
       "kubernetes_nodes_count": {
         "name": "Nodes Count"
       },
-
       "kubernetes_deployments_count": {
         "name": "Deployments Count"
       },
@@ -163,6 +162,42 @@
         "namespace": {
           "name": "Namespace",
           "description": "The namespace of the Job(s). If omitted, it is resolved from monitored data, then the configured default."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target a specific configured cluster (optional; defaults to the first)."
+        }
+      }
+    },
+    "cordon_node": {
+      "name": "Cordon Node",
+      "description": "Cordon one or more Kubernetes nodes (mark them unschedulable). Running pods are not evicted; new pods will not be scheduled onto the node.",
+      "fields": {
+        "node_name": {
+          "name": "Node Name",
+          "description": "The name of a single node to cordon (use node_names for multiple)."
+        },
+        "node_names": {
+          "name": "Node Names",
+          "description": "A list of node names to cordon (use node_name for a single node)."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target a specific configured cluster (optional; defaults to the first)."
+        }
+      }
+    },
+    "uncordon_node": {
+      "name": "Uncordon Node",
+      "description": "Uncordon one or more Kubernetes nodes (mark them schedulable again).",
+      "fields": {
+        "node_name": {
+          "name": "Node Name",
+          "description": "The name of a single node to uncordon (use node_names for multiple)."
+        },
+        "node_names": {
+          "name": "Node Names",
+          "description": "A list of node names to uncordon (use node_name for a single node)."
         },
         "entry_id": {
           "name": "Config Entry ID",

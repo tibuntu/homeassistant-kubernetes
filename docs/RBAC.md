@@ -46,7 +46,7 @@ Read-only access to every resource the integration monitors. No write permission
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
 | **pods** | `get`, `list`, `watch`, `delete` | ✅ | `get`, `list` only | Pod count and status sensors, pod deletion |
-| **nodes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Node count sensors and binary sensors |
+| **nodes** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Node sensors and binary sensors; `patch` enables cordon/uncordon |
 | **namespaces** | `get`, `list` | ✅ | ✅ | Namespace discovery |
 | **events** | `get`, `list`, `watch` | ✅ | ❌ | Enhanced troubleshooting |
 
@@ -180,14 +180,19 @@ curl -sS \
 If you want to restrict access to specific namespaces instead of cluster-wide, use a `Role` + `RoleBinding` per namespace and a minimal `ClusterRole` for cluster-scoped resources (nodes, namespaces):
 
 ```yaml
-# Cluster-scoped read access for nodes and namespace discovery
+# Cluster-scoped access for nodes and namespace discovery.
+# Drop `patch` on nodes if you do not want cordon/uncordon — nodes are
+# cluster-scoped, so there is no namespaced equivalent.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: homeassistant-kubernetes-integration-cluster
 rules:
 - apiGroups: [""]
-  resources: ["nodes", "namespaces"]
+  resources: ["nodes"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: [""]
+  resources: ["namespaces"]
   verbs: ["get", "list"]
 ---
 # Namespace-scoped role (repeat per monitored namespace)
@@ -232,6 +237,9 @@ kubectl auth can-i list pods --as=system:serviceaccount:homeassistant:homeassist
 ```bash
 # Verify scaling permissions
 kubectl auth can-i patch deployments/scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+
+# Verify node cordon/uncordon permissions (node schedulable switches)
+kubectl auth can-i patch nodes --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Fix: Apply manifests/full/ — the minimal set does not grant write permissions
 ```

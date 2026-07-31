@@ -13,6 +13,8 @@ The integration provides the following services for controlling Kubernetes resou
 | **Stop Workload** | Stop a workload by scaling to 0 replicas | Deployments, StatefulSets |
 | **Restart Workload** | Perform a rolling restart (equivalent to `kubectl rollout restart`) | Deployments, StatefulSets, DaemonSets |
 | **Delete Job** | Delete one or more Jobs (useful for clearing failed Jobs) | Jobs |
+| **Cordon Node** | Mark one or more nodes unschedulable (`kubectl cordon`) | Nodes |
+| **Uncordon Node** | Mark one or more nodes schedulable again (`kubectl uncordon`) | Nodes |
 
 > **Note**: CronJobs are not affected by `scale_workload` or `stop_workload`. Use the switch entity to suspend/resume CronJobs, or use `start_workload` to trigger them.
 
@@ -214,6 +216,36 @@ data:
 service: kubernetes.delete_job
 data:
   job_name: backup-job-xyz789
+```
+
+### Cordon Node / Uncordon Node
+
+**Services**: `kubernetes.cordon_node`, `kubernetes.uncordon_node`
+
+Cordon marks a node unschedulable (the equivalent of `kubectl cordon`): running pods keep running, but no new pods are scheduled onto the node. Uncordon reverses it. The same operation is also available as a per-node switch entity (on = schedulable, off = cordoned).
+
+**Parameters** (both services):
+
+- `node_name` (string, optional): Single node name
+- `node_names` (list, optional): Multiple node names
+- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
+
+**Note**: Nodes are cluster-scoped — there is no `namespace` parameter. At least one of `node_name` or `node_names` must be provided. Requires the `patch` verb on `nodes` (included in `manifests/full/`).
+
+**Examples**:
+
+```yaml
+# Cordon a node before maintenance
+service: kubernetes.cordon_node
+data:
+  node_name: worker-node-1
+
+# Uncordon several nodes after maintenance
+service: kubernetes.uncordon_node
+data:
+  node_names:
+    - worker-node-1
+    - worker-node-2
 ```
 
 ## Using Entity IDs vs. Workload Names

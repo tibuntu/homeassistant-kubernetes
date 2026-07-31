@@ -13,16 +13,20 @@ from .const import (
     ATTR_JOB_NAME,
     ATTR_JOB_NAMES,
     ATTR_NAMESPACE,
+    ATTR_NODE_NAME,
+    ATTR_NODE_NAMES,
     ATTR_REPLICAS,
     ATTR_WORKLOAD_NAME,
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
+    SERVICE_CORDON_NODE,
     SERVICE_DELETE_JOB,
     SERVICE_RESTART_WORKLOAD,
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
     SERVICE_STOP_WORKLOAD,
+    SERVICE_UNCORDON_NODE,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DAEMONSET,
     WORKLOAD_TYPE_DEPLOYMENT,
@@ -335,6 +339,13 @@ def _validate_job_schema(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _validate_node_schema(data: dict[str, Any]) -> dict[str, Any]:
+    """Require at least one of node_name / node_names for node services."""
+    if ATTR_NODE_NAME not in data and ATTR_NODE_NAMES not in data:
+        raise vol.Invalid("Either node_name or node_names must be provided")
+    return data
+
+
 # Generic service schemas
 SCALE_WORKLOAD_SCHEMA = vol.Schema(
     vol.All(
@@ -423,9 +434,25 @@ DELETE_JOB_SCHEMA = vol.Schema(
     )
 )
 
+NODE_SCHEMA = vol.Schema(
+    vol.All(
+        {
+            vol.Optional(ATTR_NODE_NAME): cv.string,
+            vol.Optional(ATTR_NODE_NAMES): vol.Any(
+                cv.string,
+                vol.All(cv.ensure_list, [cv.string]),
+            ),
+            vol.Optional("entry_id"): cv.string,
+        },
+        _validate_node_schema,
+    )
+)
 
-def _collect_job_names(call_data: dict[str, Any]) -> list[str]:
-    """Collect job names from call data (job_name and/or job_names), deduped, order-preserving."""
+
+def _collect_names(
+    call_data: dict[str, Any], single_key: str, multi_key: str
+) -> list[str]:
+    """Collect names from call data (single and/or multi key), deduped, order-preserving."""
     seen: set[str] = set()
     result: list[str] = []
 
@@ -435,11 +462,11 @@ def _collect_job_names(call_data: dict[str, Any]) -> list[str]:
             seen.add(name)
             result.append(name)
 
-    single = call_data.get(ATTR_JOB_NAME)
+    single = call_data.get(single_key)
     if single:
         _add(single)
 
-    multi = call_data.get(ATTR_JOB_NAMES)
+    multi = call_data.get(multi_key)
     if multi:
         if isinstance(multi, str):
             _add(multi)
@@ -448,6 +475,16 @@ def _collect_job_names(call_data: dict[str, Any]) -> list[str]:
                 _add(name)
 
     return result
+
+
+def _collect_node_names(call_data: dict[str, Any]) -> list[str]:
+    """Collect node names from call data (node_name and/or node_names)."""
+    return _collect_names(call_data, ATTR_NODE_NAME, ATTR_NODE_NAMES)
+
+
+def _collect_job_names(call_data: dict[str, Any]) -> list[str]:
+    """Collect job names from call data (job_name and/or job_names), deduped, order-preserving."""
+    return _collect_names(call_data, ATTR_JOB_NAME, ATTR_JOB_NAMES)
 
 
 def _get_entry_data(
@@ -776,6 +813,40 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
                     "Failed to delete job %s in namespace %s", job_name, namespace
                 )
 
+    async def _set_nodes_schedulable(call: ServiceCall, schedulable: bool) -> None:
+        """Cordon or uncordon one or more Kubernetes nodes."""
+        action = "uncordon" if schedulable else "cordon"
+        node_names = _collect_node_names(call.data)
+        if not node_names:
+            _LOGGER.warning("%s_node called with no node_name/node_names", action)
+            return
+        entry_data = _get_entry_data(hass, call.data)
+        if not entry_data:
+            return
+        coordinator = entry_data["coordinator"]
+        client = coordinator.client
+        any_success = False
+        for node_name in node_names:
+            if schedulable:
+                success = await client.uncordon_node(node_name)
+            else:
+                success = await client.cordon_node(node_name)
+            if success:
+                any_success = True
+                _LOGGER.info("Successfully %sed node %s", action, node_name)
+            else:
+                _LOGGER.error("Failed to %s node %s", action, node_name)
+        if any_success:
+            await coordinator.async_request_refresh()
+
+    async def cordon_node(call: ServiceCall) -> None:
+        """Cordon one or more Kubernetes nodes (mark unschedulable)."""
+        await _set_nodes_schedulable(call, schedulable=False)
+
+    async def uncordon_node(call: ServiceCall) -> None:
+        """Uncordon one or more Kubernetes nodes (mark schedulable)."""
+        await _set_nodes_schedulable(call, schedulable=True)
+
     # Register the generic services
     hass.services.async_register(
         DOMAIN,
@@ -812,6 +883,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         schema=DELETE_JOB_SCHEMA,
     )
 
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_CORDON_NODE,
+        cordon_node,
+        schema=NODE_SCHEMA,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UNCORDON_NODE,
+        uncordon_node,
+        schema=NODE_SCHEMA,
+    )
+
 
 async def async_unload_services(hass: HomeAssistant) -> None:
     """Unload the Kubernetes services."""
@@ -820,3 +905,5 @@ async def async_unload_services(hass: HomeAssistant) -> None:
     hass.services.async_remove(DOMAIN, SERVICE_STOP_WORKLOAD)
     hass.services.async_remove(DOMAIN, SERVICE_RESTART_WORKLOAD)
     hass.services.async_remove(DOMAIN, SERVICE_DELETE_JOB)
+    hass.services.async_remove(DOMAIN, SERVICE_CORDON_NODE)
+    hass.services.async_remove(DOMAIN, SERVICE_UNCORDON_NODE)

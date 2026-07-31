@@ -148,3 +148,51 @@ delete_job:
       required: false
       selector:
         text:
+
+cordon_node:
+  name: Cordon Node
+  description: Cordon one or more Kubernetes nodes (mark them unschedulable). Running pods are not evicted; new pods will not be scheduled onto the node.
+  fields:
+    node_name:
+      name: Node Name
+      description: The name of a single node to cordon (use node_names for multiple).
+      required: false
+      selector:
+        text:
+    node_names:
+      name: Node Names
+      description: A list of node names to cordon (use node_name for a single node).
+      required: false
+      selector:
+        text:
+          multiple: true
+    entry_id:
+      name: Config Entry ID
+      description: Target a specific configured cluster (optional; defaults to the first).
+      required: false
+      selector:
+        text:
+
+uncordon_node:
+  name: Uncordon Node
+  description: Uncordon one or more Kubernetes nodes (mark them schedulable again).
+  fields:
+    node_name:
+      name: Node Name
+      description: The name of a single node to uncordon (use node_names for multiple).
+      required: false
+      selector:
+        text:
+    node_names:
+      name: Node Names
+      description: A list of node names to uncordon (use node_name for a single node).
+      required: false
+      selector:
+        text:
+          multiple: true
+    entry_id:
+      name: Config Entry ID
+      description: Target a specific configured cluster (optional; defaults to the first).
+      required: false
+      selector:
+        text:
