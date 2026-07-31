@@ -2,16 +2,19 @@
 
 ## [1.6.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.1...v1.6.0) (2026-07-31)
 
+This release adds **node scheduling control** — cordon and uncordon cluster nodes straight from Home Assistant. Everything is additive; existing setups keep working unchanged.
 
-### Features
+### New features
 
-* add node cordon/uncordon support (per-node switch + services) ([#326](https://github.com/tibuntu/homeassistant-kubernetes/issues/326)) ([131fe9e](https://github.com/tibuntu/homeassistant-kubernetes/commit/131fe9e04b3e3d34876cb52f2c126b2d502b0f6f))
+**Cordon and uncordon nodes.** Every node now gets a *Schedulable* switch — on means schedulable, off means cordoned — the equivalent of `kubectl cordon` / `kubectl uncordon`. Turn it off to stop the scheduler placing new pods on a node before maintenance, and back on when you're done; pods already running on the node stay put. Two matching services, `kubernetes.cordon_node` and `kubernetes.uncordon_node`, take one or more node names (`node_name` / `node_names`) for automations — nodes are cluster-scoped, so no namespace is needed. Switches reflect the change immediately and reconcile with the cluster on the next refresh, so an out-of-band `kubectl cordon` still wins, and newly added nodes are discovered automatically.
 
+### Fixes & improvements
 
-### Bug Fixes
+* Corrected the CronJob automation examples in the documentation.
+* CodeQL now runs from a committed workflow instead of GitHub's default setup, so code scanning also runs on pull requests from forks.
+* Dependency updates: Home Assistant, ruff, frontend tooling and GitHub Actions.
 
-* **docs:** add missing trailing comma in third CRONJOBS.md example ([96291ad](https://github.com/tibuntu/homeassistant-kubernetes/commit/96291ad76128f828bf1d95c9db5aeee6f18b7ca1))
-* **docs:** add trailing commas to satisfy ruff 0.16.0 markdown formatting ([d76213e](https://github.com/tibuntu/homeassistant-kubernetes/commit/d76213edb012081c4c28fc5229b54771cc478ee4))
+> **Upgrading — RBAC:** cordoning needs the `patch` verb on `nodes`. The bundled **full** manifest already includes it; the **minimal** manifest stays read-only, so minimal and custom manifests need that rule added before the switch and services will work. Everything else works as before.
 
 ## [1.5.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.0...v1.5.1) (2026-07-19)
 
