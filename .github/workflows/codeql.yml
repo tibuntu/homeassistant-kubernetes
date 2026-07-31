@@ -1,0 +1,63 @@
+---
+name: CodeQL
+
+# Advanced setup, replacing CodeQL default setup. Default setup does not run on
+# pull requests from forks, so its required status checks could never be met by
+# an external contributor's PR (see PR #326). This workflow runs on fork PRs
+# once a maintainer approves the run.
+#
+# The job name below must stay `Analyze (<language>)` — branch protection on
+# main requires those exact context names, inherited from default setup.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches-ignore:
+      - release-please--branches--main
+  schedule:
+    # Weekly, matching the cadence default setup used.
+    - cron: "27 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded PR runs; never cancel the post-merge run on main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      # Needed by the `actions` language to read workflow definitions.
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # `javascript-typescript` covers both JS and TS; the separate
+        # `javascript` / `typescript` entries default setup listed are aliases.
+        language:
+          - actions
+          - javascript-typescript
+          - python
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          # Nothing here compiles — no build step to trace.
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

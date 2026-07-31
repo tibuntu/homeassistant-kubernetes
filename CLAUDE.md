@@ -118,7 +118,9 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 ## CI
 
-GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + build (ESLint, Prettier, Vite). The frontend workflow also verifies the committed `kubernetes-panel.js` bundle matches a fresh build — if a developer edits `.ts` source without rebuilding, CI will fail. Releases automated via release-please.
+GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + build (ESLint, Prettier, Vite), and CodeQL (`.github/workflows/codeql.yml`). The frontend workflow also verifies the committed `kubernetes-panel.js` bundle matches a fresh build — if a developer edits `.ts` source without rebuilding, CI will fail. Releases automated via release-please.
+
+CodeQL uses **advanced setup** (a committed workflow) rather than GitHub's default setup, because default setup does not run on pull requests from forks — its required status checks could never be satisfied by an external contributor's PR. The matrix job name must stay `Analyze (<language>)` for `actions`, `javascript-typescript`, and `python`: branch protection on `main` requires those exact context names. The separate `CodeQL` context is posted by the code-scanning service (the `github-advanced-security` app) on SARIF upload, not by this workflow.
 
 ## Tests
 
