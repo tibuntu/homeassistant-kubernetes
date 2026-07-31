@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.1...v1.6.0) (2026-07-31)
+
+
+### Features
+
+* add node cordon/uncordon support (per-node switch + services) ([#326](https://github.com/tibuntu/homeassistant-kubernetes/issues/326)) ([131fe9e](https://github.com/tibuntu/homeassistant-kubernetes/commit/131fe9e04b3e3d34876cb52f2c126b2d502b0f6f))
+
+
+### Bug Fixes
+
+* **docs:** add missing trailing comma in third CRONJOBS.md example ([96291ad](https://github.com/tibuntu/homeassistant-kubernetes/commit/96291ad76128f828bf1d95c9db5aeee6f18b7ca1))
+* **docs:** add trailing commas to satisfy ruff 0.16.0 markdown formatting ([d76213e](https://github.com/tibuntu/homeassistant-kubernetes/commit/d76213edb012081c4c28fc5229b54771cc478ee4))
+
 ## [1.5.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.0...v1.5.1) (2026-07-19)
 
 
