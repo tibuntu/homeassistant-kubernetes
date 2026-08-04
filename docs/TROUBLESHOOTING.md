@@ -18,39 +18,40 @@ Reason: Unauthorized
 
 #### Step 1: Verify RBAC Setup
 
-The integration requires specific RBAC permissions. Run the setup script:
+Check whether the ServiceAccount actually has the permission the failing call needs:
 
 ```bash
-# Make the script executable
-chmod +x scripts/extract_token.sh
+kubectl auth can-i list deployments \
+  --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
-# Run the setup script
-./scripts/extract_token.sh
+# Everything the ServiceAccount is allowed to do
+kubectl auth can-i --list \
+  --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 ```
 
-This script will:
+If a verb is missing, install or upgrade the RBAC (see the next step). The full permission matrix is in the [RBAC Reference Guide](RBAC.md#complete-permission-matrix).
 
-- Create the necessary service account and RBAC resources
-- Extract the correct API token
-- Provide you with the configuration details
-
-#### Step 2: Manual RBAC Setup (Alternative)
+#### Step 2: Install or Upgrade the RBAC
 
 If you prefer to set up RBAC manually:
 
-1. Apply the required manifests:
+1. Install the RBAC — with Helm:
 
 ```bash
-kubectl apply -f manifests/serviceaccount.yaml
-kubectl apply -f manifests/clusterrole.yaml
-kubectl apply -f manifests/clusterrolebinding.yaml
-kubectl apply -f manifests/serviceaccount-token-secret.yaml
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --create-namespace
+```
+
+Or with the plain manifests:
+
+```bash
+kubectl apply -f manifests/full/         # or manifests/minimal/
 ```
 
 2. Extract the token:
 
 ```bash
-kubectl get secret homeassistant-monitor-token -n default -o jsonpath='{.data.token}' | base64 -d
+kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -o jsonpath='{.data.token}' | base64 -d
 ```
 
 #### Step 3: Verify Token Permissions

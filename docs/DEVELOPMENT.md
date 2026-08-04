@@ -8,6 +8,7 @@ This document provides detailed instructions for developing and contributing to 
 - Home Assistant 2025.7 or higher
 - A Kubernetes cluster for testing (minikube, kind, or cloud-based)
 - Git
+- Helm — only needed when changing RBAC. Use the version pinned in `.github/workflows/helm.yaml` (`azure/setup-helm`); see [RBAC and the Helm Chart](#rbac-and-the-helm-chart)
 
 ## Development Environment Setup
 
@@ -158,6 +159,15 @@ homeassistant-kubernetes/
 │       │   └── k8s-settings.ts      # Settings tab
 │       └── utils/
 │           └── load-ha-elements.ts  # HA element lazy loader
+├── chart/                            # Helm chart for the ServiceAccount + RBAC
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+├── manifests/                        # Generated from chart/ — do not edit by hand
+│   ├── full/
+│   └── minimal/
+├── scripts/
+│   └── render-manifests.sh           # chart/ → manifests/
 ├── tests/
 │   ├── conftest.py
 │   ├── test_init.py
@@ -167,6 +177,30 @@ homeassistant-kubernetes/
 ├── pyproject.toml
 └── README.md
 ```
+
+## RBAC and the Helm Chart
+
+`chart/` is the **single source of truth** for the integration's RBAC. The plain manifests in `manifests/{full,minimal}/` are rendered from it and committed so the `kubectl apply -f <raw URL>` install path keeps working without Helm.
+
+When a new feature needs a new verb or resource:
+
+1. Add the rule to `chart/templates/clusterrole.yaml` — inside the `mode: full` branch, the `minimal` branch, or both.
+2. Re-render the plain manifests:
+
+   ```bash
+   scripts/render-manifests.sh
+   ```
+
+3. Commit both `chart/` and the regenerated `manifests/`.
+4. Update the permission matrix in [`docs/RBAC.md`](RBAC.md#complete-permission-matrix).
+
+Adding a new value? Add it to `chart/values.schema.json` too — Helm validates values against that schema on every `install`/`upgrade`/`lint`/`template`, which is why `mode` is an `enum` there rather than a template-level `fail` (a `fail` inside `if rbac.create` would be skipped when `rbac.create=false`).
+
+`.github/workflows/helm.yaml` lints both modes and fails if `manifests/` does not match a fresh render — the same drift guard used for the committed frontend bundle. It compares with `git status --porcelain` rather than `git diff`, so a new template rendering a new (untracked) manifest is caught too. Never edit files under `manifests/` directly; the next render will overwrite them.
+
+The workflow pins the Helm version (`azure/setup-helm`) so the rendered output is byte-stable; use the same version locally if the drift check disagrees with you.
+
+The chart version is bumped by release-please alongside the integration version, and the release workflow pushes it to `oci://ghcr.io/tibuntu/charts` on every release.
 
 ## Frontend Development
 
