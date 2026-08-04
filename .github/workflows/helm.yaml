@@ -1,0 +1,69 @@
+---
+name: Helm Chart
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "chart/**"
+      - "manifests/**"
+      - "scripts/render-manifests.sh"
+      - ".github/workflows/helm.yaml"
+  pull_request:
+    branches-ignore:
+      - release-please--branches--main
+    paths:
+      - "chart/**"
+      - "manifests/**"
+      - "scripts/render-manifests.sh"
+      - ".github/workflows/helm.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  chart:
+    name: Lint chart & verify manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned so the manifest drift check compares like with like — the
+      # committed manifests/ were rendered with this Helm version.
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.2.3
+
+      - name: Lint both permission modes
+        run: |
+          helm lint chart --set mode=full
+          helm lint chart --set mode=minimal
+
+      # values.schema.json must reject a bad mode even when no ClusterRole is
+      # rendered — a template-level check inside `if rbac.create` would not.
+      - name: Reject an invalid mode
+        run: |
+          for extra in "" "--set rbac.create=false"; do
+            if helm template chart --set mode=bogus $extra >/dev/null 2>&1; then
+              echo "::error::chart accepted an invalid mode value ($extra)"
+              exit 1
+            fi
+          done
+
+      # git status --porcelain, not git diff: a new chart template renders a new,
+      # *untracked* manifest, which git diff does not see at all.
+      - name: Verify committed manifests match the chart
+        run: |
+          scripts/render-manifests.sh
+          if [ -n "$(git status --porcelain -- manifests/)" ]; then
+            echo "::error::manifests/ is out of date. Run 'scripts/render-manifests.sh' and commit the result."
+            git status --porcelain -- manifests/
+            git diff -- manifests/
+            exit 1
+          fi
