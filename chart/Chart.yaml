@@ -3,8 +3,8 @@ name: homeassistant-kubernetes-rbac
 description: ServiceAccount and RBAC permissions for the Home Assistant Kubernetes integration
 type: application
 # Chart version tracks the integration version — both are bumped by release-please.
-version: 1.6.0 # x-release-please-version
-appVersion: 1.6.0 # x-release-please-version
+version: 1.7.0 # x-release-please-version
+appVersion: 1.7.0 # x-release-please-version
 home: https://github.com/tibuntu/homeassistant-kubernetes
 sources:
   - https://github.com/tibuntu/homeassistant-kubernetes
