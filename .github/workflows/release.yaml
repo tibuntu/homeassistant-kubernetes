@@ -12,9 +12,59 @@ name: release-please
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - name: Release Please
+        id: release
         uses: googleapis/release-please-action@v5
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: .release-please-config.json
+
+  # Publish the RBAC chart to the GitHub Container Registry as an OCI artifact:
+  #   helm install ... oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac
+  publish-chart:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.2.3
+
+      - name: Log in to ghcr.io
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" |
+            helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      # The OCI tag is the chart version, so it must equal the git release tag
+      # minus its leading "v". release-please keeps Chart.yaml in step via the
+      # x-release-please-version annotations; fail loudly rather than publish a
+      # stale version if one of those annotations ever stops matching.
+      - name: Verify chart version matches the release tag
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          expected=${TAG#v}
+          chart=$(grep -m1 '^version:' chart/Chart.yaml | awk '{print $2}')
+          app=$(grep -m1 '^appVersion:' chart/Chart.yaml | awk '{print $2}')
+          echo "tag=$TAG expected=$expected chart=$chart appVersion=$app"
+          if [ "$chart" != "$expected" ] || [ "$app" != "$expected" ]; then
+            echo "::error::chart/Chart.yaml does not match release $TAG. Check the x-release-please-version annotations in chart/Chart.yaml."
+            exit 1
+          fi
+
+      - name: Package and push
+        run: |
+          helm package chart --destination dist
+          helm push dist/homeassistant-kubernetes-rbac-*.tgz \
+            oci://ghcr.io/${{ github.repository_owner }}/charts

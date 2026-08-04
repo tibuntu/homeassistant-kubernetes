@@ -61,6 +61,10 @@
           "type": "json",
           "path": "frontend/package-lock.json",
           "jsonpath": "$.packages[''].version"
+        },
+        {
+          "type": "generic",
+          "path": "chart/Chart.yaml"
         }
       ]
     }
