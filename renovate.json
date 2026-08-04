@@ -117,6 +117,12 @@
       "matchDepNames": ["pytest-homeassistant-custom-component", "homeassistant", "pytest", "pytest-asyncio"],
       "groupName": "homeassistant",
       "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Helm CLI pin shared by the chart and release workflows",
+      "matchDepNames": ["helm/helm"],
+      "groupName": "helm",
+      "semanticCommitScope": "deps-actions"
     }
   ],
   "customManagers": [
@@ -142,6 +148,18 @@
       ],
       "depNameTemplate": "python",
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Track the pinned Helm CLI version in the chart and release workflows",
+      "managerFilePatterns": [
+        "/\\.github/workflows/(helm|release)\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "azure/setup-helm@v\\d+\\s*\\n\\s*with:\\s*\\n\\s*version:\\s*(?<currentValue>v[0-9.]+)"
+      ],
+      "depNameTemplate": "helm/helm",
+      "datasourceTemplate": "github-releases"
     }
   ]
 }
