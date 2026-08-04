@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "homeassistant-kubernetes-rbac values",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "description": "Permission set: full (all features) or minimal (read-only).",
+      "type": "string",
+      "enum": ["full", "minimal"]
+    },
+    "nameOverride": {
+      "description": "Name of the ServiceAccount, ClusterRole and ClusterRoleBinding.",
+      "type": "string"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "tokenSecret": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" },
+        "extraRules": {
+          "description": "Extra policy rules appended to the ClusterRole.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "apiGroups": { "type": "array", "items": { "type": "string" } },
+              "resources": { "type": "array", "items": { "type": "string" } },
+              "resourceNames": { "type": "array", "items": { "type": "string" } },
+              "verbs": { "type": "array", "items": { "type": "string" } },
+              "nonResourceURLs": { "type": "array", "items": { "type": "string" } }
+            },
+            "required": ["verbs"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{{ .Chart.Name }} installed with mode: {{ .Values.mode }}
+
+ServiceAccount: {{ .Release.Namespace }}/{{ include "rbac.name" . }}
+{{ if .Values.tokenSecret.create }}
+Home Assistant running OUTSIDE the cluster — get the API token with:
+
+  kubectl get secret {{ include "rbac.name" . }}-token -n {{ .Release.Namespace }} \
+    -o jsonpath='{.data.token}' | base64 -d
+
+Then add the Kubernetes integration in Home Assistant and paste the token.
+{{- else }}
+Home Assistant running INSIDE the cluster — set on the HA pod spec:
+
+  serviceAccountName: {{ include "rbac.name" . }}
+
+The integration reads the projected token and picks up rotations automatically.
+{{- end }}
+Permission reference: https://tibuntu.github.io/homeassistant-kubernetes/RBAC/

@@ -5,11 +5,11 @@ metadata:
   labels:
     app.kubernetes.io/name: homeassistant-kubernetes-integration
     app.kubernetes.io/component: rbac
-  annotations:
-    # Minimal read-only permissions for sensors and binary sensors only.
-    # Switches (deployment/statefulset scaling, cronjob suspension) and the
-    # experimental Watch API are NOT available with this role.
-    # For full functionality use manifests/full/ instead.
+# Minimal read-only permissions for sensors and binary sensors only.
+# Switches (deployment/statefulset scaling, cronjob suspension, node
+# cordon/uncordon), rollout restart, pod/job deletion, the Cluster Events
+# platform and the experimental Watch API are NOT available with this role.
+# For full functionality use manifests/full/ (Helm: mode=full) instead.
 rules:
   # Core resources — monitoring only
   - apiGroups: [""]
