@@ -2,10 +2,27 @@
 
 ## [1.7.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.6.0...v1.7.0) (2026-08-04)
 
+This release packages the integration's ServiceAccount and RBAC as a **Helm chart**, so keeping cluster permissions up to date becomes a `helm upgrade` instead of re-applying manifests by hand. Nothing changes inside Home Assistant and no new permissions are needed — existing setups keep working unchanged.
 
-### Features
+### New features
 
-* **rbac:** package ServiceAccount and RBAC into a Helm chart ([a2cd4ae](https://github.com/tibuntu/homeassistant-kubernetes/commit/a2cd4ae58a630061adb4882b70044ba657cf73dd)), closes [#333](https://github.com/tibuntu/homeassistant-kubernetes/issues/333)
+**RBAC as a Helm chart.** The ServiceAccount, ClusterRole, ClusterRoleBinding and token Secret are now available as a versioned chart, published to the GitHub Container Registry:
+
+```bash
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --create-namespace
+```
+
+Choose the permission set with `mode` — the default `full` covers everything (switches, rollout restart, node cordon/uncordon, cluster events, Watch API), while `minimal` stays read-only for sensors only. Other values let you skip the long-lived token Secret when Home Assistant runs inside the cluster (`tokenSecret.create=false`), rename the objects, bind to a ServiceAccount you already manage, or append your own rules via `rbac.extraRules` — handy for adding just `events` on top of `minimal`. The chart version tracks the integration version, so after updating the integration a single `helm upgrade` picks up any permissions that new features need.
+
+**The plain manifests still work — and can no longer drift.** `manifests/full/` and `manifests/minimal/` keep the same paths, filenames and permissions, so every existing `kubectl apply` command is untouched. They are now generated from the chart and checked in CI, which means the YAML you apply and the chart can no longer disagree about what the integration needs.
+
+### Fixes & improvements
+
+* Documentation: the RBAC permission list is no longer duplicated across pages (it drifted), and the setup and troubleshooting guides no longer point at manifest paths, a token Secret name and a helper script that did not exist.
+* Dependency updates: Home Assistant, ruff and frontend tooling.
+
+> **Upgrading:** nothing to do — the permissions in this release are identical to 1.6.0, and the manifest paths are unchanged. If you'd like to switch from `kubectl apply` to the chart, add `--take-ownership` to the first `helm install` so Helm adopts the objects you already applied (Helm 3.17+); the names and rules are the same, so nothing is recreated and there is no gap in access. On later upgrades use `--reset-then-reuse-values` rather than `--reuse-values`, so newly added chart defaults actually apply.
 
 ## [1.6.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.1...v1.6.0) (2026-07-31)
 
