@@ -44,20 +44,31 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 ## Setup
 
-1. **Configure Kubernetes Service Account**:
+1. **Configure Kubernetes Service Account** — with the Helm chart (recommended, so `helm upgrade` keeps the permissions current):
 
    ```bash
-   # Apply the full RBAC manifests (monitoring + switches + Watch API)
-   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/serviceaccount.yaml
-   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/clusterrole.yaml
-   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/clusterrolebinding.yaml
-   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/serviceaccount-token-secret.yaml
+   # Full permissions: monitoring + switches + Watch API
+   helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+     --namespace homeassistant --create-namespace
 
    # Extract the token
    kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -o jsonpath='{.data.token}' | base64 -d
    ```
 
-   > **Minimal permissions:** If you only need read-only sensors and binary sensors (no switches, no Watch API), use the `manifests/minimal/` variants instead — replace `full` with `minimal` in the URLs above. See the [RBAC Reference Guide](docs/RBAC.md) for a full comparison.
+   Or with plain manifests, if you don't use Helm:
+
+   ```bash
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/serviceaccount.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/clusterrole.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/clusterrolebinding.yaml
+   kubectl apply -f https://raw.githubusercontent.com/tibuntu/homeassistant-kubernetes/refs/heads/main/manifests/full/serviceaccount-token-secret.yaml
+   ```
+
+   > **Already applied the manifests?** Add `--take-ownership` to the `helm install` so Helm adopts the existing objects instead of failing on ownership metadata (Helm 3.17+). Same names, same permissions — nothing is recreated. See [RBAC](docs/RBAC.md#already-applied-the-plain-manifests).
+   >
+   > **Minimal permissions:** If you only need read-only sensors and binary sensors (no switches, no Watch API), add `--set mode=minimal` to the Helm command — or replace `full` with `minimal` in the manifest URLs. See the [RBAC Reference Guide](docs/RBAC.md) for a full comparison and all chart values.
+   >
+   > **Home Assistant inside the cluster?** Add `--set tokenSecret.create=false` and bind the ServiceAccount to the HA pod instead — see the [Setup Guide](docs/SETUP.md) for automatic token rotation.
 
 2. **Add Integration**:
    - Go to **Settings → Devices & Services**

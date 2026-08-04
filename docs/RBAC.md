@@ -4,7 +4,69 @@ This document provides a comprehensive reference for the Role-Based Access Contr
 
 ## Quick Start
 
-The `manifests/` directory contains two ready-to-apply sets of Kubernetes manifests. Pick the one that matches your requirements and apply it:
+Two ways to install the same `ServiceAccount`, `ClusterRole`, `ClusterRoleBinding`, and token `Secret`. Pick whichever fits your workflow — the permissions are identical.
+
+### Option A: Helm chart (recommended)
+
+The chart is published to the GitHub Container Registry as an OCI artifact, so `helm upgrade` picks up new permissions as the integration gains features:
+
+```bash
+# Full permissions — monitoring + control (switches) + Watch API
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --create-namespace
+
+# Minimal permissions — read-only sensors only
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --create-namespace \
+  --set mode=minimal
+```
+
+Pin a version with `--version <chart version>`; the chart version tracks the integration version. To upgrade after updating the integration:
+
+```bash
+helm upgrade ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --reset-then-reuse-values
+```
+
+`--reset-then-reuse-values` resets to the new chart's defaults and then re-applies your own overrides, so newly added permissions actually land. (`--reuse-values` would keep your old value set verbatim and silently skip them.)
+
+#### Already applied the plain manifests?
+
+Helm refuses to adopt resources it did not create:
+
+```text
+Error: INSTALLATION FAILED: Unable to continue with install: ClusterRole
+"homeassistant-kubernetes-integration" in namespace "" exists and cannot be
+imported into the current release: invalid ownership metadata; label validation
+error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"
+```
+
+Add `--take-ownership` on the first install to adopt the existing objects instead of failing:
+
+```bash
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --take-ownership
+```
+
+The chart renders the same objects with the same names, so this is an in-place adoption — no permission gap, nothing recreated. Requires Helm 3.17+. On older Helm, `kubectl delete -f manifests/full/` first, then install normally.
+
+#### Chart values
+
+| Value | Default | Purpose |
+|-------|---------|---------|
+| `mode` | `full` | Permission set: `full` or `minimal`. Anything else fails the render. |
+| `nameOverride` | `""` | Name of the ServiceAccount, ClusterRole and ClusterRoleBinding. Defaults to `homeassistant-kubernetes-integration`. |
+| `serviceAccount.create` | `true` | Set to `false` to bind the ClusterRole to a ServiceAccount you already manage. |
+| `serviceAccount.annotations` | `{}` | Extra annotations on the ServiceAccount. |
+| `tokenSecret.create` | `true` | Long-lived token Secret. Set to `false` when Home Assistant runs **inside** the cluster and uses the projected (auto-rotating) token. |
+| `rbac.create` | `true` | Set to `false` to render only the ServiceAccount and token Secret. |
+| `rbac.extraRules` | `[]` | Extra rules appended verbatim to the ClusterRole — e.g. adding `events` on top of `mode: minimal`. |
+
+The release namespace (`--namespace`) determines the namespace of the ServiceAccount, the token Secret, and the ClusterRoleBinding subject.
+
+### Option B: Plain manifests
+
+The `manifests/` directory contains the same two sets as ready-to-apply YAML — no Helm required:
 
 ```bash
 # Full permissions — monitoring + control (switches) + Watch API
@@ -14,28 +76,34 @@ kubectl apply -f manifests/full/
 kubectl apply -f manifests/minimal/
 ```
 
-Both sets create the same `ServiceAccount` and `ClusterRoleBinding` in the `homeassistant` namespace. Adjust the namespace in `serviceaccount.yaml` and `clusterrolebinding.yaml` if your Home Assistant pod runs elsewhere.
+Both sets create the `ServiceAccount` and `ClusterRoleBinding` in the `homeassistant` namespace. Adjust the namespace in `serviceaccount.yaml`, `serviceaccount-token-secret.yaml`, and `clusterrolebinding.yaml` if your Home Assistant pod runs elsewhere.
 
-## Manifest Sets
+> **Note:** `manifests/` is generated from `chart/` (see [Development Guide](DEVELOPMENT.md#rbac-and-the-helm-chart)) — the two are always in sync, so `mode: full` and `manifests/full/` grant exactly the same permissions.
 
-### `manifests/full/` — Recommended
+## Permission Sets
+
+### `full` / `manifests/full/` — Recommended
 
 Enables all integration features:
 
 - Sensors and binary sensors (monitoring)
-- Switches (deployment / statefulset scaling, CronJob suspension)
+- Switches (deployment / statefulset scaling, CronJob suspension, node cordon/uncordon)
+- Workload rollout restart (deployments, statefulsets, daemonsets)
 - Ingress monitoring (Network tab in the sidebar panel, with clickable URLs)
-- Pod deletion from the sidebar panel (requires Home Assistant admin role)
+- Pod and Job deletion from the sidebar panel (requires Home Assistant admin role)
+- Cluster Events platform (`events`)
 - Experimental Watch API (real-time updates via `?watch=true`)
 - Legacy API compatibility (Kubernetes < 1.16)
 
-### `manifests/minimal/`
+### `minimal` / `manifests/minimal/`
 
 Read-only access to every resource the integration monitors. No write permissions.
 
 **Limitations:**
 
-- No switches (scaling or CronJob control)
+- No switches (scaling, CronJob control, or node cordon/uncordon)
+- No rollout restart, pod deletion, or Job deletion
+- No Cluster Events platform (`events` not granted)
 - No Watch API support (`watch` verb not granted)
 - Sensors and binary sensors only
 
@@ -97,15 +165,15 @@ Read-only access to every resource the integration monitors. No write permission
 
 ### Principle of Least Privilege
 
-1. **Start Minimal**: Begin with `manifests/minimal/` and move to `manifests/full/` only when you need switches or the Watch API
+1. **Start Minimal**: Begin with `mode: minimal` (`manifests/minimal/`) and move to `full` only when you need switches or the Watch API
 2. **Namespace Scoping**: For multi-tenant clusters see the namespace-scoped example below
 3. **Regular Audits**: Review permissions periodically
 4. **Monitor Usage**: Track which permissions are actually used
 
 ### Risk Assessment
 
-| Manifest Set | Risk Level | Capabilities |
-|--------------|------------|--------------|
+| Permission Set | Risk Level | Capabilities |
+|----------------|------------|--------------|
 | **full** | Medium | Complete monitoring + control + Watch API |
 | **minimal** | Low | Read-only sensors and binary sensors only |
 
@@ -221,6 +289,8 @@ rules:
 
 ## Troubleshooting RBAC Issues
 
+> The fixes below say "Apply `manifests/full/`". With the Helm chart the equivalent is `helm upgrade ... --set mode=full`.
+
 ### Common Permission Errors
 
 #### 1. "Forbidden: User cannot list pods"
@@ -316,10 +386,11 @@ kubectl describe clusterrole homeassistant-kubernetes-integration
 
 ## Best Practices
 
-1. **Version Control**: Keep RBAC manifests in version control alongside your Home Assistant configuration
-2. **Start Minimal**: Use `manifests/minimal/` first and upgrade to `manifests/full/` only when needed
-3. **Testing**: Test permissions in a non-production cluster first
-4. **Monitoring**: Watch for permission-denied errors in the Home Assistant logs
-5. **Automation**: Manage manifests with your existing GitOps / infrastructure-as-code tooling
+1. **Version Control**: Keep your chart values (or the RBAC manifests) in version control alongside your Home Assistant configuration
+2. **Start Minimal**: Use `mode: minimal` first and upgrade to `full` only when needed
+3. **Stay Current**: Run `helm upgrade` after updating the integration — new features occasionally need new verbs
+4. **Testing**: Test permissions in a non-production cluster first
+5. **Monitoring**: Watch for permission-denied errors in the Home Assistant logs
+6. **Automation**: Manage the chart with your existing GitOps / infrastructure-as-code tooling (Flux `HelmRelease`, Argo CD, Terraform `helm_release`, …)
 
 For setup instructions, see the [Service Account Setup Guide](SETUP.md).

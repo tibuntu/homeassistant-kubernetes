@@ -7,21 +7,35 @@ This guide walks you through setting up the required Kubernetes service account 
 | Where Home Assistant runs | Recommended setup |
 |---------------------------|-------------------|
 | **Inside the cluster** (HA itself runs as a pod) | [In-cluster ServiceAccount](#in-cluster-serviceaccount-setup) — bind the SA directly to the HA pod, skip the token-extraction step, get automatic token rotation. |
-| **Outside the cluster** (HA on a different host) | [Quick Setup](#quick-setup) — apply the manifests, extract a token from the long-lived secret, paste it into the integration. |
+| **Outside the cluster** (HA on a different host) | [Quick Setup](#quick-setup) — install the RBAC, extract a token from the long-lived secret, paste it into the integration. |
 
-Both paths use the **same RBAC manifests**; only the way the integration receives the token differs.
+Both paths grant the **same RBAC permissions**; only the way the integration receives the token differs.
+
+You can install the RBAC either with the **Helm chart** (recommended — `helm upgrade` picks up new permissions as the integration gains features) or with the **plain manifests** in `manifests/`. Both are described below; see the [RBAC Reference Guide](RBAC.md) for the full permission matrix and the available chart values.
 
 ## In-Cluster ServiceAccount Setup
 
 When Home Assistant runs as a pod in the same cluster it monitors, you do not need to extract the token manually. Instead, bind the integration's ServiceAccount to the HA pod and let the integration read the projected token file at runtime — rotation included.
 
-### 1. Apply the RBAC manifests
+### 1. Install the RBAC
+
+With Helm — note `tokenSecret.create=false`, since the pod uses the projected (auto-rotating) token instead:
+
+```bash
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --create-namespace \
+  --set tokenSecret.create=false
+```
+
+> Migrating from the plain manifests? Add `--take-ownership` so Helm adopts the objects you already applied — see [Already applied the plain manifests?](RBAC.md#already-applied-the-plain-manifests)
+
+Or with the plain manifests:
 
 ```bash
 kubectl apply -f manifests/full/         # or manifests/minimal/
 ```
 
-These create the ServiceAccount, ClusterRole, and ClusterRoleBinding. The `serviceaccount-token-secret.yaml` step from the quick-setup path is **not needed** — the projected token volume is mounted by the kubelet automatically.
+Either way you get the ServiceAccount, ClusterRole, and ClusterRoleBinding. The long-lived token `Secret` from the quick-setup path is **not needed** here — the projected token volume is mounted by the kubelet automatically.
 
 ### 2. Bind the SA to the Home Assistant pod
 
@@ -55,15 +69,26 @@ spec:
 
 ## Quick Setup
 
-For a quick setup using the provided manifests:
+### 1. Install the RBAC
 
-### 1. Apply Required Manifests
+With Helm:
 
 ```bash
-kubectl apply -f manifests/serviceaccount.yaml
-kubectl apply -f manifests/clusterrole.yaml
-kubectl apply -f manifests/clusterrolebinding.yaml
-kubectl apply -f manifests/serviceaccount-token-secret.yaml
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --create-namespace
+```
+
+Add `--set mode=minimal` for read-only sensors only. If you previously applied the plain manifests, add `--take-ownership` so Helm adopts the existing objects instead of failing on ownership metadata — see [Already applied the plain manifests?](RBAC.md#already-applied-the-plain-manifests) Later, after updating the integration:
+
+```bash
+helm upgrade ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --reset-then-reuse-values
+```
+
+Or with the plain manifests:
+
+```bash
+kubectl apply -f manifests/full/         # or manifests/minimal/
 ```
 
 ### 2. Extract the Token
@@ -78,12 +103,12 @@ Copy this token for use in the Home Assistant configuration.
 
 ## Step-by-Step Setup
 
-If you prefer to understand each step or need to customize the setup:
+If you prefer to understand each step or need to customize the setup, apply the four manifests individually (swap `full` for `minimal` for a read-only setup):
 
 ### 1. Create Service Account
 
 ```bash
-kubectl apply -f manifests/serviceaccount.yaml
+kubectl apply -f manifests/full/serviceaccount.yaml
 ```
 
 This creates a service account named `homeassistant-kubernetes-integration` in the `homeassistant` namespace.
@@ -91,7 +116,7 @@ This creates a service account named `homeassistant-kubernetes-integration` in t
 ### 2. Create Cluster Role
 
 ```bash
-kubectl apply -f manifests/clusterrole.yaml
+kubectl apply -f manifests/full/clusterrole.yaml
 ```
 
 This defines the RBAC permissions required for monitoring and controlling Kubernetes resources.
@@ -99,7 +124,7 @@ This defines the RBAC permissions required for monitoring and controlling Kubern
 ### 3. Create Cluster Role Binding
 
 ```bash
-kubectl apply -f manifests/clusterrolebinding.yaml
+kubectl apply -f manifests/full/clusterrolebinding.yaml
 ```
 
 This binds the cluster role to the service account, granting the necessary permissions.
@@ -107,10 +132,10 @@ This binds the cluster role to the service account, granting the necessary permi
 ### 4. Create Token Secret
 
 ```bash
-kubectl apply -f manifests/serviceaccount-token-secret.yaml
+kubectl apply -f manifests/full/serviceaccount-token-secret.yaml
 ```
 
-This creates a secret containing the service account token for authentication.
+This creates a secret containing the service account token for authentication. Skip this step when Home Assistant runs inside the cluster.
 
 ### 5. Extract the Token
 
@@ -120,100 +145,9 @@ kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -
 
 ## RBAC Permissions
 
-The integration requires comprehensive permissions for monitoring and controlling Kubernetes resources. The actual permissions are defined in the `manifests/clusterrole.yaml` file.
+The authoritative permission list lives in the chart (`chart/templates/clusterrole.yaml`) and its rendered output (`manifests/full/clusterrole.yaml`, `manifests/minimal/clusterrole.yaml`).
 
-### Complete Cluster Role Permissions
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: homeassistant-kubernetes-integration
-rules:
-# Read permissions for monitoring
-- apiGroups: [""]
-  resources: ["pods", "nodes", "namespaces"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["extensions"]
-  resources: ["deployments", "replicasets"]
-  verbs: ["get", "list", "watch"]
-# Write permissions for control - including scaling
-- apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale"]
-  verbs: ["patch", "update", "get", "create", "delete"]
-- apiGroups: ["extensions"]
-  resources: ["deployments", "deployments/scale"]
-  verbs: ["patch", "update", "get", "create", "delete"]
-# Events for better monitoring and troubleshooting
-- apiGroups: [""]
-  resources: ["events"]
-  verbs: ["get", "list", "watch"]
-# StatefulSet status for accurate state reporting
-- apiGroups: ["apps"]
-  resources: ["statefulsets/status"]
-  verbs: ["get", "patch", "update"]
-# Batch API permissions for CronJobs and Jobs
-- apiGroups: ["batch"]
-  resources: ["cronjobs", "jobs"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs", "cronjobs/status", "jobs"]
-  verbs: ["get", "patch", "update", "create", "delete"]
-# Networking API for Ingress monitoring (Network tab in the sidebar panel)
-- apiGroups: ["networking.k8s.io"]
-  resources: ["ingresses"]
-  verbs: ["get", "list", "watch"]
-# Metrics API for real-time CPU and memory usage
-- apiGroups: ["metrics.k8s.io"]
-  resources: ["nodes", "pods"]
-  verbs: ["get", "list"]
-```
-
-### Permission Breakdown
-
-| API Group | Resource | Verbs | Purpose |
-|-----------|----------|-------|---------|
-| **""** (Core) | **pods** | `get`, `list`, `watch` | Monitor pod counts and status across namespaces |
-| **""** (Core) | **nodes** | `get`, `list`, `watch` | Monitor cluster nodes count and health |
-| **""** (Core) | **namespaces** | `get`, `list` | List and access namespaces for monitoring |
-| **""** (Core) | **events** | `get`, `list`, `watch` | Access events for troubleshooting and monitoring |
-| **apps** | **deployments** | `get`, `list`, `watch` | Monitor deployment status and metadata |
-| **apps** | **deployments/scale** | `patch`, `update`, `get`, `create`, `delete` | Scale deployments up/down |
-| **apps** | **replicasets** | `get`, `list`, `watch` | Monitor replica sets (underlying deployment resource) |
-| **apps** | **statefulsets** | `get`, `list`, `watch` | Monitor statefulset status and metadata |
-| **apps** | **statefulsets/scale** | `patch`, `update`, `get`, `create`, `delete` | Scale statefulsets up/down |
-| **apps** | **statefulsets/status** | `get`, `patch`, `update` | Update and monitor statefulset status |
-| **apps** | **daemonsets** | `get`, `list`, `watch` | Monitor daemonset status and count |
-| **batch** | **cronjobs** | `get`, `list`, `watch` | Monitor CronJob status and metadata |
-| **batch** | **cronjobs/status** | `get`, `patch`, `update` | Update and monitor CronJob status |
-| **batch** | **jobs** | `get`, `list`, `watch`, `create`, `delete` | Monitor, create, and delete Jobs (for CronJob triggering and Job cleanup) |
-| **networking.k8s.io** | **ingresses** | `get`, `list`, `watch` | Ingresses count sensor + Network tab in the sidebar panel |
-| **metrics.k8s.io** | **nodes** | `get`, `list` | Real-time node CPU and memory usage |
-| **metrics.k8s.io** | **pods** | `get`, `list` | Workload CPU and memory usage sensors |
-| **extensions** | **deployments** | `get`, `list`, `watch` | Legacy API compatibility for older clusters |
-| **extensions** | **deployments/scale** | `patch`, `update`, `get`, `create`, `delete` | Legacy scaling API compatibility |
-
-### Why These Permissions Are Required
-
-#### Monitoring Permissions (`get`, `list`, `watch`)
-
-- **Essential for sensor data**: Pod counts, node counts, deployment status
-- **Real-time updates**: `watch` enables efficient real-time monitoring
-- **Cross-namespace visibility**: Required when monitoring all namespaces
-
-#### Control Permissions (`patch`, `update`, `create`, `delete`)
-
-- **Scaling operations**: Required to scale deployments and statefulsets
-- **State management**: Update resource scales and status
-- **Switch functionality**: Enable on/off control of workloads
-
-#### Legacy API Groups
-
-- **extensions**: Provides compatibility with older Kubernetes clusters
-- **Dual API coverage**: Ensures the integration works across different cluster versions
+For the complete matrix — every API group, resource, and verb, with the feature each one unlocks and a `full` vs `minimal` comparison — see the [RBAC Reference Guide](RBAC.md#complete-permission-matrix).
 
 ## Namespace-Specific Setup
 

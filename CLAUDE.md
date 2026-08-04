@@ -48,6 +48,10 @@ pre-commit run --all-files
 
 # Documentation
 zensical serve
+
+# RBAC: edit chart/templates/, then regenerate manifests/
+scripts/render-manifests.sh
+helm lint chart --set mode=full && helm lint chart --set mode=minimal
 ```
 
 ## Architecture
@@ -94,6 +98,18 @@ Coordinator update → kubernetes/subscribe_updates push → panel views refetch
 - **Repair issues** — Three `is_fixable=False` issues raised through `homeassistant.helpers.issue_registry`: `kubernetes_package_missing` (raised in `__init__.py:async_setup_entry` on `ImportError`, severity error), `metrics_server_unavailable_<entry_id>` (raised by the coordinator when nodes exist but the metrics API returns empty, severity warning), and `watch_connection_failing_<entry_id>` (raised by the coordinator when a watch loop fails `WATCH_MAX_FAILURE_STREAK` times in a row, severity warning). All auto-clear when the underlying condition resolves. Translation strings live in `translations/en.json` under `issues`.
 - **`frontend/`** — Built sidebar panel JS bundle (`kubernetes-panel.js`). Source lives in `frontend/` at project root (Lit 3 + TypeScript + Vite).
 
+### RBAC (outside `custom_components/`)
+
+`chart/` is the **single source of truth** for the integration's Kubernetes RBAC — a Helm chart rendering the ServiceAccount, ClusterRole, ClusterRoleBinding, and the long-lived token Secret. `values.yaml` exposes `mode` (`full` | `minimal`), `nameOverride`, `serviceAccount.create`/`.annotations`, `tokenSecret.create`, `rbac.create`, and `rbac.extraRules`. Values are validated by `chart/values.schema.json` (Helm enforces it on every `install`/`upgrade`/`lint`/`template`) — `mode` is an `enum` there rather than a template-level `fail`, because a `fail` inside `if rbac.create` is skipped when `rbac.create=false`. Add every new value to the schema.
+
+`manifests/{full,minimal}/*.yaml` are **generated** from the chart by `scripts/render-manifests.sh` and committed so the `kubectl apply -f <raw URL>` path keeps working. Never hand-edit them. `.github/workflows/helm.yaml` lints both modes, asserts an invalid `mode` is rejected (with and without `rbac.create=false`), and fails the build if `manifests/` drifts from a fresh render — compared via `git status --porcelain`, not `git diff`, so a new template rendering a new *untracked* manifest is caught. It pins the Helm CLI version so output stays byte-stable — Renovate tracks that pin via a custom regex manager.
+
+When adding a feature that needs a new verb or resource: edit `chart/templates/clusterrole.yaml`, run `scripts/render-manifests.sh`, commit both, and update the permission matrix in `docs/RBAC.md`. `chart/templates/` is excluded from the `check-yaml` and `prettier` pre-commit hooks (Go templates); `manifests/` is excluded from `prettier` (generated).
+
+Docs tell users migrating from the plain manifests to pass `--take-ownership` on the first `helm install` (Helm 3.17+; the objects already exist and are unowned), and `--reset-then-reuse-values` — not `--reuse-values` — on upgrade so newly added chart defaults actually apply.
+
+The chart version is bumped by release-please (generic updater on `chart/Chart.yaml`) and pushed to `oci://ghcr.io/tibuntu/charts` by the `publish-chart` job in `release.yaml` when a release is created.
+
 ### Entity Hierarchy
 
 Cluster device → (optional) Namespace devices → Entity instances. Grouping mode is configurable via `device_grouping_mode`.
@@ -118,7 +134,7 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 ## CI
 
-GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + build (ESLint, Prettier, Vite), and CodeQL (`.github/workflows/codeql.yml`). The frontend workflow also verifies the committed `kubernetes-panel.js` bundle matches a fresh build — if a developer edits `.ts` source without rebuilding, CI will fail. Releases automated via release-please.
+GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + build (ESLint, Prettier, Vite), Helm chart lint + `manifests/` drift check (`.github/workflows/helm.yaml`), and CodeQL (`.github/workflows/codeql.yml`). The frontend workflow also verifies the committed `kubernetes-panel.js` bundle matches a fresh build — if a developer edits `.ts` source without rebuilding, CI will fail. Releases automated via release-please.
 
 CodeQL uses **advanced setup** (a committed workflow) rather than GitHub's default setup, because default setup does not run on pull requests from forks — its required status checks could never be satisfied by an external contributor's PR. The matrix job name must stay `Analyze (<language>)` for `actions`, `javascript-typescript`, and `python`: branch protection on `main` requires those exact context names. The separate `CodeQL` context is posted by the code-scanning service (the `github-advanced-security` app) on SARIF upload, not by this workflow.
 
@@ -150,4 +166,6 @@ Renovate handles all dependency updates. When making any change that involves ve
 - Versions pinned in `pyproject.toml` are managed by Renovate's pip manager.
 - Versions pinned in `custom_components/kubernetes/manifest.json` are tracked via a custom regex manager.
 - Pre-commit hook versions in `.pre-commit-config.yaml` are managed by Renovate's pre-commit manager.
+- The Helm CLI version pinned in `.github/workflows/{helm,release}.yaml` is tracked via a custom regex manager (`helm/helm`, github-releases) and grouped as `helm`. Keep both workflows on the same version — the `manifests/` drift check depends on it.
+- `chart/Chart.yaml` `version`/`appVersion` are bumped by release-please (generic updater, `x-release-please-version` comments), not Renovate.
 - When the same package appears in multiple files, add a `groupName` rule in `renovate.json` so updates are batched into a single PR.
