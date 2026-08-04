@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.6.0...v1.7.0) (2026-08-04)
+
+
+### Features
+
+* **rbac:** package ServiceAccount and RBAC into a Helm chart ([a2cd4ae](https://github.com/tibuntu/homeassistant-kubernetes/commit/a2cd4ae58a630061adb4882b70044ba657cf73dd)), closes [#333](https://github.com/tibuntu/homeassistant-kubernetes/issues/333)
+
 ## [1.6.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.5.1...v1.6.0) (2026-07-31)
 
 This release adds **node scheduling control** — cordon and uncordon cluster nodes straight from Home Assistant. Everything is additive; existing setups keep working unchanged.
