@@ -1,0 +1,34 @@
+# Permission set to grant.
+#   full    — every integration feature: sensors, switches (scaling, CronJob
+#             suspension, node cordon/uncordon), rollout restart, pod/job
+#             deletion, Cluster Events, and the experimental Watch API.
+#   minimal — read-only sensors and binary sensors. No switches, no Watch API.
+# See docs/RBAC.md for the complete permission matrix.
+mode: full
+
+# Name of the ServiceAccount, ClusterRole and ClusterRoleBinding.
+# The default matches the plain manifests in manifests/ and the names used
+# throughout the documentation — only change it if you know why.
+nameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+
+# Long-lived `kubernetes.io/service-account-token` Secret.
+# Required when Home Assistant runs OUTSIDE the cluster: you paste the token
+# from this Secret into the config flow, and it never expires.
+# Set to false when Home Assistant runs as a pod in this cluster — it then
+# uses the projected (auto-rotating) ServiceAccount token instead.
+tokenSecret:
+  create: true
+
+rbac:
+  create: true
+  # Extra rules appended verbatim to the generated ClusterRole, e.g. to add
+  # `events` access on top of `mode: minimal`:
+  #   extraRules:
+  #     - apiGroups: [""]
+  #       resources: ["events"]
+  #       verbs: ["get", "list", "watch"]
+  extraRules: []

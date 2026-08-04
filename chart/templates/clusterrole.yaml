@@ -1,10 +1,13 @@
+{{/* mode is validated by values.schema.json — enforced on every render, including
+     when rbac.create is false, which a template-level `fail` here would miss. */}}
+{{- if .Values.rbac.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: homeassistant-kubernetes-integration
+  name: {{ include "rbac.name" . }}
   labels:
-    app.kubernetes.io/name: homeassistant-kubernetes-integration
-    app.kubernetes.io/component: rbac
+    {{- include "rbac.labels" . | nindent 4 }}
+{{- if eq .Values.mode "full" }}
 # Full permissions for all integration features:
 #   - Sensors and binary sensors (monitoring)
 #   - Switches (deployment/statefulset scaling, cronjob suspension,
@@ -68,3 +71,37 @@ rules:
   - apiGroups: ["extensions"]
     resources: ["deployments/scale"]
     verbs: ["get", "patch", "update"]
+{{- else }}
+# Minimal read-only permissions for sensors and binary sensors only.
+# Switches (deployment/statefulset scaling, cronjob suspension, node
+# cordon/uncordon), rollout restart, pod/job deletion, the Cluster Events
+# platform and the experimental Watch API are NOT available with this role.
+# For full functionality use manifests/full/ (Helm: mode=full) instead.
+rules:
+  # Core resources — monitoring only
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "namespaces"]
+    verbs: ["get", "list"]
+  # Apps resources — monitoring only
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  # Batch resources — monitoring only
+  - apiGroups: ["batch"]
+    resources: ["cronjobs", "jobs"]
+    verbs: ["get", "list"]
+  # Networking resources — monitoring only
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list"]
+  # Metrics API — real-time CPU and memory usage (requires metrics-server)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+{{- end }}
+{{- with .Values.rbac.extraRules }}
+
+  # Extra rules from .Values.rbac.extraRules
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
