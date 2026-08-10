@@ -11,6 +11,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.const import (
+    CONF_DISABLED_RESOURCES,
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_WATCH,
     CONF_EVENT_TYPES,
@@ -247,6 +248,8 @@ class TestKubernetesDataCoordinator:
         mock_client.get_nodes.return_value = [
             {"name": "node1", "status": "Ready", "internal_ip": "10.0.0.1"},
             {"name": "node2", "status": "Ready", "internal_ip": "10.0.0.2"},
+            # No metrics entry for this node — it must be left unenriched
+            {"name": "node3", "status": "Ready", "internal_ip": "10.0.0.3"},
         ]
         mock_client.get_node_metrics.return_value = {
             "node1": {"cpu": 410.0, "memory": 2015.0},
@@ -273,6 +276,8 @@ class TestKubernetesDataCoordinator:
         assert result["nodes"]["node1"]["memory_usage_mib"] == 2015.0
         assert result["nodes"]["node2"]["cpu_usage_millicores"] == 483.0
         assert result["nodes"]["node2"]["memory_usage_mib"] == 2325.0
+        assert "cpu_usage_millicores" not in result["nodes"]["node3"]
+        assert "memory_usage_mib" not in result["nodes"]["node3"]
 
     async def test_async_update_data_node_metrics_unavailable(
         self, hass: HomeAssistant, coordinator, mock_client
@@ -3233,3 +3238,207 @@ class TestSameNameDifferentNamespace:
 
         assert coordinator.data["deployments"]["c3po_bot"]["replicas"] == 5
         assert coordinator.data["deployments"]["toothless_bot"]["replicas"] == 0
+
+
+class TestDisabledResources:
+    """Tests for the disabled_resources data-collection opt-out."""
+
+    def _make_coordinator(
+        self, hass: HomeAssistant, mock_client, disabled: list[str]
+    ) -> KubernetesDataCoordinator:
+        """Create a coordinator whose entry has the given disabled resources."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="disabled-resources-entry",
+            data={
+                "cluster_name": "test-cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_DISABLED_RESOURCES: disabled},
+        )
+        entry.add_to_hass(hass)
+        with patch("homeassistant.helpers.frame.report_usage"):
+            return KubernetesDataCoordinator(hass, entry, mock_client)
+
+    async def test_fully_off_resources_skip_fetch(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Fully-off resources are not fetched and their buckets stay empty."""
+        coordinator = self._make_coordinator(
+            hass, mock_client, ["pods", "daemonsets", "jobs", "ingresses"]
+        )
+        mock_client.get_daemonsets_count.return_value = 4
+        mock_client.get_jobs_count.return_value = 2
+        mock_client.get_ingresses_count.return_value = 3
+
+        data = await coordinator._async_update_data()
+
+        mock_client.get_pods.assert_not_called()
+        mock_client.get_daemonsets.assert_not_called()
+        mock_client.get_jobs.assert_not_called()
+        mock_client.get_ingresses.assert_not_called()
+        assert data["pods"] == {}
+        assert data["daemonsets"] == {}
+        assert data["jobs"] == {}
+        assert data["ingresses"] == {}
+        # Counts stay on by default and fall back to the cheap count endpoints
+        mock_client.get_pods_count.assert_called_once()
+        assert data["daemonsets_count"] == 4
+        assert data["jobs_count"] == 2
+        assert data["ingresses_count"] == 3
+
+    async def test_sensors_off_resources_keep_fetch(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Switch-bearing resources are still fetched when opted out."""
+        coordinator = self._make_coordinator(
+            hass, mock_client, ["nodes", "deployments", "statefulsets", "cronjobs"]
+        )
+
+        await coordinator._async_update_data()
+
+        mock_client.get_nodes.assert_called_once()
+        mock_client.get_deployments.assert_called_once()
+        mock_client.get_statefulsets.assert_called_once()
+        mock_client.get_cronjobs.assert_called_once()
+
+    async def test_counts_disabled_skips_count_calls(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """With counts disabled, the count endpoints are never called."""
+        coordinator = self._make_coordinator(hass, mock_client, ["counts"])
+        mock_client.get_pods.return_value = [
+            {"name": "p1", "namespace": "default"},
+            {"name": "p2", "namespace": "default"},
+        ]
+        mock_client.get_nodes.return_value = [{"name": "n1"}]
+
+        data = await coordinator._async_update_data()
+
+        mock_client.get_pods_count.assert_not_called()
+        mock_client.get_nodes_count.assert_not_called()
+        mock_client.get_daemonsets_count.assert_not_called()
+        assert data["pods_count"] == 2
+        assert data["nodes_count"] == 1
+
+    async def test_pods_and_counts_disabled_probes_explicitly(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Without any pod call, the reauth probe must run explicitly."""
+        coordinator = self._make_coordinator(hass, mock_client, ["pods", "counts"])
+        mock_client.is_cluster_healthy = AsyncMock(return_value=True)
+
+        data = await coordinator._async_update_data()
+
+        mock_client.get_pods.assert_not_called()
+        mock_client.get_pods_count.assert_not_called()
+        mock_client.is_cluster_healthy.assert_called_once()
+        assert data["pods_count"] == 0
+
+    async def test_metrics_disabled_skips_metrics_api(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Metrics opt-out skips the Metrics API and the repair issue."""
+        coordinator = self._make_coordinator(hass, mock_client, ["metrics"])
+        mock_client.get_nodes.return_value = [{"name": "n1"}]
+
+        await coordinator._async_update_data()
+
+        mock_client.get_node_metrics.assert_not_called()
+        mock_client.get_deployments.assert_called_once_with(include_metrics=False)
+        mock_client.get_statefulsets.assert_called_once_with(include_metrics=False)
+        # Nodes exist and metrics are empty, but the issue must not be raised
+        # because metrics were deliberately disabled.
+        assert coordinator._metrics_issue_active is False
+
+    async def test_metrics_enabled_passes_include_metrics_true(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Default (nothing disabled) requests metrics enrichment."""
+        coordinator = self._make_coordinator(hass, mock_client, [])
+
+        await coordinator._async_update_data()
+
+        mock_client.get_deployments.assert_called_once_with(include_metrics=True)
+        mock_client.get_statefulsets.assert_called_once_with(include_metrics=True)
+        mock_client.get_node_metrics.assert_called_once()
+
+    async def test_watch_configs_skip_fully_off_resources(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Fully-off resources get no watch stream; sensors-off ones keep it."""
+        coordinator = self._make_coordinator(
+            hass,
+            mock_client,
+            ["pods", "daemonsets", "jobs", "ingresses", "deployments", "nodes"],
+        )
+        mock_client.monitor_all_namespaces = True
+
+        configs = coordinator._build_watch_configs("https://host:6443")
+        resource_types = [rt for rt, _, _ in configs]
+
+        assert "pods" not in resource_types
+        assert "daemonsets" not in resource_types
+        assert "jobs" not in resource_types
+        assert "ingresses" not in resource_types
+        # Sensors-off resources keep their watch (switches consume the data)
+        assert "deployments" in resource_types
+        assert "nodes" in resource_types
+        assert "statefulsets" in resource_types
+        assert "cronjobs" in resource_types
+
+    async def test_expected_unique_ids_respect_disabled(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Sensor unique_ids drop out of the expected set; switches survive."""
+        coordinator = self._make_coordinator(
+            hass, mock_client, ["nodes", "deployments", "cronjobs", "metrics", "counts"]
+        )
+        current = {
+            "nodes": {"n1": {"name": "n1"}},
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}},
+            "statefulsets": {"default_db": {"name": "db", "namespace": "default"}},
+            "cronjobs": {"default_cj": {"name": "cj", "namespace": "default"}},
+        }
+
+        expected = coordinator._build_expected_unique_ids(current)
+        eid = coordinator.config_entry.entry_id
+
+        # Switches survive their category's opt-out
+        assert f"{eid}_node_n1_schedulable" in expected
+        assert f"{eid}_default_web_deployment" in expected
+        assert f"{eid}_default_cj_cronjob" in expected
+        # Sensors of disabled categories are no longer expected
+        assert f"{eid}_node_n1" not in expected
+        assert f"{eid}_node_n1_memory_pressure" not in expected
+        assert f"{eid}_default_web_deployment_status" not in expected
+        assert f"{eid}_default_web_deployment_cpu" not in expected
+        assert f"{eid}_cronjob_default_cj" not in expected
+        assert f"{eid}_pods_count" not in expected
+        assert f"{eid}_nodes_count" not in expected
+        # Statefulsets stay enabled: status kept, metric sensors dropped
+        # because metrics are disabled
+        assert f"{eid}_default_db_statefulset_status" in expected
+        assert f"{eid}_default_db_statefulset_cpu" not in expected
+        assert f"{eid}_default_db_statefulset_memory" not in expected
+
+    async def test_expected_unique_ids_all_enabled_unchanged(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """With nothing disabled, the expected set includes all sensors."""
+        coordinator = self._make_coordinator(hass, mock_client, [])
+        current = {
+            "nodes": {"n1": {"name": "n1"}},
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}},
+        }
+
+        expected = coordinator._build_expected_unique_ids(current)
+        eid = coordinator.config_entry.entry_id
+
+        assert f"{eid}_node_n1" in expected
+        assert f"{eid}_node_n1_memory_pressure" in expected
+        assert f"{eid}_default_web_deployment_status" in expected
+        assert f"{eid}_default_web_deployment_cpu" in expected
+        assert f"{eid}_pods_count" in expected

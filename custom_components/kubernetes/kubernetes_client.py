@@ -1198,14 +1198,17 @@ class KubernetesClient:
             self._log_error("get deployments count", ex)
             return 0
 
-    async def get_deployments(self) -> list[dict[str, Any]]:
+    async def get_deployments(
+        self, include_metrics: bool = True
+    ) -> list[dict[str, Any]]:
         """Get all deployments in the namespace(s) with their details."""
         try:
             result = await self._fetch_resource_list(
                 "apis/apps/v1", "deployments", self._parse_replica_workload_item
             )
             if result:
-                await self._enrich_workloads_with_metrics(result, "deployment")
+                if include_metrics:
+                    await self._enrich_workloads_with_metrics(result, "deployment")
                 self._log_success(
                     "get deployments", f"retrieved {len(result)} deployments"
                 )
@@ -1362,14 +1365,17 @@ class KubernetesClient:
             self._log_error("get statefulsets count", ex)
             return 0
 
-    async def get_statefulsets(self) -> list[dict[str, Any]]:
+    async def get_statefulsets(
+        self, include_metrics: bool = True
+    ) -> list[dict[str, Any]]:
         """Get all StatefulSets in the namespace(s) with their details."""
         try:
             result = await self._fetch_resource_list(
                 "apis/apps/v1", "statefulsets", self._parse_replica_workload_item
             )
             if result:
-                await self._enrich_workloads_with_metrics(result, "statefulset")
+                if include_metrics:
+                    await self._enrich_workloads_with_metrics(result, "statefulset")
                 self._log_success(
                     "get statefulsets", f"retrieved {len(result)} statefulsets"
                 )

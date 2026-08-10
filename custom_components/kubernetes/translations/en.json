@@ -110,13 +110,15 @@
           "enable_panel": "Enable Sidebar Panel",
           "enable_watch": "Enable Watch API",
           "enable_events": "Enable Cluster Events",
-          "event_types": "Event Types"
+          "event_types": "Event Types",
+          "disabled_resources": "Disable data collection for"
         },
         "data_description": {
           "enable_panel": "Show the Kubernetes dashboard panel in the Home Assistant sidebar. The panel provides an overview of your cluster, nodes, pods, workloads, and integration settings. Disable this if you prefer to use only the standard Home Assistant entities and services.",
           "enable_watch": "Use the Kubernetes watch API for real-time state updates (enabled by default). Pod and resource state changes appear in Home Assistant within seconds, with a slow poll every 5 minutes as a fallback. Requires the service account to have 'watch' permission on all monitored resources (granted by manifests/full/); if the watch connection keeps failing, the integration reverts to regular interval polling automatically. Disable to use interval polling only.",
           "enable_events": "Create a 'Cluster events' event entity that fires Home Assistant events for Kubernetes cluster activity (OOMKilling, FailedScheduling, BackOff, Evicted, Unhealthy, ImagePullBackOff, and more). Use these events to trigger automations and alerts. Requires get/list/watch permission on core v1 events (granted by manifests/full/).",
-          "event_types": "Which Kubernetes event types to surface. 'Warning only' (default) limits events to Warning-type Kubernetes events such as OOM kills and scheduling failures. 'All events' also includes Normal-type informational events. Note: recurring conditions (e.g. CrashLoopBackOff) fire an event on each Kubernetes count increment."
+          "event_types": "Which Kubernetes event types to surface. 'Warning only' (default) limits events to Warning-type Kubernetes events such as OOM kills and scheduling failures. 'All events' also includes Normal-type informational events. Note: recurring conditions (e.g. CrashLoopBackOff) fire an event on each Kubernetes count increment.",
+          "disabled_resources": "Opt out of collecting selected data to reduce entity count, recorder growth, and Kubernetes API load. Pods, DaemonSets, Jobs, and Ingresses stop being fetched entirely. Nodes, Deployments, StatefulSets, and CronJobs only drop their sensors — their switches (scale, suspend, cordon) keep working. 'CPU/memory metrics' stops all Metrics API calls; 'Aggregate count sensors' removes the per-cluster count sensors. Existing entities of a disabled category are removed automatically."
         }
       }
     }
@@ -126,6 +128,20 @@
       "options": {
         "namespace": "Group by Namespace",
         "cluster": "Group by Cluster"
+      }
+    },
+    "disabled_resources": {
+      "options": {
+        "pods": "Pods (sensors + API fetch)",
+        "nodes": "Node sensors (cordon switches stay)",
+        "deployments": "Deployment sensors (scale switches stay)",
+        "statefulsets": "StatefulSet sensors (scale switches stay)",
+        "daemonsets": "DaemonSets (sensors + API fetch)",
+        "cronjobs": "CronJob sensors (suspend switches stay)",
+        "jobs": "Jobs (sensors + API fetch)",
+        "ingresses": "Ingresses (count + panel data)",
+        "metrics": "CPU/memory metrics (Metrics API)",
+        "counts": "Aggregate count sensors"
       }
     }
   },
