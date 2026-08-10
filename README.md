@@ -79,6 +79,17 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 For full documentation, visit the [documentation site](https://tibuntu.github.io/homeassistant-kubernetes/).
 
+## Quality
+
+Custom integrations are not part of Home Assistant's official [Integration Quality Scale](https://www.home-assistant.io/docs/quality_scale/), but this integration voluntarily meets all **Bronze** and **Silver** tier requirements. In practice this means:
+
+- Fully UI-based setup with connection validation, duplicate detection, a reconfigure flow, and a re-authentication prompt when the API token becomes invalid
+- Service calls that surface errors in the UI and in automation traces instead of failing silently
+- An enforced test-coverage gate of 95% overall and 100% for the config flow
+- Clean config entry lifecycle handling (typed runtime data, proper unload, no leftovers)
+
+These requirements are maintained for every change as part of code review.
+
 ## Contributing
 
 Contributions are welcome. Please submit a [Pull Request](https://github.com/tibuntu/homeassistant-kubernetes/pulls) or refer to the [Development Guide](https://tibuntu.github.io/homeassistant-kubernetes/DEVELOPMENT/) to get started.

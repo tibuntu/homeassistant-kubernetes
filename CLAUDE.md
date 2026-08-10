@@ -126,6 +126,19 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 - Tests use `pytest-homeassistant-custom-component` for real HA test fixtures. Most test files (`test_init.py`, `test_device.py`, `test_config_flow.py`, `test_coordinator.py`, `test_services.py`, `test_binary_sensor.py`, `test_switch.py`, `test_sensors.py`, `test_kubernetes_integration.py`) use the real `hass` fixture and `MockConfigEntry`. Config flow tests register the handler via `HANDLERS` + `DATA_COMPONENTS` fixture (see `register_config_flow` in `test_config_flow.py`). `test_switch_platform.py` has been merged into `test_switch.py`. Only `test_websocket_api.py` still uses `mock_hass` from `conftest.py` — its local `_make_entry()`/`_load_entries()` helpers build mock entries with `runtime_data` and stub `hass.config_entries.async_loaded_entries`. Tests that need a real loaded entry use `MockConfigEntry` + `add_to_hass()` + `mock_state(hass, ConfigEntryState.LOADED)` and assign `entry.runtime_data = KubernetesEntryData(...)` (see `_add_loaded_entry` in `test_init.py` / `test_services.py`). K8s-specific mock fixtures (`mock_client`, `mock_coordinator`, `mock_kubernetes_client`, `mock_kubernetes_api`) remain in `conftest.py`.
 - The kubernetes package is lazy-imported in config_flow via `_ensure_kubernetes_imported()` using thread-safe double-checked locking and checked at setup to handle missing dependency.
 
+## Quality Scale
+
+The integration voluntarily complies with Home Assistant's [Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/) at **Bronze and Silver** level (custom integrations cannot be officially certified — the rules are treated as binding conventions here). Any change must preserve these invariants:
+
+- **action-setup / action-exceptions**: services are registered in `async_setup` (never per config entry, never unregistered) and handlers raise `ServiceValidationError` (caller mistakes) or `HomeAssistantError` (failed operations) — no silent failures. Multi-target calls attempt every target, then raise one aggregated error.
+- **runtime-data**: per-entry state lives on `entry.runtime_data` (`KubernetesEntryData` in `coordinator.py`); `hass.data[DOMAIN]` holds only the global `panel_registered` flag. Enumerate entries via `get_loaded_entries(hass)`, never by iterating `hass.data`.
+- **parallel-updates**: every platform module sets `PARALLEL_UPDATES = 0`.
+- **config-flow-test-coverage**: `config_flow.py` stays at 100% line **and** branch coverage; the overall gate is `--cov-fail-under=95`, and codecov patch coverage on PRs should be 100%.
+- **test-before-configure / unique-config-entry / reauthentication-flow**: the config flow validates connectivity before creating or updating entries, aborts on duplicate cluster names, and provides reconfigure and reauth flows. A persistent 401 sets `client.auth_failed` (connection probe with in-cluster retry) and the coordinator raises `ConfigEntryAuthFailed`.
+- **entity conventions**: `has_entity_name = True`, stable unique IDs, `available` derived from `coordinator.last_update_success`.
+
+When adding features, check the current rule set at the link above before implementing — new Bronze/Silver rules apply here too.
+
 ## Code Style
 
 - **Ruff** for linting and formatting (replaces black, isort, flake8). 88-char line length.
