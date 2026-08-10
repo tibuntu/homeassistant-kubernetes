@@ -247,7 +247,7 @@ The integration automatically creates switches for controlling Kubernetes worklo
 
 ### Switch Features
 
-- **Real-time State**: Switches automatically reflect the actual Kubernetes state through polling
+- **Real-time State**: Switches automatically reflect the actual Kubernetes state through the Watch API (default) or interval polling
 - **Error Recovery**: If scaling operations fail, switches automatically recover the correct state
 - **State Verification**: Verifies that scaling operations actually took effect
 - **Configurable Polling**: Adjust update intervals to balance responsiveness and API load

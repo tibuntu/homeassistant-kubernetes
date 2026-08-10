@@ -1084,11 +1084,11 @@ class TestKubernetesDataCoordinator:
 
 
 class TestWatchSupport:
-    """Tests for the experimental Kubernetes watch API support."""
+    """Tests for the Kubernetes watch API support."""
 
     @pytest.fixture
     def mock_config_entry_watch_disabled(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with watch disabled (default)."""
+        """Mock config entry with watch explicitly disabled."""
         entry = MockConfigEntry(
             domain=DOMAIN,
             entry_id="test-entry-id",
@@ -1099,7 +1099,7 @@ class TestWatchSupport:
                 "api_token": "test-token",
                 "switch_update_interval": DEFAULT_SWITCH_UPDATE_INTERVAL,
             },
-            options={},
+            options={CONF_ENABLE_WATCH: False},
         )
         entry.add_to_hass(hass)
         return entry
@@ -1197,6 +1197,56 @@ class TestWatchSupport:
         assert (
             coordinator_watch_enabled.update_interval.total_seconds()
             == DEFAULT_FALLBACK_POLL_INTERVAL
+        )
+
+    async def test_coordinator_defaults_to_watch_enabled(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """With no options set, watch is on by default (fallback poll interval)."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test-entry-default",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={},
+        )
+        entry.add_to_hass(hass)
+        with patch("homeassistant.helpers.frame.report_usage"):
+            coordinator = KubernetesDataCoordinator(hass, entry, mock_client)
+        assert (
+            coordinator.update_interval.total_seconds()
+            == DEFAULT_FALLBACK_POLL_INTERVAL
+        )
+
+    async def test_poll_interval_restored_while_watch_failing(
+        self, coordinator_watch_enabled
+    ):
+        """Sustained watch failure falls back to the fast poll interval and recovers."""
+        coordinator = coordinator_watch_enabled
+        coordinator._sync_watch_repair_issue("pods:url", failing=True)
+        assert (
+            coordinator.update_interval.total_seconds()
+            == DEFAULT_SWITCH_UPDATE_INTERVAL
+        )
+        coordinator._sync_watch_repair_issue("pods:url", failing=False)
+        assert (
+            coordinator.update_interval.total_seconds()
+            == DEFAULT_FALLBACK_POLL_INTERVAL
+        )
+
+    async def test_poll_interval_untouched_when_watch_disabled(
+        self, coordinator_watch_disabled
+    ):
+        """With watch disabled, repair-issue sync never changes the poll interval."""
+        coordinator = coordinator_watch_disabled
+        coordinator._sync_watch_repair_issue("events:url", failing=True)
+        assert (
+            coordinator.update_interval.total_seconds()
+            == DEFAULT_SWITCH_UPDATE_INTERVAL
         )
 
     # ------------------------------------------------------------------
