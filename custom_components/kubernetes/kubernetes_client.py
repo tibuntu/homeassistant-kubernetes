@@ -125,6 +125,11 @@ class KubernetesClient:
         self._last_auth_error_time = 0.0
         self._auth_error_cooldown = 300.0  # 5 minutes between auth error logs
 
+        # Set only by the connection probe (_test_connection_aiohttp) when the
+        # API server confirms a 401. The coordinator turns this into
+        # ConfigEntryAuthFailed so Home Assistant starts the reauth flow.
+        self.auth_failed = False
+
         # Initialize Kubernetes client
         self._setup_kubernetes_client()
 
@@ -372,31 +377,44 @@ class KubernetesClient:
         # Use aiohttp as primary since it works better with SSL configuration
         return await self._test_connection_aiohttp()
 
-    async def _test_connection_aiohttp(self) -> bool:
-        """Test the connection using aiohttp as primary method."""
-        try:
-            headers = {
+    async def _probe_api(self, session: aiohttp.ClientSession) -> int:
+        """GET the API root with the current token and return the HTTP status."""
+        async with session.get(
+            f"https://{self.host}:{self.port}/api/v1/",
+            headers={
                 "Authorization": f"Bearer {self.api_token}",
                 "Accept": "application/json",
-            }
+            },
+            ssl=await self._get_ssl_param(),
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as response:
+            return response.status
 
+    async def _test_connection_aiohttp(self) -> bool:
+        """Test the connection using aiohttp as primary method.
+
+        This probe runs on every poll cycle (via get_pods/get_pods_count), which
+        makes it the single place that decides whether the configured token is
+        still accepted. ``auth_failed`` is set only by a confirmed 401 here and
+        cleared by any other status, so the coordinator never has to inspect the
+        many call sites that swallow errors and return empty results.
+        """
+        try:
             _LOGGER.debug("Testing connection with aiohttp...")
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/api/v1/",
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        self._log_success("connection test", "using aiohttp")
-                        return True
-                    else:
-                        _LOGGER.error(
-                            "aiohttp connection test failed with status: %s",
-                            response.status,
-                        )
-                        return False
+                status = await self._probe_api(session)
+                if status == 401 and self._use_in_cluster:
+                    # A projected ServiceAccount token may have rotated between
+                    # the cached read and this request. Drop the cache and retry
+                    # once so routine rotation never triggers a reauth prompt.
+                    self.invalidate_token_cache()
+                    status = await self._probe_api(session)
+                self.auth_failed = status == 401
+                if status == 200:
+                    self._log_success("connection test", "using aiohttp")
+                    return True
+                _LOGGER.error("aiohttp connection test failed with status: %s", status)
+                return False
         except Exception as ex:
             self._log_error("aiohttp connection test", ex)
             return False

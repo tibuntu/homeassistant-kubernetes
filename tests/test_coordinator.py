@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
@@ -345,6 +346,44 @@ class TestKubernetesDataCoordinator:
             UpdateFailed, match="Failed to update Kubernetes data: API Error"
         ):
             await coordinator._async_update_data()
+
+    async def test_async_update_data_auth_failure_raises_config_entry_auth_failed(
+        self, coordinator, mock_client
+    ):
+        """Test a confirmed 401 surfaces as ConfigEntryAuthFailed, not UpdateFailed."""
+        mock_client.auth_failed = True
+
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coordinator._async_update_data()
+
+    async def test_async_update_data_auth_failure_skips_orphan_cleanup(
+        self, coordinator, mock_client
+    ):
+        """Test the auth failure aborts before empty results prune entities."""
+        mock_client.auth_failed = True
+
+        with patch.object(
+            coordinator, "_cleanup_orphaned_entities", new_callable=AsyncMock
+        ) as mock_cleanup:
+            with pytest.raises(ConfigEntryAuthFailed):
+                await coordinator._async_update_data()
+
+        mock_cleanup.assert_not_called()
+
+    async def test_async_update_data_recovered_auth_does_not_raise(
+        self, coordinator, mock_client
+    ):
+        """Test a transient 401 the client recovered from is not an auth failure.
+
+        The client clears ``auth_failed`` when its retry (after an in-cluster
+        token-cache invalidation) succeeds, so the poll completes normally.
+        """
+        mock_client.auth_failed = False
+
+        result = await coordinator._async_update_data()
+
+        assert result["pods_count"] == 0
+        assert result["nodes_count"] == 0
 
     async def test_async_update_data_partial_failure(self, coordinator, mock_client):
         """Test data update when some API calls fail."""

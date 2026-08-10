@@ -13,6 +13,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -157,6 +158,18 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     len(pods),
                 )
 
+                # The client's connection probe (run by the two calls above)
+                # confirmed a 401, so the stored token is no longer valid. Bail
+                # out before the cleanup below: every fetch returned empty, and
+                # continuing would prune the user's entities and namespace
+                # devices as if the cluster had been emptied.
+                # Compared with `is True` because coordinator tests pass a
+                # MagicMock client, whose attributes are always truthy.
+                if self.client.auth_failed is True:
+                    raise ConfigEntryAuthFailed(
+                        "Kubernetes API rejected the configured token"
+                    )
+
                 # Fetch node metrics (CPU/memory usage) — best-effort
                 node_metrics = await self.client.get_node_metrics()
                 if node_metrics:
@@ -223,6 +236,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
                 return data
 
+            except ConfigEntryAuthFailed:
+                # Must not be re-wrapped: Home Assistant starts the reauth flow
+                # only for ConfigEntryAuthFailed, not for UpdateFailed.
+                raise
             except Exception as ex:
                 _LOGGER.error("Failed to update Kubernetes data: %s", ex)
                 raise UpdateFailed(f"Failed to update Kubernetes data: {ex}") from ex

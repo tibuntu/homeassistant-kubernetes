@@ -40,6 +40,16 @@
           "namespace": "Select Namespaces"
         }
       },
+      "reauth_confirm": {
+        "title": "Re-authenticate with Kubernetes",
+        "description": "The API token for cluster **{cluster_name}** ({host}) is no longer accepted by the Kubernetes API. Enter a new service account token to restore the connection. The host, port, and TLS settings of this entry stay unchanged.\n\nIf this entry uses the in-cluster ServiceAccount, the projected token normally refreshes itself — being asked here means it is being rejected persistently, usually because the ServiceAccount or its RBAC binding was removed. Submitting a token here therefore turns off **Use in-cluster ServiceAccount at runtime** for this entry, so the token you enter is the one actually used. You can re-enable it under Reconfigure once the ServiceAccount is healthy again.",
+        "data": {
+          "api_token": "API Token"
+        },
+        "data_description": {
+          "api_token": "A valid Kubernetes service account token with the RBAC permissions this integration requires."
+        }
+      },
       "reconfigure": {
         "title": "Reconfigure Kubernetes Connection",
         "description": "Update your Kubernetes cluster connection details and settings. The cluster name cannot be changed.",
@@ -82,11 +92,13 @@
       "cannot_connect": "Failed to connect to Kubernetes cluster",
       "cannot_fetch_namespaces": "Failed to fetch namespaces from cluster. Please check your connection settings and permissions.",
       "kubernetes_not_installed": "Kubernetes Python package is not installed. Please install it using: pip install kubernetes==33.1.0",
-      "at_least_one_namespace_required": "At least one namespace is required when not monitoring all namespaces"
+      "at_least_one_namespace_required": "At least one namespace is required when not monitoring all namespaces",
+      "invalid_auth": "The Kubernetes API rejected this token. Check that the token is valid and that its ServiceAccount still has the required RBAC permissions."
     },
     "abort": {
       "already_configured": "Device is already configured",
-      "reconfigure_successful": "Configuration updated successfully"
+      "reconfigure_successful": "Configuration updated successfully",
+      "reauth_successful": "Re-authentication was successful"
     }
   },
   "options": {

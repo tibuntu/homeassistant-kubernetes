@@ -40,6 +40,8 @@ Authentication failed for get deployments (cluster=default, host=kubernetes.exam
 2. Check that the service account has the necessary RBAC permissions
 3. Ensure the token has access to the specified namespace
 
+A 401 that persists across a poll cycle also raises a **"Reauthentication needed"** notification in Home Assistant, where you can enter a fresh token without reconfiguring the rest of the entry. See [Re-authentication](CONFIGURATION.md#re-authentication).
+
 ### Permission Denied (403)
 
 ```
