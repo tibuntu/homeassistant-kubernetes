@@ -31,6 +31,10 @@ from .device import get_cluster_device_info, get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
+# Data updates are centralized in the coordinator; switch actions are async
+# K8s API calls that are safe to run concurrently (quality scale: parallel-updates)
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

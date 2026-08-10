@@ -117,6 +117,8 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 ### Patterns
 
 - All entities read cached data from the coordinator, never calling the K8s API directly.
+- All four entity platforms (`sensor`, `switch`, `binary_sensor`, `event`) set module-level `PARALLEL_UPDATES = 0` — updates are centralized in the coordinator, so per-entity throttling is unnecessary (HA quality scale `parallel-updates` rule).
+- The pytest coverage gate is `--cov-fail-under=95` in `pyproject.toml`; keep new code tested so overall coverage stays above 95%.
 - `asyncio_mode = "auto"` in pytest — test functions are automatically treated as async. `asyncio_default_fixture_loop_scope = "function"` is set for compatibility with `pytest-homeassistant-custom-component`.
 - Tests use `pytest-homeassistant-custom-component` for real HA test fixtures. Most test files (`test_init.py`, `test_device.py`, `test_config_flow.py`, `test_coordinator.py`, `test_services.py`, `test_binary_sensor.py`, `test_switch.py`, `test_sensors.py`, `test_kubernetes_integration.py`) use the real `hass` fixture and `MockConfigEntry`. Config flow tests register the handler via `HANDLERS` + `DATA_COMPONENTS` fixture (see `register_config_flow` in `test_config_flow.py`). `test_switch_platform.py` has been merged into `test_switch.py`. Only `test_websocket_api.py` still uses `mock_hass` from `conftest.py`. K8s-specific mock fixtures (`mock_client`, `mock_coordinator`, `mock_kubernetes_client`, `mock_kubernetes_api`) remain in `conftest.py`.
 - The kubernetes package is lazy-imported in config_flow via `_ensure_kubernetes_imported()` using thread-safe double-checked locking and checked at setup to handle missing dependency.
