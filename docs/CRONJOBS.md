@@ -122,7 +122,7 @@ automation:
 
 ### Services That Don't Affect CronJobs
 
-The following services do **not** affect CronJobs and will log a warning if a CronJob is provided:
+The following services do **not** accept CronJobs — passing one makes the whole call fail with a validation error, before any other target in the same call is touched:
 
 - **`kubernetes.scale_workload`**: Scaling is not applicable to CronJobs
 - **`kubernetes.stop_workload`**: Stopping is not applicable to CronJobs (use the switch entity to suspend instead)

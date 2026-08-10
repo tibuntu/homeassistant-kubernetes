@@ -16,7 +16,9 @@ The integration provides the following services for controlling Kubernetes resou
 | **Cordon Node** | Mark one or more nodes unschedulable (`kubectl cordon`) | Nodes |
 | **Uncordon Node** | Mark one or more nodes schedulable again (`kubectl uncordon`) | Nodes |
 
-> **Note**: CronJobs are not affected by `scale_workload` or `stop_workload`. Use the switch entity to suspend/resume CronJobs, or use `start_workload` to trigger them.
+> **Note**: CronJobs are rejected by `scale_workload` and `stop_workload`. Use the switch entity to suspend/resume CronJobs, or use `start_workload` to trigger them.
+
+All services are registered when Home Assistant starts, before any cluster is configured, and stay registered for the lifetime of Home Assistant. See [Error Handling](#error-handling) for what happens when a call is invalid or an operation fails.
 
 ## Service Details
 
@@ -35,7 +37,7 @@ Scale one or more Kubernetes workloads (Deployments or StatefulSets) to a specif
 
 **Supported Workloads**: Deployments, StatefulSets
 
-**Note**: CronJobs are not supported. If a CronJob is provided, a warning will be logged and the operation will be skipped.
+**Note**: CronJobs are not supported. If a CronJob is provided, the call fails with a validation error and no workload is scaled.
 
 **Examples**:
 
@@ -120,7 +122,7 @@ Stop one or more Kubernetes workloads by scaling them to 0 replicas (Deployments
 
 **Supported Workloads**: Deployments, StatefulSets
 
-**Note**: CronJobs are not affected by this service. To suspend a CronJob, use the switch entity (`switch.turn_off` on the CronJob switch).
+**Note**: CronJobs are rejected by this service with a validation error. To suspend a CronJob, use the switch entity (`switch.turn_off` on the CronJob switch).
 
 **Examples**:
 
@@ -153,7 +155,7 @@ Perform a rolling restart of one or more Kubernetes workloads. This is equivalen
 
 **Supported Workloads**: Deployments, StatefulSets, DaemonSets
 
-**Note**: CronJobs and Jobs are not supported. If an unsupported workload type is provided, a warning will be logged and the operation will be skipped.
+**Note**: CronJobs and Jobs are not supported. If an unsupported workload type is provided, the call fails with a validation error and no workload is restarted.
 
 **Examples**:
 
@@ -276,11 +278,20 @@ When using entity IDs, the service automatically extracts the workload name, nam
 
 ### Error Handling
 
-- Services validate that the target namespace exists
-- Services check that the specified workloads exist
-- Failed operations return detailed error messages
-- Partial failures are reported for multi-resource operations
-- CronJobs provided to `scale_workload` or `stop_workload` are ignored with a warning
+Services raise errors instead of failing silently — Home Assistant shows them in the UI when a service is called from a dashboard or the Developer Tools, and logs them (together with the failing automation) otherwise.
+
+**Invalid calls** raise a *validation* error before anything is changed in the cluster:
+
+- No Kubernetes integration is configured, or the supplied `entry_id` does not match a loaded config entry
+- None of the given `workload_name` / `workload_names` resolve to a known workload (e.g. the entity ID does not exist, or the switch has no `namespace`/`workload_type` attributes)
+- `delete_job` / `cordon_node` / `uncordon_node` are called without a usable name
+- A workload's type does not support the requested operation — for example scaling, stopping, or restarting a CronJob. The whole call is rejected; no target in the call is touched.
+
+**Failed operations** raise a regular error *after* every target has been attempted:
+
+- Multi-target calls do **not** abort at the first failure. Every workload, Job or node in the call is attempted, and a single error naming all failed targets (with the reason, where the API provided one) is raised at the end.
+- Targets that succeeded stay changed — a partial failure is reported, not rolled back.
+- Node cordon/uncordon still refreshes the coordinator when at least one node changed, even if others failed.
 
 ### Asynchronous Operations
 
@@ -321,8 +332,8 @@ See the [Setup Guide](SETUP.md) and [RBAC Reference](RBAC.md) for detailed RBAC 
 For CronJobs, the services work as follows:
 
 - **`start_workload`**: Triggers the CronJob immediately (creates a job from the CronJob template)
-- **`scale_workload`**: Not supported (warning logged, operation skipped)
-- **`stop_workload`**: Not supported (warning logged, operation skipped)
+- **`scale_workload`**: Not supported (the call is rejected with a validation error)
+- **`stop_workload`**: Not supported (the call is rejected with a validation error)
 
 To suspend or resume CronJobs, use the switch entities:
 - Turn the switch **ON** to resume (unsuspend) a CronJob

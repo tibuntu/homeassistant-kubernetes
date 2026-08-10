@@ -101,7 +101,6 @@ async def test_setup_entry_clears_issue_on_success(
         patch(
             "custom_components.kubernetes.KubernetesDataCoordinator"
         ) as mock_coord_class,
-        patch("custom_components.kubernetes.async_setup_services"),
         patch("custom_components.kubernetes._async_sync_panel"),
         patch.object(
             hass.config_entries,

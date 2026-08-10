@@ -4,6 +4,7 @@ import os
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 import pytest
 import yaml
 
@@ -38,7 +39,7 @@ from custom_components.kubernetes.services import (
     _extract_workload_info,
     _get_entry_data,
     _get_workload_info_from_entity,
-    _log_no_workloads_found,
+    _no_workloads_error,
     _normalize_entity_id_list,
     _resolve_raw_workload_name,
     _validate_entity_workload_type,
@@ -46,7 +47,6 @@ from custom_components.kubernetes.services import (
     _validate_node_schema,
     _validate_workload_schema,
     async_setup_services,
-    async_unload_services,
 )
 
 
@@ -95,7 +95,7 @@ def setup_domain_data(hass: HomeAssistant, mock_client) -> None:
 
 
 class TestServiceRegistration:
-    """Test service registration and unregistration."""
+    """Test service registration."""
 
     async def test_async_setup_services(self, hass: HomeAssistant):
         """Test that all services are registered."""
@@ -104,15 +104,6 @@ class TestServiceRegistration:
         assert hass.services.has_service(DOMAIN, SERVICE_SCALE_WORKLOAD)
         assert hass.services.has_service(DOMAIN, SERVICE_START_WORKLOAD)
         assert hass.services.has_service(DOMAIN, SERVICE_STOP_WORKLOAD)
-
-    async def test_async_unload_services(self, hass: HomeAssistant):
-        """Test that all services are unregistered."""
-        await async_setup_services(hass)
-        await async_unload_services(hass)
-
-        assert not hass.services.has_service(DOMAIN, SERVICE_SCALE_WORKLOAD)
-        assert not hass.services.has_service(DOMAIN, SERVICE_START_WORKLOAD)
-        assert not hass.services.has_service(DOMAIN, SERVICE_STOP_WORKLOAD)
 
 
 class TestGenericWorkloadServices:
@@ -205,10 +196,10 @@ class TestGenericWorkloadServices:
             "test-statefulset", "default"
         )
 
-    async def test_stop_workload_cronjob_ignored(
+    async def test_stop_workload_cronjob_rejected(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test that stop_workload ignores CronJobs."""
+        """Test that stop_workload rejects CronJobs with a validation error."""
         hass.states.async_set(
             "switch.test_cronjob",
             "on",
@@ -219,15 +210,16 @@ class TestGenericWorkloadServices:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_STOP_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.test_cronjob",
-                ATTR_NAMESPACE: "default",
-            },
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="suspend CronJobs"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.test_cronjob",
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
 
         mock_client.suspend_cronjob.assert_not_called()
         mock_client.stop_deployment.assert_not_called()
@@ -364,10 +356,10 @@ class TestRestartWorkloadService:
             "fluentd", "kube-system"
         )
 
-    async def test_restart_unsupported_type_logs_warning(
+    async def test_restart_unsupported_type_raises(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test that restarting an unsupported workload type logs a warning."""
+        """Test that restarting an unsupported workload type raises a validation error."""
         hass.states.async_set(
             "switch.test_cronjob",
             "on",
@@ -378,15 +370,16 @@ class TestRestartWorkloadService:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_RESTART_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.test_cronjob",
-                ATTR_NAMESPACE: "default",
-            },
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="Cannot restart test-cronjob"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.test_cronjob",
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
 
         mock_client.rollout_restart_deployment.assert_not_called()
         mock_client.rollout_restart_statefulset.assert_not_called()
@@ -395,7 +388,7 @@ class TestRestartWorkloadService:
     async def test_restart_deployment_failure(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test restart deployment logs error on failure."""
+        """Test restart deployment raises on failure."""
         mock_client.rollout_restart_deployment = AsyncMock(return_value=False)
         hass.states.async_set(
             "switch.test_deployment",
@@ -407,15 +400,16 @@ class TestRestartWorkloadService:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_RESTART_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.test_deployment",
-                ATTR_NAMESPACE: "default",
-            },
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="default/test-deployment"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.test_deployment",
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
 
         mock_client.rollout_restart_deployment.assert_called_once_with(
             "test-deployment", "default"
@@ -424,7 +418,7 @@ class TestRestartWorkloadService:
     async def test_restart_statefulset_failure(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test restart statefulset logs error on failure."""
+        """Test restart statefulset raises on failure."""
         mock_client.rollout_restart_statefulset = AsyncMock(return_value=False)
         hass.states.async_set(
             "switch.test_statefulset",
@@ -436,15 +430,16 @@ class TestRestartWorkloadService:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_RESTART_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.test_statefulset",
-                ATTR_NAMESPACE: "default",
-            },
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="default/test-statefulset"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.test_statefulset",
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
 
         mock_client.rollout_restart_statefulset.assert_called_once_with(
             "test-statefulset", "default"
@@ -453,7 +448,7 @@ class TestRestartWorkloadService:
     async def test_restart_daemonset_failure(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test restart daemonset logs error on failure."""
+        """Test restart daemonset raises on failure."""
         mock_client.rollout_restart_daemonset = AsyncMock(return_value=False)
         coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
         coordinator.data = {
@@ -465,15 +460,16 @@ class TestRestartWorkloadService:
             }
         }
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_RESTART_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "fluentd",
-                ATTR_NAMESPACE: "kube-system",
-            },
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="kube-system/fluentd"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "fluentd",
+                    ATTR_NAMESPACE: "kube-system",
+                },
+                blocking=True,
+            )
 
         mock_client.rollout_restart_daemonset.assert_called_once_with(
             "fluentd", "kube-system"
@@ -520,19 +516,83 @@ class TestRestartWorkloadService:
 
         assert mock_client.rollout_restart_deployment.call_count == 2
 
+    async def test_restart_multiple_workloads_partial_failure(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test that every target is attempted and only the failed one is reported."""
+        mock_client.rollout_restart_deployment = AsyncMock(side_effect=[False, True])
+        hass.states.async_set(
+            "switch.test_deploy_a",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "deploy-a",
+            },
+        )
+        hass.states.async_set(
+            "switch.test_deploy_b",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "deploy-b",
+            },
+        )
+        await async_setup_services(hass)
+        with pytest.raises(HomeAssistantError) as err:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {ATTR_WORKLOAD_NAMES: ["switch.test_deploy_a", "switch.test_deploy_b"]},
+                blocking=True,
+            )
+
+        # The second target was still attempted after the first one failed
+        assert mock_client.rollout_restart_deployment.call_count == 2
+        mock_client.rollout_restart_deployment.assert_any_call("deploy-b", "default")
+        assert "deploy-a" in str(err.value)
+        assert "deploy-b" not in str(err.value)
+
+    async def test_restart_workload_client_exception_reported(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test that an exception raised by the client surfaces as HomeAssistantError."""
+        mock_client.rollout_restart_deployment = AsyncMock(
+            side_effect=Exception("boom")
+        )
+        hass.states.async_set(
+            "switch.test_deployment",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "test-deployment",
+            },
+        )
+        await async_setup_services(hass)
+        with pytest.raises(HomeAssistantError, match="boom"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.test_deployment"},
+                blocking=True,
+            )
+
     async def test_restart_workload_no_workloads(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test restart_workload is a no-op when no valid workloads are found."""
+        """Test restart_workload raises when no valid workloads are found."""
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_RESTART_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.nonexistent",
-            },
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="switch.nonexistent"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.nonexistent",
+                },
+                blocking=True,
+            )
 
         mock_client.rollout_restart_deployment.assert_not_called()
         mock_client.rollout_restart_statefulset.assert_not_called()
@@ -541,17 +601,51 @@ class TestRestartWorkloadService:
     async def test_restart_workload_no_kubernetes_data(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test restart_workload returns early when domain data is cleared."""
+        """Test restart_workload raises when domain data is cleared."""
+        hass.states.async_set(
+            "switch.test_deployment",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "test-deployment",
+            },
+        )
         await async_setup_services(hass)
         hass.data.pop(DOMAIN, None)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_RESTART_WORKLOAD,
+        with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.test_deployment",
+                },
+                blocking=True,
+            )
+
+        mock_client.rollout_restart_deployment.assert_not_called()
+
+    async def test_restart_workload_unknown_entry_id(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test an entry_id that matches no loaded entry raises a validation error."""
+        hass.states.async_set(
+            "switch.test_deployment",
+            "on",
             {
-                ATTR_WORKLOAD_NAME: "switch.test_deployment",
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "test-deployment",
             },
-            blocking=True,
         )
+        await async_setup_services(hass)
+        with pytest.raises(ServiceValidationError, match="nope"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_RESTART_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.test_deployment", "entry_id": "nope"},
+                blocking=True,
+            )
 
         mock_client.rollout_restart_deployment.assert_not_called()
 
@@ -936,29 +1030,41 @@ class TestExtractWorkloadInfo:
         assert result == []
 
 
-class TestLogNoWorkloadsFound:
-    """Test the _log_no_workloads_found helper."""
+class TestNoWorkloadsError:
+    """Test the _no_workloads_error helper."""
 
-    def test_logs_with_workload_name_string(self):
-        call_data = {ATTR_WORKLOAD_NAME: "switch.nginx"}
-        # Should not raise
-        _log_no_workloads_found(call_data, "scale_workload")
+    def test_names_workload_name_string(self):
+        err = _no_workloads_error(
+            {ATTR_WORKLOAD_NAME: "switch.nginx"}, "scale_workload"
+        )
+        assert isinstance(err, ServiceValidationError)
+        assert "scale_workload" in str(err)
+        assert "switch.nginx" in str(err)
 
-    def test_logs_with_workload_names_list(self):
-        call_data = {ATTR_WORKLOAD_NAMES: ["switch.a", "switch.b"]}
-        _log_no_workloads_found(call_data, "stop_workload")
+    def test_names_workload_names_list(self):
+        err = _no_workloads_error(
+            {ATTR_WORKLOAD_NAMES: ["switch.a", "switch.b"]}, "stop_workload"
+        )
+        assert "switch.a" in str(err)
+        assert "switch.b" in str(err)
 
-    def test_logs_with_workload_names_dict(self):
-        call_data = {ATTR_WORKLOAD_NAMES: {"entity_id": "switch.x"}}
-        _log_no_workloads_found(call_data, "start_workload")
+    def test_names_workload_names_dict(self):
+        err = _no_workloads_error(
+            {ATTR_WORKLOAD_NAMES: {"entity_id": "switch.x"}}, "start_workload"
+        )
+        assert "switch.x" in str(err)
 
-    def test_logs_with_workload_names_dict_list_entity_id(self):
-        call_data = {ATTR_WORKLOAD_NAMES: {"entity_id": ["switch.x", "switch.y"]}}
-        _log_no_workloads_found(call_data, "start_workload")
+    def test_names_workload_names_dict_list_entity_id(self):
+        err = _no_workloads_error(
+            {ATTR_WORKLOAD_NAMES: {"entity_id": ["switch.x", "switch.y"]}},
+            "start_workload",
+        )
+        assert "switch.x" in str(err)
+        assert "switch.y" in str(err)
 
-    def test_logs_with_no_relevant_keys(self):
-        call_data = {}
-        _log_no_workloads_found(call_data, "scale_workload")
+    def test_no_relevant_keys(self):
+        err = _no_workloads_error({}, "scale_workload")
+        assert "(none)" in str(err)
 
 
 class TestServiceHandlerEdgeCases:
@@ -967,14 +1073,15 @@ class TestServiceHandlerEdgeCases:
     async def test_scale_workload_no_workloads_found(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test scale_workload logs error when no workloads found."""
+        """Test scale_workload raises when no workloads found."""
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_SCALE_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.missing", ATTR_REPLICAS: 2},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="switch.missing"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.missing", ATTR_REPLICAS: 2},
+                blocking=True,
+            )
         mock_client.scale_deployment.assert_not_called()
 
     async def test_scale_workload_statefulset(
@@ -1006,7 +1113,7 @@ class TestServiceHandlerEdgeCases:
     async def test_scale_workload_unsupported_type(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test scale_workload warns for CronJob type."""
+        """Test scale_workload rejects CronJob type."""
         hass.states.async_set(
             "switch.backup",
             "on",
@@ -1017,19 +1124,20 @@ class TestServiceHandlerEdgeCases:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_SCALE_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.backup", ATTR_REPLICAS: 1},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="Cannot scale backup"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.backup", ATTR_REPLICAS: 1},
+                blocking=True,
+            )
         mock_client.scale_deployment.assert_not_called()
         mock_client.scale_statefulset.assert_not_called()
 
-    async def test_scale_workload_failure_logged(
+    async def test_scale_workload_failure_raises(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test scale_workload logs error when scale returns False."""
+        """Test scale_workload raises when scale returns False."""
         mock_client.scale_deployment.return_value = False
         hass.states.async_set(
             "switch.nginx",
@@ -1041,22 +1149,23 @@ class TestServiceHandlerEdgeCases:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_SCALE_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.nginx",
-                ATTR_REPLICAS: 3,
-                ATTR_NAMESPACE: "default",
-            },
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="Failed to scale"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.nginx",
+                    ATTR_REPLICAS: 3,
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
         mock_client.scale_deployment.assert_called_once()
 
     async def test_scale_workload_no_kubernetes_data(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test scale_workload exits early when no kubernetes data in hass."""
+        """Test scale_workload raises when no kubernetes data in hass."""
         hass.states.async_set(
             "switch.nginx",
             "on",
@@ -1068,12 +1177,13 @@ class TestServiceHandlerEdgeCases:
         )
         await async_setup_services(hass)
         hass.data.pop(DOMAIN, None)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_SCALE_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 2},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 2},
+                blocking=True,
+            )
         mock_client.scale_deployment.assert_not_called()
 
     async def test_scale_multiple_workloads_logs_completion(
@@ -1165,7 +1275,7 @@ class TestServiceHandlerEdgeCases:
     async def test_start_workload_cronjob_failure(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test start_workload logs error when CronJob trigger fails."""
+        """Test start_workload raises when the CronJob trigger fails."""
         mock_client.trigger_cronjob.return_value = {
             "success": False,
             "error": "quota exceeded",
@@ -1180,50 +1290,54 @@ class TestServiceHandlerEdgeCases:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_START_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.backup",
-                ATTR_NAMESPACE: "default",
-            },
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="quota exceeded"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_START_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.backup",
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
         mock_client.trigger_cronjob.assert_called_once_with("backup", "default")
 
     async def test_start_workload_unsupported_type(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test start_workload warns for unsupported type."""
+        """Test start_workload rejects an unsupported type."""
         hass.states.async_set(
             "switch.ds",
             "on",
             {
-                ATTR_WORKLOAD_TYPE: "DaemonSet",
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DAEMONSET,
                 "namespace": "default",
+                "deployment_name": "ds",
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_START_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.ds", ATTR_REPLICAS: 1},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="Cannot start ds"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_START_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.ds", ATTR_REPLICAS: 1},
+                blocking=True,
+            )
         mock_client.start_deployment.assert_not_called()
         mock_client.start_statefulset.assert_not_called()
 
     async def test_start_workload_no_workloads(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test start_workload logs error when no workloads found."""
+        """Test start_workload raises when no workloads found."""
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_START_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.missing"},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="switch.missing"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_START_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.missing"},
+                blocking=True,
+            )
         mock_client.start_deployment.assert_not_called()
 
     async def test_stop_workload_deployment(
@@ -1254,7 +1368,7 @@ class TestServiceHandlerEdgeCases:
     async def test_stop_workload_deployment_failure(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test stop_workload logs error when stop returns False."""
+        """Test stop_workload raises when stop returns False."""
         mock_client.stop_deployment.return_value = False
         hass.states.async_set(
             "switch.nginx",
@@ -1266,21 +1380,22 @@ class TestServiceHandlerEdgeCases:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_STOP_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.nginx",
-                ATTR_NAMESPACE: "default",
-            },
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="Failed to stop"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.nginx",
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
         mock_client.stop_deployment.assert_called_once()
 
     async def test_stop_workload_statefulset_failure(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test stop_workload logs error when StatefulSet stop returns False."""
+        """Test stop_workload raises when StatefulSet stop returns False."""
         mock_client.stop_statefulset.return_value = False
         hass.states.async_set(
             "switch.redis",
@@ -1292,55 +1407,59 @@ class TestServiceHandlerEdgeCases:
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_STOP_WORKLOAD,
-            {
-                ATTR_WORKLOAD_NAME: "switch.redis",
-                ATTR_NAMESPACE: "default",
-            },
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="default/redis"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.redis",
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
         mock_client.stop_statefulset.assert_called_once_with("redis", "default")
 
     async def test_stop_workload_unsupported_type(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test stop_workload warns for unsupported types."""
+        """Test stop_workload rejects unsupported types."""
         hass.states.async_set(
             "switch.ds",
             "on",
             {
-                ATTR_WORKLOAD_TYPE: "DaemonSet",
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DAEMONSET,
                 "namespace": "default",
+                "deployment_name": "ds",
             },
         )
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_STOP_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.ds"},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="Cannot stop ds"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.ds"},
+                blocking=True,
+            )
         mock_client.stop_deployment.assert_not_called()
 
     async def test_stop_workload_no_workloads(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test stop_workload logs error when no workloads found."""
+        """Test stop_workload raises when no workloads found."""
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_STOP_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.missing"},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="switch.missing"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.missing"},
+                blocking=True,
+            )
         mock_client.stop_deployment.assert_not_called()
 
     async def test_stop_workload_no_kubernetes_data(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test stop_workload exits early when no kubernetes data."""
+        """Test stop_workload raises when no kubernetes data."""
         hass.states.async_set(
             "switch.nginx",
             "on",
@@ -1352,18 +1471,19 @@ class TestServiceHandlerEdgeCases:
         )
         await async_setup_services(hass)
         hass.data.pop(DOMAIN, None)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_STOP_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.nginx"},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.nginx"},
+                blocking=True,
+            )
         mock_client.stop_deployment.assert_not_called()
 
     async def test_start_workload_no_kubernetes_data(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test start_workload exits early when no kubernetes data."""
+        """Test start_workload raises when no kubernetes data."""
         hass.states.async_set(
             "switch.nginx",
             "on",
@@ -1375,12 +1495,13 @@ class TestServiceHandlerEdgeCases:
         )
         await async_setup_services(hass)
         hass.data.pop(DOMAIN, None)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_START_WORKLOAD,
-            {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 1},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_START_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 1},
+                blocking=True,
+            )
         mock_client.start_deployment.assert_not_called()
 
 
@@ -1553,10 +1674,16 @@ class TestResolveRawWorkloadName:
 class TestGetEntryData:
     """Tests for _get_entry_data helper."""
 
-    async def test_returns_none_when_no_domain_data(self, hass: HomeAssistant):
-        """Test returns None when no DOMAIN data exists."""
-        result = _get_entry_data(hass, {})
-        assert result is None
+    async def test_raises_when_no_domain_data(self, hass: HomeAssistant):
+        """Test raises when no DOMAIN data exists."""
+        with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
+            _get_entry_data(hass, {})
+
+    async def test_raises_when_only_metadata_keys(self, hass: HomeAssistant):
+        """Test raises when only metadata keys exist."""
+        hass.data[DOMAIN] = {"panel_registered": True}
+        with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
+            _get_entry_data(hass, {})
 
     async def test_returns_specified_entry(self, hass: HomeAssistant):
         """Test returns the entry matching entry_id."""
@@ -1583,21 +1710,22 @@ class TestGetEntryData:
         result = _get_entry_data(hass, {})
         assert result is entry_a
 
-    async def test_ignores_invalid_entry_id(self, hass: HomeAssistant):
-        """Test falls back when entry_id doesn't match any entry."""
-        entry_a = {"config": {"host": "a"}}
-        hass.data[DOMAIN] = {"entry_a": entry_a}
+    async def test_raises_on_invalid_entry_id(self, hass: HomeAssistant):
+        """Test raises when entry_id doesn't match any loaded entry."""
+        hass.data[DOMAIN] = {"entry_a": {"config": {"host": "a"}}}
 
-        result = _get_entry_data(hass, {"entry_id": "nonexistent"})
-        assert result is entry_a
+        with pytest.raises(ServiceValidationError, match="nonexistent"):
+            _get_entry_data(hass, {"entry_id": "nonexistent"})
 
-    async def test_ignores_metadata_key_as_entry_id(self, hass: HomeAssistant):
+    async def test_raises_on_metadata_key_as_entry_id(self, hass: HomeAssistant):
         """Test rejects metadata keys passed as entry_id."""
-        entry_a = {"config": {"host": "a"}}
-        hass.data[DOMAIN] = {"panel_registered": True, "entry_a": entry_a}
+        hass.data[DOMAIN] = {
+            "panel_registered": True,
+            "entry_a": {"config": {"host": "a"}},
+        }
 
-        result = _get_entry_data(hass, {"entry_id": "panel_registered"})
-        assert result is entry_a
+        with pytest.raises(ServiceValidationError, match="panel_registered"):
+            _get_entry_data(hass, {"entry_id": "panel_registered"})
 
 
 class TestCollectEntityIds:
@@ -2074,21 +2202,21 @@ class TestDeleteJobService:
         other_client.delete_job.assert_called_once_with("my-job", "other")
         mock_client.delete_job.assert_not_called()
 
-    async def test_no_job_names_is_noop(
+    async def test_no_job_names_raises(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test calling delete_job with an empty job_names list early-returns without calling the client."""
+        """Test calling delete_job with an empty job_names list raises."""
         await async_setup_services(hass)
 
-        # Call the service with an empty job_names list — the key-presence validator passes
-        # (ATTR_JOB_NAMES is present), but _collect_job_names returns [] so the handler
-        # early-returns without invoking the client.
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_DELETE_JOB,
-            {ATTR_JOB_NAMES: [], ATTR_NAMESPACE: "default"},
-            blocking=True,
-        )
+        # The key-presence validator passes (ATTR_JOB_NAMES is present), but
+        # _collect_job_names returns [] so the handler rejects the call.
+        with pytest.raises(ServiceValidationError, match="at least one"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_DELETE_JOB,
+                {ATTR_JOB_NAMES: [], ATTR_NAMESPACE: "default"},
+                blocking=True,
+            )
 
         mock_client.delete_job.assert_not_called()
 
@@ -2107,29 +2235,47 @@ class TestDeleteJobService:
                 blocking=True,
             )
 
-    async def test_delete_job_logs_error_on_failure(
+    async def test_delete_job_raises_on_failure(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test that the error-log branch executes when delete_job returns False."""
+        """Test that a failed delete raises HomeAssistantError."""
         mock_client.delete_job = AsyncMock(return_value=False)
 
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_DELETE_JOB,
-            {ATTR_JOB_NAME: "j1", ATTR_NAMESPACE: "default"},
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="job default/j1"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_DELETE_JOB,
+                {ATTR_JOB_NAME: "j1", ATTR_NAMESPACE: "default"},
+                blocking=True,
+            )
 
         mock_client.delete_job.assert_awaited_once_with("j1", "default")
 
-    async def test_service_registered_and_unregistered(self, hass: HomeAssistant):
-        """Test that delete_job service is registered and removed with others."""
+    async def test_delete_multiple_jobs_partial_failure(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test that all jobs are attempted and only the failed one is reported."""
+        mock_client.delete_job = AsyncMock(side_effect=[False, True])
+
+        await async_setup_services(hass)
+        with pytest.raises(HomeAssistantError) as err:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_DELETE_JOB,
+                {ATTR_JOB_NAMES: ["job-a", "job-b"], ATTR_NAMESPACE: "ns"},
+                blocking=True,
+            )
+
+        assert mock_client.delete_job.await_count == 2
+        mock_client.delete_job.assert_any_await("job-b", "ns")
+        assert "job-a" in str(err.value)
+        assert "job-b" not in str(err.value)
+
+    async def test_service_registered(self, hass: HomeAssistant):
+        """Test that the delete_job service is registered with the others."""
         await async_setup_services(hass)
         assert hass.services.has_service(DOMAIN, SERVICE_DELETE_JOB)
-
-        await async_unload_services(hass)
-        assert not hass.services.has_service(DOMAIN, SERVICE_DELETE_JOB)
 
 
 class TestValidateNodeSchema:
@@ -2180,15 +2326,11 @@ class TestCollectNodeNames:
 class TestNodeCordonServices:
     """Tests for the cordon_node / uncordon_node services."""
 
-    async def test_services_registered_and_unregistered(self, hass: HomeAssistant):
-        """Test cordon/uncordon services register and unregister."""
+    async def test_services_registered(self, hass: HomeAssistant):
+        """Test cordon/uncordon services are registered."""
         await async_setup_services(hass)
         assert hass.services.has_service(DOMAIN, SERVICE_CORDON_NODE)
         assert hass.services.has_service(DOMAIN, SERVICE_UNCORDON_NODE)
-
-        await async_unload_services(hass)
-        assert not hass.services.has_service(DOMAIN, SERVICE_CORDON_NODE)
-        assert not hass.services.has_service(DOMAIN, SERVICE_UNCORDON_NODE)
 
     async def test_cordon_single_node(
         self, hass: HomeAssistant, mock_client, setup_domain_data
@@ -2251,48 +2393,65 @@ class TestNodeCordonServices:
                 blocking=True,
             )
 
-    async def test_cordon_blank_node_name_is_noop(
+    async def test_cordon_blank_node_name_raises(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test a whitespace-only node_name collects to nothing and no-ops."""
+        """Test a whitespace-only node_name collects to nothing and raises."""
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_CORDON_NODE,
-            {ATTR_NODE_NAME: "   "},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="at least one"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_CORDON_NODE,
+                {ATTR_NODE_NAME: "   "},
+                blocking=True,
+            )
 
         mock_client.cordon_node.assert_not_called()
 
-    async def test_cordon_without_domain_data_is_noop(self, hass: HomeAssistant):
-        """Test the service no-ops when no cluster is configured."""
+    async def test_cordon_without_domain_data_raises(self, hass: HomeAssistant):
+        """Test the service raises when no cluster is configured."""
         await async_setup_services(hass)
         # No setup_domain_data fixture -> _get_entry_data finds nothing
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_CORDON_NODE,
-            {ATTR_NODE_NAME: "node-1"},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_CORDON_NODE,
+                {ATTR_NODE_NAME: "node-1"},
+                blocking=True,
+            )
 
-    async def test_cordon_failure_logged_not_raised(
+    async def test_cordon_failure_raises(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
-        """Test a failed cordon is logged but does not raise."""
+        """Test a failed cordon raises HomeAssistantError."""
         mock_client.cordon_node = AsyncMock(return_value=False)
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_CORDON_NODE,
-            {ATTR_NODE_NAME: "node-1"},
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError, match="node node-1"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_CORDON_NODE,
+                {ATTR_NODE_NAME: "node-1"},
+                blocking=True,
+            )
 
         mock_client.cordon_node.assert_called_once_with("node-1")
         # Nothing changed, so there is nothing to refresh
         coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
         coordinator.async_request_refresh.assert_not_called()
+
+    async def test_cordon_client_exception_raises(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test an exception from the client surfaces as HomeAssistantError."""
+        mock_client.cordon_node = AsyncMock(side_effect=Exception("boom"))
+        await async_setup_services(hass)
+        with pytest.raises(HomeAssistantError, match="boom"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_CORDON_NODE,
+                {ATTR_NODE_NAME: "node-1"},
+                blocking=True,
+            )
 
     async def test_cordon_partial_failure_still_refreshes(
         self, hass: HomeAssistant, mock_client, setup_domain_data
@@ -2300,12 +2459,19 @@ class TestNodeCordonServices:
         """Test one successful cordon among failures still triggers a refresh."""
         mock_client.cordon_node = AsyncMock(side_effect=[False, True])
         await async_setup_services(hass)
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_CORDON_NODE,
-            {ATTR_NODE_NAMES: ["node-1", "node-2"]},
-            blocking=True,
-        )
+        with pytest.raises(HomeAssistantError) as err:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_CORDON_NODE,
+                {ATTR_NODE_NAMES: ["node-1", "node-2"]},
+                blocking=True,
+            )
+
+        # Both nodes were attempted, only the failed one is named
+        assert mock_client.cordon_node.await_count == 2
+        mock_client.cordon_node.assert_any_await("node-2")
+        assert "node-1" in str(err.value)
+        assert "node-2" not in str(err.value)
 
         coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
         coordinator.async_request_refresh.assert_called_once()

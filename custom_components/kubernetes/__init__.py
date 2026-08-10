@@ -32,7 +32,7 @@ from .const import (
 )
 from .coordinator import KubernetesDataCoordinator
 from .kubernetes_client import KubernetesClient
-from .services import async_setup_services, async_unload_services
+from .services import async_setup_services
 from .websocket_api import async_register_websocket_commands
 
 PLATFORMS: list[Platform] = [
@@ -54,6 +54,7 @@ ISSUE_KUBERNETES_PACKAGE_MISSING = "kubernetes_package_missing"
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Kubernetes integration."""
     async_register_websocket_commands(hass)
+    await async_setup_services(hass)
     return True
 
 
@@ -89,10 +90,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "client": client,
         "coordinator": coordinator,
     }
-
-    # Set up services if this is the first config entry
-    if _count_config_entries(hass) == 1:
-        await async_setup_services(hass)
 
     # Register or remove the sidebar panel based on the enable_panel option
     await _async_sync_panel(hass, entry)
@@ -312,10 +309,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
 
-        # Clean up when the last config entry is removed
+        # Clean up when the last config entry is removed. Services stay
+        # registered for the lifetime of HA (Bronze "action-setup").
         if _count_config_entries(hass) == 0:
             _async_remove_panel(hass)
-            await async_unload_services(hass)
             hass.data.pop(DOMAIN, None)
         elif not _any_entry_wants_panel(hass):
             # Remove panel if no remaining entries want it
