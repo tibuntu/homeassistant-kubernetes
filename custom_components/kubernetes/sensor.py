@@ -24,6 +24,9 @@ from .device import get_cluster_device_info, get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
 
+# Data updates are centralized in the coordinator (quality scale: parallel-updates)
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,

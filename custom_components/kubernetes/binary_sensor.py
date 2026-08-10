@@ -22,6 +22,9 @@ from .kubernetes_client import KubernetesClient
 
 _LOGGER = logging.getLogger(__name__)
 
+# Data updates are centralized in the coordinator (quality scale: parallel-updates)
+PARALLEL_UPDATES = 0
+
 # Node conditions exposed as binary sensors: condition_key -> display name
 _NODE_CONDITIONS: dict[str, str] = {
     "memory_pressure": "Memory Pressure",
