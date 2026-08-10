@@ -1,7 +1,7 @@
 """Tests for the Kubernetes integration client."""
 
 import ssl
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import aiohttp
 from kubernetes.client import ApiException
@@ -6462,3 +6462,92 @@ class TestNodeCordon:
         mock_client.core_v1.patch_node.assert_called_once_with(
             "node-1", {"spec": {"unschedulable": False}}
         )
+
+
+def _probe_responses(*statuses: int) -> list[MagicMock]:
+    """Build mock aiohttp responses returning the given HTTP statuses in order."""
+    return [MagicMock(status=status) for status in statuses]
+
+
+class TestAuthFailureSignal:
+    """The connection probe is the single source of the reauth signal."""
+
+    async def test_401_flags_auth_failure(self, mock_config):
+        """A 401 from the probe sets auth_failed so the coordinator can react."""
+        client = _make_client(mock_config)
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_get.return_value.__aenter__.side_effect = _probe_responses(401)
+            assert await client._test_connection_aiohttp() is False
+
+        assert client.auth_failed is True
+        # Not in-cluster: no token-rotation retry, so exactly one request.
+        assert mock_get.call_count == 1
+
+    async def test_success_clears_auth_failure(self, mock_config):
+        """A later successful probe clears a previously flagged auth failure."""
+        client = _make_client(mock_config)
+        client.auth_failed = True
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_get.return_value.__aenter__.side_effect = _probe_responses(200)
+            assert await client._test_connection_aiohttp() is True
+
+        assert client.auth_failed is False
+
+    async def test_non_auth_error_does_not_flag(self, mock_config):
+        """A non-401 failure (e.g. 500) is not an auth failure."""
+        client = _make_client(mock_config)
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_get.return_value.__aenter__.side_effect = _probe_responses(500)
+            assert await client._test_connection_aiohttp() is False
+
+        assert client.auth_failed is False
+
+    async def test_in_cluster_401_retries_after_cache_invalidation(self, mock_config):
+        """An in-cluster token rotation self-heals and must not flag auth failure."""
+        mock_config["use_in_cluster"] = True
+        client = _make_client(mock_config)
+
+        with (
+            patch("aiohttp.ClientSession.get") as mock_get,
+            patch(
+                "custom_components.kubernetes.kubernetes_client.open",
+                mock_open(read_data="projected-token"),
+            ),
+            patch.object(client, "invalidate_token_cache") as mock_invalidate,
+        ):
+            mock_get.return_value.__aenter__.side_effect = _probe_responses(401, 200)
+            assert await client._test_connection_aiohttp() is True
+
+        assert client.auth_failed is False
+        mock_invalidate.assert_called_once()
+        assert mock_get.call_count == 2
+
+    async def test_in_cluster_persistent_401_flags_auth_failure(self, mock_config):
+        """A 401 that survives the token re-read is a real auth failure."""
+        mock_config["use_in_cluster"] = True
+        client = _make_client(mock_config)
+
+        with (
+            patch("aiohttp.ClientSession.get") as mock_get,
+            patch(
+                "custom_components.kubernetes.kubernetes_client.open",
+                mock_open(read_data="projected-token"),
+            ),
+        ):
+            mock_get.return_value.__aenter__.side_effect = _probe_responses(401, 401)
+            assert await client._test_connection_aiohttp() is False
+
+        assert client.auth_failed is True
+        assert mock_get.call_count == 2
+
+    async def test_network_error_leaves_auth_failure_untouched(self, mock_config):
+        """A transport error tells us nothing about the token, so the flag stands."""
+        client = _make_client(mock_config)
+
+        with patch("aiohttp.ClientSession.get", side_effect=aiohttp.ClientError("x")):
+            assert await client._test_connection_aiohttp() is False
+
+        assert client.auth_failed is False

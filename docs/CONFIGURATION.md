@@ -54,6 +54,12 @@ To change connection details or settings for an existing integration entry:
 
 **Note:** The cluster name cannot be changed during reconfiguration as it serves as the unique identifier for the integration entry. To change the cluster name, remove and re-add the integration.
 
+## Re-authentication
+
+If the Kubernetes API starts rejecting the stored API token (HTTP 401 — the token expired, was revoked, or its ServiceAccount was deleted), the integration stops polling and Home Assistant raises a **"Reauthentication needed"** notification for that entry. Opening it shows a form that asks for a new API token only; the host, port, CA certificate, SSL, and namespace settings stay as configured. Once a valid token is submitted, the entry is updated and reloaded automatically.
+
+Entries using **Use in-cluster ServiceAccount at runtime** re-read the projected token file and retry before reporting an authentication failure, so ordinary token rotation never triggers this prompt. If such an entry does reach re-authentication, the projected token is being rejected persistently — submitting a token therefore also turns **Use in-cluster ServiceAccount at runtime** off for that entry, so the token you entered is the one actually used. Re-enable the checkbox via **Reconfigure** once the ServiceAccount is healthy again. See [Authentication Issues](TROUBLESHOOTING.md#authentication-issues-401-unauthorized) for how to obtain a fresh token.
+
 ## Dashboard Panel
 
 Once the integration is set up, a **Kubernetes** entry appears in the Home Assistant sidebar. The panel provides a built-in cluster dashboard with six tabs:

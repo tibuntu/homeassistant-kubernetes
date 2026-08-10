@@ -66,12 +66,18 @@ curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_CLUSTER_HOST:6443/api/v1
 curl -H "Authorization: Bearer YOUR_TOKEN" https://YOUR_CLUSTER_HOST:6443/apis/apps/v1/namespaces/default/deployments
 ```
 
-#### Step 4: Update Home Assistant Configuration
+#### Step 4: Update the Token in Home Assistant
+
+When the cluster rejects the stored token, the integration detects it on the next poll and Home Assistant shows a **"Reauthentication needed"** notification for the entry. Click **Reconfigure** on that notification, paste the new token, and submit — the host, port, and TLS settings are kept as they are.
+
+You can also update the token at any time without waiting for the prompt:
 
 1. Go to **Settings** → **Devices & Services**
 2. Find your Kubernetes integration and click **Configure**
 3. Update the API token with the new token from Step 1 or 2
 4. Save the configuration
+
+> **Note:** If Home Assistant runs inside the cluster with **Use in-cluster ServiceAccount at runtime** enabled, routine token rotation is handled automatically — the integration re-reads the projected token and retries before ever asking you to re-authenticate. A reauthentication prompt in that setup usually means the ServiceAccount or its ClusterRoleBinding was deleted — submitting a token there also switches the entry off in-cluster mode so the pasted token takes effect. Re-enable **Use in-cluster ServiceAccount at runtime** via **Reconfigure** once the ServiceAccount is back.
 
 ### Required RBAC Permissions
 

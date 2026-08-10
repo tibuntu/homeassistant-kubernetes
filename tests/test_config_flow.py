@@ -28,6 +28,7 @@ from custom_components.kubernetes.const import (
     CONF_SCALE_COOLDOWN,
     CONF_SCALE_VERIFICATION_TIMEOUT,
     CONF_SWITCH_UPDATE_INTERVAL,
+    CONF_USE_IN_CLUSTER,
     CONF_VERIFY_SSL,
     DEFAULT_DEVICE_GROUPING_MODE,
     DEFAULT_ENABLE_EVENTS,
@@ -3235,3 +3236,156 @@ async def test_fetch_namespaces_long_error_text_truncated(hass: HomeAssistant):
         )
 
     assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Reauthentication flow tests (real flow manager)
+# ---------------------------------------------------------------------------
+
+
+class TestReauthFlow:
+    """Tests for the Kubernetes integration reauthentication flow."""
+
+    @pytest.fixture
+    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
+        """Return a config entry added to hass for reauth tests."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="test-cluster",
+            data={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "cluster.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "expired-token",
+                CONF_CA_CERT: "/etc/ca.crt",
+                CONF_VERIFY_SSL: False,
+                CONF_USE_IN_CLUSTER: False,
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            },
+            unique_id="test-cluster",
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    async def _init_reauth(self, hass: HomeAssistant, entry: MockConfigEntry):
+        """Helper to start a reauth flow."""
+        return await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_REAUTH,
+                "entry_id": entry.entry_id,
+            },
+            data=entry.data,
+        )
+
+    async def test_reauth_shows_token_only_form(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test reauth asks only for a new token and names the cluster."""
+        result = await self._init_reauth(hass, mock_config_entry)
+
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "reauth_confirm"
+        assert result["errors"] == {}
+        assert result["description_placeholders"]["cluster_name"] == "test-cluster"
+        assert result["description_placeholders"]["host"] == "cluster.example.com"
+        schema_keys = [str(k) for k in result["data_schema"].schema]
+        assert schema_keys == [CONF_API_TOKEN]
+
+    async def test_reauth_successful_updates_only_the_token(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test a valid token is stored, the entry reloaded and the flow aborted."""
+        with patch.object(
+            KubernetesConfigFlow, "_test_connection", new_callable=AsyncMock
+        ) as mock_test_connection:
+            result = await self._init_reauth(hass, mock_config_entry)
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={CONF_API_TOKEN: "fresh-token"},
+            )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reauth_successful"
+        assert mock_config_entry.data[CONF_API_TOKEN] == "fresh-token"
+        # Everything except the token is untouched.
+        assert mock_config_entry.data[CONF_HOST] == "cluster.example.com"
+        assert mock_config_entry.data[CONF_CA_CERT] == "/etc/ca.crt"
+        assert mock_config_entry.data[CONF_CLUSTER_NAME] == "test-cluster"
+        # Already static: the in-cluster flag is left exactly as it was.
+        assert mock_config_entry.data[CONF_USE_IN_CLUSTER] is False
+
+        # The candidate validated is the entry's settings plus the new token.
+        validated = mock_test_connection.call_args[0][0]
+        assert validated[CONF_API_TOKEN] == "fresh-token"
+        assert validated[CONF_HOST] == "cluster.example.com"
+        assert validated[CONF_PORT] == 6443
+
+    async def test_reauth_in_cluster_entry_switches_to_the_pasted_token(
+        self, hass: HomeAssistant
+    ):
+        """Test reauth turns off in-cluster mode so the pasted token is used.
+
+        An in-cluster entry only reaches reauth once the projected token is
+        persistently rejected, so leaving the flag on would keep the pasted
+        token inert and re-prompt forever.
+        """
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="in-cluster",
+            data={
+                CONF_CLUSTER_NAME: "in-cluster",
+                CONF_HOST: "kubernetes.default.svc",
+                CONF_PORT: 443,
+                CONF_API_TOKEN: "stale-fallback-token",
+                CONF_USE_IN_CLUSTER: True,
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            },
+            unique_id="in-cluster",
+        )
+        entry.add_to_hass(hass)
+
+        with patch.object(
+            KubernetesConfigFlow, "_test_connection", new_callable=AsyncMock
+        ):
+            result = await self._init_reauth(hass, entry)
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={CONF_API_TOKEN: "pasted-token"},
+            )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reauth_successful"
+        assert entry.data[CONF_API_TOKEN] == "pasted-token"
+        assert entry.data[CONF_USE_IN_CLUSTER] is False
+        assert entry.data[CONF_HOST] == "kubernetes.default.svc"
+
+    async def test_reauth_invalid_token_reshows_form_then_succeeds(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test a rejected token re-shows the form; a later valid token is stored."""
+        with patch.object(
+            KubernetesConfigFlow,
+            "_test_connection",
+            new_callable=AsyncMock,
+            side_effect=[ValueError("Failed to connect: Unauthorized"), None],
+        ):
+            result = await self._init_reauth(hass, mock_config_entry)
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={CONF_API_TOKEN: "still-bad-token"},
+            )
+
+            assert result["type"] is FlowResultType.FORM
+            assert result["step_id"] == "reauth_confirm"
+            assert result["errors"]["base"] == "invalid_auth"
+            assert mock_config_entry.data[CONF_API_TOKEN] == "expired-token"
+
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={CONF_API_TOKEN: "good-token"},
+            )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reauth_successful"
+        assert mock_config_entry.data[CONF_API_TOKEN] == "good-token"

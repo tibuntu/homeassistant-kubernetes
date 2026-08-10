@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 import os
 from pathlib import Path
@@ -421,6 +422,55 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         return self.async_show_form(
             step_id="namespaces",
             data_schema=vol.Schema(schema),
+            errors=errors,
+        )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Start re-authentication after the cluster rejected the stored token."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for a fresh API token and validate it against the stored host."""
+        entry = self._get_reauth_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # _test_connection mutates the dict it validates (it normalizes the
+            # host), so hand it a throwaway copy of the entry's settings. Only
+            # the token is written back to the entry.
+            candidate = {**entry.data, CONF_API_TOKEN: user_input[CONF_API_TOKEN]}
+            try:
+                await self._test_connection(candidate)
+            except Exception as ex:  # pylint: disable=broad-except
+                _LOGGER.error("Re-authentication with Kubernetes failed: %s", ex)
+                errors["base"] = "invalid_auth"
+            else:
+                data_updates: dict[str, Any] = {
+                    CONF_API_TOKEN: user_input[CONF_API_TOKEN]
+                }
+                # The client retries a 401 after re-reading the projected token,
+                # so an in-cluster entry only reaches reauth when that file is
+                # persistently rejected. Leaving in-cluster mode on would keep
+                # the pasted token inert and re-prompt forever, so switch the
+                # entry to the static token the user just supplied.
+                if entry.data.get(CONF_USE_IN_CLUSTER, DEFAULT_USE_IN_CLUSTER):
+                    data_updates[CONF_USE_IN_CLUSTER] = False
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data_updates=data_updates,
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_API_TOKEN): str}),
+            description_placeholders={
+                "cluster_name": entry.data.get(CONF_CLUSTER_NAME, entry.title),
+                "host": entry.data.get(CONF_HOST, ""),
+            },
             errors=errors,
         )
 
