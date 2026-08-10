@@ -21,12 +21,11 @@ from .const import (
     CONF_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-    DOMAIN,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
-from .coordinator import KubernetesDataCoordinator
+from .coordinator import KubernetesConfigEntry, KubernetesDataCoordinator
 from .device import get_cluster_device_info, get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -38,13 +37,14 @@ PARALLEL_UPDATES = 0
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: KubernetesConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Kubernetes switches based on a config entry."""
-    # Get the coordinator from hass.data
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
-    client = hass.data[DOMAIN][config_entry.entry_id]["client"]
+    # Get the coordinator from the entry's runtime data
+    entry_data = config_entry.runtime_data
+    coordinator = entry_data.coordinator
+    client = entry_data.client
 
     # Ensure namespace devices exist
     from .device import get_or_create_namespace_device
@@ -103,12 +103,7 @@ async def async_setup_entry(
     async_add_entities(switches)
 
     # Store the add_entities callback for dynamic entity management
-    if DOMAIN not in hass.data:
-        hass.data[DOMAIN] = {}
-    hass.data[DOMAIN]["switch_add_entities"] = async_add_entities
-    if config_entry.entry_id not in hass.data[DOMAIN]:
-        hass.data[DOMAIN][config_entry.entry_id] = {}
-    hass.data[DOMAIN][config_entry.entry_id]["switch_pending_unique_ids"] = set()
+    entry_data.switch_add_entities = async_add_entities
 
     # Set up listener for adding new entities dynamically
     @callback
@@ -126,7 +121,7 @@ async def async_setup_entry(
 
 async def _async_discover_and_add_new_entities(  # noqa: C901
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: KubernetesConfigEntry,
     coordinator: KubernetesDataCoordinator,
     client: Any,
 ) -> None:
@@ -135,7 +130,8 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
         entity_registry = async_get_entity_registry(hass)
 
         # Get the stored add_entities callback
-        add_entities_callback = hass.data[DOMAIN].get("switch_add_entities")
+        entry_data = config_entry.runtime_data
+        add_entities_callback = entry_data.switch_add_entities
         if not add_entities_callback:
             _LOGGER.warning(
                 "No add_entities callback found for dynamic entity management"
@@ -150,8 +146,7 @@ async def _async_discover_and_add_new_entities(  # noqa: C901
         existing_unique_ids = {
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
-        entry_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
-        pending_ids: set[str] = entry_data.get("switch_pending_unique_ids", set())
+        pending_ids = entry_data.switch_pending_unique_ids
         # Prune IDs that are now in the registry — keeps the set bounded
         pending_ids -= existing_unique_ids
         existing_unique_ids |= pending_ids
@@ -589,7 +584,7 @@ class KubernetesCronJobSwitch(SwitchEntity):
     def __init__(
         self,
         coordinator: KubernetesDataCoordinator,
-        config_entry: ConfigEntry,
+        config_entry: KubernetesConfigEntry,
         cronjob_name: str,
         namespace: str,
     ) -> None:
@@ -662,8 +657,7 @@ class KubernetesCronJobSwitch(SwitchEntity):
         try:
             _LOGGER.info("Resuming CronJob: %s", self.cronjob_name)
 
-            # Get the client from hass.data
-            client = self.hass.data[DOMAIN][self.config_entry.entry_id]["client"]
+            client = self.config_entry.runtime_data.client
 
             # Resume the CronJob
             result = await client.resume_cronjob(self.cronjob_name, self.namespace)
@@ -693,8 +687,7 @@ class KubernetesCronJobSwitch(SwitchEntity):
         try:
             _LOGGER.info("Suspending CronJob: %s", self.cronjob_name)
 
-            # Get the client from hass.data
-            client = self.hass.data[DOMAIN][self.config_entry.entry_id]["client"]
+            client = self.config_entry.runtime_data.client
 
             # Suspend the CronJob
             result = await client.suspend_cronjob(self.cronjob_name, self.namespace)
@@ -801,7 +794,7 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
     def __init__(
         self,
         coordinator: KubernetesDataCoordinator,
-        config_entry: ConfigEntry,
+        config_entry: KubernetesConfigEntry,
         node_name: str,
     ) -> None:
         """Initialize the node schedulable switch."""
@@ -888,7 +881,7 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
         """Uncordon the node (mark it schedulable)."""
         try:
             _LOGGER.info("Uncordoning node: %s", self.node_name)
-            client = self.hass.data[DOMAIN][self.config_entry.entry_id]["client"]
+            client = self.config_entry.runtime_data.client
 
             result = await client.uncordon_node(self.node_name)
             if not result:
@@ -907,7 +900,7 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
         """Cordon the node (mark it unschedulable)."""
         try:
             _LOGGER.info("Cordoning node: %s", self.node_name)
-            client = self.hass.data[DOMAIN][self.config_entry.entry_id]["client"]
+            client = self.config_entry.runtime_data.client
 
             result = await client.cordon_node(self.node_name)
             if not result:

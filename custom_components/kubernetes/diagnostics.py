@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -15,8 +15,8 @@ from .const import (
     CONF_ENABLE_WATCH,
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
-    DOMAIN,
 )
+from .coordinator import KubernetesConfigEntry
 
 TO_REDACT = {CONF_API_TOKEN, CONF_CA_CERT}
 
@@ -81,7 +81,7 @@ def _client_diagnostics(client: Any) -> dict[str, Any]:
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: KubernetesConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     entry_section = {
@@ -92,12 +92,12 @@ async def async_get_config_entry_diagnostics(
 
     # Setup may have failed (cluster unreachable, missing dependency, etc.). HA
     # still offers the diagnostics download in that state — return what we can.
-    entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id)
-    if not entry_data:
+    if entry.state is not ConfigEntryState.LOADED:
         return {"entry": {**entry_section, "state": "not_loaded"}}
 
-    coordinator = entry_data["coordinator"]
-    client = entry_data["client"]
+    entry_data = entry.runtime_data
+    coordinator = entry_data.coordinator
+    client = entry_data.client
 
     return {
         "entry": entry_section,

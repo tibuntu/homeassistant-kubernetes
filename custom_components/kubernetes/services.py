@@ -34,6 +34,7 @@ from .const import (
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
+from .coordinator import KubernetesEntryData, get_loaded_entries
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.info("Kubernetes services module loaded")
@@ -132,11 +133,6 @@ def _resolve_raw_workload_name(
 
     Searches all coordinator data for a matching workload by name and optional namespace.
     """
-    from .coordinator import KubernetesDataCoordinator
-
-    domain_data = hass.data.get(DOMAIN, {})
-    from .const import DOMAIN_META_KEYS
-
     resource_type_map = {
         "deployments": WORKLOAD_TYPE_DEPLOYMENT,
         "statefulsets": WORKLOAD_TYPE_STATEFULSET,
@@ -144,11 +140,9 @@ def _resolve_raw_workload_name(
         "cronjobs": WORKLOAD_TYPE_CRONJOB,
     }
 
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS or not isinstance(entry_data, dict):
-            continue
-        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
-        if coordinator is None or not coordinator.data:
+    for entry in get_loaded_entries(hass):
+        coordinator = entry.runtime_data.coordinator
+        if not coordinator.data:
             continue
 
         for resource_key, workload_type in resource_type_map.items():
@@ -538,8 +532,10 @@ def _collect_job_names(call_data: dict[str, Any]) -> list[str]:
     return _collect_names(call_data, ATTR_JOB_NAME, ATTR_JOB_NAMES)
 
 
-def _get_entry_data(hass: HomeAssistant, call_data: dict[str, Any]) -> dict[str, Any]:
-    """Get the config entry data for a service call.
+def _get_entry_data(
+    hass: HomeAssistant, call_data: dict[str, Any]
+) -> KubernetesEntryData:
+    """Get the runtime data for a service call.
 
     If ``entry_id`` is provided in *call_data* it must match a loaded config
     entry.  Otherwise the first loaded entry is used.
@@ -547,22 +543,20 @@ def _get_entry_data(hass: HomeAssistant, call_data: dict[str, Any]) -> dict[str,
     Raises:
         ServiceValidationError: when no loaded config entry matches.
     """
-    kubernetes_data = hass.data.get(DOMAIN) or {}
-
-    from .const import DOMAIN_META_KEYS
+    entries = get_loaded_entries(hass)
 
     entry_id = call_data.get("entry_id")
     if entry_id:
-        if entry_id in kubernetes_data and entry_id not in DOMAIN_META_KEYS:
-            return kubernetes_data[entry_id]
+        for entry in entries:
+            if entry.entry_id == entry_id:
+                return entry.runtime_data
         raise ServiceValidationError(
             f"No loaded Kubernetes config entry with entry_id '{entry_id}'"
         )
 
-    # Fallback: first real config entry
-    for eid, edata in kubernetes_data.items():
-        if eid not in DOMAIN_META_KEYS and isinstance(edata, dict):
-            return edata
+    # Fallback: first loaded config entry
+    if entries:
+        return entries[0].runtime_data
     raise ServiceValidationError("No Kubernetes integration configured")
 
 
@@ -587,8 +581,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         replicas = call.data[ATTR_REPLICAS]
 
         entry_data = _get_entry_data(hass, call.data)
-        config_data = entry_data["config"]
-        client = entry_data["coordinator"].client
+        config_data = entry_data.config
+        client = entry_data.coordinator.client
         scale_methods = {
             WORKLOAD_TYPE_DEPLOYMENT: client.scale_deployment,
             WORKLOAD_TYPE_STATEFULSET: client.scale_statefulset,
@@ -631,8 +625,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         replicas = call.data.get(ATTR_REPLICAS, 1)
 
         entry_data = _get_entry_data(hass, call.data)
-        config_data = entry_data["config"]
-        client = entry_data["coordinator"].client
+        config_data = entry_data.config
+        client = entry_data.coordinator.client
         start_methods = {
             WORKLOAD_TYPE_DEPLOYMENT: client.start_deployment,
             WORKLOAD_TYPE_STATEFULSET: client.start_statefulset,
@@ -683,8 +677,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         )
 
         entry_data = _get_entry_data(hass, call.data)
-        config_data = entry_data["config"]
-        client = entry_data["coordinator"].client
+        config_data = entry_data.config
+        client = entry_data.coordinator.client
         stop_methods = {
             WORKLOAD_TYPE_DEPLOYMENT: client.stop_deployment,
             WORKLOAD_TYPE_STATEFULSET: client.stop_statefulset,
@@ -723,8 +717,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         )
 
         entry_data = _get_entry_data(hass, call.data)
-        config_data = entry_data["config"]
-        client = entry_data["coordinator"].client
+        config_data = entry_data.config
+        client = entry_data.coordinator.client
 
         restart_methods = {
             WORKLOAD_TYPE_DEPLOYMENT: client.rollout_restart_deployment,
@@ -757,9 +751,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
                 "delete_job requires at least one non-empty job name"
             )
         entry_data = _get_entry_data(hass, call.data)
-        coordinator = entry_data["coordinator"]
+        coordinator = entry_data.coordinator
         client = coordinator.client
-        config_data = entry_data["config"]
+        config_data = entry_data.config
         provided_ns = call.data.get(ATTR_NAMESPACE)
         failures: list[str] = []
         for job_name in job_names:
@@ -794,7 +788,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
                 f"{action}_node requires at least one non-empty node name"
             )
         entry_data = _get_entry_data(hass, call.data)
-        coordinator = entry_data["coordinator"]
+        coordinator = entry_data.coordinator
         client = coordinator.client
         cordon_fn = client.uncordon_node if schedulable else client.cordon_node
         any_success = False

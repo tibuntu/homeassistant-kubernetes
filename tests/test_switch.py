@@ -15,6 +15,7 @@ from custom_components.kubernetes.const import (
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
+from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.switch import (
     KubernetesCronJobSwitch,
     KubernetesDeploymentSwitch,
@@ -139,11 +140,9 @@ class TestSwitchSetup:
         }
         coordinator.client = client
 
-        # Populate hass.data
-        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-            "coordinator": coordinator,
-            "client": client,
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=client, coordinator=coordinator
+        )
 
         mock_add_entities = MagicMock()
 
@@ -179,11 +178,9 @@ class TestSwitchSetup:
             "cronjobs": {},
         }
 
-        # Populate hass.data
-        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-            "coordinator": coordinator,
-            "client": client,
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=client, coordinator=coordinator
+        )
 
         mock_add_entities = MagicMock()
 
@@ -267,9 +264,9 @@ class TestKubernetesCronJobSwitch:
         """Test successful turn on (resume CronJob)."""
         # Setup
         cronjob_switch.hass = MagicMock()
-        cronjob_switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
+        )
         cronjob_switch.config_entry = mock_config_entry
         cronjob_switch._is_on = False
         cronjob_switch._suspend = True
@@ -289,9 +286,9 @@ class TestKubernetesCronJobSwitch:
         """Test failed turn on (resume CronJob)."""
         # Setup
         cronjob_switch.hass = MagicMock()
-        cronjob_switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
+        )
         cronjob_switch.config_entry = mock_config_entry
         mock_client.resume_cronjob.return_value = {
             "success": False,
@@ -314,9 +311,9 @@ class TestKubernetesCronJobSwitch:
         """Test successful turn off (suspend CronJob)."""
         # Setup
         cronjob_switch.hass = MagicMock()
-        cronjob_switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
+        )
         cronjob_switch.config_entry = mock_config_entry
         cronjob_switch._is_on = True
         cronjob_switch._suspend = False
@@ -336,9 +333,9 @@ class TestKubernetesCronJobSwitch:
         """Test failed turn off (suspend CronJob)."""
         # Setup
         cronjob_switch.hass = MagicMock()
-        cronjob_switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
+        )
         cronjob_switch.config_entry = mock_config_entry
         mock_client.suspend_cronjob.return_value = {
             "success": False,
@@ -1362,7 +1359,9 @@ class TestDiscoverAndAddNewEntities:
     async def test_no_add_entities_callback(self, mock_config_entry):
         """Test function returns early when no callback stored."""
         hass = MagicMock()
-        hass.data = {DOMAIN: {}}  # No 'switch_add_entities' key
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=MagicMock(), coordinator=MagicMock()
+        )
 
         coordinator = MagicMock()
         coordinator.data = {}
@@ -1384,7 +1383,12 @@ class TestDiscoverAndAddNewEntities:
         """Test discovering and adding a new deployment entity."""
         add_entities_callback = MagicMock()
         hass = MagicMock()
-        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=add_entities_callback,
+        )
 
         coordinator = MagicMock()
         coordinator.data = {
@@ -1426,7 +1430,12 @@ class TestDiscoverAndAddNewEntities:
         """Test discovering and adding a new statefulset entity."""
         add_entities_callback = MagicMock()
         hass = MagicMock()
-        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=add_entities_callback,
+        )
 
         coordinator = MagicMock()
         coordinator.data = {
@@ -1468,7 +1477,12 @@ class TestDiscoverAndAddNewEntities:
         """Test discovering and adding a new cronjob entity."""
         add_entities_callback = MagicMock()
         hass = MagicMock()
-        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=add_entities_callback,
+        )
 
         coordinator = MagicMock()
         coordinator.data = {
@@ -1510,7 +1524,12 @@ class TestDiscoverAndAddNewEntities:
         """Test that already-registered deployments are skipped."""
         add_entities_callback = MagicMock()
         hass = MagicMock()
-        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=add_entities_callback,
+        )
 
         coordinator = MagicMock()
         coordinator.data = {
@@ -1556,7 +1575,12 @@ class TestDiscoverAndAddNewEntities:
         """Test that no-new-entities path hits the debug log branch."""
         add_entities_callback = MagicMock()
         hass = MagicMock()
-        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=add_entities_callback,
+        )
 
         coordinator = MagicMock()
         coordinator.data = {}  # No deployments/statefulsets/cronjobs
@@ -1577,7 +1601,12 @@ class TestDiscoverAndAddNewEntities:
     async def test_exception_handled_gracefully(self, mock_config_entry):
         """Test that exceptions in the function are caught and logged."""
         hass = MagicMock()
-        hass.data = {DOMAIN: {"switch_add_entities": MagicMock()}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=MagicMock(),
+        )
 
         coordinator = MagicMock()
         coordinator.data = None
@@ -1596,14 +1625,13 @@ class TestDiscoverAndAddNewEntities:
         add_entities_callback = MagicMock()
         pending_ids: set[str] = set()
         hass = MagicMock()
-        hass.data = {
-            DOMAIN: {
-                "switch_add_entities": add_entities_callback,
-                mock_config_entry.entry_id: {
-                    "switch_pending_unique_ids": pending_ids,
-                },
-            }
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=add_entities_callback,
+            switch_pending_unique_ids=pending_ids,
+        )
 
         coordinator = MagicMock()
         coordinator.data = {
@@ -1722,11 +1750,11 @@ class TestCronJobOperations:
         )
 
     def _setup_hass(self, switch, mock_config_entry, mock_client):
-        """Wire up switch.hass so that client lookup works."""
+        """Wire up the entry's runtime data so that client lookup works."""
         switch.hass = MagicMock()
-        switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": mock_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
+        )
         switch.config_entry = mock_config_entry
 
     # -----------------------------------------------------------------------
@@ -2080,9 +2108,9 @@ class TestKubernetesNodeSchedulableSwitch:
     ):
         """Test turn off cordons the node."""
         node_switch.hass = MagicMock()
-        node_switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": node_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=node_client, coordinator=MagicMock()
+        )
         node_switch.async_write_ha_state = MagicMock()
         mock_coordinator.async_request_refresh = AsyncMock()
 
@@ -2098,9 +2126,9 @@ class TestKubernetesNodeSchedulableSwitch:
     ):
         """Test turn on uncordons the node."""
         node_switch.hass = MagicMock()
-        node_switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": node_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=node_client, coordinator=MagicMock()
+        )
         node_switch.async_write_ha_state = MagicMock()
         mock_coordinator.async_request_refresh = AsyncMock()
 
@@ -2117,9 +2145,9 @@ class TestKubernetesNodeSchedulableSwitch:
         """Test turn off raises when the cordon call fails."""
         node_client.cordon_node = AsyncMock(return_value=False)
         node_switch.hass = MagicMock()
-        node_switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": node_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=node_client, coordinator=MagicMock()
+        )
 
         with pytest.raises(Exception, match="Failed to cordon node"):
             await node_switch.async_turn_off()
@@ -2130,9 +2158,9 @@ class TestKubernetesNodeSchedulableSwitch:
         """Test turn on raises when the uncordon call fails."""
         node_client.uncordon_node = AsyncMock(return_value=False)
         node_switch.hass = MagicMock()
-        node_switch.hass.data = {
-            DOMAIN: {mock_config_entry.entry_id: {"client": node_client}}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=node_client, coordinator=MagicMock()
+        )
 
         with pytest.raises(Exception, match="Failed to uncordon node"):
             await node_switch.async_turn_on()
@@ -2221,7 +2249,12 @@ class TestDiscoverNewNodeSwitches:
         """Test discovering and adding a schedulable switch for a new node."""
         add_entities_callback = MagicMock()
         hass = MagicMock()
-        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=add_entities_callback,
+        )
 
         coordinator = MagicMock()
         coordinator.data = {
@@ -2254,7 +2287,12 @@ class TestDiscoverNewNodeSwitches:
         """Test a node switch already in the registry is not re-added."""
         add_entities_callback = MagicMock()
         hass = MagicMock()
-        hass.data = {DOMAIN: {"switch_add_entities": add_entities_callback}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=MagicMock(),
+            switch_add_entities=add_entities_callback,
+        )
 
         coordinator = MagicMock()
         coordinator.data = {

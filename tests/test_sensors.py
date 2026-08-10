@@ -15,6 +15,7 @@ from custom_components.kubernetes.const import (
     WORKLOAD_TYPE_JOB,
     WORKLOAD_TYPE_POD,
 )
+from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.sensor import (
     KubernetesCronJobSensor,
     KubernetesCronJobsSensor,
@@ -433,12 +434,14 @@ class TestSensorSetup:
     @pytest.fixture
     def setup_domain_data(
         self, hass: HomeAssistant, mock_config_entry, mock_coordinator, mock_client
-    ) -> None:
-        """Set up domain data for sensor setup tests."""
-        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-            "coordinator": mock_coordinator,
-            "client": mock_client,
-        }
+    ) -> KubernetesEntryData:
+        """Attach runtime data to the config entry."""
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+        )
+        return mock_config_entry.runtime_data
 
     async def test_async_setup_entry_sensor_success(
         self, hass, mock_config_entry, mock_client, mock_coordinator, setup_domain_data
@@ -471,29 +474,14 @@ class TestSensorSetup:
         assert len(sensors) == 1
 
     async def test_async_setup_entry_sensor_failure(self, hass, mock_config_entry):
-        """Test sensor setup failure."""
+        """Test sensor setup failure when the entry carries no runtime data."""
         from custom_components.kubernetes.sensor import async_setup_entry
 
         mock_add_entities = AsyncMock()
-        with pytest.raises(KeyError):
+        with pytest.raises(AttributeError):
             await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         mock_add_entities.assert_not_called()
-
-    async def test_sensor_setup_exception_handling(self, hass, mock_config_entry):
-        """Test sensor setup exception handling."""
-        from custom_components.kubernetes.const import DOMAIN
-        from custom_components.kubernetes.sensor import async_setup_entry
-
-        # Set up hass.data to cause an exception
-        hass.data[DOMAIN] = {}
-
-        # Mock async_add_entities
-        mock_add_entities = MagicMock()
-
-        # This should raise an exception due to missing coordinator
-        with pytest.raises(KeyError):
-            await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
     async def test_sensor_async_added_to_hass(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -925,14 +913,12 @@ class TestDynamicNodeSensorDiscovery:
 
         mock_hass = MagicMock()
 
-        # Set up hass.data with add_entities callback
-        mock_hass.data = {
-            DOMAIN: {
-                mock_config_entry.entry_id: {
-                    "sensor_add_entities": MagicMock(),
-                }
-            }
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+            sensor_add_entities=MagicMock(),
+        )
 
         # Mock coordinator data with nodes
         mock_coordinator.data = {
@@ -966,9 +952,7 @@ class TestDynamicNodeSensorDiscovery:
             )
 
         # Verify add_entities was called with 2 new node sensors
-        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
-            "sensor_add_entities"
-        ]
+        callback = mock_config_entry.runtime_data.sensor_add_entities
         callback.assert_called_once()
 
         # Check that 2 node sensors were created
@@ -986,8 +970,11 @@ class TestDynamicNodeSensorDiscovery:
 
         mock_hass = MagicMock()
 
-        # Set up hass.data without callback
-        mock_hass.data = {DOMAIN: {}}
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+        )
 
         # Mock entity registry
         mock_entity_registry = MagicMock()
@@ -1012,14 +999,12 @@ class TestDynamicNodeSensorDiscovery:
 
         mock_hass = MagicMock()
 
-        # Set up hass.data with add_entities callback
-        mock_hass.data = {
-            DOMAIN: {
-                mock_config_entry.entry_id: {
-                    "sensor_add_entities": MagicMock(),
-                }
-            }
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+            sensor_add_entities=MagicMock(),
+        )
 
         # Mock coordinator data with nodes
         mock_coordinator.data = {
@@ -1057,9 +1042,7 @@ class TestDynamicNodeSensorDiscovery:
             )
 
         # Verify add_entities was called with only 1 new node sensor (node2)
-        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
-            "sensor_add_entities"
-        ]
+        callback = mock_config_entry.runtime_data.sensor_add_entities
         callback.assert_called_once()
 
         # Check that only 1 node sensor was created (for node2)
@@ -1077,14 +1060,12 @@ class TestDynamicNodeSensorDiscovery:
 
         mock_hass = MagicMock()
 
-        # Set up hass.data with add_entities callback
-        mock_hass.data = {
-            DOMAIN: {
-                mock_config_entry.entry_id: {
-                    "sensor_add_entities": MagicMock(),
-                }
-            }
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+            sensor_add_entities=MagicMock(),
+        )
 
         # Mock coordinator data
         mock_coordinator.data = {"nodes": {"node1": {"status": "Ready"}}}
@@ -1110,14 +1091,13 @@ class TestDynamicNodeSensorDiscovery:
         mock_hass = MagicMock()
         pending_ids: set[str] = set()
 
-        mock_hass.data = {
-            DOMAIN: {
-                mock_config_entry.entry_id: {
-                    "sensor_add_entities": MagicMock(),
-                    "sensor_pending_unique_ids": pending_ids,
-                }
-            }
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+            sensor_add_entities=MagicMock(),
+            sensor_pending_unique_ids=pending_ids,
+        )
 
         mock_coordinator.data = {
             "nodes": {
@@ -1147,9 +1127,7 @@ class TestDynamicNodeSensorDiscovery:
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
-        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
-            "sensor_add_entities"
-        ]
+        callback = mock_config_entry.runtime_data.sensor_add_entities
         callback.assert_called_once()
         assert len(callback.call_args[0][0]) == 1
 
@@ -3503,11 +3481,13 @@ class TestAsyncSetupEntryWithResources:
 
     @pytest.fixture
     def setup_rich_data(self, hass, mock_config_entry, rich_coordinator, mock_client):
-        """Set up domain data with rich coordinator."""
-        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-            "coordinator": rich_coordinator,
-            "client": mock_client,
-        }
+        """Attach runtime data with the rich coordinator to the config entry."""
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=rich_coordinator,
+        )
+        return mock_config_entry.runtime_data
 
     async def test_creates_pod_sensors(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
@@ -3622,7 +3602,7 @@ class TestAsyncSetupEntryWithResources:
         mock_add_entities = MagicMock()
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
-        stored = hass.data[DOMAIN][mock_config_entry.entry_id]["sensor_add_entities"]
+        stored = mock_config_entry.runtime_data.sensor_add_entities
         assert stored is mock_add_entities
 
     async def test_stores_pending_unique_ids(
@@ -3634,9 +3614,7 @@ class TestAsyncSetupEntryWithResources:
         mock_add_entities = MagicMock()
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
-        pending = hass.data[DOMAIN][mock_config_entry.entry_id][
-            "sensor_pending_unique_ids"
-        ]
+        pending = mock_config_entry.runtime_data.sensor_pending_unique_ids
         assert isinstance(pending, set)
         assert len(pending) == 0
 
@@ -3775,14 +3753,12 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
         )
 
         mock_hass = MagicMock()
-        mock_hass.data = {
-            DOMAIN: {
-                mock_config_entry.entry_id: {
-                    "sensor_add_entities": MagicMock(),
-                    "sensor_pending_unique_ids": set(),
-                }
-            }
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+            sensor_add_entities=MagicMock(),
+        )
 
         mock_coordinator.data = {
             "pods": {
@@ -3816,9 +3792,7 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
-        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
-            "sensor_add_entities"
-        ]
+        callback = mock_config_entry.runtime_data.sensor_add_entities
         callback.assert_called_once()
         added = callback.call_args[0][0]
         pod_sensors = [s for s in added if isinstance(s, KubernetesPodSensor)]
@@ -3834,14 +3808,12 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
         )
 
         mock_hass = MagicMock()
-        mock_hass.data = {
-            DOMAIN: {
-                mock_config_entry.entry_id: {
-                    "sensor_add_entities": MagicMock(),
-                    "sensor_pending_unique_ids": set(),
-                }
-            }
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+            sensor_add_entities=MagicMock(),
+        )
 
         mock_coordinator.data = {
             "nodes": {},
@@ -3888,9 +3860,7 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
-        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
-            "sensor_add_entities"
-        ]
+        callback = mock_config_entry.runtime_data.sensor_add_entities
         callback.assert_called_once()
         added = callback.call_args[0][0]
         cj_sensors = [s for s in added if isinstance(s, KubernetesCronJobSensor)]
@@ -3909,14 +3879,12 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
         )
 
         mock_hass = MagicMock()
-        mock_hass.data = {
-            DOMAIN: {
-                mock_config_entry.entry_id: {
-                    "sensor_add_entities": MagicMock(),
-                    "sensor_pending_unique_ids": set(),
-                }
-            }
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=mock_client,
+            coordinator=mock_coordinator,
+            sensor_add_entities=MagicMock(),
+        )
 
         mock_coordinator.data = {
             "nodes": {},
@@ -3953,9 +3921,7 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
-        callback = mock_hass.data[DOMAIN][mock_config_entry.entry_id][
-            "sensor_add_entities"
-        ]
+        callback = mock_config_entry.runtime_data.sensor_add_entities
         callback.assert_called_once()
         added = callback.call_args[0][0]
         ds_sensors = [s for s in added if isinstance(s, KubernetesDaemonSetSensor)]

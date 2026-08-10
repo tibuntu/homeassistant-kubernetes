@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.components import system_health
 from homeassistant.core import HomeAssistant, callback
 
-from .const import DOMAIN, DOMAIN_META_KEYS
+from .coordinator import get_loaded_entries
 
 
 @callback
@@ -19,19 +19,9 @@ def async_register(
     register.async_register_info(system_health_info)
 
 
-def _collect_entry_data(hass: HomeAssistant) -> list[dict[str, Any]]:
-    """Return real config entry payloads, skipping integration-wide metadata keys."""
-    domain_data = hass.data.get(DOMAIN, {})
-    return [
-        v
-        for k, v in domain_data.items()
-        if k not in DOMAIN_META_KEYS and isinstance(v, dict)
-    ]
-
-
 async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
     """Get info for the system health page."""
-    entries = _collect_entry_data(hass)
+    entries = get_loaded_entries(hass)
     total = len(entries)
 
     if not total:
@@ -41,9 +31,7 @@ async def system_health_info(hass: HomeAssistant) -> dict[str, Any]:
     total_pods = 0
     total_nodes = 0
     for entry in entries:
-        coordinator = entry.get("coordinator")
-        if coordinator is None:
-            continue
+        coordinator = entry.runtime_data.coordinator
         if coordinator.last_update_success:
             healthy += 1
         data = coordinator.data or {}

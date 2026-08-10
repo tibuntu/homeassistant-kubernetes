@@ -2,6 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -15,11 +16,36 @@ from custom_components.kubernetes import (
     _async_migrate_unique_ids,
     _async_register_panel,
     _async_remove_panel,
-    _count_config_entries,
+    _loaded_entries_except,
     async_setup,
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.kubernetes.coordinator import KubernetesEntryData
+
+
+def _add_loaded_entry(
+    hass: HomeAssistant,
+    entry_id: str,
+    *,
+    options: dict | None = None,
+    coordinator=None,
+) -> MockConfigEntry:
+    """Add a config entry in the LOADED state with runtime data attached."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id=entry_id,
+        data={"host": "test"},
+        options=options or {},
+        state=ConfigEntryState.LOADED,
+    )
+    entry.add_to_hass(hass)
+    entry.runtime_data = KubernetesEntryData(
+        config=entry.data,
+        client=MagicMock(),
+        coordinator=coordinator if coordinator is not None else MagicMock(),
+    )
+    return entry
 
 
 @pytest.fixture
@@ -84,17 +110,9 @@ async def test_async_setup_entry_success(
         result = await async_setup_entry(hass, mock_config_entry)
 
         assert result is True
-        assert DOMAIN in hass.data
-        assert mock_config_entry.entry_id in hass.data[DOMAIN]
-        assert (
-            hass.data[DOMAIN][mock_config_entry.entry_id]["config"]
-            == mock_config_entry.data
-        )
-        assert hass.data[DOMAIN][mock_config_entry.entry_id]["client"] == mock_client
-        assert (
-            hass.data[DOMAIN][mock_config_entry.entry_id]["coordinator"]
-            == mock_coordinator
-        )
+        assert mock_config_entry.runtime_data.config == mock_config_entry.data
+        assert mock_config_entry.runtime_data.client == mock_client
+        assert mock_config_entry.runtime_data.coordinator == mock_coordinator
 
         # Verify panel sync was called
         mock_sync_panel.assert_called_once_with(hass, mock_config_entry)
@@ -123,15 +141,15 @@ async def test_async_setup_entry_kubernetes_not_available(
         result = await async_setup_entry(hass, mock_config_entry)
 
         assert result is False
-        assert mock_config_entry.entry_id not in hass.data.get(DOMAIN, {})
+        assert not hasattr(mock_config_entry, "runtime_data")
 
 
 async def test_async_setup_entry_second_entry(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry
 ):
     """Test async_setup_entry for a second config entry alongside an existing one."""
-    # Pre-populate with an existing entry
-    hass.data[DOMAIN] = {"existing_entry": {}}
+    # Pre-populate with an existing loaded entry
+    existing_entry = _add_loaded_entry(hass, "existing_entry")
 
     with (
         patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
@@ -156,8 +174,9 @@ async def test_async_setup_entry_second_entry(
         result = await async_setup_entry(hass, mock_config_entry)
 
         assert result is True
-        assert mock_config_entry.entry_id in hass.data[DOMAIN]
-        assert "existing_entry" in hass.data[DOMAIN]
+        assert mock_config_entry.runtime_data.coordinator is mock_coordinator
+        # The pre-existing entry keeps its own runtime data
+        assert existing_entry.runtime_data.coordinator is not mock_coordinator
         # Panel sync is still called (it handles idempotency internally)
         mock_sync_panel.assert_called_once_with(hass, mock_config_entry)
 
@@ -168,7 +187,10 @@ async def test_async_unload_entry_success(
     """Test successful async_unload_entry."""
     mock_coordinator = MagicMock()
     mock_coordinator.async_stop_watch_tasks = AsyncMock()
-    hass.data[DOMAIN] = {mock_config_entry.entry_id: {"coordinator": mock_coordinator}}
+    mock_config_entry.runtime_data = KubernetesEntryData(
+        config=mock_config_entry.data, client=MagicMock(), coordinator=mock_coordinator
+    )
+    hass.data[DOMAIN] = {"panel_registered": False}
 
     with (
         patch("custom_components.kubernetes.async_remove_panel"),
@@ -182,6 +204,8 @@ async def test_async_unload_entry_success(
         result = await async_unload_entry(hass, mock_config_entry)
 
         assert result is True
+        mock_coordinator.async_stop_watch_tasks.assert_awaited_once()
+        mock_coordinator.async_clear_repair_issues.assert_called_once()
         # Domain data should be fully cleaned up when last entry is removed
         assert DOMAIN not in hass.data
 
@@ -192,10 +216,10 @@ async def test_async_unload_entry_removes_panel(
     """Test that panel is removed when last config entry unloads."""
     mock_coordinator = MagicMock()
     mock_coordinator.async_stop_watch_tasks = AsyncMock()
-    hass.data[DOMAIN] = {
-        mock_config_entry.entry_id: {"coordinator": mock_coordinator},
-        "panel_registered": True,
-    }
+    mock_config_entry.runtime_data = KubernetesEntryData(
+        config=mock_config_entry.data, client=MagicMock(), coordinator=mock_coordinator
+    )
+    hass.data[DOMAIN] = {"panel_registered": True}
 
     with (
         patch("custom_components.kubernetes.async_remove_panel") as mock_remove_panel,
@@ -218,13 +242,15 @@ async def test_async_unload_entry_multiple_entries(
     """Test async_unload_entry when multiple entries exist."""
     mock_coordinator = MagicMock()
     mock_coordinator.async_stop_watch_tasks = AsyncMock()
-    hass.data[DOMAIN] = {
-        mock_config_entry.entry_id: {"coordinator": mock_coordinator},
-        "another_entry": {},
-    }
+    mock_config_entry.runtime_data = KubernetesEntryData(
+        config=mock_config_entry.data, client=MagicMock(), coordinator=mock_coordinator
+    )
+    hass.data[DOMAIN] = {"panel_registered": True}
+    # A second entry stays loaded and still wants the panel
+    _add_loaded_entry(hass, "another_entry")
 
     with (
-        patch("custom_components.kubernetes.async_remove_panel"),
+        patch("custom_components.kubernetes.async_remove_panel") as mock_remove_panel,
         patch.object(
             hass.config_entries,
             "async_unload_platforms",
@@ -235,8 +261,9 @@ async def test_async_unload_entry_multiple_entries(
         result = await async_unload_entry(hass, mock_config_entry)
 
         assert result is True
-        assert mock_config_entry.entry_id not in hass.data[DOMAIN]
-        assert "another_entry" in hass.data[DOMAIN]
+        # Domain data survives because another entry is still loaded
+        assert hass.data[DOMAIN] == {"panel_registered": True}
+        mock_remove_panel.assert_not_called()
 
 
 async def test_async_unload_entry_platform_unload_fails(
@@ -245,7 +272,10 @@ async def test_async_unload_entry_platform_unload_fails(
     """Test async_unload_entry when platform unload fails."""
     mock_coordinator = MagicMock()
     mock_coordinator.async_stop_watch_tasks = AsyncMock()
-    hass.data[DOMAIN] = {mock_config_entry.entry_id: {"coordinator": mock_coordinator}}
+    mock_config_entry.runtime_data = KubernetesEntryData(
+        config=mock_config_entry.data, client=MagicMock(), coordinator=mock_coordinator
+    )
+    hass.data[DOMAIN] = {"panel_registered": True}
 
     with (
         patch("custom_components.kubernetes.async_remove_panel"),
@@ -259,8 +289,8 @@ async def test_async_unload_entry_platform_unload_fails(
         result = await async_unload_entry(hass, mock_config_entry)
 
         assert result is False
-        # Data should not be cleaned up if platform unload fails
-        assert mock_config_entry.entry_id in hass.data[DOMAIN]
+        # Domain data should not be cleaned up if platform unload fails
+        assert hass.data[DOMAIN] == {"panel_registered": True}
 
 
 def test_constants():
@@ -273,33 +303,33 @@ def test_constants():
     assert len(PLATFORMS) == 4
 
 
-class TestCountConfigEntries:
-    """Tests for _count_config_entries helper."""
+class TestLoadedEntriesExcept:
+    """Tests for the _loaded_entries_except helper."""
 
-    def test_empty_domain(self, hass: HomeAssistant):
-        """Test with no domain data."""
-        assert _count_config_entries(hass) == 0
+    def test_no_entries(self, hass: HomeAssistant):
+        """Test with no loaded entries."""
+        assert _loaded_entries_except(hass) == []
 
-    def test_with_entries_only(self, hass: HomeAssistant):
-        """Test counting real config entries."""
-        hass.data[DOMAIN] = {"entry_1": {}, "entry_2": {}}
-        assert _count_config_entries(hass) == 2
-
-    def test_excludes_metadata_keys(self, hass: HomeAssistant):
-        """Test metadata keys are excluded from count."""
-        hass.data[DOMAIN] = {
-            "entry_1": {},
-            "panel_registered": True,
-            "switch_add_entities": MagicMock(),
+    def test_returns_loaded_entries(self, hass: HomeAssistant):
+        """Test all loaded entries are returned."""
+        _add_loaded_entry(hass, "entry_1")
+        _add_loaded_entry(hass, "entry_2")
+        assert {e.entry_id for e in _loaded_entries_except(hass)} == {
+            "entry_1",
+            "entry_2",
         }
-        assert _count_config_entries(hass) == 1
 
-    def test_only_metadata_keys(self, hass: HomeAssistant):
-        """Test returns 0 when only metadata keys exist."""
-        hass.data[DOMAIN] = {
-            "panel_registered": True,
-        }
-        assert _count_config_entries(hass) == 0
+    def test_excludes_entry_id(self, hass: HomeAssistant):
+        """Test the excluded entry_id is filtered out."""
+        _add_loaded_entry(hass, "entry_1")
+        _add_loaded_entry(hass, "entry_2")
+        remaining = _loaded_entries_except(hass, "entry_1")
+        assert [e.entry_id for e in remaining] == ["entry_2"]
+
+    def test_skips_entries_that_are_not_loaded(self, hass: HomeAssistant):
+        """Test entries that never finished setup are ignored."""
+        MockConfigEntry(domain=DOMAIN, entry_id="entry_1").add_to_hass(hass)
+        assert _loaded_entries_except(hass) == []
 
 
 class TestPanelRegistration:
@@ -371,52 +401,26 @@ class TestAnyEntryWantsPanel:
 
     def test_returns_true_when_entry_has_panel_enabled(self, hass: HomeAssistant):
         """Test returns True when an entry has enable_panel=True."""
-        coordinator = MagicMock()
-        coordinator.config_entry.options = {"enable_panel": True}
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", options={"enable_panel": True})
         assert _any_entry_wants_panel(hass) is True
 
     def test_returns_true_with_default_options(self, hass: HomeAssistant):
         """Test returns True when entry has no panel option (defaults to True)."""
-        coordinator = MagicMock()
-        coordinator.config_entry.options = {}
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1")
         assert _any_entry_wants_panel(hass) is True
 
     def test_returns_false_when_all_disabled(self, hass: HomeAssistant):
         """Test returns False when all entries have enable_panel=False."""
-        coordinator = MagicMock()
-        coordinator.config_entry.options = {"enable_panel": False}
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", options={"enable_panel": False})
         assert _any_entry_wants_panel(hass) is False
 
     def test_excludes_entry_id(self, hass: HomeAssistant):
         """Test excludes the specified entry_id from the check."""
-        coordinator = MagicMock()
-        coordinator.config_entry.options = {"enable_panel": True}
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", options={"enable_panel": True})
         assert _any_entry_wants_panel(hass, exclude_entry_id="entry_1") is False
 
-    def test_skips_metadata_keys(self, hass: HomeAssistant):
-        """Test skips metadata keys."""
-        hass.data[DOMAIN] = {
-            "panel_registered": True,
-        }
-        assert _any_entry_wants_panel(hass) is False
-
-    def test_skips_entries_without_coordinator(self, hass: HomeAssistant):
-        """Test skips entries without a coordinator."""
-        hass.data[DOMAIN] = {
-            "entry_1": {"config": {}},
-        }
+    def test_returns_false_without_entries(self, hass: HomeAssistant):
+        """Test returns False when no entry is loaded."""
         assert _any_entry_wants_panel(hass) is False
 
 
@@ -794,9 +798,11 @@ class TestAsyncUnloadEntryWatchCleanup:
         """Test that watch tasks are stopped during unload."""
         mock_coordinator = MagicMock()
         mock_coordinator.async_stop_watch_tasks = AsyncMock()
-        hass.data[DOMAIN] = {
-            mock_config_entry.entry_id: {"coordinator": mock_coordinator}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=mock_coordinator,
+        )
 
         with (
             patch("custom_components.kubernetes.async_remove_panel"),
@@ -818,9 +824,11 @@ class TestAsyncUnloadEntryWatchCleanup:
         """Test that watch tasks are always stopped, even if platform unload fails."""
         mock_coordinator = MagicMock()
         mock_coordinator.async_stop_watch_tasks = AsyncMock()
-        hass.data[DOMAIN] = {
-            mock_config_entry.entry_id: {"coordinator": mock_coordinator}
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=mock_coordinator,
+        )
 
         with (
             patch("custom_components.kubernetes.async_remove_panel"),
@@ -848,15 +856,14 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
         mock_coordinator = MagicMock()
         mock_coordinator.async_stop_watch_tasks = AsyncMock()
 
-        # Another entry exists that does not want the panel
-        other_coordinator = MagicMock()
-        other_coordinator.config_entry.options = {"enable_panel": False}
-
-        hass.data[DOMAIN] = {
-            mock_config_entry.entry_id: {"coordinator": mock_coordinator},
-            "other_entry": {"coordinator": other_coordinator},
-            "panel_registered": True,
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=mock_coordinator,
+        )
+        # Another entry stays loaded but does not want the panel
+        _add_loaded_entry(hass, "other_entry", options={"enable_panel": False})
+        hass.data[DOMAIN] = {"panel_registered": True}
 
         with (
             patch(
@@ -882,15 +889,14 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
         mock_coordinator = MagicMock()
         mock_coordinator.async_stop_watch_tasks = AsyncMock()
 
-        # Another entry exists that wants the panel
-        other_coordinator = MagicMock()
-        other_coordinator.config_entry.options = {"enable_panel": True}
-
-        hass.data[DOMAIN] = {
-            mock_config_entry.entry_id: {"coordinator": mock_coordinator},
-            "other_entry": {"coordinator": other_coordinator},
-            "panel_registered": True,
-        }
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data,
+            client=MagicMock(),
+            coordinator=mock_coordinator,
+        )
+        # Another entry stays loaded and wants the panel
+        _add_loaded_entry(hass, "other_entry", options={"enable_panel": True})
+        hass.data[DOMAIN] = {"panel_registered": True}
 
         with (
             patch(

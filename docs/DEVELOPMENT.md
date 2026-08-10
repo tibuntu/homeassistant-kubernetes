@@ -130,7 +130,7 @@ homeassistant-kubernetes/
 │       ├── manifest.json            # Integration metadata
 │       ├── config_flow.py           # Configuration flow
 │       ├── const.py                 # Constants and configuration keys
-│       ├── coordinator.py           # Data coordinator (polling + Watch API)
+│       ├── coordinator.py           # Data coordinator + entry runtime-data types
 │       ├── sensor.py                # Sensor platform
 │       ├── binary_sensor.py         # Binary sensor platform
 │       ├── switch.py                # Switch platform (workload control)
