@@ -92,7 +92,7 @@ Enables all integration features:
 - Ingress monitoring (Network tab in the sidebar panel, with clickable URLs)
 - Pod and Job deletion from the sidebar panel (requires Home Assistant admin role)
 - Cluster Events platform (`events`)
-- Experimental Watch API (real-time updates via `?watch=true`)
+- Watch API (real-time updates via `?watch=true`, enabled by default)
 - Legacy API compatibility (Kubernetes < 1.16)
 
 ### `minimal` / `manifests/minimal/`
@@ -104,7 +104,7 @@ Read-only access to every resource the integration monitors. No write permission
 - No switches (scaling, CronJob control, or node cordon/uncordon)
 - No rollout restart, pod deletion, or Job deletion
 - No Cluster Events platform (`events` not granted)
-- No Watch API support (`watch` verb not granted)
+- No Watch API support (`watch` verb not granted) — the integration raises a repair issue and automatically falls back to interval polling; disable the Watch API under **Configure** to silence the repair issue
 - Sensors and binary sensors only
 
 ## Complete Permission Matrix
@@ -316,7 +316,7 @@ kubectl auth can-i patch nodes --as=system:serviceaccount:homeassistant:homeassi
 
 #### 3. "Real-time updates not working" / Watch API failing
 
-The experimental **Watch API** (enabled via **Configure → Enable Watch API**) uses long-lived HTTP streams and requires the `watch` verb on all monitored resources. The `manifests/minimal/` set does **not** include `watch` verbs.
+The **Watch API** (enabled by default; toggled via **Configure → Enable Watch API**) uses long-lived HTTP streams and requires the `watch` verb on all monitored resources. The `manifests/minimal/` set does **not** include `watch` verbs — without them the integration raises a repair issue and falls back to regular interval polling.
 
 ```bash
 # Verify watch permissions for key resources

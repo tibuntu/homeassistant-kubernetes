@@ -64,7 +64,7 @@ Entries using **Use in-cluster ServiceAccount at runtime** re-read the projected
 
 Once the integration is set up, a **Kubernetes** entry appears in the Home Assistant sidebar. The panel provides a built-in cluster dashboard with six tabs:
 
-- **Overview** — Cluster health badge, resource count cards, namespace breakdown, Watch API status, and alerts (nodes with pressure, degraded workloads, failed pods). Updates live whenever cluster data changes — immediately when the experimental Watch API is enabled, otherwise on each coordinator poll cycle — with a 60-second fallback refresh.
+- **Overview** — Cluster health badge, resource count cards, namespace breakdown, Watch API status, and alerts (nodes with pressure, degraded workloads, failed pods). Updates live whenever cluster data changes — immediately via the Watch API (enabled by default), otherwise on each coordinator poll cycle — with a 60-second fallback refresh.
 - **Nodes** — Sortable table of all cluster nodes with status, roles, OS/kernel info, real-time CPU/memory usage (requires metrics-server), resource capacity, and conditions. Filterable by name, status, and role.
 - **Workloads** — Management view for Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. Start/stop/scale controls for deployments and statefulsets, suspend/resume for cronjobs. Filterable by type, namespace, and status.
 - **Pods** — Sortable table of all pods with phase, containers, restarts, node, IP, and age. Filterable by name, namespace, phase, and node.
@@ -98,15 +98,15 @@ For self-signed certificates or custom CA:
 
 After the integration is set up, you can configure additional options by clicking **Configure** on the integration card in **Settings → Devices & Services**.
 
-### Watch API (Experimental)
+### Watch API
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| **Enable Watch API (Experimental)** | Use the Kubernetes watch API for real-time updates instead of polling | `false` |
+| **Enable Watch API** | Use the Kubernetes watch API for real-time updates instead of interval polling | `true` |
 
-When enabled, the integration establishes long-lived HTTP streams to the Kubernetes API server and receives `ADDED`, `MODIFIED`, and `DELETED` events as they happen. Pod and resource state changes typically appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback.
+When enabled (the default), the integration establishes long-lived HTTP streams to the Kubernetes API server and receives `ADDED`, `MODIFIED`, and `DELETED` events as they happen. Pod and resource state changes typically appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback. Disable the option to use interval polling only (the **Switch Update Interval**, 60 seconds by default).
 
-> ⚠️ **Experimental**: The watch feature requires the service account to have `watch` permission on all monitored resources. See the [RBAC guide](RBAC.md) for details.
+> **RBAC:** The watch feature requires the service account to have `watch` permission on all monitored resources — granted by the `full` permission set, but **not** by `minimal`. If the permission is missing, the watch connection cannot be established: the integration raises a repair issue and automatically falls back to regular interval polling, so data stays current. See the [RBAC guide](RBAC.md) for details.
 
 Changing this option reloads the integration automatically.
 

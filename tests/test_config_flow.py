@@ -1215,10 +1215,10 @@ class TestKubernetesOptionsFlow:
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "init"
 
-    async def test_options_flow_defaults_to_watch_disabled(
+    async def test_options_flow_includes_enable_watch(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
     ):
-        """Default value for enable_watch should be False."""
+        """Options form should include the enable_watch field."""
         result = await hass.config_entries.options.async_init(
             mock_config_entry.entry_id
         )
@@ -1275,9 +1275,9 @@ class TestKubernetesOptionsFlow:
         options_flow = KubernetesConfigFlow.async_get_options_flow(config_entry)
         assert isinstance(options_flow, KubernetesOptionsFlow)
 
-    def test_default_enable_watch_is_false(self):
-        """DEFAULT_ENABLE_WATCH constant should be False."""
-        assert DEFAULT_ENABLE_WATCH is False
+    def test_default_enable_watch_is_true(self):
+        """DEFAULT_ENABLE_WATCH constant should be True (watch is the default)."""
+        assert DEFAULT_ENABLE_WATCH is True
 
     async def test_options_flow_includes_enable_panel(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry

@@ -22,7 +22,7 @@ When deployments or statefulsets are deleted from your Kubernetes cluster, their
 
 ### Solution
 
-The integration now automatically removes orphaned entities during each polling cycle (default: every 60 seconds).
+The integration now automatically removes orphaned entities during each polling cycle (every 5 minutes while the Watch API — the default — is active, otherwise every 60 seconds; watch events keep entity state current in between).
 
 ### How It Works
 
@@ -85,7 +85,7 @@ If you create a new deployment called `web-server` in your cluster:
 
 ### Polling Interval
 
-The cleanup and discovery frequency is controlled by the **Switch Update Interval** setting (default: 60 seconds).
+The cleanup and discovery frequency is controlled by the **Switch Update Interval** setting (default: 60 seconds). While the Watch API is enabled (the default), polling runs as a 5-minute fallback instead, and new resources are discovered from watch events as they happen.
 
 To adjust the interval:
 

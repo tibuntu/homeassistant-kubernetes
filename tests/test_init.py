@@ -105,6 +105,7 @@ async def test_async_setup_entry_success(
 
         mock_coordinator = MagicMock()
         mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_start_watch_tasks = AsyncMock()
         mock_coordinator_class.return_value = mock_coordinator
 
         result = await async_setup_entry(hass, mock_config_entry)
@@ -169,6 +170,7 @@ async def test_async_setup_entry_second_entry(
 
         mock_coordinator = MagicMock()
         mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_start_watch_tasks = AsyncMock()
         mock_coordinator_class.return_value = mock_coordinator
 
         result = await async_setup_entry(hass, mock_config_entry)
@@ -718,11 +720,11 @@ class TestAsyncSetupEntryWatchEnabled:
             assert result is True
             mock_coordinator.async_start_watch_tasks.assert_not_called()
 
-    async def test_watch_tasks_not_started_by_default(
+    async def test_watch_tasks_started_by_default(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
     ):
-        """Test that watch tasks default to disabled (DEFAULT_ENABLE_WATCH=False)."""
-        # mock_config_entry has options={}, so enable_watch defaults to False
+        """Test that watch tasks default to enabled (DEFAULT_ENABLE_WATCH=True)."""
+        # mock_config_entry has options={}, so enable_watch defaults to True
         with (
             patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
             patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
@@ -749,7 +751,7 @@ class TestAsyncSetupEntryWatchEnabled:
             result = await async_setup_entry(hass, mock_config_entry)
 
             assert result is True
-            mock_coordinator.async_start_watch_tasks.assert_not_called()
+            mock_coordinator.async_start_watch_tasks.assert_called_once()
 
     async def test_event_watch_tasks_started_when_enabled(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
@@ -942,6 +944,7 @@ class TestAsyncSetupEntryUpdateListener:
 
             mock_coordinator = MagicMock()
             mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+            mock_coordinator.async_start_watch_tasks = AsyncMock()
             mock_coordinator_class.return_value = mock_coordinator
 
             result = await async_setup_entry(hass, mock_config_entry)

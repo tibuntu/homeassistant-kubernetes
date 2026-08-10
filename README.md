@@ -14,6 +14,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 ## Features
 
 - **Cluster Monitoring**: Monitor pods, nodes, deployments, statefulsets, daemonsets, cronjobs, and ingresses
+- **Real-Time Updates**: The Kubernetes Watch API streams resource changes into Home Assistant within seconds (enabled by default; falls back to interval polling automatically when watch is unavailable)
 - **Node Sensors**: Per-node sensors for status, IP addresses, memory/CPU resources, real-time usage metrics, and system information
 - **Multi-Namespace Support**: Monitor a single namespace or all namespaces
 - **Workload Control**: Scale, start, stop, and rolling-restart deployments, statefulsets, and daemonsets from Home Assistant

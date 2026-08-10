@@ -110,6 +110,7 @@ async def test_setup_entry_clears_issue_on_success(
     ):
         mock_coord = MagicMock()
         mock_coord.async_config_entry_first_refresh = AsyncMock()
+        mock_coord.async_start_watch_tasks = AsyncMock()
         mock_coord_class.return_value = mock_coord
 
         await async_setup_entry(hass, mock_entry)

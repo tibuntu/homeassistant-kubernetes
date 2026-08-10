@@ -48,9 +48,9 @@ CONF_SCALE_COOLDOWN = "scale_cooldown"
 CONF_ENABLE_PANEL = "enable_panel"
 DEFAULT_ENABLE_PANEL = True
 
-# Watch API (experimental)
+# Watch API (default; falls back to interval polling when disabled or failing)
 CONF_ENABLE_WATCH = "enable_watch"
-DEFAULT_ENABLE_WATCH = False
+DEFAULT_ENABLE_WATCH = True
 DEFAULT_WATCH_TIMEOUT_SECONDS = 300  # ?timeoutSeconds for each watch stream
 DEFAULT_WATCH_RECONNECT_DELAY = 5  # initial reconnect backoff in seconds
 DEFAULT_FALLBACK_POLL_INTERVAL = 300  # coordinator poll interval when watch is active

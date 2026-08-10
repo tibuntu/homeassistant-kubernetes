@@ -1012,7 +1012,7 @@ class TestWebsocketConfigList:
         assert entry["switch_update_interval"] == 60
         assert entry["scale_verification_timeout"] == 30
         assert entry["scale_cooldown"] == 10
-        assert entry["watch_enabled"] is False
+        assert entry["watch_enabled"] is True
         assert entry["healthy"] is True
         # Ensure secret is NOT exposed
         assert "api_token" not in entry
@@ -1791,7 +1791,10 @@ class TestConfigListEdgeCases:
         _load_entries(
             mock_hass,
             _make_entry(
-                "entry_1", coord_1, {"cluster_name": "cluster-a", "host": "10.0.0.1"}
+                "entry_1",
+                coord_1,
+                {"cluster_name": "cluster-a", "host": "10.0.0.1"},
+                options={"enable_watch": False},
             ),
             _make_entry(
                 "entry_2",

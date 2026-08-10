@@ -93,12 +93,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         watch_enabled = config_entry.options.get(
             CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH
         )
-        if watch_enabled:
-            update_interval = DEFAULT_FALLBACK_POLL_INTERVAL
-        else:
-            update_interval = config_entry.data.get(
-                CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
-            )
+        poll_interval = config_entry.data.get(
+            CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
+        )
+        update_interval = (
+            DEFAULT_FALLBACK_POLL_INTERVAL if watch_enabled else poll_interval
+        )
 
         super().__init__(
             hass,
@@ -110,6 +110,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Set attributes after super().__init__() to ensure they're not overridden
         self.config_entry = config_entry
         self.client = client
+        self._watch_enabled = watch_enabled
+        self._poll_interval = poll_interval
 
         # Watch API state
         self._watch_tasks: list[asyncio.Task] = []
@@ -471,7 +473,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Failed to cleanup orphaned entities: %s", ex)
 
     # -------------------------------------------------------------------------
-    # Watch API support (experimental)
+    # Watch API support
     # -------------------------------------------------------------------------
 
     def _build_watch_configs(
@@ -642,6 +644,18 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             self._failing_watch_loops.add(loop_key)
         else:
             self._failing_watch_loops.discard(loop_key)
+
+        # While any watch loop is in sustained failure (e.g. the ServiceAccount
+        # lacks the `watch` verb), poll at the regular fast interval instead of
+        # the long watch fallback so data stays fresh; stretch back out once
+        # every stream recovers. Takes effect when the next refresh reschedules.
+        if self._watch_enabled:
+            seconds = (
+                self._poll_interval
+                if self._failing_watch_loops
+                else DEFAULT_FALLBACK_POLL_INTERVAL
+            )
+            self.update_interval = timedelta(seconds=seconds)
 
         should_be_active = bool(self._failing_watch_loops)
         if should_be_active and not self._watch_issue_active:
