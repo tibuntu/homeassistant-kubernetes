@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.8.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.7.0...v1.8.0) (2026-08-10)
+
+
+### Features
+
+* **options:** add data-collection opt-out for entities, metrics, and counts ([8baa443](https://github.com/tibuntu/homeassistant-kubernetes/commit/8baa4435ad361926f0cdfc55f32991be5671e67f))
+* **quality:** add reauthentication flow for invalid API tokens ([da6e41a](https://github.com/tibuntu/homeassistant-kubernetes/commit/da6e41abfaaf371d271575748aeac15ab91d2053))
+* **quality:** register services at HA start and raise errors from service handlers ([92f32fd](https://github.com/tibuntu/homeassistant-kubernetes/commit/92f32fd593b64c5f542adfdf3a79b3e321d65ba4))
+* **watch:** mark Watch API stable and enable it by default ([e65fe8f](https://github.com/tibuntu/homeassistant-kubernetes/commit/e65fe8f5ea98dee06125fc61081b61ca549b9313))
+
 ## [1.7.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.6.0...v1.7.0) (2026-08-04)
 
 This release packages the integration's ServiceAccount and RBAC as a **Helm chart**, so keeping cluster permissions up to date becomes a `helm upgrade` instead of re-applying manifests by hand. Nothing changes inside Home Assistant and no new permissions are needed — existing setups keep working unchanged.
