@@ -42,13 +42,19 @@ def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
 
 
 async def test_async_setup(hass: HomeAssistant):
-    """Test async_setup function."""
+    """Test async_setup registers websocket commands and services."""
     with patch(
         "custom_components.kubernetes.async_register_websocket_commands"
     ) as mock_ws:
         result = await async_setup(hass, {})
         assert result is True
         mock_ws.assert_called_once_with(hass)
+
+    # Services are registered up front, independent of any config entry
+    assert hass.services.has_service(DOMAIN, "scale_workload")
+    assert hass.services.has_service(DOMAIN, "restart_workload")
+    assert hass.services.has_service(DOMAIN, "delete_job")
+    assert hass.services.has_service(DOMAIN, "cordon_node")
 
 
 async def test_async_setup_entry_success(
@@ -61,9 +67,6 @@ async def test_async_setup_entry_success(
         patch(
             "custom_components.kubernetes.KubernetesDataCoordinator"
         ) as mock_coordinator_class,
-        patch(
-            "custom_components.kubernetes.async_setup_services"
-        ) as mock_setup_services,
         patch("custom_components.kubernetes._async_sync_panel") as mock_sync_panel,
         patch.object(
             hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
@@ -92,9 +95,6 @@ async def test_async_setup_entry_success(
             hass.data[DOMAIN][mock_config_entry.entry_id]["coordinator"]
             == mock_coordinator
         )
-
-        # Verify services were set up for first entry
-        mock_setup_services.assert_called_once_with(hass)
 
         # Verify panel sync was called
         mock_sync_panel.assert_called_once_with(hass, mock_config_entry)
@@ -129,7 +129,7 @@ async def test_async_setup_entry_kubernetes_not_available(
 async def test_async_setup_entry_second_entry(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry
 ):
-    """Test async_setup_entry for second config entry (should not set up services again)."""
+    """Test async_setup_entry for a second config entry alongside an existing one."""
     # Pre-populate with an existing entry
     hass.data[DOMAIN] = {"existing_entry": {}}
 
@@ -139,9 +139,6 @@ async def test_async_setup_entry_second_entry(
         patch(
             "custom_components.kubernetes.KubernetesDataCoordinator"
         ) as mock_coordinator_class,
-        patch(
-            "custom_components.kubernetes.async_setup_services"
-        ) as mock_setup_services,
         patch("custom_components.kubernetes._async_sync_panel") as mock_sync_panel,
         patch.object(
             hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
@@ -159,8 +156,8 @@ async def test_async_setup_entry_second_entry(
         result = await async_setup_entry(hass, mock_config_entry)
 
         assert result is True
-        # Services should not be set up again for second entry
-        mock_setup_services.assert_not_called()
+        assert mock_config_entry.entry_id in hass.data[DOMAIN]
+        assert "existing_entry" in hass.data[DOMAIN]
         # Panel sync is still called (it handles idempotency internally)
         mock_sync_panel.assert_called_once_with(hass, mock_config_entry)
 
@@ -174,9 +171,6 @@ async def test_async_unload_entry_success(
     hass.data[DOMAIN] = {mock_config_entry.entry_id: {"coordinator": mock_coordinator}}
 
     with (
-        patch(
-            "custom_components.kubernetes.async_unload_services"
-        ) as mock_unload_services,
         patch("custom_components.kubernetes.async_remove_panel"),
         patch.object(
             hass.config_entries,
@@ -190,7 +184,6 @@ async def test_async_unload_entry_success(
         assert result is True
         # Domain data should be fully cleaned up when last entry is removed
         assert DOMAIN not in hass.data
-        mock_unload_services.assert_called_once_with(hass)
 
 
 async def test_async_unload_entry_removes_panel(
@@ -205,9 +198,6 @@ async def test_async_unload_entry_removes_panel(
     }
 
     with (
-        patch(
-            "custom_components.kubernetes.async_unload_services"
-        ) as mock_unload_services,
         patch("custom_components.kubernetes.async_remove_panel") as mock_remove_panel,
         patch.object(
             hass.config_entries,
@@ -220,7 +210,6 @@ async def test_async_unload_entry_removes_panel(
 
         assert result is True
         mock_remove_panel.assert_called_once_with(hass, DOMAIN)
-        mock_unload_services.assert_called_once_with(hass)
 
 
 async def test_async_unload_entry_multiple_entries(
@@ -235,9 +224,6 @@ async def test_async_unload_entry_multiple_entries(
     }
 
     with (
-        patch(
-            "custom_components.kubernetes.async_unload_services"
-        ) as mock_unload_services,
         patch("custom_components.kubernetes.async_remove_panel"),
         patch.object(
             hass.config_entries,
@@ -251,8 +237,6 @@ async def test_async_unload_entry_multiple_entries(
         assert result is True
         assert mock_config_entry.entry_id not in hass.data[DOMAIN]
         assert "another_entry" in hass.data[DOMAIN]
-        # Services should not be unloaded when other entries remain
-        mock_unload_services.assert_not_called()
 
 
 async def test_async_unload_entry_platform_unload_fails(
@@ -264,9 +248,6 @@ async def test_async_unload_entry_platform_unload_fails(
     hass.data[DOMAIN] = {mock_config_entry.entry_id: {"coordinator": mock_coordinator}}
 
     with (
-        patch(
-            "custom_components.kubernetes.async_unload_services"
-        ) as mock_unload_services,
         patch("custom_components.kubernetes.async_remove_panel"),
         patch.object(
             hass.config_entries,
@@ -280,7 +261,6 @@ async def test_async_unload_entry_platform_unload_fails(
         assert result is False
         # Data should not be cleaned up if platform unload fails
         assert mock_config_entry.entry_id in hass.data[DOMAIN]
-        mock_unload_services.assert_not_called()
 
 
 def test_constants():
@@ -677,10 +657,6 @@ class TestAsyncSetupEntryWatchEnabled:
                 "custom_components.kubernetes.KubernetesDataCoordinator"
             ) as mock_coordinator_class,
             patch(
-                "custom_components.kubernetes.async_setup_services",
-                new_callable=AsyncMock,
-            ),
-            patch(
                 "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
             ),
             patch.object(
@@ -717,10 +693,6 @@ class TestAsyncSetupEntryWatchEnabled:
                 "custom_components.kubernetes.KubernetesDataCoordinator"
             ) as mock_coordinator_class,
             patch(
-                "custom_components.kubernetes.async_setup_services",
-                new_callable=AsyncMock,
-            ),
-            patch(
                 "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
             ),
             patch.object(
@@ -753,10 +725,6 @@ class TestAsyncSetupEntryWatchEnabled:
             patch(
                 "custom_components.kubernetes.KubernetesDataCoordinator"
             ) as mock_coordinator_class,
-            patch(
-                "custom_components.kubernetes.async_setup_services",
-                new_callable=AsyncMock,
-            ),
             patch(
                 "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
             ),
@@ -793,10 +761,6 @@ class TestAsyncSetupEntryWatchEnabled:
             patch(
                 "custom_components.kubernetes.KubernetesDataCoordinator"
             ) as mock_coordinator_class,
-            patch(
-                "custom_components.kubernetes.async_setup_services",
-                new_callable=AsyncMock,
-            ),
             patch(
                 "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
             ),
@@ -835,10 +799,6 @@ class TestAsyncUnloadEntryWatchCleanup:
         }
 
         with (
-            patch(
-                "custom_components.kubernetes.async_unload_services",
-                new_callable=AsyncMock,
-            ),
             patch("custom_components.kubernetes.async_remove_panel"),
             patch.object(
                 hass.config_entries,
@@ -863,10 +823,6 @@ class TestAsyncUnloadEntryWatchCleanup:
         }
 
         with (
-            patch(
-                "custom_components.kubernetes.async_unload_services",
-                new_callable=AsyncMock,
-            ),
             patch("custom_components.kubernetes.async_remove_panel"),
             patch.object(
                 hass.config_entries,
@@ -904,10 +860,6 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
 
         with (
             patch(
-                "custom_components.kubernetes.async_unload_services",
-                new_callable=AsyncMock,
-            ),
-            patch(
                 "custom_components.kubernetes.async_remove_panel"
             ) as mock_remove_panel,
             patch.object(
@@ -942,10 +894,6 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
 
         with (
             patch(
-                "custom_components.kubernetes.async_unload_services",
-                new_callable=AsyncMock,
-            ),
-            patch(
                 "custom_components.kubernetes.async_remove_panel"
             ) as mock_remove_panel,
             patch.object(
@@ -975,10 +923,6 @@ class TestAsyncSetupEntryUpdateListener:
             patch(
                 "custom_components.kubernetes.KubernetesDataCoordinator"
             ) as mock_coordinator_class,
-            patch(
-                "custom_components.kubernetes.async_setup_services",
-                new_callable=AsyncMock,
-            ),
             patch(
                 "custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock
             ),

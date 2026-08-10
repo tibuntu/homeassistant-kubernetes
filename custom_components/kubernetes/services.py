@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 import voluptuous as vol
 
@@ -295,8 +297,10 @@ def _extract_workload_info(
     return workloads
 
 
-def _log_no_workloads_found(call_data: dict[str, Any], service_name: str) -> None:
-    """Log a helpful error when no valid workloads could be extracted from service data."""
+def _no_workloads_error(
+    call_data: dict[str, Any], service_name: str
+) -> ServiceValidationError:
+    """Build the error raised when no valid workloads could be extracted."""
     entity_ids_snippet: list[str] = []
     for key in (ATTR_WORKLOAD_NAMES, ATTR_WORKLOAD_NAME):
         val = call_data.get(key)
@@ -315,14 +319,61 @@ def _log_no_workloads_found(call_data: dict[str, Any], service_name: str) -> Non
         if entity_ids_snippet:
             break
     sample = entity_ids_snippet[:5] if entity_ids_snippet else ["(none)"]
-    _LOGGER.error(
-        "No valid workloads found in service call data for %s. "
-        "Ensure workload_names/entity_id list entity IDs that exist (e.g. switch.xxx) and that those switches have namespace and workload_type attributes. "
-        "Received data keys: %s. Sample entity IDs: %s. Enable debug logging for custom_components.kubernetes.services for details.",
-        service_name,
-        list(call_data.keys()),
-        sample,
+    return ServiceValidationError(
+        f"No valid workloads found for {service_name}. Requested: "
+        f"{', '.join(sample)}. Ensure workload_name/workload_names reference "
+        "entities that exist (e.g. switch.xxx) and that those switches expose "
+        "namespace and workload_type attributes."
     )
+
+
+def _validate_workload_types(
+    workloads: list[tuple[str, str | None, str]],
+    supported: tuple[str, ...],
+    operation: str,
+    hint: str = "",
+) -> None:
+    """Raise when any workload's type does not support *operation*."""
+    unsupported = [
+        f"{name} ({wtype})" for name, _, wtype in workloads if wtype not in supported
+    ]
+    if unsupported:
+        raise ServiceValidationError(
+            f"Cannot {operation} {', '.join(unsupported)}: only "
+            f"{', '.join(supported)} are supported.{hint}"
+        )
+
+
+async def _attempt(
+    action: Awaitable[Any], label: str, failures: list[str]
+) -> Any | None:
+    """Await *action*, recording *label* in *failures* when it does not succeed.
+
+    Accepts both the ``bool`` returned by most client methods and the
+    ``{"success": ...}`` dict returned by ``trigger_cronjob``. Returns the
+    result on success and ``None`` otherwise, so callers never abort the
+    remaining targets of a multi-target service call.
+    """
+    try:
+        result = await action
+    except Exception as err:
+        failures.append(f"{label}: {err}")
+        return None
+    if isinstance(result, dict):
+        if result.get("success"):
+            return result
+        failures.append(f"{label}: {result.get('error', 'Unknown error')}")
+        return None
+    if not result:
+        failures.append(label)
+        return None
+    return result
+
+
+def _raise_failures(failures: list[str], operation: str) -> None:
+    """Raise a single error naming every target the operation failed for."""
+    if failures:
+        raise HomeAssistantError(f"Failed to {operation}: {'; '.join(failures)}")
 
 
 def _validate_workload_schema(data: dict) -> dict:
@@ -487,30 +538,32 @@ def _collect_job_names(call_data: dict[str, Any]) -> list[str]:
     return _collect_names(call_data, ATTR_JOB_NAME, ATTR_JOB_NAMES)
 
 
-def _get_entry_data(
-    hass: HomeAssistant, call_data: dict[str, Any]
-) -> dict[str, Any] | None:
+def _get_entry_data(hass: HomeAssistant, call_data: dict[str, Any]) -> dict[str, Any]:
     """Get the config entry data for a service call.
 
-    If ``entry_id`` is provided in *call_data* and matches a loaded config
-    entry, that entry is used.  Otherwise falls back to the first entry.
+    If ``entry_id`` is provided in *call_data* it must match a loaded config
+    entry.  Otherwise the first loaded entry is used.
+
+    Raises:
+        ServiceValidationError: when no loaded config entry matches.
     """
-    kubernetes_data = hass.data.get(DOMAIN)
-    if not kubernetes_data:
-        _LOGGER.error("No Kubernetes integration configured")
-        return None
+    kubernetes_data = hass.data.get(DOMAIN) or {}
 
     from .const import DOMAIN_META_KEYS
 
     entry_id = call_data.get("entry_id")
-    if entry_id and entry_id in kubernetes_data and entry_id not in DOMAIN_META_KEYS:
-        return kubernetes_data[entry_id]
+    if entry_id:
+        if entry_id in kubernetes_data and entry_id not in DOMAIN_META_KEYS:
+            return kubernetes_data[entry_id]
+        raise ServiceValidationError(
+            f"No loaded Kubernetes config entry with entry_id '{entry_id}'"
+        )
 
     # Fallback: first real config entry
     for eid, edata in kubernetes_data.items():
         if eid not in DOMAIN_META_KEYS and isinstance(edata, dict):
             return edata
-    return None
+    raise ServiceValidationError("No Kubernetes integration configured")
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
@@ -523,61 +576,37 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         workloads = _extract_workload_info(call.data, hass)
 
         if not workloads:
-            _log_no_workloads_found(call.data, "scale_workload")
-            return
+            raise _no_workloads_error(call.data, "scale_workload")
+
+        _validate_workload_types(
+            workloads,
+            (WORKLOAD_TYPE_DEPLOYMENT, WORKLOAD_TYPE_STATEFULSET),
+            "scale",
+        )
 
         replicas = call.data[ATTR_REPLICAS]
 
         entry_data = _get_entry_data(hass, call.data)
-        if not entry_data:
-            return
-
         config_data = entry_data["config"]
         client = entry_data["coordinator"].client
+        scale_methods = {
+            WORKLOAD_TYPE_DEPLOYMENT: client.scale_deployment,
+            WORKLOAD_TYPE_STATEFULSET: client.scale_statefulset,
+        }
+        failures: list[str] = []
 
         for workload_name, namespace, workload_type in workloads:
             namespace = namespace or config_data.get("namespace", "default")
+            label = f"{workload_type} {namespace}/{workload_name}"
 
-            if workload_type == WORKLOAD_TYPE_DEPLOYMENT:
-                success = await client.scale_deployment(
-                    workload_name, replicas, namespace
-                )
-                if success:
-                    _LOGGER.info(
-                        "Successfully scaled deployment %s to %d replicas in namespace %s",
-                        workload_name,
-                        replicas,
-                        namespace,
-                    )
-                else:
-                    _LOGGER.error(
-                        "Failed to scale deployment %s in namespace %s",
-                        workload_name,
-                        namespace,
-                    )
-            elif workload_type == WORKLOAD_TYPE_STATEFULSET:
-                success = await client.scale_statefulset(
-                    workload_name, replicas, namespace
-                )
-                if success:
-                    _LOGGER.info(
-                        "Successfully scaled StatefulSet %s to %d replicas in namespace %s",
-                        workload_name,
-                        replicas,
-                        namespace,
-                    )
-                else:
-                    _LOGGER.error(
-                        "Failed to scale StatefulSet %s in namespace %s",
-                        workload_name,
-                        namespace,
-                    )
-            else:
-                _LOGGER.warning(
-                    "Cannot scale %s (type: %s) - scaling only supported for Deployments and StatefulSets",
-                    workload_name,
-                    workload_type,
-                )
+            if await _attempt(
+                scale_methods[workload_type](workload_name, replicas, namespace),
+                label,
+                failures,
+            ):
+                _LOGGER.info("Successfully scaled %s to %d replicas", label, replicas)
+
+        _raise_failures(failures, "scale")
 
         if len(workloads) > 1:
             _LOGGER.info("Completed scaling operation for %d workloads", len(workloads))
@@ -587,76 +616,54 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         workloads = _extract_workload_info(call.data, hass)
 
         if not workloads:
-            _log_no_workloads_found(call.data, "start_workload")
-            return
+            raise _no_workloads_error(call.data, "start_workload")
+
+        _validate_workload_types(
+            workloads,
+            (
+                WORKLOAD_TYPE_DEPLOYMENT,
+                WORKLOAD_TYPE_STATEFULSET,
+                WORKLOAD_TYPE_CRONJOB,
+            ),
+            "start",
+        )
 
         replicas = call.data.get(ATTR_REPLICAS, 1)
 
         entry_data = _get_entry_data(hass, call.data)
-        if not entry_data:
-            return
-
         config_data = entry_data["config"]
         client = entry_data["coordinator"].client
+        start_methods = {
+            WORKLOAD_TYPE_DEPLOYMENT: client.start_deployment,
+            WORKLOAD_TYPE_STATEFULSET: client.start_statefulset,
+        }
+        failures: list[str] = []
 
         for workload_name, namespace, workload_type in workloads:
             namespace = namespace or config_data.get("namespace", "default")
+            label = f"{workload_type} {namespace}/{workload_name}"
 
-            if workload_type == WORKLOAD_TYPE_DEPLOYMENT:
-                success = await client.start_deployment(
-                    workload_name, replicas, namespace
-                )
-                if success:
-                    _LOGGER.info(
-                        "Successfully started deployment %s with %d replicas in namespace %s",
-                        workload_name,
-                        replicas,
-                        namespace,
-                    )
-                else:
-                    _LOGGER.error(
-                        "Failed to start deployment %s in namespace %s",
-                        workload_name,
-                        namespace,
-                    )
-            elif workload_type == WORKLOAD_TYPE_STATEFULSET:
-                success = await client.start_statefulset(
-                    workload_name, replicas, namespace
-                )
-                if success:
-                    _LOGGER.info(
-                        "Successfully started StatefulSet %s with %d replicas in namespace %s",
-                        workload_name,
-                        replicas,
-                        namespace,
-                    )
-                else:
-                    _LOGGER.error(
-                        "Failed to start StatefulSet %s in namespace %s",
-                        workload_name,
-                        namespace,
-                    )
-            elif workload_type == WORKLOAD_TYPE_CRONJOB:
+            if workload_type == WORKLOAD_TYPE_CRONJOB:
                 # For CronJobs, "start" means trigger (create a job from the CronJob)
-                result = await client.trigger_cronjob(workload_name, namespace)
-                if result.get("success"):
+                result = await _attempt(
+                    client.trigger_cronjob(workload_name, namespace), label, failures
+                )
+                if result:
                     _LOGGER.info(
-                        "Successfully triggered CronJob %s in namespace %s, created job %s",
-                        workload_name,
-                        namespace,
+                        "Successfully triggered %s, created job %s",
+                        label,
                         result.get("job_name", "unknown"),
                     )
-                else:
-                    _LOGGER.error(
-                        "Failed to trigger CronJob %s in namespace %s: %s",
-                        workload_name,
-                        namespace,
-                        result.get("error", "Unknown error"),
-                    )
-            else:
-                _LOGGER.warning(
-                    "Unsupported workload type %s for start operation", workload_type
+            elif await _attempt(
+                start_methods[workload_type](workload_name, replicas, namespace),
+                label,
+                failures,
+            ):
+                _LOGGER.info(
+                    "Successfully started %s with %d replicas", label, replicas
                 )
+
+        _raise_failures(failures, "start")
 
         if len(workloads) > 1:
             _LOGGER.info("Completed start operation for %d workloads", len(workloads))
@@ -666,57 +673,34 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         workloads = _extract_workload_info(call.data, hass)
 
         if not workloads:
-            _log_no_workloads_found(call.data, "stop_workload")
-            return
+            raise _no_workloads_error(call.data, "stop_workload")
+
+        _validate_workload_types(
+            workloads,
+            (WORKLOAD_TYPE_DEPLOYMENT, WORKLOAD_TYPE_STATEFULSET),
+            "stop",
+            hint=" Use the switch entity to suspend CronJobs.",
+        )
 
         entry_data = _get_entry_data(hass, call.data)
-        if not entry_data:
-            return
-
         config_data = entry_data["config"]
         client = entry_data["coordinator"].client
+        stop_methods = {
+            WORKLOAD_TYPE_DEPLOYMENT: client.stop_deployment,
+            WORKLOAD_TYPE_STATEFULSET: client.stop_statefulset,
+        }
+        failures: list[str] = []
 
         for workload_name, namespace, workload_type in workloads:
             namespace = namespace or config_data.get("namespace", "default")
+            label = f"{workload_type} {namespace}/{workload_name}"
 
-            if workload_type == WORKLOAD_TYPE_DEPLOYMENT:
-                success = await client.stop_deployment(workload_name, namespace)
-                if success:
-                    _LOGGER.info(
-                        "Successfully stopped deployment %s in namespace %s",
-                        workload_name,
-                        namespace,
-                    )
-                else:
-                    _LOGGER.error(
-                        "Failed to stop deployment %s in namespace %s",
-                        workload_name,
-                        namespace,
-                    )
-            elif workload_type == WORKLOAD_TYPE_STATEFULSET:
-                success = await client.stop_statefulset(workload_name, namespace)
-                if success:
-                    _LOGGER.info(
-                        "Successfully stopped StatefulSet %s in namespace %s",
-                        workload_name,
-                        namespace,
-                    )
-                else:
-                    _LOGGER.error(
-                        "Failed to stop StatefulSet %s in namespace %s",
-                        workload_name,
-                        namespace,
-                    )
-            elif workload_type == WORKLOAD_TYPE_CRONJOB:
-                _LOGGER.warning(
-                    "Cannot stop %s (type: %s) - stop operation only supported for Deployments and StatefulSets. Use the switch entity to suspend CronJobs.",
-                    workload_name,
-                    workload_type,
-                )
-            else:
-                _LOGGER.warning(
-                    "Unsupported workload type %s for stop operation", workload_type
-                )
+            if await _attempt(
+                stop_methods[workload_type](workload_name, namespace), label, failures
+            ):
+                _LOGGER.info("Successfully stopped %s", label)
+
+        _raise_failures(failures, "stop")
 
         if len(workloads) > 1:
             _LOGGER.info("Completed stop operation for %d workloads", len(workloads))
@@ -726,13 +710,19 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         workloads = _extract_workload_info(call.data, hass)
 
         if not workloads:
-            _log_no_workloads_found(call.data, "restart_workload")
-            return
+            raise _no_workloads_error(call.data, "restart_workload")
+
+        _validate_workload_types(
+            workloads,
+            (
+                WORKLOAD_TYPE_DEPLOYMENT,
+                WORKLOAD_TYPE_STATEFULSET,
+                WORKLOAD_TYPE_DAEMONSET,
+            ),
+            "restart",
+        )
 
         entry_data = _get_entry_data(hass, call.data)
-        if not entry_data:
-            return
-
         config_data = entry_data["config"]
         client = entry_data["coordinator"].client
 
@@ -741,34 +731,20 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
             WORKLOAD_TYPE_STATEFULSET: client.rollout_restart_statefulset,
             WORKLOAD_TYPE_DAEMONSET: client.rollout_restart_daemonset,
         }
+        failures: list[str] = []
 
         for workload_name, namespace, workload_type in workloads:
             namespace = namespace or config_data.get("namespace", "default")
+            label = f"{workload_type} {namespace}/{workload_name}"
 
-            restart_fn = restart_methods.get(workload_type)
-            if restart_fn is None:
-                _LOGGER.warning(
-                    "Cannot restart %s (type: %s) - restart only supported for Deployments, StatefulSets, and DaemonSets",
-                    workload_name,
-                    workload_type,
-                )
-                continue
+            if await _attempt(
+                restart_methods[workload_type](workload_name, namespace),
+                label,
+                failures,
+            ):
+                _LOGGER.info("Successfully restarted %s", label)
 
-            success = await restart_fn(workload_name, namespace)
-            if success:
-                _LOGGER.info(
-                    "Successfully restarted %s %s in namespace %s",
-                    workload_type,
-                    workload_name,
-                    namespace,
-                )
-            else:
-                _LOGGER.error(
-                    "Failed to restart %s %s in namespace %s",
-                    workload_type,
-                    workload_name,
-                    namespace,
-                )
+        _raise_failures(failures, "restart")
 
         if len(workloads) > 1:
             _LOGGER.info("Completed restart operation for %d workloads", len(workloads))
@@ -777,15 +753,15 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         """Delete one or more Kubernetes Jobs (cascades to their pods)."""
         job_names = _collect_job_names(call.data)
         if not job_names:
-            _LOGGER.warning("delete_job called with no job_name/job_names")
-            return
+            raise ServiceValidationError(
+                "delete_job requires at least one non-empty job name"
+            )
         entry_data = _get_entry_data(hass, call.data)
-        if not entry_data:
-            return
         coordinator = entry_data["coordinator"]
         client = coordinator.client
         config_data = entry_data["config"]
         provided_ns = call.data.get(ATTR_NAMESPACE)
+        failures: list[str] = []
         for job_name in job_names:
             namespace = provided_ns
             if not namespace:
@@ -803,41 +779,33 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
                     if job_data
                     else config_data.get("namespace", "default")
                 )
-            success = await client.delete_job(job_name, namespace)
-            if success:
-                _LOGGER.info(
-                    "Successfully deleted job %s in namespace %s", job_name, namespace
-                )
-            else:
-                _LOGGER.error(
-                    "Failed to delete job %s in namespace %s", job_name, namespace
-                )
+            label = f"job {namespace}/{job_name}"
+            if await _attempt(client.delete_job(job_name, namespace), label, failures):
+                _LOGGER.info("Successfully deleted %s", label)
+
+        _raise_failures(failures, "delete")
 
     async def _set_nodes_schedulable(call: ServiceCall, schedulable: bool) -> None:
         """Cordon or uncordon one or more Kubernetes nodes."""
         action = "uncordon" if schedulable else "cordon"
         node_names = _collect_node_names(call.data)
         if not node_names:
-            _LOGGER.warning("%s_node called with no node_name/node_names", action)
-            return
+            raise ServiceValidationError(
+                f"{action}_node requires at least one non-empty node name"
+            )
         entry_data = _get_entry_data(hass, call.data)
-        if not entry_data:
-            return
         coordinator = entry_data["coordinator"]
         client = coordinator.client
+        cordon_fn = client.uncordon_node if schedulable else client.cordon_node
         any_success = False
+        failures: list[str] = []
         for node_name in node_names:
-            if schedulable:
-                success = await client.uncordon_node(node_name)
-            else:
-                success = await client.cordon_node(node_name)
-            if success:
+            if await _attempt(cordon_fn(node_name), f"node {node_name}", failures):
                 any_success = True
                 _LOGGER.info("Successfully %sed node %s", action, node_name)
-            else:
-                _LOGGER.error("Failed to %s node %s", action, node_name)
         if any_success:
             await coordinator.async_request_refresh()
+        _raise_failures(failures, action)
 
     async def cordon_node(call: ServiceCall) -> None:
         """Cordon one or more Kubernetes nodes (mark unschedulable)."""
@@ -896,14 +864,3 @@ async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
         uncordon_node,
         schema=NODE_SCHEMA,
     )
-
-
-async def async_unload_services(hass: HomeAssistant) -> None:
-    """Unload the Kubernetes services."""
-    hass.services.async_remove(DOMAIN, SERVICE_SCALE_WORKLOAD)
-    hass.services.async_remove(DOMAIN, SERVICE_START_WORKLOAD)
-    hass.services.async_remove(DOMAIN, SERVICE_STOP_WORKLOAD)
-    hass.services.async_remove(DOMAIN, SERVICE_RESTART_WORKLOAD)
-    hass.services.async_remove(DOMAIN, SERVICE_DELETE_JOB)
-    hass.services.async_remove(DOMAIN, SERVICE_CORDON_NODE)
-    hass.services.async_remove(DOMAIN, SERVICE_UNCORDON_NODE)
