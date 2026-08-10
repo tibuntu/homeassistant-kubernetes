@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import AbortFlow, FlowResultType
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -1531,6 +1531,41 @@ class TestReconfigureFlow:
         assert result["type"] is FlowResultType.FORM
         assert result["errors"]["base"] == "cannot_connect"
 
+    async def test_reconfigure_abort_flow_propagates(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Test AbortFlow is re-raised instead of becoming a cannot_connect error."""
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE",
+                True,
+            ),
+            patch.object(
+                KubernetesConfigFlow,
+                "_test_connection",
+                new_callable=AsyncMock,
+                side_effect=AbortFlow("already_configured"),
+            ),
+        ):
+            result = await self._init_reconfigure(hass, mock_config_entry)
+
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={
+                    CONF_HOST: "new-host.example.com",
+                    CONF_PORT: 6443,
+                    CONF_API_TOKEN: "new-token",
+                    CONF_MONITOR_ALL_NAMESPACES: True,
+                },
+            )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "already_configured"
+
     async def test_reconfigure_preserves_cluster_name(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
     ):
@@ -2948,6 +2983,50 @@ def test_ensure_kubernetes_imported_cached_false():
         assert result is False
     finally:
         cf_module.KUBERNETES_AVAILABLE = original
+
+
+def test_ensure_kubernetes_imported_set_while_waiting_for_lock():
+    """Test the re-check inside the lock when another thread won the race."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original = cf_module.KUBERNETES_AVAILABLE
+    cf_module.KUBERNETES_AVAILABLE = None
+
+    def _other_thread_wins_race():
+        cf_module.KUBERNETES_AVAILABLE = True
+
+    # Stand-in lock that simulates another thread completing the import while
+    # this caller was blocked on acquiring it.
+    lock = MagicMock()
+    lock.__enter__.side_effect = _other_thread_wins_race
+
+    try:
+        with patch.object(cf_module, "_import_lock", lock):
+            assert cf_module._ensure_kubernetes_imported() is True
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: in-cluster port parsing
+# ---------------------------------------------------------------------------
+
+
+def test_read_in_cluster_config_non_numeric_port_falls_back_to_443(monkeypatch):
+    """Test a non-numeric KUBERNETES_SERVICE_PORT_HTTPS falls back to 443."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+    monkeypatch.setenv("KUBERNETES_SERVICE_PORT_HTTPS", "not-a-number")
+
+    with (
+        patch.object(cf_module, "_service_account_token_exists", return_value=True),
+        patch.object(cf_module, "_read_service_account_token", return_value="t"),
+        patch.object(cf_module, "_service_account_ca_exists", return_value=False),
+    ):
+        config = cf_module._read_in_cluster_config_sync()
+
+    assert config == {"host": "10.0.0.1", "port": 443, "api_token": "t"}
 
 
 # ---------------------------------------------------------------------------

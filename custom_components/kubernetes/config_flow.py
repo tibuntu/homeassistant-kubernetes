@@ -377,9 +377,8 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 namespace_options = [
                     SelectOptionDict(value=ns, label=ns) for ns in fetched_namespaces
                 ]
-                # Default to first namespace if no previous selection
-                if not default_selected and fetched_namespaces:
-                    default_selected = [fetched_namespaces[0]]
+                # Default to first namespace as the pre-selected option
+                default_selected = [fetched_namespaces[0]]
             else:
                 _LOGGER.warning(
                     "No namespaces were fetched from cluster. "
