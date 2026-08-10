@@ -1302,6 +1302,33 @@ class TestServiceHandlerEdgeCases:
             )
         mock_client.trigger_cronjob.assert_called_once_with("backup", "default")
 
+    async def test_start_workload_deployment_failure(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Test start_workload raises when the deployment start returns False."""
+        mock_client.start_deployment.return_value = False
+        hass.states.async_set(
+            "switch.nginx",
+            "on",
+            {
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
+                "namespace": "default",
+                "deployment_name": "nginx",
+            },
+        )
+        await async_setup_services(hass)
+        with pytest.raises(HomeAssistantError, match="Failed to start"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_START_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAME: "switch.nginx",
+                    ATTR_NAMESPACE: "default",
+                },
+                blocking=True,
+            )
+        mock_client.start_deployment.assert_called_once()
+
     async def test_start_workload_unsupported_type(
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
