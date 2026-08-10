@@ -2,13 +2,25 @@
 
 ## [1.8.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.7.0...v1.8.0) (2026-08-10)
 
+This release makes **real-time updates the default**, lets you **choose what data the integration collects**, and completes a quality push: the integration now meets all Bronze and Silver requirements of Home Assistant's [Integration Quality Scale](https://www.home-assistant.io/docs/quality_scale/) — including service calls that fail loudly instead of silently and a re-authentication prompt when your API token stops working.
 
-### Features
+### New features
 
-* **options:** add data-collection opt-out for entities, metrics, and counts ([8baa443](https://github.com/tibuntu/homeassistant-kubernetes/commit/8baa4435ad361926f0cdfc55f32991be5671e67f))
-* **quality:** add reauthentication flow for invalid API tokens ([da6e41a](https://github.com/tibuntu/homeassistant-kubernetes/commit/da6e41abfaaf371d271575748aeac15ab91d2053))
-* **quality:** register services at HA start and raise errors from service handlers ([92f32fd](https://github.com/tibuntu/homeassistant-kubernetes/commit/92f32fd593b64c5f542adfdf3a79b3e321d65ba4))
-* **watch:** mark Watch API stable and enable it by default ([e65fe8f](https://github.com/tibuntu/homeassistant-kubernetes/commit/e65fe8f5ea98dee06125fc61081b61ca549b9313))
+**Real-time updates by default.** The Watch API loses its experimental label and becomes the default update mechanism — changes in the cluster show up in Home Assistant the moment they happen, with a five-minute fallback poll as a safety net. Entries that explicitly disabled watching keep the classic interval polling. If a watch stream cannot be established (for example because the ServiceAccount lacks the `watch` verb), the integration raises a repair issue and temporarily returns to fast polling, so data stays fresh either way.
+
+**Choose what gets collected.** A new *Disabled resources* multi-select in the integration's options lets you switch off data categories you don't need — useful to cut entity count, recorder database growth, and Kubernetes API load. Pods, DaemonSets, Jobs, and Ingresses stop being fetched entirely; Nodes, Deployments, StatefulSets, and CronJobs only drop their sensors so the scale, suspend, and cordon switches keep working. Disabling *metrics* stops all Metrics API calls (and silences the metrics-server repair issue); *counts* removes the aggregate count sensors. Entities of a disabled category are cleaned up automatically.
+
+**Re-authentication without re-adding the integration.** When the cluster starts rejecting the stored API token, Home Assistant now shows its standard *Re-authenticate* prompt — enter a fresh token and the connection is restored; host, port, and TLS settings stay untouched. Routine in-cluster ServiceAccount token rotation never triggers the prompt (the integration retries with a freshly read token first), and an authentication outage can no longer clean up your entities as if the cluster had been emptied.
+
+**Service calls now fail loudly.** The `kubernetes.*` services raise proper errors instead of only logging: an invalid call — unknown workload, unsupported workload type, stale `entry_id` — is rejected before anything in the cluster is touched, and failed operations surface in the UI and in automation traces. Multi-target calls attempt every target first, then report all failures in a single message. The services are also registered as soon as Home Assistant starts, so automations validate even before the first cluster connects.
+
+### Fixes & improvements
+
+* Fixed a multi-cluster bug where the second cluster overwrote the first cluster's entity-discovery callback — with two clusters configured, workloads created later in the first cluster no longer received switches.
+* The integration now voluntarily meets all **Bronze and Silver** requirements of Home Assistant's Integration Quality Scale, enforced by a 95% test-coverage gate (100% for the config flow). See the new *Quality* section in the README.
+* Dependency updates: Home Assistant test tooling, ruff, frontend dev dependencies, and GitHub Actions.
+
+> **Upgrading:** Real-time updates need the `watch` verb in your RBAC. The bundled **full** manifest and the chart's `full` mode already include it; the **minimal** manifest and mode do not — there you will see a repair issue and the integration keeps polling until you either add the verb or disable the Watch API in the options. Also note the stricter service behavior: calls that reference a stale `entry_id`, or pass a CronJob to `scale_workload`/`stop_workload`, now fail with an error instead of being silently skipped — worth checking automations that relied on that.
 
 ## [1.7.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.6.0...v1.7.0) (2026-08-04)
 
