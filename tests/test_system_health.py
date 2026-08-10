@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.system_health import (
     async_register,
     system_health_info,
@@ -24,7 +27,14 @@ def _coordinator(
 
 
 def _populate(hass: HomeAssistant, entry_id: str, coordinator: MagicMock) -> None:
-    hass.data.setdefault(DOMAIN, {})[entry_id] = {"coordinator": coordinator}
+    """Add a loaded config entry whose runtime data carries the coordinator."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, entry_id=entry_id, state=ConfigEntryState.LOADED
+    )
+    entry.add_to_hass(hass)
+    entry.runtime_data = KubernetesEntryData(
+        config=entry.data, client=MagicMock(), coordinator=coordinator
+    )
 
 
 def test_async_register_invokes_register_info():
@@ -88,29 +98,15 @@ async def test_info_all_unreachable(hass: HomeAssistant):
     assert info["clusters_configured"] == 2
 
 
-async def test_info_skips_metadata_keys(hass: HomeAssistant):
-    """Non-entry keys in hass.data[DOMAIN] (panel_registered, etc.) are ignored."""
+async def test_info_skips_entries_that_are_not_loaded(hass: HomeAssistant):
+    """Entries that never finished setup are not counted."""
     _populate(hass, "a", _coordinator(healthy=True, pods_count=1, nodes_count=1))
-    hass.data[DOMAIN]["panel_registered"] = True
-    hass.data[DOMAIN]["switch_add_entities"] = MagicMock()
+    MockConfigEntry(domain=DOMAIN, entry_id="b").add_to_hass(hass)
 
     info = await system_health_info(hass)
 
     assert info["clusters_configured"] == 1
     assert info["cluster_health"] == "ok"
-
-
-async def test_info_handles_missing_coordinator(hass: HomeAssistant):
-    """An entry without a coordinator (mid-setup) does not crash and counts as unhealthy."""
-    hass.data.setdefault(DOMAIN, {})["a"] = {"coordinator": None}
-    _populate(hass, "b", _coordinator(healthy=True, pods_count=3, nodes_count=1))
-
-    info = await system_health_info(hass)
-
-    assert info["clusters_configured"] == 2
-    assert info["cluster_health"] == "1/2 reachable"
-    assert info["total_pods"] == 3
-    assert info["total_nodes"] == 1
 
 
 @pytest.mark.parametrize("missing_data", [None, {}])

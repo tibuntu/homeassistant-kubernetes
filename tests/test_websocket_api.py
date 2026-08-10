@@ -4,13 +4,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.websocket_api import (
     _build_alerts,
     _build_cluster_overview,
     _build_namespace_breakdown,
     _get_cluster_overview_data,
     _get_config_list_data,
+    _get_coordinator,
     _get_ingresses_list_data,
     _get_nodes_list_data,
     _get_pods_list_data,
@@ -129,6 +130,37 @@ def _make_coordinator(data, last_update_success=True, options=None):
     return coordinator
 
 
+def _make_entry(entry_id, coordinator, config=None, options=None):
+    """Create a mock config entry carrying KubernetesEntryData."""
+    entry = MagicMock()
+    entry.entry_id = entry_id
+    entry.options = options if options is not None else {}
+    entry.runtime_data = KubernetesEntryData(
+        config=config if config is not None else {},
+        client=MagicMock(),
+        coordinator=coordinator,
+    )
+    return entry
+
+
+def _load_entries(mock_hass, *entries):
+    """Install the given entries as the loaded Kubernetes config entries."""
+    mock_hass.config_entries.async_loaded_entries.return_value = list(entries)
+
+
+class TestGetCoordinator:
+    """Tests for the _get_coordinator helper."""
+
+    def test_skips_non_matching_entries(self, mock_hass):
+        """Test the target entry is found behind a non-matching one."""
+        other = _make_entry("entry-other", _make_coordinator({}))
+        target_coordinator = _make_coordinator({})
+        target = _make_entry("entry-target", target_coordinator)
+        _load_entries(mock_hass, other, target)
+
+        assert _get_coordinator(mock_hass, "entry-target") is target_coordinator
+
+
 class TestAsyncRegisterWebsocketCommands:
     """Tests for WS command registration."""
 
@@ -144,17 +176,9 @@ class TestAsyncRegisterWebsocketCommands:
 class TestWebsocketClusterOverview:
     """Tests for the kubernetes/cluster/overview command logic."""
 
-    def test_returns_empty_when_no_domain_data(self, mock_hass):
-        """Test returns empty clusters list when no DOMAIN data."""
-        mock_hass.data = {}
-
-        result = _get_cluster_overview_data(mock_hass)
-
-        assert result == {"clusters": []}
-
-    def test_returns_empty_when_domain_has_only_metadata(self, mock_hass):
-        """Test returns empty clusters when only metadata keys exist."""
-        mock_hass.data = {DOMAIN: {"panel_registered": True}}
+    def test_returns_empty_when_no_entries(self, mock_hass):
+        """Test returns empty clusters list when no entries are loaded."""
+        _load_entries(mock_hass)
 
         result = _get_cluster_overview_data(mock_hass)
 
@@ -163,14 +187,10 @@ class TestWebsocketClusterOverview:
     def test_returns_single_cluster_data(self, mock_hass, sample_coordinator_data):
         """Test returns data for a single cluster."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test-cluster"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator, {"cluster_name": "test-cluster"}),
+        )
 
         result = _get_cluster_overview_data(mock_hass)
 
@@ -205,18 +225,11 @@ class TestWebsocketClusterOverview:
                 "last_update": 1700000001.0,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "cluster-a"},
-                    "coordinator": coordinator_1,
-                },
-                "entry_2": {
-                    "config": {"cluster_name": "cluster-b"},
-                    "coordinator": coordinator_2,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator_1, {"cluster_name": "cluster-a"}),
+            _make_entry("entry_2", coordinator_2, {"cluster_name": "cluster-b"}),
+        )
 
         result = _get_cluster_overview_data(mock_hass)
 
@@ -224,35 +237,12 @@ class TestWebsocketClusterOverview:
         names = {c["cluster_name"] for c in result["clusters"]}
         assert names == {"cluster-a", "cluster-b"}
 
-    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
-        """Test skips panel_registered and switch_add_entities keys."""
-        coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "panel_registered": True,
-                "switch_add_entities": MagicMock(),
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
-
-        result = _get_cluster_overview_data(mock_hass)
-
-        assert len(result["clusters"]) == 1
-
     def test_handles_none_coordinator_data(self, mock_hass):
         """Test handles coordinator with None data gracefully."""
         coordinator = _make_coordinator(None)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         result = _get_cluster_overview_data(mock_hass)
 
@@ -261,21 +251,6 @@ class TestWebsocketClusterOverview:
         assert cluster["counts"]["pods"] == 0
         assert cluster["counts"]["nodes"] == 0
         assert cluster["namespaces"] == {}
-
-    def test_skips_entries_without_coordinator(self, mock_hass):
-        """Test skips entries that have no coordinator."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    # No coordinator key
-                },
-            }
-        }
-
-        result = _get_cluster_overview_data(mock_hass)
-
-        assert len(result["clusters"]) == 0
 
     def test_watch_enabled_from_options(self, mock_hass):
         """Test watch_enabled is read from config entry options."""
@@ -294,14 +269,9 @@ class TestWebsocketClusterOverview:
             },
             options={"enable_watch": True},
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         result = _get_cluster_overview_data(mock_hass)
 
@@ -544,23 +514,19 @@ class TestBuildAlerts:
 class TestWebsocketNodesList:
     """Tests for the kubernetes/nodes/list command logic."""
 
-    def test_returns_empty_when_no_domain_data(self, mock_hass):
-        """Test returns empty clusters list when no DOMAIN data."""
-        mock_hass.data = {}
+    def test_returns_empty_when_no_entries(self, mock_hass):
+        """Test returns empty clusters list when no entries are loaded."""
+        _load_entries(mock_hass)
         result = _get_nodes_list_data(mock_hass)
         assert result == {"clusters": []}
 
     def test_returns_nodes_for_cluster(self, mock_hass, sample_coordinator_data):
         """Test returns all nodes for a cluster."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test-cluster"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator, {"cluster_name": "test-cluster"}),
+        )
 
         result = _get_nodes_list_data(mock_hass)
 
@@ -576,51 +542,14 @@ class TestWebsocketNodesList:
     def test_handles_none_coordinator_data(self, mock_hass):
         """Test handles coordinator with None data gracefully."""
         coordinator = _make_coordinator(None)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         result = _get_nodes_list_data(mock_hass)
 
         cluster = result["clusters"][0]
         assert cluster["nodes"] == []
-
-    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
-        """Test skips panel_registered and switch_add_entities keys."""
-        coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "panel_registered": True,
-                "switch_add_entities": MagicMock(),
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
-
-        result = _get_nodes_list_data(mock_hass)
-
-        assert len(result["clusters"]) == 1
-
-    def test_skips_entries_without_coordinator(self, mock_hass):
-        """Test skips entries that have no coordinator."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                },
-            }
-        }
-
-        result = _get_nodes_list_data(mock_hass)
-
-        assert len(result["clusters"]) == 0
 
     def test_multi_cluster(self, mock_hass, sample_coordinator_data):
         """Test returns nodes from multiple clusters."""
@@ -641,18 +570,11 @@ class TestWebsocketNodesList:
                 "last_update": 0.0,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "cluster-a"},
-                    "coordinator": coordinator_1,
-                },
-                "entry_2": {
-                    "config": {"cluster_name": "cluster-b"},
-                    "coordinator": coordinator_2,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator_1, {"cluster_name": "cluster-a"}),
+            _make_entry("entry_2", coordinator_2, {"cluster_name": "cluster-b"}),
+        )
 
         result = _get_nodes_list_data(mock_hass)
 
@@ -664,23 +586,19 @@ class TestWebsocketNodesList:
 class TestWebsocketPodsList:
     """Tests for the kubernetes/pods/list command logic."""
 
-    def test_returns_empty_when_no_domain_data(self, mock_hass):
-        """Test returns empty clusters list when no DOMAIN data."""
-        mock_hass.data = {}
+    def test_returns_empty_when_no_entries(self, mock_hass):
+        """Test returns empty clusters list when no entries are loaded."""
+        _load_entries(mock_hass)
         result = _get_pods_list_data(mock_hass)
         assert result == {"clusters": []}
 
     def test_returns_pods_for_cluster(self, mock_hass, sample_coordinator_data):
         """Test returns all pods for a cluster."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test-cluster"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator, {"cluster_name": "test-cluster"}),
+        )
 
         result = _get_pods_list_data(mock_hass)
 
@@ -696,50 +614,14 @@ class TestWebsocketPodsList:
     def test_handles_none_coordinator_data(self, mock_hass):
         """Test handles coordinator with None data gracefully."""
         coordinator = _make_coordinator(None)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         result = _get_pods_list_data(mock_hass)
 
         cluster = result["clusters"][0]
         assert cluster["pods"] == []
-
-    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
-        """Test skips panel_registered and switch_add_entities keys."""
-        coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "panel_registered": True,
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
-
-        result = _get_pods_list_data(mock_hass)
-
-        assert len(result["clusters"]) == 1
-
-    def test_skips_entries_without_coordinator(self, mock_hass):
-        """Test skips entries that have no coordinator."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                },
-            }
-        }
-
-        result = _get_pods_list_data(mock_hass)
-
-        assert len(result["clusters"]) == 0
 
     def test_multi_cluster(self, mock_hass, sample_coordinator_data):
         """Test returns pods from multiple clusters."""
@@ -764,18 +646,11 @@ class TestWebsocketPodsList:
                 "last_update": 0.0,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "cluster-a"},
-                    "coordinator": coordinator_1,
-                },
-                "entry_2": {
-                    "config": {"cluster_name": "cluster-b"},
-                    "coordinator": coordinator_2,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator_1, {"cluster_name": "cluster-a"}),
+            _make_entry("entry_2", coordinator_2, {"cluster_name": "cluster-b"}),
+        )
 
         result = _get_pods_list_data(mock_hass)
 
@@ -814,14 +689,9 @@ class TestWebsocketPodsList:
                 "last_update": 0.0,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         result = _get_pods_list_data(mock_hass)
         pod = result["clusters"][0]["pods"][0]
@@ -838,23 +708,19 @@ class TestWebsocketPodsList:
 class TestWebsocketWorkloadsList:
     """Tests for the kubernetes/workloads/list command logic."""
 
-    def test_returns_empty_when_no_domain_data(self, mock_hass):
-        """Test returns empty clusters list when no DOMAIN data."""
-        mock_hass.data = {}
+    def test_returns_empty_when_no_entries(self, mock_hass):
+        """Test returns empty clusters list when no entries are loaded."""
+        _load_entries(mock_hass)
         result = _get_workloads_list_data(mock_hass)
         assert result == {"clusters": []}
 
     def test_returns_workloads_for_cluster(self, mock_hass, sample_coordinator_data):
         """Test returns all workload types for a cluster."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test-cluster"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator, {"cluster_name": "test-cluster"}),
+        )
 
         result = _get_workloads_list_data(mock_hass)
 
@@ -871,14 +737,9 @@ class TestWebsocketWorkloadsList:
     def test_handles_none_coordinator_data(self, mock_hass):
         """Test handles coordinator with None data gracefully."""
         coordinator = _make_coordinator(None)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         result = _get_workloads_list_data(mock_hass)
 
@@ -888,38 +749,6 @@ class TestWebsocketWorkloadsList:
         assert cluster["daemonsets"] == []
         assert cluster["cronjobs"] == []
         assert cluster["jobs"] == []
-
-    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
-        """Test skips panel_registered and switch_add_entities keys."""
-        coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "panel_registered": True,
-                "switch_add_entities": MagicMock(),
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
-
-        result = _get_workloads_list_data(mock_hass)
-
-        assert len(result["clusters"]) == 1
-
-    def test_skips_entries_without_coordinator(self, mock_hass):
-        """Test skips entries that have no coordinator."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                },
-            }
-        }
-
-        result = _get_workloads_list_data(mock_hass)
-
-        assert len(result["clusters"]) == 0
 
     def test_multi_cluster(self, mock_hass, sample_coordinator_data):
         """Test returns workloads from multiple clusters."""
@@ -947,18 +776,11 @@ class TestWebsocketWorkloadsList:
                 "last_update": 0.0,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "cluster-a"},
-                    "coordinator": coordinator_1,
-                },
-                "entry_2": {
-                    "config": {"cluster_name": "cluster-b"},
-                    "coordinator": coordinator_2,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator_1, {"cluster_name": "cluster-a"}),
+            _make_entry("entry_2", coordinator_2, {"cluster_name": "cluster-b"}),
+        )
 
         result = _get_workloads_list_data(mock_hass)
 
@@ -969,14 +791,9 @@ class TestWebsocketWorkloadsList:
     def test_deployment_fields(self, mock_hass, sample_coordinator_data):
         """Test that deployment data includes expected fields."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         result = _get_workloads_list_data(mock_hass)
         deploys = result["clusters"][0]["deployments"]
@@ -1016,14 +833,9 @@ class TestWebsocketWorkloadsList:
                 "last_update": 0.0,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         result = _get_workloads_list_data(mock_hass)
         cj = result["clusters"][0]["cronjobs"][0]
@@ -1037,9 +849,9 @@ class TestWebsocketWorkloadsList:
 class TestWebsocketIngressesList:
     """Tests for the kubernetes/ingresses/list command logic."""
 
-    def test_returns_empty_when_no_domain_data(self, mock_hass):
-        """Test returns empty clusters list when no DOMAIN data."""
-        mock_hass.data = {}
+    def test_returns_empty_when_no_entries(self, mock_hass):
+        """Test returns empty clusters list when no entries are loaded."""
+        _load_entries(mock_hass)
         result = _get_ingresses_list_data(mock_hass)
         assert result == {"clusters": []}
 
@@ -1067,14 +879,10 @@ class TestWebsocketIngressesList:
                 "last_update": 0.0,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry1": {
-                    "coordinator": coordinator,
-                    "config": {"cluster_name": "test-cluster"},
-                }
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry1", coordinator, {"cluster_name": "test-cluster"}),
+        )
 
         result = _get_ingresses_list_data(mock_hass)
 
@@ -1088,59 +896,11 @@ class TestWebsocketIngressesList:
     def test_none_coordinator_data(self, mock_hass):
         """A coordinator with no data yields an empty ingress list."""
         coordinator = _make_coordinator(None)
-        mock_hass.data = {
-            DOMAIN: {"entry1": {"coordinator": coordinator, "config": {}}}
-        }
+        _load_entries(mock_hass, _make_entry("entry1", coordinator))
 
         result = _get_ingresses_list_data(mock_hass)
 
         assert result["clusters"][0]["ingresses"] == []
-
-    def test_skips_entries_without_coordinator(self, mock_hass):
-        """Entries without a coordinator are skipped."""
-        mock_hass.data = {DOMAIN: {"entry1": {"config": {}}}}
-
-        result = _get_ingresses_list_data(mock_hass)
-
-        assert result["clusters"] == []
-
-    def test_skips_metadata_keys(self, mock_hass):
-        """Test skips panel_registered and switch_add_entities keys."""
-        coordinator = _make_coordinator(
-            {
-                "ingresses": {
-                    "default_web": {
-                        "name": "web",
-                        "namespace": "default",
-                        "urls": ["https://example.com/"],
-                    }
-                },
-                "nodes": {},
-                "pods": {},
-                "deployments": {},
-                "statefulsets": {},
-                "daemonsets": {},
-                "cronjobs": {},
-                "jobs": {},
-                "pods_count": 0,
-                "nodes_count": 0,
-                "last_update": 0.0,
-            }
-        )
-        mock_hass.data = {
-            DOMAIN: {
-                "panel_registered": True,
-                "switch_add_entities": MagicMock(),
-                "entry1": {
-                    "coordinator": coordinator,
-                    "config": {"cluster_name": "test"},
-                },
-            }
-        }
-
-        result = _get_ingresses_list_data(mock_hass)
-
-        assert len(result["clusters"]) == 1
 
     def test_multi_cluster(self, mock_hass):
         """Test returns ingresses from multiple clusters."""
@@ -1191,18 +951,11 @@ class TestWebsocketIngressesList:
                 "last_update": 0.0,
             }
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "cluster-a"},
-                    "coordinator": coordinator_1,
-                },
-                "entry_2": {
-                    "config": {"cluster_name": "cluster-b"},
-                    "coordinator": coordinator_2,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", coordinator_1, {"cluster_name": "cluster-a"}),
+            _make_entry("entry_2", coordinator_2, {"cluster_name": "cluster-b"}),
+        )
 
         result = _get_ingresses_list_data(mock_hass)
 
@@ -1214,35 +967,35 @@ class TestWebsocketIngressesList:
 class TestWebsocketConfigList:
     """Tests for the kubernetes/config/list command logic."""
 
-    def test_returns_empty_when_no_domain_data(self, mock_hass):
-        """Test returns empty entries list when no DOMAIN data."""
-        mock_hass.data = {}
+    def test_returns_empty_when_no_entries(self, mock_hass):
+        """Test returns empty entries list when no entries are loaded."""
+        _load_entries(mock_hass)
         result = _get_config_list_data(mock_hass)
         assert result == {"entries": []}
 
     def test_returns_config_for_entry(self, mock_hass, sample_coordinator_data):
         """Test returns sanitized config for a cluster entry."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {
-                        "cluster_name": "test-cluster",
-                        "host": "192.168.1.100",
-                        "port": 6443,
-                        "api_token": "secret-token-should-not-appear",
-                        "verify_ssl": True,
-                        "monitor_all_namespaces": False,
-                        "namespace": ["default", "production"],
-                        "device_grouping_mode": "namespace",
-                        "switch_update_interval": 60,
-                        "scale_verification_timeout": 30,
-                        "scale_cooldown": 10,
-                    },
-                    "coordinator": coordinator,
+        _load_entries(
+            mock_hass,
+            _make_entry(
+                "entry_1",
+                coordinator,
+                {
+                    "cluster_name": "test-cluster",
+                    "host": "192.168.1.100",
+                    "port": 6443,
+                    "api_token": "secret-token-should-not-appear",
+                    "verify_ssl": True,
+                    "monitor_all_namespaces": False,
+                    "namespace": ["default", "production"],
+                    "device_grouping_mode": "namespace",
+                    "switch_update_interval": 60,
+                    "scale_verification_timeout": 30,
+                    "scale_cooldown": 10,
                 },
-            }
-        }
+            ),
+        )
 
         result = _get_config_list_data(mock_hass)
 
@@ -1266,17 +1019,16 @@ class TestWebsocketConfigList:
 
     def test_watch_enabled_from_options(self, mock_hass, sample_coordinator_data):
         """Test watch_enabled reflects config entry options."""
-        coordinator = _make_coordinator(
-            sample_coordinator_data, options={"enable_watch": True}
+        coordinator = _make_coordinator(sample_coordinator_data)
+        _load_entries(
+            mock_hass,
+            _make_entry(
+                "entry_1",
+                coordinator,
+                {"cluster_name": "test"},
+                options={"enable_watch": True},
+            ),
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
 
         result = _get_config_list_data(mock_hass)
         assert result["entries"][0]["watch_enabled"] is True
@@ -1286,17 +1038,17 @@ class TestWebsocketConfigList:
     ):
         """Test namespace string is converted to a list."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {
-                        "cluster_name": "test",
-                        "namespace": "default",
-                    },
-                    "coordinator": coordinator,
+        _load_entries(
+            mock_hass,
+            _make_entry(
+                "entry_1",
+                coordinator,
+                {
+                    "cluster_name": "test",
+                    "namespace": "default",
                 },
-            }
-        }
+            ),
+        )
 
         result = _get_config_list_data(mock_hass)
         assert result["entries"][0]["namespaces"] == ["default"]
@@ -1306,14 +1058,7 @@ class TestWebsocketConfigList:
     ):
         """Test default values are used when config keys are missing."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(mock_hass, _make_entry("entry_1", coordinator))
 
         result = _get_config_list_data(mock_hass)
         entry = result["entries"][0]
@@ -1327,36 +1072,6 @@ class TestWebsocketConfigList:
         assert entry["switch_update_interval"] == 60
         assert entry["scale_verification_timeout"] == 30
         assert entry["scale_cooldown"] == 10
-
-    def test_skips_metadata_keys(self, mock_hass, sample_coordinator_data):
-        """Test skips panel_registered and switch_add_entities keys."""
-        coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "panel_registered": True,
-                "switch_add_entities": MagicMock(),
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
-
-        result = _get_config_list_data(mock_hass)
-        assert len(result["entries"]) == 1
-
-    def test_skips_entries_without_coordinator(self, mock_hass):
-        """Test skips entries that have no coordinator."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                },
-            }
-        }
-
-        result = _get_config_list_data(mock_hass)
-        assert len(result["entries"]) == 0
 
 
 class TestBuildNamespaceBreakdownEdgeCases:
@@ -1914,69 +1629,12 @@ class TestBuildAlertsEdgeCases:
 class TestHandlersEdgeCases:
     """Edge-case tests for WebSocket command handler data functions."""
 
-    def test_overview_skips_non_dict_entry_data(self, mock_hass):
-        """Test _get_cluster_overview_data skips non-dict entry values."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": "not_a_dict",
-                "entry_2": 42,
-                "entry_3": None,
-            }
-        }
-        result = _get_cluster_overview_data(mock_hass)
-        assert result == {"clusters": []}
-
-    def test_nodes_list_skips_non_dict_entry_data(self, mock_hass):
-        """Test _get_nodes_list_data skips non-dict entry values."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": "string_value",
-            }
-        }
-        result = _get_nodes_list_data(mock_hass)
-        assert result == {"clusters": []}
-
-    def test_pods_list_skips_non_dict_entry_data(self, mock_hass):
-        """Test _get_pods_list_data skips non-dict entry values."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": 123,
-            }
-        }
-        result = _get_pods_list_data(mock_hass)
-        assert result == {"clusters": []}
-
-    def test_workloads_list_skips_non_dict_entry_data(self, mock_hass):
-        """Test _get_workloads_list_data skips non-dict entry values."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": ["a", "list"],
-            }
-        }
-        result = _get_workloads_list_data(mock_hass)
-        assert result == {"clusters": []}
-
-    def test_config_list_skips_non_dict_entry_data(self, mock_hass):
-        """Test _get_config_list_data skips non-dict entry values."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": "nope",
-            }
-        }
-        result = _get_config_list_data(mock_hass)
-        assert result == {"entries": []}
-
     def test_overview_coordinator_with_empty_dict_data(self, mock_hass):
         """Test overview handles coordinator.data being an empty dict."""
         coordinator = _make_coordinator({})
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "empty"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "empty"})
+        )
         result = _get_cluster_overview_data(mock_hass)
         # Empty dict is truthy, so it goes through the normal path
         cluster = result["clusters"][0]
@@ -1991,42 +1649,27 @@ class TestHandlersEdgeCases:
     def test_nodes_list_empty_nodes_dict(self, mock_hass):
         """Test nodes list returns empty list when nodes dict is empty."""
         coordinator = _make_coordinator({"nodes": {}})
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "empty"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "empty"})
+        )
         result = _get_nodes_list_data(mock_hass)
         assert result["clusters"][0]["nodes"] == []
 
     def test_pods_list_empty_pods_dict(self, mock_hass):
         """Test pods list returns empty list when pods dict is empty."""
         coordinator = _make_coordinator({"pods": {}})
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "empty"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "empty"})
+        )
         result = _get_pods_list_data(mock_hass)
         assert result["clusters"][0]["pods"] == []
 
     def test_workloads_list_empty_data(self, mock_hass):
         """Test workloads list with empty coordinator data dict."""
         coordinator = _make_coordinator({})
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "empty"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "empty"})
+        )
         result = _get_workloads_list_data(mock_hass)
         cluster = result["clusters"][0]
         assert cluster["deployments"] == []
@@ -2038,14 +1681,7 @@ class TestHandlersEdgeCases:
     def test_overview_missing_config_key(self, mock_hass):
         """Test overview when entry_data has no 'config' key."""
         coordinator = _make_coordinator(None)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "coordinator": coordinator,
-                    # no "config" key
-                },
-            }
-        }
+        _load_entries(mock_hass, _make_entry("entry_1", coordinator))
         result = _get_cluster_overview_data(mock_hass)
         cluster = result["clusters"][0]
         # config.get() on empty dict returns defaults
@@ -2054,54 +1690,23 @@ class TestHandlersEdgeCases:
     def test_nodes_list_missing_config_key(self, mock_hass):
         """Test nodes list uses default cluster name when config is missing."""
         coordinator = _make_coordinator({"nodes": {"n1": {"name": "n1"}}})
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(mock_hass, _make_entry("entry_1", coordinator))
         result = _get_nodes_list_data(mock_hass)
         assert result["clusters"][0]["cluster_name"] == "default"
 
     def test_pods_list_missing_config_key(self, mock_hass):
         """Test pods list uses default cluster name when config is missing."""
         coordinator = _make_coordinator({"pods": {}})
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(mock_hass, _make_entry("entry_1", coordinator))
         result = _get_pods_list_data(mock_hass)
         assert result["clusters"][0]["cluster_name"] == "default"
 
     def test_workloads_list_missing_config_key(self, mock_hass):
         """Test workloads list uses default cluster name when config is missing."""
         coordinator = _make_coordinator({"deployments": {}})
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(mock_hass, _make_entry("entry_1", coordinator))
         result = _get_workloads_list_data(mock_hass)
         assert result["clusters"][0]["cluster_name"] == "default"
-
-    def test_overview_with_coordinator_none_in_entry(self, mock_hass):
-        """Test overview skips entry where coordinator key exists but is None."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": None,
-                },
-            }
-        }
-        result = _get_cluster_overview_data(mock_hass)
-        assert result == {"clusters": []}
 
 
 class TestConfigListEdgeCases:
@@ -2109,31 +1714,25 @@ class TestConfigListEdgeCases:
 
     def test_panel_enabled_from_options(self, mock_hass, sample_coordinator_data):
         """Test panel_enabled reflects config entry options."""
-        coordinator = _make_coordinator(
-            sample_coordinator_data, options={"enable_panel": False}
+        coordinator = _make_coordinator(sample_coordinator_data)
+        _load_entries(
+            mock_hass,
+            _make_entry(
+                "entry_1",
+                coordinator,
+                {"cluster_name": "test"},
+                options={"enable_panel": False},
+            ),
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
         result = _get_config_list_data(mock_hass)
         assert result["entries"][0]["panel_enabled"] is False
 
     def test_panel_enabled_defaults_to_true(self, mock_hass, sample_coordinator_data):
         """Test panel_enabled defaults to True when not in options."""
-        coordinator = _make_coordinator(sample_coordinator_data, options={})
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        coordinator = _make_coordinator(sample_coordinator_data)
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
         result = _get_config_list_data(mock_hass)
         assert result["entries"][0]["panel_enabled"] is True
 
@@ -2144,14 +1743,9 @@ class TestConfigListEdgeCases:
         coordinator = _make_coordinator(
             sample_coordinator_data, last_update_success=False
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
         result = _get_config_list_data(mock_hass)
         assert result["entries"][0]["healthy"] is False
 
@@ -2160,55 +1754,52 @@ class TestConfigListEdgeCases:
     ):
         """Test namespaces is empty list when namespace key is missing from config."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {
-                        "cluster_name": "test",
-                        # no "namespace" key
-                    },
-                    "coordinator": coordinator,
+        _load_entries(
+            mock_hass,
+            _make_entry(
+                "entry_1",
+                coordinator,
+                {
+                    "cluster_name": "test",
                 },
-            }
-        }
+            ),
+        )
         result = _get_config_list_data(mock_hass)
         assert result["entries"][0]["namespaces"] == []
 
     def test_namespace_list_stays_as_list(self, mock_hass, sample_coordinator_data):
         """Test namespace list value is passed through unchanged."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {
-                        "cluster_name": "test",
-                        "namespace": ["ns-a", "ns-b", "ns-c"],
-                    },
-                    "coordinator": coordinator,
+        _load_entries(
+            mock_hass,
+            _make_entry(
+                "entry_1",
+                coordinator,
+                {
+                    "cluster_name": "test",
+                    "namespace": ["ns-a", "ns-b", "ns-c"],
                 },
-            }
-        }
+            ),
+        )
         result = _get_config_list_data(mock_hass)
         assert result["entries"][0]["namespaces"] == ["ns-a", "ns-b", "ns-c"]
 
     def test_multiple_entries_returned(self, mock_hass, sample_coordinator_data):
         """Test multiple config entries are all returned."""
         coord_1 = _make_coordinator(sample_coordinator_data)
-        coord_2 = _make_coordinator(
-            sample_coordinator_data, options={"enable_watch": True}
+        coord_2 = _make_coordinator(sample_coordinator_data)
+        _load_entries(
+            mock_hass,
+            _make_entry(
+                "entry_1", coord_1, {"cluster_name": "cluster-a", "host": "10.0.0.1"}
+            ),
+            _make_entry(
+                "entry_2",
+                coord_2,
+                {"cluster_name": "cluster-b", "host": "10.0.0.2"},
+                options={"enable_watch": True},
+            ),
         )
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "cluster-a", "host": "10.0.0.1"},
-                    "coordinator": coord_1,
-                },
-                "entry_2": {
-                    "config": {"cluster_name": "cluster-b", "host": "10.0.0.2"},
-                    "coordinator": coord_2,
-                },
-            }
-        }
         result = _get_config_list_data(mock_hass)
         assert len(result["entries"]) == 2
         names = {e["cluster_name"] for e in result["entries"]}
@@ -2221,14 +1812,7 @@ class TestConfigListEdgeCases:
     def test_config_list_missing_config_key(self, mock_hass, sample_coordinator_data):
         """Test config list uses defaults when config dict is missing."""
         coordinator = _make_coordinator(sample_coordinator_data)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "coordinator": coordinator,
-                    # no "config" key
-                },
-            }
-        }
+        _load_entries(mock_hass, _make_entry("entry_1", coordinator))
         result = _get_config_list_data(mock_hass)
         entry = result["entries"][0]
         assert entry["cluster_name"] == "default"
@@ -2274,14 +1858,10 @@ class TestSameNameDifferentNamespace:
         }
 
     def _hass_with(self, mock_hass, data):
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": _make_coordinator(data),
-                },
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry_1", _make_coordinator(data), {"cluster_name": "test"}),
+        )
         return mock_hass
 
     def test_overview_counts_both_statefulsets(self, mock_hass, colliding_data):
@@ -2320,14 +1900,9 @@ class TestWebsocketDeletePod:
         coordinator.client = mock_client
         coordinator.async_request_refresh = AsyncMock()
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2351,14 +1926,9 @@ class TestWebsocketDeletePod:
         coordinator = _make_coordinator(sample_coordinator_data)
         coordinator.client = mock_client
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2379,7 +1949,7 @@ class TestWebsocketDeletePod:
 
     async def test_delete_pod_entry_not_found(self, mock_hass):
         """Test pod deletion with invalid entry_id."""
-        mock_hass.data = {DOMAIN: {}}
+        _load_entries(mock_hass)
 
         connection = MagicMock()
         msg = {
@@ -2396,32 +1966,6 @@ class TestWebsocketDeletePod:
             1, "not_found", "Config entry not found"
         )
 
-    async def test_delete_pod_no_coordinator(self, mock_hass):
-        """Test pod deletion when coordinator is missing."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    # No coordinator
-                },
-            }
-        }
-
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/pods/delete",
-            "entry_id": "entry_1",
-            "pod_name": "test-pod",
-            "namespace": "default",
-        }
-
-        await _handle_delete_pod(mock_hass, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            1, "not_found", "Coordinator not found"
-        )
-
 
 class TestWebsocketDeleteJob:
     """Tests for the kubernetes/jobs/delete command."""
@@ -2434,14 +1978,9 @@ class TestWebsocketDeleteJob:
         coordinator.client = mock_client
         coordinator.async_request_refresh = AsyncMock()
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2465,14 +2004,9 @@ class TestWebsocketDeleteJob:
         coordinator = _make_coordinator(sample_coordinator_data)
         coordinator.client = mock_client
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2493,7 +2027,7 @@ class TestWebsocketDeleteJob:
 
     async def test_delete_job_entry_not_found(self, mock_hass):
         """Test job deletion with invalid entry_id."""
-        mock_hass.data = {DOMAIN: {}}
+        _load_entries(mock_hass)
 
         connection = MagicMock()
         msg = {
@@ -2510,32 +2044,6 @@ class TestWebsocketDeleteJob:
             1, "not_found", "Config entry not found"
         )
 
-    async def test_delete_job_no_coordinator(self, mock_hass):
-        """Test job deletion when coordinator is missing."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    # No coordinator
-                },
-            }
-        }
-
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/jobs/delete",
-            "entry_id": "entry_1",
-            "job_name": "test-job",
-            "namespace": "default",
-        }
-
-        await _handle_delete_job(mock_hass, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            1, "not_found", "Coordinator not found"
-        )
-
 
 class TestWebsocketRestartWorkload:
     """Tests for the kubernetes/workloads/restart command."""
@@ -2548,14 +2056,9 @@ class TestWebsocketRestartWorkload:
         coordinator.client = mock_client
         coordinator.async_request_refresh = AsyncMock()
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2585,14 +2088,9 @@ class TestWebsocketRestartWorkload:
         coordinator.client = mock_client
         coordinator.async_request_refresh = AsyncMock()
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2619,14 +2117,9 @@ class TestWebsocketRestartWorkload:
         coordinator.client = mock_client
         coordinator.async_request_refresh = AsyncMock()
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2652,14 +2145,9 @@ class TestWebsocketRestartWorkload:
         coordinator = _make_coordinator(sample_coordinator_data)
         coordinator.client = mock_client
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2681,7 +2169,7 @@ class TestWebsocketRestartWorkload:
 
     async def test_restart_workload_entry_not_found(self, mock_hass):
         """Test restart with missing entry_id returns error."""
-        mock_hass.data = {DOMAIN: {}}
+        _load_entries(mock_hass)
 
         connection = MagicMock()
         msg = {
@@ -2699,34 +2187,6 @@ class TestWebsocketRestartWorkload:
             1, "not_found", "Config entry not found"
         )
 
-    async def test_restart_workload_coordinator_not_found(
-        self, mock_hass, sample_coordinator_data
-    ):
-        """Test restart with missing coordinator returns error."""
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                },
-            }
-        }
-
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/workloads/restart",
-            "entry_id": "entry_1",
-            "workload_name": "nginx",
-            "namespace": "default",
-            "workload_type": "Deployment",
-        }
-
-        await _handle_restart_workload(mock_hass, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            1, "not_found", "Coordinator not found"
-        )
-
     async def test_restart_workload_invalid_type(
         self, mock_hass, sample_coordinator_data
     ):
@@ -2735,14 +2195,9 @@ class TestWebsocketRestartWorkload:
         coordinator = _make_coordinator(sample_coordinator_data)
         coordinator.client = mock_client
 
-        mock_hass.data = {
-            DOMAIN: {
-                "entry_1": {
-                    "config": {"cluster_name": "test"},
-                    "coordinator": coordinator,
-                },
-            }
-        }
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
 
         connection = MagicMock()
         msg = {
@@ -2787,9 +2242,7 @@ class TestWebsocketSubscribeUpdates:
         """Test that subscribing acks and hooks the coordinator."""
         listeners = []
         coordinator = self._make_listening_coordinator(listeners)
-        mock_hass.data = {
-            DOMAIN: {"entry1": {"coordinator": coordinator, "config": {}}}
-        }
+        _load_entries(mock_hass, _make_entry("entry1", coordinator))
         connection = self._make_connection()
         msg = {"id": 42, "type": "kubernetes/subscribe_updates"}
 
@@ -2803,9 +2256,7 @@ class TestWebsocketSubscribeUpdates:
         """Test that a coordinator update pushes an 'updated' event."""
         listeners = []
         coordinator = self._make_listening_coordinator(listeners)
-        mock_hass.data = {
-            DOMAIN: {"entry1": {"coordinator": coordinator, "config": {}}}
-        }
+        _load_entries(mock_hass, _make_entry("entry1", coordinator))
         connection = self._make_connection()
         msg = {"id": 42, "type": "kubernetes/subscribe_updates"}
 
@@ -2822,12 +2273,11 @@ class TestWebsocketSubscribeUpdates:
         listeners = []
         coordinator_a = self._make_listening_coordinator(listeners)
         coordinator_b = self._make_listening_coordinator(listeners)
-        mock_hass.data = {
-            DOMAIN: {
-                "entry1": {"coordinator": coordinator_a, "config": {}},
-                "entry2": {"coordinator": coordinator_b, "config": {}},
-            }
-        }
+        _load_entries(
+            mock_hass,
+            _make_entry("entry1", coordinator_a),
+            _make_entry("entry2", coordinator_b),
+        )
         connection = self._make_connection()
         msg = {"id": 7, "type": "kubernetes/subscribe_updates"}
 
@@ -2839,7 +2289,7 @@ class TestWebsocketSubscribeUpdates:
 
     def test_subscribe_with_no_entries(self, mock_hass):
         """Test subscribing when no config entries exist."""
-        mock_hass.data = {DOMAIN: {"panel_registered": True}}
+        _load_entries(mock_hass)
         connection = self._make_connection()
         msg = {"id": 1, "type": "kubernetes/subscribe_updates"}
 
@@ -2847,13 +2297,3 @@ class TestWebsocketSubscribeUpdates:
 
         connection.send_result.assert_called_once_with(1)
         connection.send_message.assert_not_called()
-
-    def test_skips_entry_without_coordinator(self, mock_hass):
-        """Test that entries lacking a coordinator are skipped."""
-        mock_hass.data = {DOMAIN: {"entry1": {"config": {}}}}
-        connection = self._make_connection()
-        msg = {"id": 1, "type": "kubernetes/subscribe_updates"}
-
-        _handle_subscribe_updates(mock_hass, connection, msg)
-
-        connection.send_result.assert_called_once_with(1)

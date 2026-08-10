@@ -14,12 +14,11 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 
 from .const import (
     ATTR_WORKLOAD_TYPE,
-    DOMAIN,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_JOB,
     WORKLOAD_TYPE_POD,
 )
-from .coordinator import KubernetesDataCoordinator
+from .coordinator import KubernetesConfigEntry, KubernetesDataCoordinator
 from .device import get_cluster_device_info, get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,14 +29,15 @@ PARALLEL_UPDATES = 0
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: KubernetesConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Kubernetes sensors based on a config entry."""
     try:
-        # Get the coordinator and client from hass.data
-        coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
-        client = hass.data[DOMAIN][config_entry.entry_id]["client"]
+        # Get the coordinator and client from the entry's runtime data
+        entry_data = config_entry.runtime_data
+        coordinator = entry_data.coordinator
+        client = entry_data.client
 
         # Create sensors for different Kubernetes resources
         sensors = [
@@ -182,17 +182,10 @@ async def async_setup_entry(
 
         async_add_entities(sensors)
 
-        # Store the add_entities callback for dynamic entity management
-        if DOMAIN not in hass.data:
-            hass.data[DOMAIN] = {}
-        if config_entry.entry_id not in hass.data[DOMAIN]:
-            hass.data[DOMAIN][config_entry.entry_id] = {}
-        hass.data[DOMAIN][config_entry.entry_id]["sensor_add_entities"] = (
-            async_add_entities
-        )
-        # Track unique_ids we've already passed to add_entities_callback to avoid
-        # re-adding entities that haven't been registered in the entity registry yet.
-        hass.data[DOMAIN][config_entry.entry_id]["sensor_pending_unique_ids"] = set()
+        # Store the add_entities callback for dynamic entity management.
+        # entry_data.sensor_pending_unique_ids tracks unique_ids already passed
+        # to the callback but not yet in the entity registry.
+        entry_data.sensor_add_entities = async_add_entities
 
         # Set up listener for adding new entities dynamically
         @callback
@@ -409,7 +402,7 @@ def _discover_new_job_sensors(
 
 async def _async_discover_and_add_new_sensors(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: KubernetesConfigEntry,
     coordinator: KubernetesDataCoordinator,
     client: Any,
 ) -> None:
@@ -418,8 +411,8 @@ async def _async_discover_and_add_new_sensors(
         entity_registry = async_get_entity_registry(hass)
 
         # Get the stored add_entities callback
-        sensor_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
-        add_entities_callback = sensor_data.get("sensor_add_entities")
+        entry_data = config_entry.runtime_data
+        add_entities_callback = entry_data.sensor_add_entities
         if not add_entities_callback:
             _LOGGER.warning(
                 "No add_entities callback found for dynamic sensor management"
@@ -434,7 +427,7 @@ async def _async_discover_and_add_new_sensors(
         existing_unique_ids = {
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
-        pending_ids: set[str] = sensor_data.get("sensor_pending_unique_ids", set())
+        pending_ids = entry_data.sensor_pending_unique_ids
         # Prune IDs that are now in the registry — keeps the set bounded
         pending_ids -= existing_unique_ids
         existing_unique_ids |= pending_ids

@@ -6,6 +6,7 @@ import asyncio
 from datetime import timedelta
 from unittest.mock import MagicMock
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -15,6 +16,7 @@ from custom_components.kubernetes.const import (
     CONF_CA_CERT,
     DOMAIN,
 )
+from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.diagnostics import (
     async_get_config_entry_diagnostics,
 )
@@ -60,6 +62,7 @@ def populated_entry(hass: HomeAssistant) -> MockConfigEntry:
             "verify_ssl": True,
         },
         options={"enable_panel": True, "enable_watch": False},
+        state=ConfigEntryState.LOADED,
     )
     entry.add_to_hass(hass)
 
@@ -77,11 +80,9 @@ def populated_entry(hass: HomeAssistant) -> MockConfigEntry:
             "last_update": 1_700_000_000.0,
         }
     )
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
-        "coordinator": coordinator,
-        "client": _make_client(),
-        "config": entry.data,
-    }
+    entry.runtime_data = KubernetesEntryData(
+        config=entry.data, client=_make_client(), coordinator=coordinator
+    )
     return entry
 
 
@@ -148,6 +149,7 @@ async def test_diagnostics_handles_empty_coordinator(hass: HomeAssistant):
         title="Empty cluster",
         data={"host": "h", "port": 6443, CONF_API_TOKEN: "t"},
         options={},
+        state=ConfigEntryState.LOADED,
     )
     entry.add_to_hass(hass)
 
@@ -157,11 +159,9 @@ async def test_diagnostics_handles_empty_coordinator(hass: HomeAssistant):
     client = _make_client()
     client.ca_cert = None
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
-        "coordinator": coordinator,
-        "client": client,
-        "config": entry.data,
-    }
+    entry.runtime_data = KubernetesEntryData(
+        config=entry.data, client=client, coordinator=coordinator
+    )
 
     result = await async_get_config_entry_diagnostics(hass, entry)
 
@@ -178,7 +178,7 @@ async def test_diagnostics_counts_active_watch_tasks(
     hass: HomeAssistant, populated_entry: MockConfigEntry
 ):
     """Active vs total watch task counts are reported separately."""
-    coordinator = hass.data[DOMAIN][populated_entry.entry_id]["coordinator"]
+    coordinator = populated_entry.runtime_data.coordinator
 
     done_task = MagicMock(spec=asyncio.Task)
     done_task.done.return_value = True
@@ -192,7 +192,7 @@ async def test_diagnostics_counts_active_watch_tasks(
 
 
 async def test_diagnostics_handles_setup_failure(hass: HomeAssistant):
-    """If setup never populated hass.data, diagnostics still returns useful output."""
+    """If setup never completed, diagnostics still returns useful output."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         entry_id="not_loaded_entry",
@@ -205,7 +205,7 @@ async def test_diagnostics_handles_setup_failure(hass: HomeAssistant):
         options={},
     )
     entry.add_to_hass(hass)
-    # Deliberately do NOT populate hass.data[DOMAIN][entry.entry_id].
+    # Deliberately leave the entry in the NOT_LOADED state (no runtime_data).
 
     result = await async_get_config_entry_diagnostics(hass, entry)
 

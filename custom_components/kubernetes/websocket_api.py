@@ -33,15 +33,23 @@ from .const import (
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
-    DOMAIN,
-    DOMAIN_META_KEYS,
     WORKLOAD_TYPE_DAEMONSET,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
-from .coordinator import KubernetesDataCoordinator
+from .coordinator import KubernetesDataCoordinator, get_loaded_entries
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _get_coordinator(
+    hass: HomeAssistant, entry_id: str
+) -> KubernetesDataCoordinator | None:
+    """Return the coordinator of a loaded config entry, or None."""
+    for entry in get_loaded_entries(hass):
+        if entry.entry_id == entry_id:
+            return entry.runtime_data.coordinator
+    return None
 
 
 @callback
@@ -121,20 +129,13 @@ async def websocket_ingresses_list(
 
 def _get_cluster_overview_data(hass: HomeAssistant) -> dict[str, Any]:
     """Gather cluster overview data from all config entries."""
-    domain_data = hass.data.get(DOMAIN, {})
     clusters: list[dict[str, Any]] = []
 
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS:
-            continue
-        if not isinstance(entry_data, dict):
-            continue
-
-        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
-        config: dict[str, Any] = entry_data.get("config", {})
-
-        if coordinator is None:
-            continue
+    for entry in get_loaded_entries(hass):
+        entry_id = entry.entry_id
+        entry_data = entry.runtime_data
+        coordinator = entry_data.coordinator
+        config = entry_data.config
 
         cluster_info = _build_cluster_overview(entry_id, config, coordinator)
         clusters.append(cluster_info)
@@ -345,20 +346,13 @@ def _empty_alerts() -> dict[str, list]:
 
 def _get_nodes_list_data(hass: HomeAssistant) -> dict[str, Any]:
     """Gather node data from all config entries."""
-    domain_data = hass.data.get(DOMAIN, {})
     clusters: list[dict[str, Any]] = []
 
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS:
-            continue
-        if not isinstance(entry_data, dict):
-            continue
-
-        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
-        config: dict[str, Any] = entry_data.get("config", {})
-
-        if coordinator is None:
-            continue
+    for entry in get_loaded_entries(hass):
+        entry_id = entry.entry_id
+        entry_data = entry.runtime_data
+        coordinator = entry_data.coordinator
+        config = entry_data.config
 
         data = coordinator.data
         nodes_list: list[dict[str, Any]] = []
@@ -378,20 +372,13 @@ def _get_nodes_list_data(hass: HomeAssistant) -> dict[str, Any]:
 
 def _get_pods_list_data(hass: HomeAssistant) -> dict[str, Any]:
     """Gather pod data from all config entries."""
-    domain_data = hass.data.get(DOMAIN, {})
     clusters: list[dict[str, Any]] = []
 
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS:
-            continue
-        if not isinstance(entry_data, dict):
-            continue
-
-        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
-        config: dict[str, Any] = entry_data.get("config", {})
-
-        if coordinator is None:
-            continue
+    for entry in get_loaded_entries(hass):
+        entry_id = entry.entry_id
+        entry_data = entry.runtime_data
+        coordinator = entry_data.coordinator
+        config = entry_data.config
 
         data = coordinator.data
         pods_list: list[dict[str, Any]] = []
@@ -411,20 +398,13 @@ def _get_pods_list_data(hass: HomeAssistant) -> dict[str, Any]:
 
 def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
     """Gather workload data from all config entries."""
-    domain_data = hass.data.get(DOMAIN, {})
     clusters: list[dict[str, Any]] = []
 
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS:
-            continue
-        if not isinstance(entry_data, dict):
-            continue
-
-        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
-        config: dict[str, Any] = entry_data.get("config", {})
-
-        if coordinator is None:
-            continue
+    for entry in get_loaded_entries(hass):
+        entry_id = entry.entry_id
+        entry_data = entry.runtime_data
+        coordinator = entry_data.coordinator
+        config = entry_data.config
 
         data = coordinator.data
 
@@ -458,20 +438,13 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
 
 def _get_ingresses_list_data(hass: HomeAssistant) -> dict[str, Any]:
     """Gather ingress data from all config entries."""
-    domain_data = hass.data.get(DOMAIN, {})
     clusters: list[dict[str, Any]] = []
 
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS:
-            continue
-        if not isinstance(entry_data, dict):
-            continue
-
-        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
-        config: dict[str, Any] = entry_data.get("config", {})
-
-        if coordinator is None:
-            continue
+    for entry in get_loaded_entries(hass):
+        entry_id = entry.entry_id
+        entry_data = entry.runtime_data
+        coordinator = entry_data.coordinator
+        config = entry_data.config
 
         data = coordinator.data
         ingresses_list: list[dict[str, Any]] = []
@@ -518,16 +491,9 @@ async def _handle_delete_pod(
     pod_name = msg["pod_name"]
     namespace = msg["namespace"]
 
-    domain_data = hass.data.get(DOMAIN, {})
-    entry_data = domain_data.get(entry_id)
-
-    if not isinstance(entry_data, dict):
-        connection.send_error(msg["id"], "not_found", "Config entry not found")
-        return
-
-    coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+    coordinator = _get_coordinator(hass, entry_id)
     if coordinator is None:
-        connection.send_error(msg["id"], "not_found", "Coordinator not found")
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
         return
 
     client = coordinator.client
@@ -574,16 +540,9 @@ async def _handle_delete_job(
     job_name = msg["job_name"]
     namespace = msg["namespace"]
 
-    domain_data = hass.data.get(DOMAIN, {})
-    entry_data = domain_data.get(entry_id)
-
-    if not isinstance(entry_data, dict):
-        connection.send_error(msg["id"], "not_found", "Config entry not found")
-        return
-
-    coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+    coordinator = _get_coordinator(hass, entry_id)
     if coordinator is None:
-        connection.send_error(msg["id"], "not_found", "Coordinator not found")
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
         return
 
     client = coordinator.client
@@ -615,27 +574,16 @@ async def websocket_config_list(
 
 def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
     """Gather config entry data from all entries, excluding secrets."""
-    domain_data = hass.data.get(DOMAIN, {})
     entries: list[dict[str, Any]] = []
 
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS:
-            continue
-        if not isinstance(entry_data, dict):
-            continue
+    for entry in get_loaded_entries(hass):
+        entry_id = entry.entry_id
+        entry_data = entry.runtime_data
+        coordinator = entry_data.coordinator
+        config = entry_data.config
 
-        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
-        config: dict[str, Any] = entry_data.get("config", {})
-
-        if coordinator is None:
-            continue
-
-        panel_enabled = coordinator.config_entry.options.get(
-            CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL
-        )
-        watch_enabled = coordinator.config_entry.options.get(
-            CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH
-        )
+        panel_enabled = entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL)
+        watch_enabled = entry.options.get(CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH)
 
         namespaces = config.get(CONF_NAMESPACE, [])
         if isinstance(namespaces, str):
@@ -711,16 +659,9 @@ async def _handle_restart_workload(
     namespace = msg["namespace"]
     workload_type = msg["workload_type"]
 
-    domain_data = hass.data.get(DOMAIN, {})
-    entry_data = domain_data.get(entry_id)
-
-    if not isinstance(entry_data, dict):
-        connection.send_error(msg["id"], "not_found", "Config entry not found")
-        return
-
-    coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
+    coordinator = _get_coordinator(hass, entry_id)
     if coordinator is None:
-        connection.send_error(msg["id"], "not_found", "Coordinator not found")
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
         return
 
     client = coordinator.client
@@ -778,15 +719,10 @@ def _handle_subscribe_updates(
             websocket_api.event_message(msg["id"], {"event": "updated"})
         )
 
-    unsubs: list[Callable[[], None]] = []
-    domain_data = hass.data.get(DOMAIN, {})
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS or not isinstance(entry_data, dict):
-            continue
-        coordinator: KubernetesDataCoordinator | None = entry_data.get("coordinator")
-        if coordinator is None:
-            continue
-        unsubs.append(coordinator.async_add_listener(_push_update))
+    unsubs: list[Callable[[], None]] = [
+        entry.runtime_data.coordinator.async_add_listener(_push_update)
+        for entry in get_loaded_entries(hass)
+    ]
 
     @callback
     def _unsubscribe() -> None:

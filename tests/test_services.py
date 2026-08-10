@@ -3,9 +3,11 @@
 import os
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 import yaml
 
 from custom_components.kubernetes.const import (
@@ -31,6 +33,7 @@ from custom_components.kubernetes.const import (
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
+from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.services import (
     _collect_entity_ids,
     _collect_job_names,
@@ -74,24 +77,43 @@ def mock_client():
     return client
 
 
+def _add_loaded_entry(
+    hass: HomeAssistant, entry_id: str, *, config=None, coordinator=None
+) -> MockConfigEntry:
+    """Add a config entry in the LOADED state with runtime data attached."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id=entry_id,
+        data=config or {},
+        state=ConfigEntryState.LOADED,
+    )
+    entry.add_to_hass(hass)
+    entry.runtime_data = KubernetesEntryData(
+        config=entry.data,
+        client=MagicMock(),
+        coordinator=coordinator if coordinator is not None else MagicMock(),
+    )
+    return entry
+
+
 @pytest.fixture
-def setup_domain_data(hass: HomeAssistant, mock_client) -> None:
-    """Set up hass.data with kubernetes domain data."""
+def setup_domain_data(hass: HomeAssistant, mock_client) -> MockConfigEntry:
+    """Add a loaded Kubernetes config entry with runtime data."""
     mock_coordinator = MagicMock()
     mock_coordinator.client = mock_client
     mock_coordinator.async_request_refresh = AsyncMock()
-    hass.data[DOMAIN] = {
-        "test-entry-id": {
-            "config": {
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-                "namespace": "default",
-                "verify_ssl": True,
-            },
-            "coordinator": mock_coordinator,
-        }
-    }
+    return _add_loaded_entry(
+        hass,
+        "test-entry-id",
+        config={
+            "host": "test-cluster.example.com",
+            "port": 6443,
+            "api_token": "test-token",
+            "namespace": "default",
+            "verify_ssl": True,
+        },
+        coordinator=mock_coordinator,
+    )
 
 
 class TestServiceRegistration:
@@ -332,7 +354,7 @@ class TestRestartWorkloadService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test restarting a DaemonSet using raw workload name resolution."""
-        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.data = {
             "daemonsets": {
                 "kube-system_fluentd": {
@@ -450,7 +472,7 @@ class TestRestartWorkloadService:
     ):
         """Test restart daemonset raises on failure."""
         mock_client.rollout_restart_daemonset = AsyncMock(return_value=False)
-        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.data = {
             "daemonsets": {
                 "kube-system_fluentd": {
@@ -612,7 +634,7 @@ class TestRestartWorkloadService:
             },
         )
         await async_setup_services(hass)
-        hass.data.pop(DOMAIN, None)
+        setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -1176,7 +1198,7 @@ class TestServiceHandlerEdgeCases:
             },
         )
         await async_setup_services(hass)
-        hass.data.pop(DOMAIN, None)
+        setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -1497,7 +1519,7 @@ class TestServiceHandlerEdgeCases:
             },
         )
         await async_setup_services(hass)
-        hass.data.pop(DOMAIN, None)
+        setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -1521,7 +1543,7 @@ class TestServiceHandlerEdgeCases:
             },
         )
         await async_setup_services(hass)
-        hass.data.pop(DOMAIN, None)
+        setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -1552,9 +1574,7 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "nginx", None)
         assert result == ("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)
@@ -1570,9 +1590,7 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "redis", None)
         assert result == ("redis", "cache", WORKLOAD_TYPE_STATEFULSET)
@@ -1588,9 +1606,7 @@ class TestResolveRawWorkloadName:
                 },
             }
         )
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "backup", None)
         assert result == ("backup", "default", WORKLOAD_TYPE_CRONJOB)
@@ -1610,9 +1626,7 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "fluentd", None)
         assert result == ("fluentd", "kube-system", WORKLOAD_TYPE_DAEMONSET)
@@ -1629,9 +1643,7 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "nginx", "production")
         assert result is not None
@@ -1646,53 +1658,20 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "nonexistent", None)
         assert result is None
 
-    async def test_returns_none_when_no_domain_data(self, hass: HomeAssistant):
-        """Test returns None when no DOMAIN data exists."""
-        result = _resolve_raw_workload_name(hass, "nginx", None)
-        assert result is None
-
-    async def test_skips_metadata_keys(self, hass: HomeAssistant):
-        """Test skips panel_registered and other metadata keys."""
-        coordinator = self._make_coordinator_with_data(
-            {
-                "deployments": {
-                    "default_nginx": {"name": "nginx", "namespace": "default"},
-                },
-                "statefulsets": {},
-                "cronjobs": {},
-            }
-        )
-        hass.data[DOMAIN] = {
-            "panel_registered": True,
-            "switch_add_entities": MagicMock(),
-            "entry_1": {"coordinator": coordinator},
-        }
-
-        result = _resolve_raw_workload_name(hass, "nginx", None)
-        assert result == ("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)
-
-    async def test_skips_entries_without_coordinator(self, hass: HomeAssistant):
-        """Test skips entries that have no coordinator."""
-        hass.data[DOMAIN] = {
-            "entry_1": {"config": {}},
-        }
-
+    async def test_returns_none_when_no_entries(self, hass: HomeAssistant):
+        """Test returns None when no config entry is loaded."""
         result = _resolve_raw_workload_name(hass, "nginx", None)
         assert result is None
 
     async def test_skips_coordinator_with_none_data(self, hass: HomeAssistant):
         """Test skips coordinator with None data."""
         coordinator = self._make_coordinator_with_data(None)
-        hass.data[DOMAIN] = {
-            "entry_1": {"coordinator": coordinator},
-        }
+        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "nginx", None)
         assert result is None
@@ -1701,58 +1680,38 @@ class TestResolveRawWorkloadName:
 class TestGetEntryData:
     """Tests for _get_entry_data helper."""
 
-    async def test_raises_when_no_domain_data(self, hass: HomeAssistant):
-        """Test raises when no DOMAIN data exists."""
+    async def test_raises_when_no_entries(self, hass: HomeAssistant):
+        """Test raises when no config entry is loaded."""
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             _get_entry_data(hass, {})
 
-    async def test_raises_when_only_metadata_keys(self, hass: HomeAssistant):
-        """Test raises when only metadata keys exist."""
-        hass.data[DOMAIN] = {"panel_registered": True}
+    async def test_raises_when_entry_not_loaded(self, hass: HomeAssistant):
+        """Test raises when the only entry never finished setup."""
+        MockConfigEntry(domain=DOMAIN, entry_id="entry_a").add_to_hass(hass)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             _get_entry_data(hass, {})
 
     async def test_returns_specified_entry(self, hass: HomeAssistant):
         """Test returns the entry matching entry_id."""
-        entry_a = {"config": {"host": "a"}}
-        entry_b = {"config": {"host": "b"}}
-        hass.data[DOMAIN] = {"entry_a": entry_a, "entry_b": entry_b}
+        _add_loaded_entry(hass, "entry_a", config={"host": "a"})
+        entry_b = _add_loaded_entry(hass, "entry_b", config={"host": "b"})
 
         result = _get_entry_data(hass, {"entry_id": "entry_b"})
-        assert result is entry_b
+        assert result is entry_b.runtime_data
 
     async def test_falls_back_to_first_entry(self, hass: HomeAssistant):
-        """Test falls back to first real entry when no entry_id provided."""
-        entry_a = {"config": {"host": "a"}}
-        hass.data[DOMAIN] = {"entry_a": entry_a}
+        """Test falls back to the first loaded entry when no entry_id provided."""
+        entry_a = _add_loaded_entry(hass, "entry_a", config={"host": "a"})
 
         result = _get_entry_data(hass, {})
-        assert result is entry_a
-
-    async def test_skips_metadata_keys(self, hass: HomeAssistant):
-        """Test skips metadata keys when falling back."""
-        entry_a = {"config": {"host": "a"}}
-        hass.data[DOMAIN] = {"panel_registered": True, "entry_a": entry_a}
-
-        result = _get_entry_data(hass, {})
-        assert result is entry_a
+        assert result is entry_a.runtime_data
 
     async def test_raises_on_invalid_entry_id(self, hass: HomeAssistant):
         """Test raises when entry_id doesn't match any loaded entry."""
-        hass.data[DOMAIN] = {"entry_a": {"config": {"host": "a"}}}
+        _add_loaded_entry(hass, "entry_a", config={"host": "a"})
 
         with pytest.raises(ServiceValidationError, match="nonexistent"):
             _get_entry_data(hass, {"entry_id": "nonexistent"})
-
-    async def test_raises_on_metadata_key_as_entry_id(self, hass: HomeAssistant):
-        """Test rejects metadata keys passed as entry_id."""
-        hass.data[DOMAIN] = {
-            "panel_registered": True,
-            "entry_a": {"config": {"host": "a"}},
-        }
-
-        with pytest.raises(ServiceValidationError, match="panel_registered"):
-            _get_entry_data(hass, {"entry_id": "panel_registered"})
 
 
 class TestCollectEntityIds:
@@ -2107,7 +2066,7 @@ class TestDeleteJobService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test that namespace is resolved by scanning coordinator.data['jobs'] when not provided."""
-        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.data = {
             "jobs": {
                 "resolved-ns_my-job": {"name": "my-job", "namespace": "resolved-ns"},
@@ -2133,7 +2092,7 @@ class TestDeleteJobService:
         namespace the code takes the first match from coordinator.data["jobs"].values().
         This only asserts that *a* valid match is used, not which one wins.
         """
-        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.data = {
             "jobs": {
                 "ns-a_my-job": {"name": "my-job", "namespace": "ns-a"},
@@ -2158,7 +2117,7 @@ class TestDeleteJobService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test an explicit namespace picks the matching job when two namespaces share a name."""
-        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.data = {
             "jobs": {
                 "ns-a_my-job": {"name": "my-job", "namespace": "ns-a"},
@@ -2180,7 +2139,7 @@ class TestDeleteJobService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test namespace falls back to config data when job not found in coordinator."""
-        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.data = {"jobs": {}}
 
         await async_setup_services(hass)
@@ -2207,16 +2166,18 @@ class TestDeleteJobService:
         mock_coordinator_b.client = other_client
         mock_coordinator_b.data = {"jobs": {}}
 
-        hass.data[DOMAIN] = {
-            "entry-a": {
-                "config": {"namespace": "default"},
-                "coordinator": mock_coordinator_a,
-            },
-            "entry-b": {
-                "config": {"namespace": "other"},
-                "coordinator": mock_coordinator_b,
-            },
-        }
+        _add_loaded_entry(
+            hass,
+            "entry-a",
+            config={"namespace": "default"},
+            coordinator=mock_coordinator_a,
+        )
+        _add_loaded_entry(
+            hass,
+            "entry-b",
+            config={"namespace": "other"},
+            coordinator=mock_coordinator_b,
+        )
 
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -2463,7 +2424,7 @@ class TestNodeCordonServices:
 
         mock_client.cordon_node.assert_called_once_with("node-1")
         # Nothing changed, so there is nothing to refresh
-        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.async_request_refresh.assert_not_called()
 
     async def test_cordon_client_exception_raises(
@@ -2500,5 +2461,5 @@ class TestNodeCordonServices:
         assert "node-1" in str(err.value)
         assert "node-2" not in str(err.value)
 
-        coordinator = hass.data[DOMAIN]["test-entry-id"]["coordinator"]
+        coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.async_request_refresh.assert_called_once()

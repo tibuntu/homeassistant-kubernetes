@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import timedelta
 import logging
 import random
@@ -14,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -45,6 +47,35 @@ WATCH_LEARN_MORE_URL = (
     "https://kubernetes.io/docs/reference/using-api/api-concepts/"
     "#efficient-detection-of-changes"
 )
+
+
+@dataclass
+class KubernetesEntryData:
+    """Per-config-entry runtime data (quality scale: runtime-data).
+
+    Stored on ``entry.runtime_data``; Home Assistant discards it on unload.
+    The ``*_add_entities`` callbacks and ``*_pending_unique_ids`` sets are
+    filled in by the platforms for dynamic entity discovery.
+    """
+
+    config: Mapping[str, Any]
+    client: KubernetesClient
+    coordinator: KubernetesDataCoordinator
+    sensor_add_entities: AddEntitiesCallback | None = None
+    sensor_pending_unique_ids: set[str] = field(default_factory=set)
+    binary_sensor_add_entities: AddEntitiesCallback | None = None
+    binary_sensor_pending_unique_ids: set[str] = field(default_factory=set)
+    switch_add_entities: AddEntitiesCallback | None = None
+    switch_pending_unique_ids: set[str] = field(default_factory=set)
+
+
+type KubernetesConfigEntry = ConfigEntry[KubernetesEntryData]
+
+
+@callback
+def get_loaded_entries(hass: HomeAssistant) -> list[KubernetesConfigEntry]:
+    """Return the loaded Kubernetes config entries."""
+    return hass.config_entries.async_loaded_entries(DOMAIN)
 
 
 class KubernetesDataCoordinator(DataUpdateCoordinator):

@@ -18,6 +18,7 @@ from custom_components.kubernetes.binary_sensor import (
     async_setup_entry,
 )
 from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.coordinator import KubernetesEntryData
 
 
 @pytest.fixture
@@ -68,12 +69,14 @@ def mock_coordinator():
 @pytest.fixture
 def setup_domain_data(
     hass: HomeAssistant, mock_config_entry, mock_coordinator, mock_client
-) -> None:
-    """Set up hass.data with kubernetes domain data."""
-    hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-        "coordinator": mock_coordinator,
-        "client": mock_client,
-    }
+) -> KubernetesEntryData:
+    """Attach runtime data to the config entry."""
+    mock_config_entry.runtime_data = KubernetesEntryData(
+        config=mock_config_entry.data,
+        client=mock_client,
+        coordinator=mock_coordinator,
+    )
+    return mock_config_entry.runtime_data
 
 
 class TestKubernetesBinarySensorSetup:
@@ -134,22 +137,6 @@ class TestKubernetesBinarySensorSetup:
             if isinstance(e, KubernetesNodeConditionBinarySensor)
         ]
         assert len(condition_sensors) == 8
-
-    async def test_async_setup_entry_missing_client(
-        self,
-        hass: HomeAssistant,
-        mock_config_entry,
-        mock_coordinator,
-    ):
-        """Test binary sensor setup when client is missing."""
-        hass.data.setdefault(DOMAIN, {})[mock_config_entry.entry_id] = {
-            "coordinator": mock_coordinator
-        }
-
-        mock_add_entities = MagicMock()
-
-        with pytest.raises(KeyError, match="'client'"):
-            await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
 
 class TestKubernetesBaseBinarySensor:
@@ -523,9 +510,9 @@ class TestDynamicBinarySensorDiscovery:
         mock_add_entities = MagicMock()
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
-        entry_data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        assert entry_data["binary_sensor_add_entities"] is mock_add_entities
-        assert isinstance(entry_data["binary_sensor_pending_unique_ids"], set)
+        entry_data = mock_config_entry.runtime_data
+        assert entry_data.binary_sensor_add_entities is mock_add_entities
+        assert isinstance(entry_data.binary_sensor_pending_unique_ids, set)
 
     async def test_setup_registers_coordinator_listener(
         self,
@@ -552,9 +539,8 @@ class TestDynamicBinarySensorDiscovery:
     ):
         """Test discovery adds binary sensors for a newly appeared node."""
         mock_add_entities = MagicMock()
-        entry_data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        entry_data["binary_sensor_add_entities"] = mock_add_entities
-        entry_data["binary_sensor_pending_unique_ids"] = set()
+        entry_data = mock_config_entry.runtime_data
+        entry_data.binary_sensor_add_entities = mock_add_entities
 
         # Simulate new node appearing
         mock_coordinator.data = {
@@ -586,9 +572,8 @@ class TestDynamicBinarySensorDiscovery:
     ):
         """Test discovery does not re-add nodes already in the entity registry."""
         mock_add_entities = MagicMock()
-        entry_data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        entry_data["binary_sensor_add_entities"] = mock_add_entities
-        entry_data["binary_sensor_pending_unique_ids"] = set()
+        entry_data = mock_config_entry.runtime_data
+        entry_data.binary_sensor_add_entities = mock_add_entities
 
         # Register existing entities in the registry
         registry = er.async_get(hass)
@@ -623,8 +608,8 @@ class TestDynamicBinarySensorDiscovery:
     ):
         """Test discovery does not re-add nodes in the pending set."""
         mock_add_entities = MagicMock()
-        entry_data = hass.data[DOMAIN][mock_config_entry.entry_id]
-        entry_data["binary_sensor_add_entities"] = mock_add_entities
+        entry_data = mock_config_entry.runtime_data
+        entry_data.binary_sensor_add_entities = mock_add_entities
         pending = {
             f"{mock_config_entry.entry_id}_node_pending-node_{c}"
             for c in [
@@ -634,7 +619,7 @@ class TestDynamicBinarySensorDiscovery:
                 "network_unavailable",
             ]
         }
-        entry_data["binary_sensor_pending_unique_ids"] = pending
+        entry_data.binary_sensor_pending_unique_ids = pending
 
         mock_coordinator.data = {"nodes": {"pending-node": {"memory_pressure": False}}}
 
@@ -653,9 +638,7 @@ class TestDynamicBinarySensorDiscovery:
     ):
         """Test discovery handles missing add_entities callback gracefully."""
         # Remove the callback
-        hass.data[DOMAIN][mock_config_entry.entry_id].pop(
-            "binary_sensor_add_entities", None
-        )
+        mock_config_entry.runtime_data.binary_sensor_add_entities = None
 
         mock_coordinator.data = {"nodes": {"node-1": {"memory_pressure": False}}}
 

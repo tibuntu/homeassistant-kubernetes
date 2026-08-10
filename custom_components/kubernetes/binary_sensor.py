@@ -15,8 +15,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
-from .const import DOMAIN
-from .coordinator import KubernetesDataCoordinator
+from .coordinator import KubernetesConfigEntry, KubernetesDataCoordinator
 from .device import get_cluster_device_info
 from .kubernetes_client import KubernetesClient
 
@@ -62,15 +61,15 @@ def _discover_new_node_condition_sensors(
 
 async def _async_discover_and_add_new_binary_sensors(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: KubernetesConfigEntry,
     coordinator: KubernetesDataCoordinator,
 ) -> None:
     """Discover and add new binary sensors for newly discovered nodes."""
     try:
         entity_registry = async_get_entity_registry(hass)
 
-        sensor_data = hass.data[DOMAIN].get(config_entry.entry_id, {})
-        add_entities_callback = sensor_data.get("binary_sensor_add_entities")
+        entry_data = config_entry.runtime_data
+        add_entities_callback = entry_data.binary_sensor_add_entities
         if not add_entities_callback:
             _LOGGER.warning(
                 "No add_entities callback found for dynamic binary sensor management"
@@ -83,9 +82,7 @@ async def _async_discover_and_add_new_binary_sensors(
         existing_unique_ids = {
             entity.unique_id for entity in existing_entities if entity.unique_id
         }
-        pending_ids: set[str] = sensor_data.get(
-            "binary_sensor_pending_unique_ids", set()
-        )
+        pending_ids = entry_data.binary_sensor_pending_unique_ids
         pending_ids -= existing_unique_ids
         existing_unique_ids |= pending_ids
 
@@ -106,14 +103,13 @@ async def _async_discover_and_add_new_binary_sensors(
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: KubernetesConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Kubernetes binary sensors based on a config entry."""
-    coordinator: KubernetesDataCoordinator = hass.data[DOMAIN][config_entry.entry_id][
-        "coordinator"
-    ]
-    client: KubernetesClient = hass.data[DOMAIN][config_entry.entry_id]["client"]
+    entry_data = config_entry.runtime_data
+    coordinator = entry_data.coordinator
+    client = entry_data.client
 
     # Ensure cluster device exists (coordinator already refreshed in __init__.py)
     from .device import get_or_create_cluster_device
@@ -135,11 +131,8 @@ async def async_setup_entry(
 
     async_add_entities(binary_sensors)
 
-    # Store callback and pending set for dynamic discovery
-    hass.data[DOMAIN][config_entry.entry_id]["binary_sensor_add_entities"] = (
-        async_add_entities
-    )
-    hass.data[DOMAIN][config_entry.entry_id]["binary_sensor_pending_unique_ids"] = set()
+    # Store callback for dynamic discovery
+    entry_data.binary_sensor_add_entities = async_add_entities
 
     # Set up listener for adding new entities dynamically
     @callback

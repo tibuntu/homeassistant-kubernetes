@@ -10,7 +10,6 @@ from homeassistant.components.frontend import (
     async_remove_panel,
 )
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, issue_registry as ir
@@ -24,13 +23,17 @@ from .const import (
     DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
-    DOMAIN_META_KEYS,
     PANEL_FILENAME,
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL,
 )
-from .coordinator import KubernetesDataCoordinator
+from .coordinator import (
+    KubernetesConfigEntry,
+    KubernetesDataCoordinator,
+    KubernetesEntryData,
+    get_loaded_entries,
+)
 from .kubernetes_client import KubernetesClient
 from .services import async_setup_services
 from .websocket_api import async_register_websocket_commands
@@ -58,8 +61,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -> bool:
     """Set up Kubernetes from a config entry."""
+    # hass.data[DOMAIN] only carries the integration-wide "panel_registered"
+    # flag; per-entry state lives on entry.runtime_data.
     hass.data.setdefault(DOMAIN, {})
 
     # Check if kubernetes package is available before creating client
@@ -85,11 +90,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Create and store the coordinator
     coordinator = KubernetesDataCoordinator(hass, entry, client)
-    hass.data[DOMAIN][entry.entry_id] = {
-        "config": entry.data,
-        "client": client,
-        "coordinator": coordinator,
-    }
+    entry.runtime_data = KubernetesEntryData(
+        config=entry.data,
+        client=client,
+        coordinator=coordinator,
+    )
 
     # Register or remove the sidebar panel based on the enable_panel option
     await _async_sync_panel(hass, entry)
@@ -118,7 +123,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 def _async_migrate_unique_ids(
-    hass: HomeAssistant, entry: ConfigEntry, coordinator: KubernetesDataCoordinator
+    hass: HomeAssistant,
+    entry: KubernetesConfigEntry,
+    coordinator: KubernetesDataCoordinator,
 ) -> None:
     """Migrate unique_ids that predate namespace-aware keying.
 
@@ -195,7 +202,7 @@ def _async_migrate_unique_ids(
         _LOGGER.info("Migrated %d entities to namespaced unique_ids", migrated)
 
 
-async def _async_sync_panel(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_sync_panel(hass: HomeAssistant, entry: KubernetesConfigEntry) -> None:
     """Register or remove the sidebar panel based on the enable_panel option."""
     panel_wanted = entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL)
     panel_registered = hass.data.get(DOMAIN, {}).get("panel_registered", False)
@@ -208,24 +215,21 @@ async def _async_sync_panel(hass: HomeAssistant, entry: ConfigEntry) -> None:
             _async_remove_panel(hass)
 
 
+def _loaded_entries_except(
+    hass: HomeAssistant, exclude_entry_id: str | None = None
+) -> list[KubernetesConfigEntry]:
+    """Return the loaded config entries, excluding one entry_id."""
+    return [e for e in get_loaded_entries(hass) if e.entry_id != exclude_entry_id]
+
+
 def _any_entry_wants_panel(
     hass: HomeAssistant, exclude_entry_id: str | None = None
 ) -> bool:
     """Check if any config entry (except excluded) has the panel enabled."""
-    domain_data = hass.data.get(DOMAIN, {})
-    for entry_id, entry_data in domain_data.items():
-        if entry_id in DOMAIN_META_KEYS or not isinstance(entry_data, dict):
-            continue
-        if entry_id == exclude_entry_id:
-            continue
-        coordinator = entry_data.get("coordinator")
-        if coordinator is None:
-            continue
-        if coordinator.config_entry.options.get(
-            CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL
-        ):
-            return True
-    return False
+    return any(
+        entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL)
+        for entry in _loaded_entries_except(hass, exclude_entry_id)
+    )
 
 
 async def _async_register_panel(hass: HomeAssistant) -> None:
@@ -283,12 +287,14 @@ def _async_remove_panel(hass: HomeAssistant) -> None:
     _LOGGER.info("Removed Kubernetes sidebar panel")
 
 
-async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_update_options(
+    hass: HomeAssistant, entry: KubernetesConfigEntry
+) -> None:
     """Handle options updates by reloading the config entry."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def async_remove_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -> None:
     """Clean up integration-wide repair issues when an entry is removed.
 
     Setup failures (e.g. ImportError) skip async_unload_entry, so the
@@ -298,30 +304,24 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     ir.async_delete_issue(hass, DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    coordinator: KubernetesDataCoordinator = hass.data[DOMAIN][entry.entry_id][
-        "coordinator"
-    ]
+async def async_unload_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -> bool:
+    """Unload a config entry.
+
+    ``entry.runtime_data`` is discarded by Home Assistant itself, so only the
+    integration-wide panel state needs cleaning up here.
+    """
+    coordinator = entry.runtime_data.coordinator
     await coordinator.async_stop_watch_tasks()
     coordinator.async_clear_repair_issues()
 
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        hass.data[DOMAIN].pop(entry.entry_id)
-
         # Clean up when the last config entry is removed. Services stay
         # registered for the lifetime of HA (Bronze "action-setup").
-        if _count_config_entries(hass) == 0:
+        if not _loaded_entries_except(hass, entry.entry_id):
             _async_remove_panel(hass)
             hass.data.pop(DOMAIN, None)
-        elif not _any_entry_wants_panel(hass):
+        elif not _any_entry_wants_panel(hass, exclude_entry_id=entry.entry_id):
             # Remove panel if no remaining entries want it
             _async_remove_panel(hass)
 
     return unload_ok
-
-
-def _count_config_entries(hass: HomeAssistant) -> int:
-    """Count real config entry keys in hass.data[DOMAIN], excluding metadata."""
-    domain_data = hass.data.get(DOMAIN, {})
-    return sum(1 for k in domain_data if k not in DOMAIN_META_KEYS)
