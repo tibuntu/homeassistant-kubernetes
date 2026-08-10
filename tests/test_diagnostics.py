@@ -99,7 +99,11 @@ async def test_diagnostics_basic_shape(
     assert result["entry"]["data"]["host"] == "test-cluster.example.com"
 
     # Integration flags reflect options
-    assert result["integration"] == {"panel_enabled": True, "watch_enabled": False}
+    assert result["integration"] == {
+        "panel_enabled": True,
+        "watch_enabled": False,
+        "disabled_resources": [],
+    }
 
     # Coordinator counts mirror the bucket sizes
     counts = result["coordinator"]["counts"]

@@ -11,6 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
 from custom_components.kubernetes.const import (
     ATTR_WORKLOAD_TYPE,
+    CONF_DISABLED_RESOURCES,
     DOMAIN,
     WORKLOAD_TYPE_JOB,
     WORKLOAD_TYPE_POD,
@@ -547,6 +548,177 @@ class TestSensorSetup:
 
         # Should return 0 when key is missing
         assert sensor.native_value == 0
+
+
+class TestDisabledResourceGating:
+    """Sensor setup and discovery respect the disabled_resources opt-out."""
+
+    def _entry(self, hass: HomeAssistant, disabled: list[str]) -> MockConfigEntry:
+        """Build a config entry with the given disabled resources."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_entry_id",
+            data={"cluster_name": "test-cluster"},
+            options={CONF_DISABLED_RESOURCES: disabled},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    async def test_setup_skips_counts_and_node_sensors(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """Disabling counts and nodes creates no sensors at all."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        entry = self._entry(hass, ["counts", "nodes"])
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data, client=mock_client, coordinator=mock_coordinator
+        )
+
+        mock_add_entities = AsyncMock()
+        await async_setup_entry(hass, entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        assert len(sensors) == 0
+
+    async def test_setup_skips_disabled_workload_sensors(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """Disabled workload types create neither status nor metric sensors."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}},
+            "statefulsets": {"default_db": {"name": "db", "namespace": "default"}},
+            "cronjobs": {"default_cj": {"name": "cj", "namespace": "default"}},
+            "daemonsets": {},
+            "jobs": {},
+        }
+        entry = self._entry(
+            hass, ["counts", "nodes", "deployments", "cronjobs", "metrics"]
+        )
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data, client=mock_client, coordinator=mock_coordinator
+        )
+
+        mock_add_entities = AsyncMock()
+        await async_setup_entry(hass, entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        # Only the statefulset status sensor remains: deployments and cronjobs
+        # are disabled, and metrics removes the CPU/memory sensors.
+        assert len(sensors) == 1
+        assert sensors[0].unique_id == "test_entry_id_default_db_statefulset_status"
+
+    def test_discover_node_sensors_skipped(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """Node sensor discovery returns nothing when nodes are disabled."""
+        from custom_components.kubernetes.sensor import _discover_new_node_sensors
+
+        mock_coordinator.data = {"nodes": {"n1": {"name": "n1"}}}
+        entry = self._entry(hass, ["nodes"])
+
+        assert (
+            _discover_new_node_sensors(mock_coordinator, mock_client, entry, set())
+            == []
+        )
+
+    def test_discover_workload_status_skips_disabled_type(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """Status discovery skips a disabled type but keeps the other."""
+        mock_coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}},
+            "statefulsets": {"default_db": {"name": "db", "namespace": "default"}},
+        }
+        entry = self._entry(hass, ["deployments"])
+
+        sensors = _discover_new_workload_status_sensors(
+            mock_coordinator, mock_client, entry, set()
+        )
+
+        assert len(sensors) == 1
+        assert sensors[0].unique_id == "test_entry_id_default_db_statefulset_status"
+
+    def test_discover_workload_metrics_skipped_when_metrics_disabled(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """Metric discovery returns nothing when metrics are disabled."""
+        mock_coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}},
+            "statefulsets": {},
+        }
+        entry = self._entry(hass, ["metrics"])
+
+        assert (
+            _discover_new_workload_metric_sensors(
+                mock_coordinator, mock_client, entry, set()
+            )
+            == []
+        )
+
+    def test_discover_workload_metrics_skips_disabled_type(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """Metric discovery skips a disabled workload type."""
+        mock_coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}},
+            "statefulsets": {"default_db": {"name": "db", "namespace": "default"}},
+        }
+        entry = self._entry(hass, ["statefulsets"])
+
+        sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, entry, set()
+        )
+
+        unique_ids = {s.unique_id for s in sensors}
+        assert unique_ids == {
+            "test_entry_id_default_web_deployment_cpu",
+            "test_entry_id_default_web_deployment_memory",
+        }
+
+    def test_discover_cronjob_sensors_skipped(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """CronJob discovery returns nothing when cronjobs are disabled."""
+        mock_coordinator.data = {
+            "cronjobs": {"default_cj": {"name": "cj", "namespace": "default"}}
+        }
+        entry = self._entry(hass, ["cronjobs"])
+
+        assert (
+            _discover_new_cronjob_sensors(mock_coordinator, mock_client, entry, set())
+            == []
+        )
+
+    def test_daemonsets_count_prefers_count_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """The daemonsets count sensor prefers the coordinator's count key."""
+        mock_coordinator.data = {"daemonsets": {}, "daemonsets_count": 7}
+        sensor = KubernetesDaemonSetsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        assert sensor.native_value == 7
+
+    def test_jobs_count_prefers_count_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """The jobs count sensor prefers the coordinator's count key."""
+        mock_coordinator.data = {"jobs": {}, "jobs_count": 5}
+        sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == 5
+
+    def test_ingresses_count_prefers_count_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """The ingresses count sensor prefers the coordinator's count key."""
+        mock_coordinator.data = {"ingresses": {}, "ingresses_count": 3}
+        sensor = KubernetesIngressesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        assert sensor.native_value == 3
 
 
 class TestSensorProperties:

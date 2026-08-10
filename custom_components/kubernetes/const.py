@@ -90,6 +90,30 @@ def event_signal(entry_id: str) -> str:
     return f"{DOMAIN}_event_{entry_id}"
 
 
+# Data-collection opt-out (options flow multi-select)
+CONF_DISABLED_RESOURCES = "disabled_resources"
+# Categories whose API fetch is skipped entirely when disabled. The other
+# resource categories (nodes, deployments, statefulsets, cronjobs) keep their
+# fetch because switches read the coordinator data — disabling them only
+# suppresses their sensor entities.
+FULLY_DISABLEABLE_RESOURCES = frozenset({"pods", "daemonsets", "jobs", "ingresses"})
+# All categories offered in the options flow. "metrics" gates the Metrics API
+# (node usage + workload CPU/memory sensors); "counts" gates the aggregate
+# count sensors and their count API calls.
+DISABLABLE_RESOURCES = (
+    "pods",
+    "nodes",
+    "deployments",
+    "statefulsets",
+    "daemonsets",
+    "cronjobs",
+    "jobs",
+    "ingresses",
+    "metrics",
+    "counts",
+)
+
+
 # Sensor types
 SENSOR_TYPE_PODS = "pods"
 SENSOR_TYPE_POD = "pod"

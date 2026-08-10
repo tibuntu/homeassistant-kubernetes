@@ -16,7 +16,7 @@ from .const import (
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
 )
-from .coordinator import KubernetesConfigEntry
+from .coordinator import KubernetesConfigEntry, disabled_resources
 
 TO_REDACT = {CONF_API_TOKEN, CONF_CA_CERT}
 
@@ -105,6 +105,7 @@ async def async_get_config_entry_diagnostics(
         "integration": {
             "panel_enabled": entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL),
             "watch_enabled": entry.options.get(CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH),
+            "disabled_resources": sorted(disabled_resources(entry)),
         },
         "coordinator": _coordinator_diagnostics(coordinator),
         "client": _client_diagnostics(client),

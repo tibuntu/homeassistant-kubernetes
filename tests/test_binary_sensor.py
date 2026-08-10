@@ -17,7 +17,7 @@ from custom_components.kubernetes.binary_sensor import (
     _discover_new_node_condition_sensors,
     async_setup_entry,
 )
-from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.const import CONF_DISABLED_RESOURCES, DOMAIN
 from custom_components.kubernetes.coordinator import KubernetesEntryData
 
 
@@ -137,6 +137,54 @@ class TestKubernetesBinarySensorSetup:
             if isinstance(e, KubernetesNodeConditionBinarySensor)
         ]
         assert len(condition_sensors) == 8
+
+    async def test_async_setup_entry_nodes_disabled(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """With nodes disabled, only the cluster health sensor is created."""
+        hass.config_entries.async_update_entry(
+            mock_config_entry, options={CONF_DISABLED_RESOURCES: ["nodes"]}
+        )
+        mock_coordinator.data = {
+            "nodes": {
+                "node-1": {
+                    "memory_pressure": False,
+                    "disk_pressure": False,
+                    "pid_pressure": False,
+                    "network_unavailable": False,
+                },
+            }
+        }
+        mock_add_entities = MagicMock()
+
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        added_entities = mock_add_entities.call_args[0][0]
+        assert len(added_entities) == 1
+        assert isinstance(added_entities[0], KubernetesClusterHealthSensor)
+
+    async def test_discover_node_condition_sensors_nodes_disabled(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_coordinator,
+    ):
+        """Discovery returns nothing when nodes are disabled."""
+        hass.config_entries.async_update_entry(
+            mock_config_entry, options={CONF_DISABLED_RESOURCES: ["nodes"]}
+        )
+        mock_coordinator.data = {"nodes": {"node-1": {}}}
+
+        result = _discover_new_node_condition_sensors(
+            mock_coordinator, mock_config_entry, set()
+        )
+
+        assert result == []
 
 
 class TestKubernetesBaseBinarySensor:

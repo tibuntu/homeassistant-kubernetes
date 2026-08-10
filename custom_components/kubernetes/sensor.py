@@ -18,7 +18,11 @@ from .const import (
     WORKLOAD_TYPE_JOB,
     WORKLOAD_TYPE_POD,
 )
-from .coordinator import KubernetesConfigEntry, KubernetesDataCoordinator
+from .coordinator import (
+    KubernetesConfigEntry,
+    KubernetesDataCoordinator,
+    disabled_resources,
+)
 from .device import get_cluster_device_info, get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,17 +43,23 @@ async def async_setup_entry(
         coordinator = entry_data.coordinator
         client = entry_data.client
 
+        disabled = disabled_resources(config_entry)
+
         # Create sensors for different Kubernetes resources
-        sensors = [
-            KubernetesPodsSensor(coordinator, client, config_entry),
-            KubernetesNodesSensor(coordinator, client, config_entry),
-            KubernetesDeploymentsSensor(coordinator, client, config_entry),
-            KubernetesStatefulSetsSensor(coordinator, client, config_entry),
-            KubernetesDaemonSetsSensor(coordinator, client, config_entry),
-            KubernetesCronJobsSensor(coordinator, client, config_entry),
-            KubernetesJobsSensor(coordinator, client, config_entry),
-            KubernetesIngressesSensor(coordinator, client, config_entry),
-        ]
+        sensors: list[KubernetesBaseSensor] = []
+        if "counts" not in disabled:
+            sensors.extend(
+                [
+                    KubernetesPodsSensor(coordinator, client, config_entry),
+                    KubernetesNodesSensor(coordinator, client, config_entry),
+                    KubernetesDeploymentsSensor(coordinator, client, config_entry),
+                    KubernetesStatefulSetsSensor(coordinator, client, config_entry),
+                    KubernetesDaemonSetsSensor(coordinator, client, config_entry),
+                    KubernetesCronJobsSensor(coordinator, client, config_entry),
+                    KubernetesJobsSensor(coordinator, client, config_entry),
+                    KubernetesIngressesSensor(coordinator, client, config_entry),
+                ]
+            )
 
         # Ensure cluster device exists (coordinator already refreshed in __init__.py)
         from .device import get_or_create_cluster_device
@@ -61,17 +71,18 @@ async def async_setup_entry(
         _LOGGER.debug("Creating node sensors for nodes: %s", list(nodes_data.keys()))
 
         node_sensors_created = 0
-        for node_name in nodes_data:
-            node_sensor = KubernetesNodeSensor(
-                coordinator, client, config_entry, node_name
-            )
-            sensors.append(node_sensor)
-            node_sensors_created += 1
-            _LOGGER.debug(
-                "Created node sensor for: %s (unique_id: %s)",
-                node_name,
-                node_sensor.unique_id,
-            )
+        if "nodes" not in disabled:
+            for node_name in nodes_data:
+                node_sensor = KubernetesNodeSensor(
+                    coordinator, client, config_entry, node_name
+                )
+                sensors.append(node_sensor)
+                node_sensors_created += 1
+                _LOGGER.debug(
+                    "Created node sensor for: %s (unique_id: %s)",
+                    node_name,
+                    node_sensor.unique_id,
+                )
 
         # Create individual sensors for each Kubernetes pod
         pods_data = coordinator.get_all_pods_data()
@@ -125,6 +136,8 @@ async def async_setup_entry(
         status_sensors_created = 0
         for workload_type in ("deployment", "statefulset"):
             resource_key = f"{workload_type}s"
+            if resource_key in disabled:
+                continue
             for workload_data in data.get(resource_key, {}).values():
                 workload_name = workload_data.get("name", "")
                 namespace = workload_data.get("namespace", "default")
@@ -140,6 +153,8 @@ async def async_setup_entry(
                     )
                 )
                 status_sensors_created += 1
+                if "metrics" in disabled:
+                    continue
                 for metric in ("cpu", "memory"):
                     sensors.append(
                         KubernetesWorkloadMetricSensor(
@@ -156,16 +171,17 @@ async def async_setup_entry(
 
         # Create individual sensors for each CronJob
         cronjob_sensors_created = 0
-        for cronjob_data in data.get("cronjobs", {}).values():
-            cronjob_name = cronjob_data.get("name", "")
-            namespace = cronjob_data.get("namespace", "default")
-            await get_or_create_namespace_device(hass, config_entry, namespace)
-            sensors.append(
-                KubernetesCronJobSensor(
-                    coordinator, client, config_entry, cronjob_name, namespace
+        if "cronjobs" not in disabled:
+            for cronjob_data in data.get("cronjobs", {}).values():
+                cronjob_name = cronjob_data.get("name", "")
+                namespace = cronjob_data.get("namespace", "default")
+                await get_or_create_namespace_device(hass, config_entry, namespace)
+                sensors.append(
+                    KubernetesCronJobSensor(
+                        coordinator, client, config_entry, cronjob_name, namespace
+                    )
                 )
-            )
-            cronjob_sensors_created += 1
+                cronjob_sensors_created += 1
 
         # Create individual sensors for each Job
         job_sensors_created = 0
@@ -223,7 +239,9 @@ def _discover_new_node_sensors(
     existing_unique_ids: set[str],
 ) -> list[KubernetesNodeSensor]:
     """Discover new node sensors."""
-    new_entities = []
+    new_entities: list[KubernetesNodeSensor] = []
+    if "nodes" in disabled_resources(config_entry):
+        return new_entities
     if coordinator.data and "nodes" in coordinator.data:
         for node_name in coordinator.data["nodes"]:
             unique_id = f"{config_entry.entry_id}_node_{node_name}"
@@ -291,8 +309,11 @@ def _discover_new_workload_status_sensors(
 ) -> list[KubernetesWorkloadStatusSensor]:
     """Discover new workload status sensors for deployments and statefulsets."""
     new_entities = []
+    disabled = disabled_resources(config_entry)
     for workload_type in ("deployment", "statefulset"):
         resource_key = f"{workload_type}s"
+        if resource_key in disabled:
+            continue
         if coordinator.data and resource_key in coordinator.data:
             for workload_data in coordinator.data[resource_key].values():
                 workload_name = workload_data.get("name", "")
@@ -324,9 +345,14 @@ def _discover_new_workload_metric_sensors(
     existing_unique_ids: set[str],
 ) -> list[KubernetesWorkloadMetricSensor]:
     """Discover new workload metric sensors for deployments and statefulsets."""
-    new_entities = []
+    new_entities: list[KubernetesWorkloadMetricSensor] = []
+    disabled = disabled_resources(config_entry)
+    if "metrics" in disabled:
+        return new_entities
     for workload_type in ("deployment", "statefulset"):
         resource_key = f"{workload_type}s"
+        if resource_key in disabled:
+            continue
         if coordinator.data and resource_key in coordinator.data:
             for workload_data in coordinator.data[resource_key].values():
                 workload_name = workload_data.get("name", "")
@@ -361,7 +387,9 @@ def _discover_new_cronjob_sensors(
     existing_unique_ids: set[str],
 ) -> list[KubernetesCronJobSensor]:
     """Discover new individual CronJob sensors."""
-    new_entities = []
+    new_entities: list[KubernetesCronJobSensor] = []
+    if "cronjobs" in disabled_resources(config_entry):
+        return new_entities
     if coordinator.data and "cronjobs" in coordinator.data:
         for cronjob_data in coordinator.data["cronjobs"].values():
             cronjob_name = cronjob_data.get("name", "")
@@ -753,7 +781,10 @@ class KubernetesDaemonSetsSensor(KubernetesBaseSensor):
         if not self.coordinator.data:
             return 0
 
-        # Get daemonsets count from coordinator data
+        # Fully-off daemonsets leave the bucket empty; the coordinator then
+        # provides the count from the cheap count endpoint instead.
+        if "daemonsets_count" in self.coordinator.data:
+            return self.coordinator.data["daemonsets_count"]
         if "daemonsets" in self.coordinator.data:
             return len(self.coordinator.data["daemonsets"])
 
@@ -841,7 +872,10 @@ class KubernetesIngressesSensor(KubernetesBaseSensor):
         if not self.coordinator.data:
             return 0
 
-        # Get ingresses count from coordinator data
+        # Fully-off ingresses leave the bucket empty; the coordinator then
+        # provides the count from the cheap count endpoint instead.
+        if "ingresses_count" in self.coordinator.data:
+            return self.coordinator.data["ingresses_count"]
         if "ingresses" in self.coordinator.data:
             return len(self.coordinator.data["ingresses"])
 
@@ -1305,6 +1339,10 @@ class KubernetesJobsSensor(KubernetesBaseSensor):
         """Return the number of jobs."""
         if not self.coordinator.data:
             return 0
+        # Fully-off jobs leave the bucket empty; the coordinator then provides
+        # the count from the cheap count endpoint instead.
+        if "jobs_count" in self.coordinator.data:
+            return self.coordinator.data["jobs_count"]
         return len(self.coordinator.data.get("jobs", {}))
 
     async def async_update(self) -> None:

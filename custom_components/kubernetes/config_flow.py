@@ -31,6 +31,7 @@ from .const import (  # noqa: E402
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
+    CONF_DISABLED_RESOURCES,
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
@@ -58,6 +59,7 @@ from .const import (  # noqa: E402
     DEFAULT_VERIFY_SSL,
     DEVICE_GROUPING_MODE_CLUSTER,
     DEVICE_GROUPING_MODE_NAMESPACE,
+    DISABLABLE_RESOURCES,
     DOMAIN,
     EVENT_TYPES_ALL,
     EVENT_TYPES_WARNING,
@@ -922,6 +924,17 @@ class KubernetesOptionsFlow(config_entries.OptionsFlow):
                             ),
                         ],
                         mode=selector.SelectSelectorMode.DROPDOWN,
+                    ),
+                ),
+                vol.Optional(
+                    CONF_DISABLED_RESOURCES,
+                    default=list(current.get(CONF_DISABLED_RESOURCES, [])),
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(DISABLABLE_RESOURCES),
+                        multiple=True,
+                        mode=selector.SelectSelectorMode.DROPDOWN,
+                        translation_key=CONF_DISABLED_RESOURCES,
                     ),
                 ),
             }

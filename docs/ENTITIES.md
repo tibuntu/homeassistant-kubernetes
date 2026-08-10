@@ -95,6 +95,8 @@ action:
 
 > **Note:** If metrics-server is not installed, these sensors will report `0`.
 
+> **Tip:** These sensors change on nearly every update cycle and are the biggest contributors to recorder/database growth. If you don't need them, disable the *CPU/memory metrics* category via **Configure → Disable data collection for** — see the [data collection opt-out](CONFIGURATION.md#data-collection-opt-out). The same option can disable other entity categories (per-pod sensors, count sensors, …) entirely.
+
 ### Individual Pod Sensors
 
 The integration creates a separate sensor for each Kubernetes pod in the monitored namespace(s):

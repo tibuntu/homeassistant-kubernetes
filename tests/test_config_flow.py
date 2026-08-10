@@ -19,6 +19,7 @@ from custom_components.kubernetes.const import (
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
+    CONF_DISABLED_RESOURCES,
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
@@ -1263,6 +1264,48 @@ class TestKubernetesOptionsFlow:
                 CONF_API_TOKEN: "token",
             },
             options={CONF_ENABLE_WATCH: True},
+        )
+        entry.add_to_hass(hass)
+
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert result["type"] is FlowResultType.FORM
+
+    async def test_options_flow_offers_disabled_resources(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """The init form should contain the disabled_resources multi-select."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        schema_keys = [str(k) for k in result["data_schema"].schema]
+        assert any(CONF_DISABLED_RESOURCES in k for k in schema_keys)
+
+    async def test_options_flow_saves_disabled_resources(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Submitting a disabled_resources selection should be saved."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={CONF_DISABLED_RESOURCES: ["pods", "metrics"]},
+        )
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_DISABLED_RESOURCES] == ["pods", "metrics"]
+
+    async def test_options_flow_preserves_existing_disabled_resources(
+        self, hass: HomeAssistant
+    ):
+        """The form should render with previously saved disabled resources."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "host.example.com",
+                CONF_API_TOKEN: "token",
+            },
+            options={CONF_DISABLED_RESOURCES: ["jobs"]},
         )
         entry.add_to_hass(hass)
 

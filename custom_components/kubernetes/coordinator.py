@@ -21,6 +21,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_DISABLED_RESOURCES,
     CONF_ENABLE_WATCH,
     CONF_EVENT_TYPES,
     CONF_SWITCH_UPDATE_INTERVAL,
@@ -31,6 +32,7 @@ from .const import (
     DEFAULT_WATCH_RECONNECT_DELAY,
     DOMAIN,
     EVENT_TYPES_ALL,
+    FULLY_DISABLEABLE_RESOURCES,
     WATCH_MAX_FAILURE_STREAK,
     WATCH_MAX_RECONNECT_DELAY,
     WATCH_RECONNECT_JITTER,
@@ -79,6 +81,12 @@ def get_loaded_entries(hass: HomeAssistant) -> list[KubernetesConfigEntry]:
     return hass.config_entries.async_loaded_entries(DOMAIN)
 
 
+@callback
+def disabled_resources(entry: ConfigEntry) -> frozenset[str]:
+    """Return the data categories the user opted out of collecting."""
+    return frozenset(entry.options.get(CONF_DISABLED_RESOURCES, ()))
+
+
 class KubernetesDataCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Kubernetes data."""
 
@@ -113,6 +121,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._watch_enabled = watch_enabled
         self._poll_interval = poll_interval
 
+        # Data categories the user opted out of; the coordinator is rebuilt on
+        # every options change (entry reload), so reading once here is enough.
+        self._disabled: frozenset[str] = disabled_resources(config_entry)
+
         # Watch API state
         self._watch_tasks: list[asyncio.Task] = []
         self._watch_stop_event: asyncio.Event = asyncio.Event()
@@ -135,16 +147,29 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         async with self._data_lock:
             try:
                 _LOGGER.debug("Updating Kubernetes data for coordinator")
+                disabled = self._disabled
+                include_metrics = "metrics" not in disabled
 
-                # Fetch deployments, statefulsets, daemonsets, cronjobs, jobs, ingresses, pods count, nodes count, and detailed nodes info
-                deployments = await self.client.get_deployments()
-                statefulsets = await self.client.get_statefulsets()
-                daemonsets = await self.client.get_daemonsets()
+                # Switch-bearing resources are always fetched — their switches
+                # read this data. Opting them out only suppresses their sensors.
+                deployments = await self.client.get_deployments(
+                    include_metrics=include_metrics
+                )
+                statefulsets = await self.client.get_statefulsets(
+                    include_metrics=include_metrics
+                )
                 cronjobs = await self.client.get_cronjobs()
-                jobs = await self.client.get_jobs()
-                ingresses = await self.client.get_ingresses()
-                pods_count = await self.client.get_pods_count()
-                nodes_count = await self.client.get_nodes_count()
+
+                # Fully-off resources skip their fetch entirely.
+                daemonsets = (
+                    []
+                    if "daemonsets" in disabled
+                    else await self.client.get_daemonsets()
+                )
+                jobs = [] if "jobs" in disabled else await self.client.get_jobs()
+                ingresses = (
+                    [] if "ingresses" in disabled else await self.client.get_ingresses()
+                )
 
                 _LOGGER.debug("Starting to fetch detailed node information")
                 nodes = await self.client.get_nodes()
@@ -153,18 +178,34 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     len(nodes),
                 )
 
-                _LOGGER.debug("Starting to fetch detailed pod information")
-                pods = await self.client.get_pods()
-                _LOGGER.debug(
-                    "Successfully fetched %d pods with detailed information",
-                    len(pods),
-                )
+                pods: list[dict[str, Any]] = []
+                if "pods" not in disabled:
+                    _LOGGER.debug("Starting to fetch detailed pod information")
+                    pods = await self.client.get_pods()
+                    _LOGGER.debug(
+                        "Successfully fetched %d pods with detailed information",
+                        len(pods),
+                    )
 
-                # The client's connection probe (run by the two calls above)
-                # confirmed a 401, so the stored token is no longer valid. Bail
-                # out before the cleanup below: every fetch returned empty, and
-                # continuing would prune the user's entities and namespace
-                # devices as if the cluster had been emptied.
+                if "counts" not in disabled:
+                    pods_count = await self.client.get_pods_count()
+                    nodes_count = await self.client.get_nodes_count()
+                else:
+                    pods_count = len(pods)
+                    nodes_count = len(nodes)
+                    if "pods" in disabled:
+                        # get_pods/get_pods_count carry the client's connection
+                        # probe — the single source of the reauth signal. Neither
+                        # ran this cycle, so probe explicitly to keep a
+                        # persistent 401 triggering reauthentication.
+                        await self.client.is_cluster_healthy()
+
+                # The client's connection probe (run by the pod calls or the
+                # explicit call above) confirmed a 401, so the stored token is
+                # no longer valid. Bail out before the cleanup below: every
+                # fetch returned empty, and continuing would prune the user's
+                # entities and namespace devices as if the cluster had been
+                # emptied.
                 # Compared with `is True` because coordinator tests pass a
                 # MagicMock client, whose attributes are always truthy.
                 if self.client.auth_failed is True:
@@ -172,16 +213,19 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         "Kubernetes API rejected the configured token"
                     )
 
-                # Fetch node metrics (CPU/memory usage) — best-effort
-                node_metrics = await self.client.get_node_metrics()
-                if node_metrics:
-                    _LOGGER.debug("Fetched metrics for %d nodes", len(node_metrics))
-                    for node in nodes:
-                        name = node.get("name")
-                        if name and name in node_metrics:
-                            node["cpu_usage_millicores"] = node_metrics[name]["cpu"]
-                            node["memory_usage_mib"] = node_metrics[name]["memory"]
-                self._sync_metrics_repair_issue(nodes, node_metrics)
+                # Fetch node metrics (CPU/memory usage) — best-effort. Skipped
+                # entirely (incl. the repair issue) when metrics are opted out.
+                node_metrics: dict[str, Any] = {}
+                if include_metrics:
+                    node_metrics = await self.client.get_node_metrics()
+                    if node_metrics:
+                        _LOGGER.debug("Fetched metrics for %d nodes", len(node_metrics))
+                        for node in nodes:
+                            name = node.get("name")
+                            if name and name in node_metrics:
+                                node["cpu_usage_millicores"] = node_metrics[name]["cpu"]
+                                node["memory_usage_mib"] = node_metrics[name]["memory"]
+                    self._sync_metrics_repair_issue(nodes, node_metrics)
 
                 # Log node names for debugging
                 if nodes:
@@ -212,6 +256,22 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     "nodes_count": nodes_count,
                     "last_update": time.time(),
                 }
+
+                # Count sensors normally derive from len(bucket); for fully-off
+                # resources the bucket is empty, so fetch the cheap count
+                # endpoints instead while counts stay enabled. The sensors
+                # prefer these keys when present.
+                if "counts" not in disabled:
+                    if "daemonsets" in disabled:
+                        data[
+                            "daemonsets_count"
+                        ] = await self.client.get_daemonsets_count()
+                    if "jobs" in disabled:
+                        data["jobs_count"] = await self.client.get_jobs_count()
+                    if "ingresses" in disabled:
+                        data[
+                            "ingresses_count"
+                        ] = await self.client.get_ingresses_count()
 
                 _LOGGER.debug(
                     "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d jobs, %d ingresses, %d pods (detailed: %d), %d nodes (detailed: %d)",
@@ -351,28 +411,34 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         ambiguous parsing of underscore-delimited IDs.
         """
         eid = self.config_entry.entry_id
+        disabled = self._disabled
         expected: set[str] = set()
 
-        # Count sensors (always valid)
-        for suffix in (
-            "pods_count",
-            "nodes_count",
-            "deployments_count",
-            "statefulsets_count",
-            "daemonsets_count",
-            "cronjobs_count",
-            "jobs_count",
-            "ingresses_count",
-        ):
-            expected.add(f"{eid}_{suffix}")
+        # Count sensors (unless opted out — the orphan cleanup below then
+        # removes them, which is how disabling a category prunes its entities)
+        if "counts" not in disabled:
+            for suffix in (
+                "pods_count",
+                "nodes_count",
+                "deployments_count",
+                "statefulsets_count",
+                "daemonsets_count",
+                "cronjobs_count",
+                "jobs_count",
+                "ingresses_count",
+            ):
+                expected.add(f"{eid}_{suffix}")
 
         # Cluster health binary sensor
         expected.add(f"{eid}_cluster_health")
 
-        # Node sensors + schedulable switches + node condition binary sensors
+        # Node sensors + schedulable switches + node condition binary sensors.
+        # The schedulable switch survives the "nodes" opt-out.
         for node_name in current_data.get("nodes", {}):
-            expected.add(f"{eid}_node_{node_name}")
             expected.add(f"{eid}_node_{node_name}_schedulable")
+            if "nodes" in disabled:
+                continue
+            expected.add(f"{eid}_node_{node_name}")
             for condition in (
                 "memory_pressure",
                 "disk_pressure",
@@ -390,14 +456,21 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Deployment/StatefulSet switches: {namespace}_{name}_{type}
         # Status sensors: {namespace}_{name}_{type}_status
         # Metric sensors: {namespace}_{name}_{type}_{metric}
+        # Switches survive the per-type opt-out; sensors don't.
         for workload_type in ("deployment", "statefulset"):
+            sensors_disabled = f"{workload_type}s" in disabled
             for data in current_data.get(f"{workload_type}s", {}).values():
                 namespace = data.get("namespace", "default")
                 name = data.get("name", "")
                 expected.add(f"{eid}_{namespace}_{name}_{workload_type}")
+                if sensors_disabled:
+                    continue
                 expected.add(f"{eid}_{namespace}_{name}_{workload_type}_status")
-                for metric in ("cpu", "memory"):
-                    expected.add(f"{eid}_{namespace}_{name}_{workload_type}_{metric}")
+                if "metrics" not in disabled:
+                    for metric in ("cpu", "memory"):
+                        expected.add(
+                            f"{eid}_{namespace}_{name}_{workload_type}_{metric}"
+                        )
 
         # DaemonSet sensors: daemonset_{namespace}_{name}
         for data in current_data.get("daemonsets", {}).values():
@@ -405,11 +478,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             expected.add(f"{eid}_daemonset_{namespace}_{data.get('name', '')}")
 
         # CronJob sensors: cronjob_{namespace}_{name}
-        # CronJob switches: {namespace}_{name}_cronjob
+        # CronJob switches: {namespace}_{name}_cronjob (survive the opt-out)
         for data in current_data.get("cronjobs", {}).values():
             namespace = data.get("namespace", "default")
             name = data.get("name", "")
-            expected.add(f"{eid}_cronjob_{namespace}_{name}")
+            if "cronjobs" not in disabled:
+                expected.add(f"{eid}_cronjob_{namespace}_{name}")
             expected.add(f"{eid}_{namespace}_{name}_cronjob")
 
         # Job sensors: job_{namespace}_{name}
@@ -482,6 +556,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         """Return a list of (resource_type, url, parse_fn) tuples for watch tasks."""
         configs: list[tuple[str, str, Callable[..., Any]]] = []
         client = self.client
+        # Fully-off resources are not fetched — don't watch them either.
+        # Sensors-off resources keep their watch (switches consume the data).
+        skipped = self._disabled & FULLY_DISABLEABLE_RESOURCES
 
         # Cluster-scoped: nodes always use the cluster-wide endpoint
         configs.append(("nodes", f"{base_url}/api/v1/nodes", client._parse_node_item))
@@ -567,7 +644,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     ]
                 )
 
-        return configs
+        return [c for c in configs if c[0] not in skipped]
 
     async def async_start_watch_tasks(self) -> None:
         """Start background watch tasks for all resource types."""

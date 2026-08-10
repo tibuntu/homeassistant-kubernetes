@@ -426,6 +426,45 @@ async def test_get_deployments_empty(mock_client):
     assert deployments == []
 
 
+async def test_get_deployments_enriches_metrics_by_default(mock_client):
+    """Without arguments, get_deployments enriches workloads with metrics."""
+    result = [{"name": "web", "namespace": "default"}]
+    mock_client._fetch_resource_list = AsyncMock(return_value=result)
+    mock_client._enrich_workloads_with_metrics = AsyncMock()
+
+    await mock_client.get_deployments()
+
+    mock_client._enrich_workloads_with_metrics.assert_called_once_with(
+        result, "deployment"
+    )
+
+
+async def test_get_deployments_skips_metrics_enrichment(mock_client):
+    """include_metrics=False must not call the Metrics API enrichment."""
+    mock_client._fetch_resource_list = AsyncMock(
+        return_value=[{"name": "web", "namespace": "default"}]
+    )
+    mock_client._enrich_workloads_with_metrics = AsyncMock()
+
+    deployments = await mock_client.get_deployments(include_metrics=False)
+
+    assert len(deployments) == 1
+    mock_client._enrich_workloads_with_metrics.assert_not_called()
+
+
+async def test_get_statefulsets_skips_metrics_enrichment(mock_client):
+    """include_metrics=False must not call the Metrics API enrichment."""
+    mock_client._fetch_resource_list = AsyncMock(
+        return_value=[{"name": "db", "namespace": "default"}]
+    )
+    mock_client._enrich_workloads_with_metrics = AsyncMock()
+
+    statefulsets = await mock_client.get_statefulsets(include_metrics=False)
+
+    assert len(statefulsets) == 1
+    mock_client._enrich_workloads_with_metrics.assert_not_called()
+
+
 async def test_get_deployments_count_success(mock_client):
     """Test successful deployments count retrieval."""
     # Mock the generic fetch method to return the expected count

@@ -15,7 +15,11 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
-from .coordinator import KubernetesConfigEntry, KubernetesDataCoordinator
+from .coordinator import (
+    KubernetesConfigEntry,
+    KubernetesDataCoordinator,
+    disabled_resources,
+)
 from .device import get_cluster_device_info
 from .kubernetes_client import KubernetesClient
 
@@ -40,6 +44,8 @@ def _discover_new_node_condition_sensors(
 ) -> list[KubernetesNodeConditionBinarySensor]:
     """Discover new node condition binary sensors for nodes not yet registered."""
     new_entities: list[KubernetesNodeConditionBinarySensor] = []
+    if "nodes" in disabled_resources(config_entry):
+        return new_entities
     if not coordinator.data or "nodes" not in coordinator.data:
         return new_entities
     for node_name in coordinator.data["nodes"]:
@@ -120,14 +126,16 @@ async def async_setup_entry(
         KubernetesClusterHealthSensor(client, config_entry),
     ]
 
-    # Create condition binary sensors for every known node
-    for node_name in coordinator.data.get("nodes", {}):
-        for condition_key in _NODE_CONDITIONS:
-            binary_sensors.append(
-                KubernetesNodeConditionBinarySensor(
-                    coordinator, config_entry, node_name, condition_key
+    # Create condition binary sensors for every known node (unless the node
+    # sensors are opted out — the cluster health sensor always stays)
+    if "nodes" not in disabled_resources(config_entry):
+        for node_name in coordinator.data.get("nodes", {}):
+            for condition_key in _NODE_CONDITIONS:
+                binary_sensors.append(
+                    KubernetesNodeConditionBinarySensor(
+                        coordinator, config_entry, node_name, condition_key
+                    )
                 )
-            )
 
     async_add_entities(binary_sensors)
 

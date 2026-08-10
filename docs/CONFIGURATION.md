@@ -136,3 +136,35 @@ rbac:
 With the plain manifests, add the same rule to `manifests/minimal/clusterrole.yaml` by hand. See the [RBAC guide](RBAC.md) for details.
 
 Changing these options reloads the integration automatically.
+
+### Data Collection Opt-Out
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| **Disable data collection for** | Multi-select of data categories to stop collecting | *(empty — everything collected)* |
+
+Large clusters can produce hundreds of entities and constant recorder writes. This option lets you opt out of categories you don't need, reducing entity count, database growth, and Kubernetes API load.
+
+The categories come in two tiers:
+
+| Category | Effect when disabled |
+|----------|----------------------|
+| **Pods** | Pod detail fetch skipped entirely; no per-pod sensors |
+| **DaemonSets** | Fetch skipped entirely; no DaemonSet sensors |
+| **Jobs** | Fetch skipped entirely; no Job sensors |
+| **Ingresses** | Fetch skipped entirely; ingress data disappears from the panel |
+| **Node sensors** | Node status sensors and the 4 condition binary sensors are removed; the fetch continues so the cordon/uncordon switches keep working |
+| **Deployment sensors** | Status and CPU/memory sensors removed; scale switches keep working |
+| **StatefulSet sensors** | Same as Deployment sensors |
+| **CronJob sensors** | CronJob status sensors removed; suspend switches keep working |
+| **CPU/memory metrics** | The Kubernetes Metrics API is never called — removes all workload CPU/memory sensors and node usage data (the "metrics server unavailable" repair issue is suppressed too) |
+| **Aggregate count sensors** | The 8 per-cluster count sensors (Pods Count, Nodes Count, …) are removed and their count API calls skipped |
+
+Notes:
+
+- Fully-skipped categories (Pods, DaemonSets, Jobs, Ingresses) also stop their watch streams when the Watch API is enabled.
+- Existing entities of a disabled category are removed from Home Assistant automatically on the next update cycle.
+- If a fully-skipped category is disabled while **Aggregate count sensors** stay enabled, its count sensor keeps working via a lightweight count API call.
+- The `delete_job` service still works with Jobs disabled, but can no longer resolve a Job's namespace automatically — it falls back to the configured default namespace, so pass the namespace explicitly.
+
+Changing this option reloads the integration automatically.
