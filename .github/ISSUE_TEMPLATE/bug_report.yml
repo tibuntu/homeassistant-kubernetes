@@ -1,0 +1,81 @@
+name: Bug report
+description: Report a problem with the Kubernetes integration
+labels: ["bug"]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you start
+      options:
+        - label: I have searched existing issues and this has not been reported yet
+          required: true
+        - label: I am running the latest version of the integration
+          required: false
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure the integration with ...
+        2. Open ...
+        3. See error
+  - type: input
+    id: integration-version
+    attributes:
+      label: Integration version
+      description: Settings → Devices & Services → Kubernetes, or `manifest.json`
+      placeholder: "1.8.0"
+    validations:
+      required: true
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.8.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method
+      options:
+        - HACS
+        - Manual
+    validations:
+      required: true
+  - type: input
+    id: k8s-version
+    attributes:
+      label: Kubernetes version / distribution
+      placeholder: "v1.33 (k3s)"
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection type
+      options:
+        - External (API token)
+        - In-cluster (ServiceAccount)
+        - Not sure
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: |
+        Enable debug logging first: Settings → Devices & Services → Kubernetes → Enable debug logging,
+        or add `custom_components.kubernetes: debug` under `logger:` in `configuration.yaml`.
+        Redact tokens and hostnames.
+      render: shell
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that helps — options set (watch, events, disabled resources), RBAC mode, screenshots.
