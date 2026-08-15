@@ -245,7 +245,7 @@
     },
     "watch_connection_failing": {
       "title": "Watch connection failing for {cluster}",
-      "description": "The integration's watch/event-stream connection to cluster `{cluster}` has failed repeatedly and is retrying with backoff (used by the Watch API and the cluster event stream). Live updates may be delayed while the connection retries; the integration falls back to regular interval polling in the meantime, so data stays current. Check that the cluster API is reachable and that the ServiceAccount has `watch` permission (granted by manifests/full/ — not by manifests/minimal/). To use interval polling only, disable the Watch API under Configure. This message clears automatically once the watch reconnects."
+      "description": "The integration's watch/event-stream connection to cluster `{cluster}` has failed repeatedly and is retrying with backoff (used by the Watch API and the cluster event stream). Live updates may be delayed while the connection retries; the integration falls back to regular interval polling in the meantime, so data stays current. Check that the cluster API is reachable and that the ServiceAccount has `watch` permission (granted by manifests/full/ — not by manifests/minimal/). To use interval polling only, disable the Watch API under Configure. This message clears automatically once the watch reconnects, or when both the Watch API and the Cluster events platform are disabled."
     }
   }
 }

@@ -96,6 +96,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
         coordinator=coordinator,
     )
 
+    # Remove repair issues left over from a previous setup when the feature
+    # that would clear them (watch/events/metrics) is disabled — nothing else
+    # would ever delete them (issue #349).
+    coordinator.async_cleanup_stale_repair_issues()
+
     # Register or remove the sidebar panel based on the enable_panel option
     await _async_sync_panel(hass, entry)
 

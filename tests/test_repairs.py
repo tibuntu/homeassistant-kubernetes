@@ -16,8 +16,14 @@ from custom_components.kubernetes import (
     async_remove_entry,
     async_setup_entry,
 )
+from custom_components.kubernetes.const import (
+    CONF_DISABLED_RESOURCES,
+    CONF_ENABLE_EVENTS,
+    CONF_ENABLE_WATCH,
+)
 from custom_components.kubernetes.coordinator import (
     ISSUE_METRICS_SERVER_UNAVAILABLE,
+    ISSUE_WATCH_CONNECTION_FAILING,
     METRICS_SERVER_LEARN_MORE_URL,
     KubernetesDataCoordinator,
 )
@@ -249,12 +255,150 @@ async def test_async_clear_repair_issues_on_unload(
     )
 
 
-async def test_async_clear_repair_issues_noop_when_inactive(
+async def test_async_clear_repair_issues_removes_orphaned_issue(
     hass: HomeAssistant, mock_entry: MockConfigEntry
 ):
-    """Cleanup is safe to call when no issue was raised."""
+    """Cleanup deletes issues this coordinator instance did not create.
+
+    An issue can be inherited from an earlier setup that never unloaded
+    cleanly; the in-memory ``*_issue_active`` flags are False then, but the
+    registry entry must still be removed (issue #349).
+    """
+    coordinator = _make_coordinator(hass, mock_entry)
+    _create_orphaned_watch_issue(hass, mock_entry)
+    assert coordinator._watch_issue_active is False
+
+    coordinator.async_clear_repair_issues()
+
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, _expected_watch_issue_id(mock_entry))
+        is None
+    )
+
+
+async def test_async_clear_repair_issues_safe_when_no_issue_exists(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+):
+    """Cleanup is safe to call when no issue was ever raised."""
     coordinator = _make_coordinator(hass, mock_entry)
 
-    with patch.object(ir, "async_delete_issue") as delete_call:
-        coordinator.async_clear_repair_issues()
-        delete_call.assert_not_called()
+    coordinator.async_clear_repair_issues()
+
+    assert coordinator._metrics_issue_active is False
+    assert coordinator._watch_issue_active is False
+
+
+# ---------------------------------------------------------------------------
+# Stale-issue cleanup at setup (async_cleanup_stale_repair_issues, issue #349)
+# ---------------------------------------------------------------------------
+
+
+def _expected_watch_issue_id(entry: MockConfigEntry) -> str:
+    return f"{ISSUE_WATCH_CONNECTION_FAILING}_{entry.entry_id}"
+
+
+def _create_orphaned_watch_issue(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        _expected_watch_issue_id(entry),
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=ISSUE_WATCH_CONNECTION_FAILING,
+    )
+
+
+def _options_entry(hass: HomeAssistant, options: dict) -> MockConfigEntry:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "host": "test-cluster.example.com",
+            "port": 6443,
+            "api_token": "tok",
+            "namespace": "default",
+            "verify_ssl": True,
+        },
+        options=options,
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
+async def test_stale_watch_issue_removed_when_watch_and_events_disabled(
+    hass: HomeAssistant,
+):
+    """Switching back to polling mode removes a leftover watch issue."""
+    entry = _options_entry(hass, {CONF_ENABLE_WATCH: False})
+    _create_orphaned_watch_issue(hass, entry)
+    coordinator = _make_coordinator(hass, entry)
+
+    coordinator.async_cleanup_stale_repair_issues()
+
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, _expected_watch_issue_id(entry))
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {},  # watch defaults to enabled
+        {CONF_ENABLE_WATCH: True},
+        {CONF_ENABLE_WATCH: False, CONF_ENABLE_EVENTS: True},
+    ],
+)
+async def test_watch_issue_kept_while_a_watch_feature_is_enabled(
+    hass: HomeAssistant, options: dict
+):
+    """The watch/event loops own the issue while either feature is on."""
+    entry = _options_entry(hass, options)
+    _create_orphaned_watch_issue(hass, entry)
+    coordinator = _make_coordinator(hass, entry)
+
+    coordinator.async_cleanup_stale_repair_issues()
+
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, _expected_watch_issue_id(entry))
+        is not None
+    )
+
+
+async def test_stale_metrics_issue_removed_when_metrics_disabled(
+    hass: HomeAssistant,
+):
+    """Opting out of metrics collection removes a leftover metrics issue."""
+    entry = _options_entry(hass, {CONF_DISABLED_RESOURCES: ["metrics"]})
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        _expected_metrics_issue_id(entry),
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=ISSUE_METRICS_SERVER_UNAVAILABLE,
+    )
+    coordinator = _make_coordinator(hass, entry)
+
+    coordinator.async_cleanup_stale_repair_issues()
+
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, _expected_metrics_issue_id(entry))
+        is None
+    )
+
+
+async def test_metrics_issue_kept_when_metrics_enabled(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+):
+    """The metrics sync owns the issue while metrics collection is on."""
+    coordinator = _make_coordinator(hass, mock_entry)
+    coordinator._sync_metrics_repair_issue([{"name": "n1"}], {})
+
+    coordinator.async_cleanup_stale_repair_issues()
+
+    assert (
+        ir.async_get(hass).async_get_issue(
+            DOMAIN, _expected_metrics_issue_id(mock_entry)
+        )
+        is not None
+    )

@@ -121,6 +121,9 @@ async def test_async_setup_entry_success(
         # Verify coordinator was started
         mock_coordinator.async_config_entry_first_refresh.assert_called_once()
 
+        # Verify stale repair issues are cleaned up at setup (issue #349)
+        mock_coordinator.async_cleanup_stale_repair_issues.assert_called_once()
+
         # Verify platforms were forwarded
         mock_forward.assert_called_once_with(mock_config_entry, PLATFORMS)
 

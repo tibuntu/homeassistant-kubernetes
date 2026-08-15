@@ -22,9 +22,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONF_DISABLED_RESOURCES,
+    CONF_ENABLE_EVENTS,
     CONF_ENABLE_WATCH,
     CONF_EVENT_TYPES,
     CONF_SWITCH_UPDATE_INTERVAL,
+    DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_EVENT_TYPES,
     DEFAULT_FALLBACK_POLL_INTERVAL,
@@ -755,14 +757,36 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
     @callback
     def async_clear_repair_issues(self) -> None:
-        """Remove repair issues owned by this coordinator on unload."""
-        if self._metrics_issue_active:
-            ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
-            self._metrics_issue_active = False
-        if self._watch_issue_active:
-            ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
-            self._watch_issue_active = False
+        """Remove repair issues owned by this coordinator on unload.
+
+        Deletes unconditionally (async_delete_issue is a no-op when absent):
+        the in-memory ``*_issue_active`` flags only track what *this* instance
+        created, so gating on them would leave an issue inherited from an
+        earlier setup that never unloaded cleanly orphaned forever.
+        """
+        ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
+        ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
+        self._metrics_issue_active = False
+        self._watch_issue_active = False
         self._failing_watch_loops.clear()
+
+    @callback
+    def async_cleanup_stale_repair_issues(self) -> None:
+        """Delete repair issues whose owning feature is disabled.
+
+        Called at entry setup. Each repair issue is normally cleared by the
+        feature that raises it (watch/event loops, the metrics sync). When
+        that feature is turned off, those code paths never run, so an issue
+        left over from a previous setup would otherwise persist forever
+        (issue #349: watch issue survived switching back to polling mode).
+        """
+        events_enabled = self.config_entry.options.get(
+            CONF_ENABLE_EVENTS, DEFAULT_ENABLE_EVENTS
+        )
+        if not self._watch_enabled and not events_enabled:
+            ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
+        if "metrics" in self._disabled:
+            ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
 
     def _populate_from_list(
         self,
