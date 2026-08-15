@@ -401,6 +401,12 @@ export class K8sSettings extends LitElement {
           <span class="setting-label">Scale Cooldown</span>
           <span class="setting-value">${entry.scale_cooldown}s</span>
         </div>
+        <div class="setting-row">
+          <span class="setting-label">Update Mode</span>
+          <span class="setting-value"
+            >${entry.watch_enabled ? "Watch (real-time)" : "Polling"}</span
+          >
+        </div>
       </ha-card>
     `;
   }
@@ -415,10 +421,6 @@ export class K8sSettings extends LitElement {
         <div class="setting-row">
           <span class="setting-label">Sidebar Panel</span>
           <span class="setting-value">${this._renderBool(entry.panel_enabled)}</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Watch API</span>
-          <span class="setting-value">${this._renderBool(entry.watch_enabled)}</span>
         </div>
       </ha-card>
     `;
