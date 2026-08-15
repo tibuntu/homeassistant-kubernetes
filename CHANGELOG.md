@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.8.0...v1.8.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **panel:** show update mode in settings instead of Watch API feature flag ([aa2b67d](https://github.com/tibuntu/homeassistant-kubernetes/commit/aa2b67de60e58b767cbcd6a7c4a2d7fa53205fd5))
+* **repairs:** clear stale watch/metrics repair issues when their feature is disabled ([5575f5a](https://github.com/tibuntu/homeassistant-kubernetes/commit/5575f5a55f2eb3a78168bf94dc096a0f884458cd)), closes [#349](https://github.com/tibuntu/homeassistant-kubernetes/issues/349)
+
 ## [1.8.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.7.0...v1.8.0) (2026-08-10)
 
 This release makes **real-time updates the default**, lets you **choose what data the integration collects**, and completes a quality push: the integration now meets all Bronze and Silver requirements of Home Assistant's [Integration Quality Scale](https://www.home-assistant.io/docs/quality_scale/) — including service calls that fail loudly instead of silently and a re-authentication prompt when your API token stops working.
