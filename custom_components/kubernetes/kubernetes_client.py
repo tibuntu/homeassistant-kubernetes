@@ -27,12 +27,14 @@ from .const import (
     CONF_API_TOKEN,
     CONF_CA_CERT,
     CONF_CLUSTER_NAME,
+    CONF_EXCLUDE_JOB_PODS,
     CONF_HOST,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_PORT,
     CONF_USE_IN_CLUSTER,
     CONF_VERIFY_SSL,
+    DEFAULT_EXCLUDE_JOB_PODS,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
@@ -113,6 +115,9 @@ class KubernetesClient:
         self.namespace = self.namespaces[0] if self.namespaces else DEFAULT_NAMESPACE
         self.monitor_all_namespaces = config_data.get(
             CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
+        )
+        self.exclude_job_pods = config_data.get(
+            CONF_EXCLUDE_JOB_PODS, DEFAULT_EXCLUDE_JOB_PODS
         )
         self.ca_cert = config_data.get(CONF_CA_CERT)
         self.verify_ssl = config_data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
@@ -569,6 +574,12 @@ class KubernetesClient:
                     owner = owner_references[0]
                     owner_kind = owner.get("kind", "N/A")
                     owner_name = owner.get("name", "N/A")
+
+                # A Job-owned pod is one run of a Job or CronJob. Its name is
+                # unique per run, so tracking it creates an entity that can
+                # never be reused and never gets purged from the registry.
+                if self.exclude_job_pods and owner_kind == "Job":
+                    continue
 
                 # Container state reasons (waiting / current+last terminated) for observability.
                 container_waiting_reason = None

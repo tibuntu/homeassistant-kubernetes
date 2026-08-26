@@ -20,9 +20,11 @@ from .const import (
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
+    CONF_EXCLUDE_JOB_PODS,
     DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
+    DEFAULT_EXCLUDE_JOB_PODS,
     PANEL_FILENAME,
     PANEL_ICON,
     PANEL_TITLE,
@@ -86,7 +88,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
         return False
 
     # Create Kubernetes client
-    client = KubernetesClient(dict(entry.data))
+    # Options are user-editable after setup; the client only ever sees
+    # entry.data, so thread the ones it needs through explicitly.
+    client = KubernetesClient(
+        {
+            **entry.data,
+            CONF_EXCLUDE_JOB_PODS: entry.options.get(
+                CONF_EXCLUDE_JOB_PODS, DEFAULT_EXCLUDE_JOB_PODS
+            ),
+        }
+    )
 
     # Create and store the coordinator
     coordinator = KubernetesDataCoordinator(hass, entry, client)

@@ -36,6 +36,7 @@ from .const import (  # noqa: E402
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
     CONF_EVENT_TYPES,
+    CONF_EXCLUDE_JOB_PODS,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_SCALE_COOLDOWN,
@@ -49,6 +50,7 @@ from .const import (  # noqa: E402
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_EVENT_TYPES,
+    DEFAULT_EXCLUDE_JOB_PODS,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
     DEFAULT_PORT,
@@ -907,6 +909,12 @@ class KubernetesOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_ENABLE_EVENTS,
                     default=current.get(CONF_ENABLE_EVENTS, DEFAULT_ENABLE_EVENTS),
+                ): bool,
+                vol.Optional(
+                    CONF_EXCLUDE_JOB_PODS,
+                    default=current.get(
+                        CONF_EXCLUDE_JOB_PODS, DEFAULT_EXCLUDE_JOB_PODS
+                    ),
                 ): bool,
                 vol.Optional(
                     CONF_EVENT_TYPES,
