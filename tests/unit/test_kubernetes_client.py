@@ -6590,3 +6590,50 @@ class TestAuthFailureSignal:
             assert await client._test_connection_aiohttp() is False
 
         assert client.auth_failed is False
+
+
+def _pod(name: str, owner_kind: str | None = None) -> dict:
+    """Build a minimal raw pod API object, optionally owned by a workload."""
+    metadata: dict = {"name": name, "namespace": "default"}
+    if owner_kind is not None:
+        metadata["ownerReferences"] = [{"kind": owner_kind, "name": f"{name}-owner"}]
+    return {
+        "metadata": metadata,
+        "spec": {"nodeName": "node-1"},
+        "status": {"phase": "Running", "containerStatuses": []},
+    }
+
+
+class TestExcludeJobPods:
+    """Job/CronJob pods must not become permanent entity-registry entries."""
+
+    def test_job_pods_excluded_by_default(self, mock_config):
+        """A Job-owned pod is dropped; other pods survive."""
+        client = _make_client(mock_config)
+        parsed = client._parse_pods_data(
+            [
+                _pod("web-abc123", "ReplicaSet"),
+                _pod("backup-29754648-hk8w8", "Job"),
+                _pod("db-0", "StatefulSet"),
+                _pod("standalone"),
+            ]
+        )
+        assert [p["name"] for p in parsed] == ["web-abc123", "db-0", "standalone"]
+
+    def test_job_pods_included_when_disabled(self, mock_config):
+        """Opting out restores the per-run pod entities."""
+        client = _make_client({**mock_config, "exclude_job_pods": False})
+        parsed = client._parse_pods_data(
+            [_pod("web-abc123", "ReplicaSet"), _pod("backup-29754648-hk8w8", "Job")]
+        )
+        assert [p["name"] for p in parsed] == ["web-abc123", "backup-29754648-hk8w8"]
+
+    def test_default_is_exclude(self, mock_config):
+        """Absent config key -> excluded, matching DEFAULT_EXCLUDE_JOB_PODS."""
+        assert _make_client(mock_config).exclude_job_pods is True
+
+    def test_watch_path_also_filters(self, mock_config):
+        """_parse_pod_item feeds the watch stream and must apply the same filter."""
+        client = _make_client(mock_config)
+        assert client._parse_pod_item(_pod("backup-29754648-hk8w8", "Job")) is None
+        assert client._parse_pod_item(_pod("web-abc123", "ReplicaSet")) is not None

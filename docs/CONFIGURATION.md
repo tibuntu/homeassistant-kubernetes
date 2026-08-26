@@ -110,6 +110,20 @@ When enabled (the default), the integration establishes long-lived HTTP streams 
 
 Changing this option reloads the integration automatically.
 
+### Job and CronJob Pods
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| **Exclude Job and CronJob pods** | Skip pods owned by a Job or CronJob so they never become entities | `true` |
+
+Every run of a Job or CronJob creates a pod with a fresh, single-use name. Tracking those pods means one new entity per run, and Home Assistant keeps a record of each one in its entity registry forever — deleted entities that still belong to a live config entry are never purged. On a cluster with a handful of CronJobs this accumulates quickly: one deployment reached **265,000 registry records (200 MB)** from this alone, which is loaded into memory on every Home Assistant start.
+
+Excluding them is the default. Pods owned by a Deployment, StatefulSet, DaemonSet or ReplicaSet, and pods with no owner at all, are unaffected — only `ownerReferences[0].kind == "Job"` is filtered. Because a CronJob owns a Job which owns the pod, this covers both.
+
+Turn the option off if you genuinely need an entity per Job run.
+
+Changing this option reloads the integration automatically.
+
 ### Cluster Events
 
 | Option | Description | Default |

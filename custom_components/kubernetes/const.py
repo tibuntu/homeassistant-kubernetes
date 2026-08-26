@@ -58,6 +58,13 @@ WATCH_MAX_RECONNECT_DELAY = 60  # cap on the jittered backoff (seconds)
 WATCH_RECONNECT_JITTER = 1.0  # max random jitter added to each backoff (seconds)
 WATCH_MAX_FAILURE_STREAK = 5  # consecutive failures before raising a repair issue
 
+# Job/CronJob pods are ephemeral by design: every scheduled run creates a new
+# pod name, so each run leaves a permanent entry in Home Assistant's entity
+# registry (deleted entities belonging to a live config entry are never
+# purged). Excluded by default; set to False to get an entity per Job run.
+CONF_EXCLUDE_JOB_PODS = "exclude_job_pods"
+DEFAULT_EXCLUDE_JOB_PODS = True
+
 # Event platform (experimental, opt-in)
 CONF_ENABLE_EVENTS = "enable_events"
 DEFAULT_ENABLE_EVENTS = False
