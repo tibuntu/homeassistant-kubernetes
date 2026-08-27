@@ -2,15 +2,17 @@
 
 ## [1.9.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.8.1...v1.9.0) (2026-08-27)
 
+This release stops **Job and CronJob pods from becoming Home Assistant entities**, which keeps Home Assistant's entity registry from growing without bound on clusters that run scheduled jobs. The filter is on by default and can be switched off in the integration's options — this is a behaviour change, so please read the upgrade note below.
 
-### Features
+### New features
 
-* exclude Job and CronJob pods from pod tracking by default ([d711eb8](https://github.com/tibuntu/homeassistant-kubernetes/commit/d711eb8d783cb455234c3312138f146e5388df15))
+**Job and CronJob pods are no longer tracked by default.** Every run of a Job or CronJob creates a pod with a new, single-use name. Until now each of those pods became a pod sensor, and because Home Assistant keeps a record of every entity it has ever seen, every run left a permanent entry in `core.entity_registry` — the contributor who reported this measured 265,000 such records (200 MB) from this integration alone, enough to make Home Assistant run out of memory on start. Pods owned by a Job are now skipped before they reach Home Assistant; since a CronJob owns a Job which owns the pod, this covers both. Pods owned by Deployments, StatefulSets, DaemonSets and ReplicaSets, and pods without an owner, are unaffected. The *Pods* count sensor counts only the tracked pods, so it excludes Job pods while the filter is on. A new *Exclude Job and CronJob pods* option under **Configure** turns the filter off if you genuinely need an entity per run. Thanks to @kryptt for the investigation and the fix.
 
+### Fixes & improvements
 
-### Bug Fixes
+* Dependency updates: ruff, mypy, pre-commit, Home Assistant test tooling, and the Helm CLI used in CI.
 
-* keep pods_count and watch fan-out consistent with the Job-pod filter ([e31b38c](https://github.com/tibuntu/homeassistant-kubernetes/commit/e31b38c9c2c6686972266d74387b2f1ff6e6d800))
+> **Upgrading:** this changes the default behaviour. Existing per-run pod sensors for Jobs and CronJobs are removed on the first refresh after the update, and Job pods disappear from the panel's Pods tab and its *failed pods* alert. To keep an eye on a Job's outcome, use the Job sensor's `failed` / `succeeded` / `active` attributes or the *Cluster events* entity (`BackOff`, `OOMKilling`, `Failed`, …) — both are keyed by the Job name, which does not change between runs. To restore the old behaviour, untick *Exclude Job and CronJob pods* under **Configure**. The filter only stops new registry records from accumulating; records already in `core.entity_registry` stay until the integration's config entry is removed, so if your registry has already grown very large, remove and re-add the integration once to let Home Assistant purge them.
 
 ## [1.8.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.8.0...v1.8.1) (2026-08-15)
 
