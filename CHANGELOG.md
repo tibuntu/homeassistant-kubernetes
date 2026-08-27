@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.8.1...v1.9.0) (2026-08-27)
+
+
+### Features
+
+* exclude Job and CronJob pods from pod tracking by default ([d711eb8](https://github.com/tibuntu/homeassistant-kubernetes/commit/d711eb8d783cb455234c3312138f146e5388df15))
+
+
+### Bug Fixes
+
+* keep pods_count and watch fan-out consistent with the Job-pod filter ([e31b38c](https://github.com/tibuntu/homeassistant-kubernetes/commit/e31b38c9c2c6686972266d74387b2f1ff6e6d800))
+
 ## [1.8.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.8.0...v1.8.1) (2026-08-15)
 
 
