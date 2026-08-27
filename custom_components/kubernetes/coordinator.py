@@ -189,11 +189,17 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         len(pods),
                     )
 
+                # pods_count comes from the parsed list whenever pods were
+                # fetched: the raw count endpoint still includes Job-owned pods
+                # that _parse_pods_data drops, and the watch path derives the
+                # count from len(data["pods"]) — mixing the two sources makes
+                # the count sensor oscillate between polls and watch events.
+                pods_count = len(pods)
                 if "counts" not in disabled:
-                    pods_count = await self.client.get_pods_count()
                     nodes_count = await self.client.get_nodes_count()
+                    if "pods" in disabled:
+                        pods_count = await self.client.get_pods_count()
                 else:
-                    pods_count = len(pods)
                     nodes_count = len(nodes)
                     if "pods" in disabled:
                         # get_pods/get_pods_count carry the client's connection
@@ -840,8 +846,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if event_type in ("ADDED", "MODIFIED"):
             try:
                 parsed = parse_fn(obj)
-                if parsed:
-                    self.data.setdefault(resource_type, {})[key] = parsed
             except Exception as ex:
                 _LOGGER.warning(
                     "Failed to parse %s %s event for %r: %s",
@@ -851,8 +855,16 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     ex,
                 )
                 return
+            if not parsed:
+                # Dropped by the parser (e.g. a Job-owned pod while
+                # exclude_job_pods is on): nothing changed, so don't wake
+                # every entity for it.
+                return
+            self.data.setdefault(resource_type, {})[key] = parsed
         elif event_type == "DELETED":
-            self.data.get(resource_type, {}).pop(key, None)
+            if self.data.get(resource_type, {}).pop(key, None) is None:
+                # Never tracked (filtered or unknown) — no entity to clean up.
+                return
             self.hass.async_create_task(self._cleanup_orphaned_entities(self.data))
         else:
             return

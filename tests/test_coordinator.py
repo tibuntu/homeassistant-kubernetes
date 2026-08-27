@@ -1815,18 +1815,37 @@ class TestApplyWatchEventExtended:
         assert "node-1" not in coord.data["nodes"]
 
     async def test_deleted_nonexistent_key_is_safe(self, coord, mock_client):
-        """Deleting a key that does not exist should not raise."""
+        """Deleting an untracked key must not raise, fan out, or scan the registry."""
         coord.data = {"pods": {}, "pods_count": 0}
         coord.async_update_listeners = MagicMock()
 
+        with patch.object(coord.hass, "async_create_task") as mock_create_task:
+            coord._apply_watch_event(
+                "pods",
+                "DELETED",
+                {"metadata": {"name": "ghost", "namespace": "default"}},
+                mock_client._parse_pod_item,
+            )
+
+        assert coord.data["pods_count"] == 0
+        coord.async_update_listeners.assert_not_called()
+        mock_create_task.assert_not_called()
+
+    async def test_added_filtered_by_parser_returns_early(self, coord, mock_client):
+        """A parser returning None (e.g. excluded Job pod) must not wake listeners."""
+        coord.data = {"pods": {}, "pods_count": 0}
+        coord.async_update_listeners = MagicMock()
+        mock_client._parse_pod_item.return_value = None
+
         coord._apply_watch_event(
             "pods",
-            "DELETED",
-            {"metadata": {"name": "ghost", "namespace": "default"}},
+            "ADDED",
+            {"metadata": {"name": "backup-29754648-hk8w8", "namespace": "default"}},
             mock_client._parse_pod_item,
         )
 
-        assert coord.data["pods_count"] == 0
+        assert coord.data["pods"] == {}
+        coord.async_update_listeners.assert_not_called()
 
     async def test_parse_exception_returns_early(self, coord, mock_client):
         """If parse_fn raises during ADDED, the event should be skipped."""
@@ -3336,6 +3355,28 @@ class TestDisabledResources:
         mock_client.get_pods_count.assert_not_called()
         mock_client.is_cluster_healthy.assert_called_once()
         assert data["pods_count"] == 0
+
+    async def test_pods_count_follows_parsed_list_when_pods_fetched(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """With pods fetched, pods_count is len(pods), not the raw count endpoint.
+
+        The raw count still includes Job-owned pods that the parser drops, and
+        the watch path uses len(data["pods"]) — using the same source here
+        keeps the count sensor from oscillating between polls and watch events.
+        """
+        coordinator = self._make_coordinator(hass, mock_client, [])
+        mock_client.get_pods.return_value = [
+            {"name": "p1", "namespace": "default"},
+            {"name": "p2", "namespace": "default"},
+        ]
+        mock_client.get_pods_count.return_value = 5
+
+        data = await coordinator._async_update_data()
+
+        mock_client.get_pods_count.assert_not_called()
+        mock_client.get_nodes_count.assert_called_once()
+        assert data["pods_count"] == 2
 
     async def test_metrics_disabled_skips_metrics_api(
         self, hass: HomeAssistant, mock_client
