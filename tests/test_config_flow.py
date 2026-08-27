@@ -24,6 +24,7 @@ from custom_components.kubernetes.const import (
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
     CONF_EVENT_TYPES,
+    CONF_EXCLUDE_JOB_PODS,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
     CONF_SCALE_COOLDOWN,
@@ -36,6 +37,7 @@ from custom_components.kubernetes.const import (
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_EVENT_TYPES,
+    DEFAULT_EXCLUDE_JOB_PODS,
     DEFAULT_PORT,
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
@@ -1389,6 +1391,38 @@ class TestKubernetesOptionsFlow:
         assert result["type"] is FlowResultType.CREATE_ENTRY
         assert result["data"][CONF_ENABLE_EVENTS] is True
         assert result["data"][CONF_EVENT_TYPES] == EVENT_TYPES_ALL
+
+    async def test_options_flow_shows_exclude_job_pods_after_event_types(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """exclude_job_pods defaults on and sits after the two event fields."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        assert result["type"] is FlowResultType.FORM
+        keys = [str(k) for k in result["data_schema"].schema]
+        assert keys.index(CONF_EXCLUDE_JOB_PODS) > keys.index(CONF_EVENT_TYPES)
+        defaults = {str(k): k.default() for k in result["data_schema"].schema}
+        assert defaults[CONF_EXCLUDE_JOB_PODS] is DEFAULT_EXCLUDE_JOB_PODS is True
+
+    async def test_options_flow_exclude_job_pods_round_trip(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Submitting exclude_job_pods=False persists it and pre-fills the form."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], user_input={CONF_EXCLUDE_JOB_PODS: False}
+        )
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_EXCLUDE_JOB_PODS] is False
+
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        defaults = {str(k): k.default() for k in result["data_schema"].schema}
+        assert defaults[CONF_EXCLUDE_JOB_PODS] is False
 
 
 # ---------------------------------------------------------------------------

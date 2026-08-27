@@ -128,6 +128,51 @@ async def test_async_setup_entry_success(
         mock_forward.assert_called_once_with(mock_config_entry, PLATFORMS)
 
 
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [
+        ({}, True),
+        ({"exclude_job_pods": True}, True),
+        ({"exclude_job_pods": False}, False),
+    ],
+)
+async def test_async_setup_entry_threads_exclude_job_pods_into_client(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    options: dict,
+    expected: bool,
+):
+    """Setup copies the exclude_job_pods option into the client constructor dict.
+
+    The option lives in entry.options while the client is built from entry.data.
+    """
+    hass.config_entries.async_update_entry(mock_config_entry, options=options)
+
+    with (
+        patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
+        patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
+        patch(
+            "custom_components.kubernetes.KubernetesDataCoordinator"
+        ) as mock_coordinator_class,
+        patch("custom_components.kubernetes._async_sync_panel", new_callable=AsyncMock),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+        ),
+    ):
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_start_watch_tasks = AsyncMock()
+        mock_coordinator_class.return_value = mock_coordinator
+
+        assert await async_setup_entry(hass, mock_config_entry) is True
+
+    client_config = mock_client_class.call_args[0][0]
+    assert client_config["exclude_job_pods"] is expected
+    # entry.data itself must be passed through untouched
+    for key, value in mock_config_entry.data.items():
+        assert client_config[key] == value
+
+
 async def test_async_setup_entry_kubernetes_not_available(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry
 ):

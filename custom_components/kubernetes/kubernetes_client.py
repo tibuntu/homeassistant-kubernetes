@@ -42,6 +42,7 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DEFAULT_WATCH_TIMEOUT_SECONDS,
     IN_CLUSTER_TOKEN_PATH,
+    WORKLOAD_TYPE_JOB,
 )
 from .metrics_parser import parse_cpu_quantity, parse_memory_quantity
 
@@ -578,7 +579,7 @@ class KubernetesClient:
                 # A Job-owned pod is one run of a Job or CronJob. Its name is
                 # unique per run, so tracking it creates an entity that can
                 # never be reused and never gets purged from the registry.
-                if self.exclude_job_pods and owner_kind == "Job":
+                if self.exclude_job_pods and owner_kind == WORKLOAD_TYPE_JOB:
                     continue
 
                 # Container state reasons (waiting / current+last terminated) for observability.
