@@ -68,7 +68,7 @@ The integration automatically detects new deployments, statefulsets, pods, nodes
 
 2. **Entity Creation**:
    - New switch entities are automatically created for deployments and statefulsets
-   - New sensor entities are created for nodes, pods, daemonsets, cronjobs, and jobs
+   - New sensor entities are created for nodes, pods, daemonsets, cronjobs, and jobs (pods owned by a Job or CronJob are skipped by default — see [Job and CronJob Pods](CONFIGURATION.md#job-and-cronjob-pods))
    - New binary sensor entities are created for node conditions (MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable)
    - Entities are added with proper unique IDs and configuration
    - No restart required - entities appear immediately after the next poll

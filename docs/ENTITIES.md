@@ -435,7 +435,7 @@ Entities are automatically added when new resources are created and removed when
 
 ### Pod Entity Management
 
-- **Automatic Creation**: Pod sensors are automatically created for each pod discovered during integration setup
+- **Automatic Creation**: Pod sensors are automatically created for each pod discovered during integration setup — except pods owned by a Job or CronJob, which are skipped by default (see [Job and CronJob Pods](CONFIGURATION.md#job-and-cronjob-pods))
 - **Dynamic Updates**: Pod information is refreshed during regular coordinator updates
 - **Automatic Cleanup**: Pod sensors are automatically removed when pods are deleted from the cluster
 - **Entity Naming**: Pod entities use the format `sensor.kubernetes_[pod_name]`
