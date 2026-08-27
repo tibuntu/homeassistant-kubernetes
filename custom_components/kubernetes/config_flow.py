@@ -911,12 +911,6 @@ class KubernetesOptionsFlow(config_entries.OptionsFlow):
                     default=current.get(CONF_ENABLE_EVENTS, DEFAULT_ENABLE_EVENTS),
                 ): bool,
                 vol.Optional(
-                    CONF_EXCLUDE_JOB_PODS,
-                    default=current.get(
-                        CONF_EXCLUDE_JOB_PODS, DEFAULT_EXCLUDE_JOB_PODS
-                    ),
-                ): bool,
-                vol.Optional(
                     CONF_EVENT_TYPES,
                     default=current.get(CONF_EVENT_TYPES, DEFAULT_EVENT_TYPES),
                 ): selector.SelectSelector(
@@ -934,6 +928,12 @@ class KubernetesOptionsFlow(config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
                 ),
+                vol.Optional(
+                    CONF_EXCLUDE_JOB_PODS,
+                    default=current.get(
+                        CONF_EXCLUDE_JOB_PODS, DEFAULT_EXCLUDE_JOB_PODS
+                    ),
+                ): bool,
                 vol.Optional(
                     CONF_DISABLED_RESOURCES,
                     default=list(current.get(CONF_DISABLED_RESOURCES, [])),
