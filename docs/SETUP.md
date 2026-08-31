@@ -62,7 +62,7 @@ spec:
 
 1. Go to **Settings → Devices & Services → Add Integration → Kubernetes**.
 2. The **Host**, **Port**, **API Token**, and **CA Certificate** fields are pre-filled from the pod's ServiceAccount.
-3. Leave **Use in-cluster ServiceAccount at runtime** enabled (it defaults to on when in-cluster credentials are detected). The integration will re-read the projected token file on each request, so automatic token rotation is handled transparently.
+3. Leave **Prefer in-cluster ServiceAccount token** enabled (it defaults to on when in-cluster credentials are detected). The integration will re-read the projected token file on each request, so automatic token rotation is handled transparently. While it is enabled, the **API Token** field below it is only used as a fallback — uncheck it if you want to authenticate with a token you paste in.
 4. Pick a friendly **Cluster Name** and submit.
 
 > **Tip:** The same checkbox is available in **Configure → Reconfigure** for existing entries, so you can switch between in-cluster and static-token modes without removing the integration.
@@ -98,6 +98,8 @@ kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -
 ```
 
 Copy this token for use in the Home Assistant configuration.
+
+> **Important:** If Home Assistant itself runs inside the cluster, the config form pre-checks **Prefer in-cluster ServiceAccount token**. Uncheck it when you want the integration to authenticate with the token extracted here — while it is checked, the pasted token is only used as a fallback and the pod's own ServiceAccount token wins.
 
 > **Note:** Tokens extracted from a long-lived `kubernetes.io/service-account-token` secret do **not** rotate. If you want automatic rotation, run Home Assistant inside the cluster and use the [In-Cluster ServiceAccount Setup](#in-cluster-serviceaccount-setup) path instead.
 
