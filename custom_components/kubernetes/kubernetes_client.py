@@ -100,6 +100,14 @@ class KubernetesClient:
         )
         self._token_cache: str = ""
         self._token_cache_time: float = 0.0
+        # ponytail: one init-time line instead of per-request logging — the
+        # source only changes with a config reload (issue #360).
+        _LOGGER.debug(
+            "API token source: %s",
+            "in-cluster projected ServiceAccount file (configured token is a fallback)"
+            if self._use_in_cluster
+            else "static token from the config entry",
+        )
         self.cluster_name = config_data.get(CONF_CLUSTER_NAME, "default")
         # Handle namespace as list (new) or string (legacy)
         namespace_config = config_data.get(CONF_NAMESPACE, [DEFAULT_NAMESPACE])
