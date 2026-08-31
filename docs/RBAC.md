@@ -189,7 +189,7 @@ Read-only access to every resource the integration monitors. No write permission
 If the Home Assistant pod runs inside the same cluster it monitors, the integration can bind to the pod's ServiceAccount directly instead of using a manually-extracted token. This is the preferred path because:
 
 - **No token extraction step.** The pod already has the projected token mounted at `/var/run/secrets/kubernetes.io/serviceaccount/token`.
-- **Automatic rotation.** Kubernetes 1.21+ rotates projected ServiceAccount tokens (commonly hourly). With **Use in-cluster ServiceAccount at runtime** enabled in the config flow, the integration re-reads the token file on each request and follows the rotation seamlessly. With this setting off, the captured-at-config-time token will eventually expire and auth-fail.
+- **Automatic rotation.** Kubernetes 1.21+ rotates projected ServiceAccount tokens (commonly hourly). With **Prefer in-cluster ServiceAccount token** enabled in the config flow, the integration re-reads the token file on each request and follows the rotation seamlessly. With this setting off, the captured-at-config-time token will eventually expire and auth-fail.
 - **No persisted credential.** The token never leaves the projected tmpfs; it is not written to Home Assistant's config store.
 - **Same RBAC rules apply.** The permission matrix above is unchanged — bind the existing `ClusterRole` (or namespace-scoped `Role`) to the ServiceAccount that the HA pod uses.
 
@@ -221,7 +221,7 @@ spec:
 When Home Assistant detects it is running inside a cluster (the `KUBERNETES_SERVICE_HOST` env var is set **and** the projected token file is readable):
 
 - The **Host**, **Port**, **API Token**, and **CA Certificate** fields on the *Add Integration* form are pre-filled from the pod's ServiceAccount.
-- A **Use in-cluster ServiceAccount at runtime** checkbox is shown and defaults to enabled. Leave it on so the integration re-reads the token file on each call and survives token rotation.
+- A **Prefer in-cluster ServiceAccount token** checkbox is shown and defaults to enabled. Leave it on so the integration re-reads the token file on each call and survives token rotation.
 - The token entered in the form is kept only as a fallback — used if the projected volume becomes unreadable for any reason (e.g. HA was later moved out of the cluster).
 
 The same checkbox is also available in **Configure → Reconfigure** if you want to flip an existing entry between in-cluster and static-token modes without re-creating it.

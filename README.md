@@ -76,6 +76,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
    - Go to **Settings → Devices & Services**
    - Add "Kubernetes" integration
    - Enter your cluster details and the token from step 1
+   - Uncheck **Prefer in-cluster ServiceAccount token** if it is enabled — while it is on, the integration authenticates with the token file mounted into the Home Assistant pod and only uses the token you entered as a fallback
 
 ## Documentation
 
