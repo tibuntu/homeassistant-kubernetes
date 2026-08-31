@@ -266,9 +266,12 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             return None
 
         # Create schema for connection step (no namespace field here)
-        # Order: Cluster Name, Host, Port, API Token, CA Certificate, Verify SSL,
-        # Monitor All Namespaces, Device Grouping Mode, Switch Update Interval,
-        # Scale Verification Timeout, Scale Cooldown
+        # Order: Cluster Name, Host, Port, Use In-Cluster, API Token,
+        # CA Certificate, Verify SSL, Monitor All Namespaces,
+        # Device Grouping Mode, Switch Update Interval,
+        # Scale Verification Timeout, Scale Cooldown.
+        # The in-cluster checkbox sits above the token field because, while
+        # enabled, the token below is only a fallback (issue #360).
         schema = {
             vol.Required(CONF_CLUSTER_NAME, default=DEFAULT_CLUSTER_NAME): str,
             vol.Required(CONF_HOST, description=_suggest("host")): str,
@@ -276,9 +279,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 CONF_PORT,
                 default=in_cluster["port"] if in_cluster else DEFAULT_PORT,
             ): int,
-            vol.Required(CONF_API_TOKEN, description=_suggest("api_token")): str,
-            vol.Optional(CONF_CA_CERT, description=_suggest("ca_cert")): str,
-            vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
             # Default the checkbox to True only when in-cluster credentials
             # were actually detected — turning it on without an SA volume
             # mounted would have the client fall back to the static token.
@@ -286,6 +286,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 CONF_USE_IN_CLUSTER,
                 default=bool(in_cluster),
             ): bool,
+            vol.Required(CONF_API_TOKEN, description=_suggest("api_token")): str,
+            vol.Optional(CONF_CA_CERT, description=_suggest("ca_cert")): str,
+            vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
             vol.Optional(
                 CONF_MONITOR_ALL_NAMESPACES, default=DEFAULT_MONITOR_ALL_NAMESPACES
             ): bool,
@@ -546,6 +549,12 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         schema = {
             vol.Required(CONF_HOST, default=current.get(CONF_HOST, "")): str,
             vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): int,
+            # Above the token field: while enabled, the token below is only a
+            # fallback (issue #360).
+            vol.Optional(
+                CONF_USE_IN_CLUSTER,
+                default=current.get(CONF_USE_IN_CLUSTER, DEFAULT_USE_IN_CLUSTER),
+            ): bool,
             vol.Required(CONF_API_TOKEN, default=current.get(CONF_API_TOKEN, "")): str,
             vol.Optional(
                 CONF_CA_CERT,
@@ -556,10 +565,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             vol.Optional(
                 CONF_VERIFY_SSL,
                 default=current.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-            ): bool,
-            vol.Optional(
-                CONF_USE_IN_CLUSTER,
-                default=current.get(CONF_USE_IN_CLUSTER, DEFAULT_USE_IN_CLUSTER),
             ): bool,
             vol.Optional(
                 CONF_MONITOR_ALL_NAMESPACES,
