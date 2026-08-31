@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
@@ -313,6 +314,24 @@ def test_api_token_returns_static_when_use_in_cluster_disabled():
     """With the runtime toggle off, the configured static token is returned verbatim."""
     client = _make_client(use_in_cluster=False, static_token="config-token")
     assert client.api_token == "config-token"
+
+
+@pytest.mark.parametrize(
+    ("use_in_cluster", "expected_source"),
+    [
+        (True, "in-cluster projected ServiceAccount file"),
+        (False, "static token from the config entry"),
+    ],
+)
+def test_client_init_logs_token_source(caplog, use_in_cluster, expected_source):
+    """Construction logs which token source is in effect (issue #360)."""
+    with caplog.at_level(
+        logging.DEBUG, logger="custom_components.kubernetes.kubernetes_client"
+    ):
+        _make_client(use_in_cluster=use_in_cluster)
+
+    assert "API token source" in caplog.text
+    assert expected_source in caplog.text
 
 
 def test_api_token_reads_file_when_use_in_cluster_enabled():
