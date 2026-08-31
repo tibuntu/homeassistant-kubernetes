@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.9.0...v1.9.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* emphasize that the API token is only a fallback in in-cluster mode ([a28521c](https://github.com/tibuntu/homeassistant-kubernetes/commit/a28521cf5ee6ac1af99460802add8bb9c001c846)), closes [#360](https://github.com/tibuntu/homeassistant-kubernetes/issues/360)
+
 ## [1.9.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.8.1...v1.9.0) (2026-08-27)
 
 This release stops **Job and CronJob pods from becoming Home Assistant entities**, which keeps Home Assistant's entity registry from growing without bound on clusters that run scheduled jobs. The filter is on by default and can be switched off in the integration's options — this is a behaviour change, so please read the upgrade note below.
