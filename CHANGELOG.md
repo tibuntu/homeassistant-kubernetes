@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.9.1...v1.9.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* drop deprecated device_registry.async_get_device usage ([7e5515f](https://github.com/tibuntu/homeassistant-kubernetes/commit/7e5515fb6e5fe6653b413b6a377080c1e97e54c8))
+
 ## [1.9.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.9.0...v1.9.1) (2026-08-31)
 
 
