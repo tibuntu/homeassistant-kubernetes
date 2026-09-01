@@ -151,7 +151,7 @@ var y$1 = class extends HTMLElement {
 	static finalizeStyles(s) {
 		const i = [];
 		if (Array.isArray(s)) {
-			const e = new Set(s.flat(Infinity).reverse());
+			const e = new Set(s.flat(1 / 0).reverse());
 			for (const s of e) i.unshift(c$2(s));
 		} else void 0 !== s && i.push(c$2(s));
 		return i;
@@ -685,7 +685,7 @@ var loadHaElements = async () => {
 	}
 };
 //#endregion
-//#region \0@oxc-project+runtime@0.142.0/helpers/esm/decorate.js
+//#region \0@oxc-project+runtime@0.147.0/helpers/esm/decorate.js
 function __decorate(decorators, target, key, desc) {
 	var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
 	if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
