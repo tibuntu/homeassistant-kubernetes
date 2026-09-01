@@ -157,8 +157,8 @@ class TestDeviceCreation:
 
         # Verify the via_device relationship — cluster device should exist
         registry = dr.async_get(hass)
-        cluster_device = registry.async_get_device(
-            identifiers={(DOMAIN, "test_entry_id_cluster")}
+        cluster_device = registry.async_get_device_by_identifier(
+            (DOMAIN, "test_entry_id_cluster"), mock_config_entry.entry_id
         )
         assert cluster_device is not None
 
@@ -194,15 +194,17 @@ class TestDeviceCleanup:
 
         # Orphaned device should be removed
         assert (
-            registry.async_get_device(
-                identifiers={(DOMAIN, "test_entry_id_namespace_old-namespace")}
+            registry.async_get_device_by_identifier(
+                (DOMAIN, "test_entry_id_namespace_old-namespace"),
+                mock_config_entry.entry_id,
             )
             is None
         )
         # Current device should still exist
         assert (
-            registry.async_get_device(
-                identifiers={(DOMAIN, "test_entry_id_namespace_default")}
+            registry.async_get_device_by_identifier(
+                (DOMAIN, "test_entry_id_namespace_default"),
+                mock_config_entry.entry_id,
             )
             is not None
         )
@@ -228,8 +230,9 @@ class TestDeviceCleanup:
 
         # Device should still exist
         assert (
-            registry.async_get_device(
-                identifiers={(DOMAIN, "test_entry_id_namespace_default")}
+            registry.async_get_device_by_identifier(
+                (DOMAIN, "test_entry_id_namespace_default"),
+                mock_config_entry.entry_id,
             )
             is not None
         )

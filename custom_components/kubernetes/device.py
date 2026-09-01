@@ -40,14 +40,7 @@ async def get_or_create_cluster_device(
     cluster_name = config_entry.data.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME)
     device_identifier = get_cluster_device_identifier(config_entry)
 
-    # Check if device already exists
-    device = device_registry.async_get_device(identifiers={(DOMAIN, device_identifier)})
-
-    if device:
-        _LOGGER.debug("Cluster device already exists: %s", device.name)
-        return device
-
-    # Create new cluster device
+    # async_get_or_create is idempotent, so no existence pre-check is needed
     device = device_registry.async_get_or_create(
         config_entry_id=config_entry.entry_id,
         identifiers={(DOMAIN, device_identifier)},
@@ -57,8 +50,8 @@ async def get_or_create_cluster_device(
         sw_version=None,
     )
 
-    _LOGGER.info(
-        "Created cluster device: %s (identifier: %s)", device.name, device_identifier
+    _LOGGER.debug(
+        "Ensured cluster device: %s (identifier: %s)", device.name, device_identifier
     )
     return device
 
@@ -78,17 +71,10 @@ async def get_or_create_namespace_device(
     cluster_name = config_entry.data.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME)
     device_identifier = get_namespace_device_identifier(config_entry, namespace)
 
-    # Check if device already exists
-    device = device_registry.async_get_device(identifiers={(DOMAIN, device_identifier)})
-
-    if device:
-        _LOGGER.debug("Namespace device already exists: %s", device.name)
-        return device
-
     # Get or create cluster device first (parent)
-    cluster_device = await get_or_create_cluster_device(hass, config_entry)
+    await get_or_create_cluster_device(hass, config_entry)
 
-    # Create new namespace device
+    # async_get_or_create is idempotent, so no existence pre-check is needed
     device = device_registry.async_get_or_create(
         config_entry_id=config_entry.entry_id,
         identifiers={(DOMAIN, device_identifier)},
@@ -99,11 +85,8 @@ async def get_or_create_namespace_device(
         via_device=(DOMAIN, get_cluster_device_identifier(config_entry)),
     )
 
-    _LOGGER.info(
-        "Created namespace device: %s (identifier: %s, parent: %s)",
-        device.name,
-        device_identifier,
-        cluster_device.name,
+    _LOGGER.debug(
+        "Ensured namespace device: %s (identifier: %s)", device.name, device_identifier
     )
     return device
 
