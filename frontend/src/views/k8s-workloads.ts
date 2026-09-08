@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { actionStyles } from "../styles/actions";
 import type { HomeAssistant } from "../types/homeassistant";
 
 interface DeploymentData {
@@ -211,22 +212,17 @@ export class K8sWorkloads extends LitElement {
     return `${Math.floor(diff / 86400)}d ago`;
   }
 
-  private async _callService(
-    service: string,
-    data: Record<string, any>,
-    actionKey: string,
-  ): Promise<void> {
+  /** Run an action with per-card busy state; failures land in the error banner. */
+  private async _runAction(actionKey: string, run: () => Promise<void>): Promise<void> {
     const updated = new Set(this._actionInProgress);
     updated.add(actionKey);
     this._actionInProgress = updated;
     try {
-      await this.hass.callService("kubernetes", service, data);
-      // Reload data after action
-      setTimeout(() => this._loadData(), 2000);
+      await run();
     } catch (err: any) {
-      const message = err?.message || "Service call failed";
+      const message = err?.message || "Action failed";
       this._actionError = `Action failed: ${message}`;
-      console.error("[k8s-workloads] Service call failed:", err);
+      console.error("[k8s-workloads] Action failed:", err);
     } finally {
       const done = new Set(this._actionInProgress);
       done.delete(actionKey);
@@ -234,417 +230,372 @@ export class K8sWorkloads extends LitElement {
     }
   }
 
-  static styles = css`
-    :host {
-      display: block;
-    }
+  private _callService(
+    service: string,
+    data: Record<string, any>,
+    actionKey: string,
+  ): Promise<void> {
+    return this._runAction(actionKey, async () => {
+      await this.hass.callService("kubernetes", service, data);
+      // Reload data after action
+      setTimeout(() => this._loadData(), 2000);
+    });
+  }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+  private _setCronJobSuspend(
+    entryId: string,
+    cj: CronJobData,
+    suspend: boolean,
+    actionKey: string,
+  ): Promise<void> {
+    return this._runAction(actionKey, async () => {
+      await this.hass.callWS({
+        type: "kubernetes/cronjobs/suspend",
+        entry_id: entryId,
+        cronjob_name: cj.name,
+        namespace: cj.namespace,
+        suspend,
+      });
+      // The backend refreshed the coordinator before answering.
+      await this._loadData();
+    });
+  }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+  static styles = [
+    actionStyles,
+    css`
+      :host {
+        display: block;
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .loading {
+        display: flex;
+        justify-content: center;
+        padding: 64px 0;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .error-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 32px;
+        text-align: center;
+        color: var(--error-color, #db4437);
+        --mdc-icon-size: 48px;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .error-card p {
+        margin: 16px 0;
+      }
 
-    .empty {
-      text-align: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .retry-btn {
+        cursor: pointer;
+        padding: 8px 24px;
+        border: 1px solid var(--primary-color);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--primary-color);
+        font-size: 14px;
+      }
 
-    .cluster-section {
-      margin-bottom: 24px;
-    }
+      .retry-btn:hover {
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+      }
 
-    .cluster-name {
-      font-size: 20px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin-bottom: 12px;
-    }
+      .empty {
+        text-align: center;
+        padding: 64px 16px;
+        color: var(--secondary-text-color);
+        font-size: 16px;
+      }
 
-    .filters {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
+      .cluster-section {
+        margin-bottom: 24px;
+      }
 
-    .search-input {
-      padding: 8px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 14px;
-      min-width: 200px;
-    }
+      .cluster-name {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 12px;
+      }
 
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
-
-    select.filter-select {
-      padding: 6px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 13px;
-    }
-
-    .filter-chip {
-      display: inline-flex;
-      align-items: center;
-      padding: 6px 14px;
-      border-radius: 16px;
-      font-size: 13px;
-      cursor: pointer;
-      border: 1px solid var(--divider-color);
-      background: transparent;
-      color: var(--primary-text-color);
-      user-select: none;
-      transition:
-        background 0.2s,
-        border-color 0.2s;
-    }
-
-    .filter-chip:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-    }
-
-    .filter-chip[active] {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-      border-color: var(--primary-color);
-      color: var(--primary-color);
-    }
-
-    .category-section {
-      margin-bottom: 20px;
-    }
-
-    .category-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 0;
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      --mdc-icon-size: 20px;
-    }
-
-    .category-count {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      font-weight: 400;
-    }
-
-    .workload-card {
-      margin-bottom: 8px;
-      border-radius: 12px;
-      overflow: hidden;
-    }
-
-    .workload-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 12px 16px;
-      font-size: 14px;
-    }
-
-    .workload-info {
-      flex: 1;
-      min-width: 0;
-    }
-
-    .workload-name {
-      font-weight: 500;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .workload-namespace {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-    }
-
-    .workload-status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .badge-healthy {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
-
-    .badge-degraded {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-      color: var(--warning-color, #ff9800);
-    }
-
-    .badge-stopped {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-      color: var(--disabled-color, #9e9e9e);
-    }
-
-    .badge-failed {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-      color: var(--error-color, #f44336);
-    }
-
-    .badge-active {
-      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
-      color: var(--info-color, #2196f3);
-    }
-
-    .badge-suspended {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-      color: var(--disabled-color, #9e9e9e);
-    }
-
-    .badge-complete {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
-
-    .replica-info {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      white-space: nowrap;
-    }
-
-    .schedule-info {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      font-family: monospace;
-    }
-
-    .workload-actions {
-      display: flex;
-      gap: 4px;
-      flex-shrink: 0;
-    }
-
-    .action-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border: none;
-      border-radius: 50%;
-      background: transparent;
-      cursor: pointer;
-      color: var(--secondary-text-color);
-      --mdc-icon-size: 18px;
-      transition:
-        background 0.15s,
-        color 0.15s;
-    }
-
-    .action-btn:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
-      color: var(--primary-color);
-    }
-
-    .action-btn[disabled] {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
-    .action-btn.stop:hover {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      color: var(--error-color, #f44336);
-    }
-
-    .action-btn.start:hover {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.1);
-      color: var(--success-color, #4caf50);
-    }
-
-    .action-btn.restart:hover {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
-      color: var(--warning-color, #ff9800);
-    }
-
-    .last-schedule {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-    }
-
-    .action-error {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 10px 16px;
-      margin-bottom: 16px;
-      border-radius: 8px;
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      color: var(--error-color, #f44336);
-      font-size: 14px;
-    }
-
-    .action-error .dismiss-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 24px;
-      height: 24px;
-      border: none;
-      border-radius: 50%;
-      background: transparent;
-      cursor: pointer;
-      color: var(--error-color, #f44336);
-      --mdc-icon-size: 16px;
-      flex-shrink: 0;
-    }
-
-    .action-error .dismiss-btn:hover {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-    }
-
-    .action-btn.delete:hover {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      color: var(--error-color, #f44336);
-    }
-
-    .confirm-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 999;
-    }
-
-    .confirm-dialog {
-      background: var(--card-background-color, #fff);
-      border-radius: 12px;
-      padding: 24px;
-      max-width: 400px;
-      width: 90%;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-    }
-
-    .confirm-dialog h3 {
-      margin: 0 0 12px;
-      font-size: 18px;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-dialog p {
-      margin: 0 0 20px;
-      color: var(--secondary-text-color);
-      font-size: 14px;
-    }
-
-    .confirm-dialog .job-ref {
-      font-family: monospace;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    .confirm-actions button {
-      padding: 8px 20px;
-      border-radius: 4px;
-      font-size: 14px;
-      cursor: pointer;
-      border: 1px solid var(--divider-color);
-      background: transparent;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-actions button:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-    }
-
-    .confirm-actions .delete-action {
-      background: var(--error-color, #f44336);
-      color: #fff;
-      border-color: var(--error-color, #f44336);
-    }
-
-    .confirm-actions .delete-action:hover {
-      opacity: 0.9;
-      background: var(--error-color, #f44336);
-    }
-
-    .confirm-actions .delete-action:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    @media (max-width: 768px) {
-      .workload-row {
+      .filters {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
         flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .search-input {
+        padding: 8px 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color, var(--primary-background-color));
+        color: var(--primary-text-color);
+        font-size: 14px;
+        min-width: 200px;
+      }
+
+      .search-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
+
+      select.filter-select {
+        padding: 6px 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color, var(--primary-background-color));
+        color: var(--primary-text-color);
+        font-size: 13px;
+      }
+
+      .filter-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 14px;
+        border-radius: 16px;
+        font-size: 13px;
+        cursor: pointer;
+        border: 1px solid var(--divider-color);
+        background: transparent;
+        color: var(--primary-text-color);
+        user-select: none;
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+      }
+
+      .filter-chip:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+      }
+
+      .filter-chip[active] {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+      }
+
+      .category-section {
+        margin-bottom: 20px;
+      }
+
+      .category-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 0;
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        --mdc-icon-size: 20px;
+      }
+
+      .category-count {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        font-weight: 400;
+      }
+
+      .workload-card {
+        margin-bottom: 8px;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .workload-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 16px;
+        font-size: 14px;
+      }
+
+      .workload-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .workload-name {
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .workload-namespace {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+      }
+
+      .workload-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .badge-healthy {
+        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+        color: var(--success-color, #4caf50);
+      }
+
+      .badge-degraded {
+        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+        color: var(--warning-color, #ff9800);
+      }
+
+      .badge-stopped {
+        background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+        color: var(--disabled-color, #9e9e9e);
+      }
+
+      .badge-failed {
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+        color: var(--error-color, #f44336);
+      }
+
+      .badge-active {
+        background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
+        color: var(--info-color, #2196f3);
+      }
+
+      .badge-suspended {
+        background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+        color: var(--disabled-color, #9e9e9e);
+      }
+
+      .badge-complete {
+        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+        color: var(--success-color, #4caf50);
+      }
+
+      .replica-info {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+      }
+
+      .schedule-info {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        font-family: monospace;
+      }
+
+      .workload-actions {
+        display: flex;
+        gap: 4px;
+        flex-shrink: 0;
+      }
+
+      .last-schedule {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+      }
+
+      .confirm-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999;
+      }
+
+      .confirm-dialog {
+        background: var(--card-background-color, #fff);
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      }
+
+      .confirm-dialog h3 {
+        margin: 0 0 12px;
+        font-size: 18px;
+        color: var(--primary-text-color);
+      }
+
+      .confirm-dialog p {
+        margin: 0 0 20px;
+        color: var(--secondary-text-color);
+        font-size: 14px;
+      }
+
+      .confirm-dialog .job-ref {
+        font-family: monospace;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
+
+      .confirm-actions {
+        display: flex;
+        justify-content: flex-end;
         gap: 8px;
       }
 
-      .replica-info,
-      .schedule-info {
-        display: none;
+      .confirm-actions button {
+        padding: 8px 20px;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        border: 1px solid var(--divider-color);
+        background: transparent;
+        color: var(--primary-text-color);
       }
-    }
-  `;
+
+      .confirm-actions button:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+      }
+
+      .confirm-actions .delete-action {
+        background: var(--error-color, #f44336);
+        color: #fff;
+        border-color: var(--error-color, #f44336);
+      }
+
+      .confirm-actions .delete-action:hover {
+        opacity: 0.9;
+        background: var(--error-color, #f44336);
+      }
+
+      .confirm-actions .delete-action:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      @media (max-width: 768px) {
+        .workload-row {
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .replica-info,
+        .schedule-info {
+          display: none;
+        }
+      }
+    `,
+  ];
 
   protected render() {
     if (this._loading) {
@@ -1177,6 +1128,17 @@ export class K8sWorkloads extends LitElement {
               : nothing
           }
           <div class="workload-actions">
+            <button
+              class="action-btn ${cj.suspend ? "start" : "suspend"}"
+              title=${cj.suspend ? "Resume schedule" : "Suspend schedule"}
+              ?disabled=${busy}
+              @click=${() =>
+                this._setCronJobSuspend(entryId, cj, !cj.suspend, actionKey)}
+            >
+              <ha-icon
+                icon=${cj.suspend ? "mdi:play-circle-outline" : "mdi:pause-circle-outline"}
+              ></ha-icon>
+            </button>
             <button
               class="action-btn start"
               title="Trigger now"

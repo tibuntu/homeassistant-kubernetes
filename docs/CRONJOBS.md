@@ -88,7 +88,7 @@ data:
 
 ### Suspend/Resume CronJobs
 
-CronJobs can be suspended or resumed using the switch entities. There are no dedicated services for this operation.
+CronJobs can be suspended or resumed using the switch entities, or with the **Suspend** / **Resume** button on the CronJob's card in the sidebar panel's Workloads tab (requires the HA admin role). There are no dedicated services for this operation.
 
 **Using Switch Entities**:
 

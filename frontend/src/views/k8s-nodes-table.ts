@@ -1,5 +1,6 @@
 import { LitElement, html, css, nothing, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { actionStyles } from "../styles/actions";
 import type { HomeAssistant } from "../types/homeassistant";
 
 interface NodeData {
@@ -51,6 +52,8 @@ export class K8sNodesTable extends LitElement {
   @state() private _expandedNodes: Set<string> = new Set();
   @state() private _statusFilter: string = "all";
   @state() private _searchQuery: string = "";
+  @state() private _actionInProgress: Set<string> = new Set();
+  @state() private _actionError: string | null = null;
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
   private _loadingInFlight = false;
@@ -196,282 +199,315 @@ export class K8sNodesTable extends LitElement {
     return filtered;
   }
 
-  static styles = css`
-    :host {
-      display: block;
+  /** Cordon (schedulable → false) or uncordon a node via the HA services. */
+  private async _setSchedulable(
+    entryId: string,
+    node: NodeData,
+    schedulable: boolean,
+  ): Promise<void> {
+    const actionKey = `${entryId}_${node.name}`;
+    const updated = new Set(this._actionInProgress);
+    updated.add(actionKey);
+    this._actionInProgress = updated;
+    try {
+      await this.hass.callService(
+        "kubernetes",
+        schedulable ? "uncordon_node" : "cordon_node",
+        { node_name: node.name, entry_id: entryId },
+      );
+      // The services request a coordinator refresh; reload now and let the
+      // update push catch anything the cluster reports late.
+      await this._loadData();
+    } catch (err: any) {
+      const message = err?.message || "Action failed";
+      this._actionError = `Action failed: ${message}`;
+      console.error("[k8s-nodes-table] Action failed:", err);
+    } finally {
+      const done = new Set(this._actionInProgress);
+      done.delete(actionKey);
+      this._actionInProgress = done;
     }
+  }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+  static styles = [
+    actionStyles,
+    css`
+      :host {
+        display: block;
+      }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+      .loading {
+        display: flex;
+        justify-content: center;
+        padding: 64px 0;
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .error-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 32px;
+        text-align: center;
+        color: var(--error-color, #db4437);
+        --mdc-icon-size: 48px;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .error-card p {
+        margin: 16px 0;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .retry-btn {
+        cursor: pointer;
+        padding: 8px 24px;
+        border: 1px solid var(--primary-color);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--primary-color);
+        font-size: 14px;
+      }
 
-    .empty {
-      text-align: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .retry-btn:hover {
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+      }
 
-    .cluster-section {
-      margin-bottom: 24px;
-    }
+      .empty {
+        text-align: center;
+        padding: 64px 16px;
+        color: var(--secondary-text-color);
+        font-size: 16px;
+      }
 
-    .cluster-name {
-      font-size: 20px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin-bottom: 12px;
-    }
+      .cluster-section {
+        margin-bottom: 24px;
+      }
 
-    .filters {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
+      .cluster-name {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 12px;
+      }
 
-    .search-input {
-      padding: 8px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 14px;
-      min-width: 200px;
-    }
+      .filters {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
 
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
+      .search-input {
+        padding: 8px 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color, var(--primary-background-color));
+        color: var(--primary-text-color);
+        font-size: 14px;
+        min-width: 200px;
+      }
 
-    .filter-chip {
-      display: inline-flex;
-      align-items: center;
-      padding: 6px 14px;
-      border-radius: 16px;
-      font-size: 13px;
-      cursor: pointer;
-      border: 1px solid var(--divider-color);
-      background: transparent;
-      color: var(--primary-text-color);
-      user-select: none;
-      transition:
-        background 0.2s,
-        border-color 0.2s;
-    }
+      .search-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
 
-    .filter-chip:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-    }
+      .filter-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 14px;
+        border-radius: 16px;
+        font-size: 13px;
+        cursor: pointer;
+        border: 1px solid var(--divider-color);
+        background: transparent;
+        color: var(--primary-text-color);
+        user-select: none;
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+      }
 
-    .filter-chip[active] {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-      border-color: var(--primary-color);
-      color: var(--primary-color);
-    }
+      .filter-chip:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+      }
 
-    .node-card {
-      margin-bottom: 8px;
-      border-radius: 12px;
-      overflow: hidden;
-    }
+      .filter-chip[active] {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+      }
 
-    .node-row {
-      display: grid;
-      grid-template-columns: 1fr auto auto auto auto auto;
-      align-items: center;
-      gap: 16px;
-      padding: 12px 16px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: background 0.15s;
-    }
+      .node-card {
+        margin-bottom: 8px;
+        border-radius: 12px;
+        overflow: hidden;
+      }
 
-    .node-row:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
-    }
-
-    .node-name {
-      font-weight: 500;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      --mdc-icon-size: 18px;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .badge-ready {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
-
-    .badge-not-ready {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-      color: var(--error-color, #f44336);
-    }
-
-    .badge-unschedulable {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-      color: var(--warning-color, #ff9800);
-    }
-
-    .badge-condition {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-      color: var(--warning-color, #ff9800);
-    }
-
-    .node-ip {
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      font-family: monospace;
-    }
-
-    .node-resources {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      --mdc-icon-size: 16px;
-    }
-
-    .node-age {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-    }
-
-    .node-details {
-      padding: 0 16px 16px;
-    }
-
-    .details-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 12px;
-    }
-
-    .detail-item {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-
-    .detail-label {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    .detail-value {
-      font-size: 14px;
-      color: var(--primary-text-color);
-    }
-
-    .detail-value.mono {
-      font-family: monospace;
-    }
-
-    .conditions-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 8px;
-    }
-
-    .resource-bar-container {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .resource-label {
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--secondary-text-color);
-      min-width: 28px;
-    }
-
-    .resource-bar {
-      width: 60px;
-      height: 6px;
-      background: var(--divider-color);
-      border-radius: 3px;
-      overflow: hidden;
-    }
-
-    .resource-bar-fill {
-      height: 100%;
-      border-radius: 3px;
-      background: var(--primary-color);
-    }
-
-    .resource-bar-fill.bar-warn {
-      background: var(--warning-color, #ff9800);
-    }
-
-    .node-count {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      margin-bottom: 8px;
-    }
-
-    @media (max-width: 768px) {
       .node-row {
-        grid-template-columns: 1fr auto;
-        gap: 8px;
+        display: grid;
+        grid-template-columns: 1fr auto auto auto auto auto;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 16px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.15s;
       }
 
-      .node-ip,
-      .node-resources,
-      .node-age {
-        display: none;
+      .node-row:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
       }
-    }
-  `;
+
+      .node-name {
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        --mdc-icon-size: 18px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .badge-ready {
+        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+        color: var(--success-color, #4caf50);
+      }
+
+      .badge-not-ready {
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+        color: var(--error-color, #f44336);
+      }
+
+      .badge-unschedulable {
+        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+        color: var(--warning-color, #ff9800);
+      }
+
+      .badge-condition {
+        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+        color: var(--warning-color, #ff9800);
+      }
+
+      .node-ip {
+        color: var(--secondary-text-color);
+        font-size: 13px;
+        font-family: monospace;
+      }
+
+      .node-resources {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        --mdc-icon-size: 16px;
+      }
+
+      .node-age {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+      }
+
+      .node-details {
+        padding: 0 16px 16px;
+      }
+
+      .details-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 12px;
+      }
+
+      .detail-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .detail-label {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .detail-value {
+        font-size: 14px;
+        color: var(--primary-text-color);
+      }
+
+      .detail-value.mono {
+        font-family: monospace;
+      }
+
+      .conditions-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 8px;
+      }
+
+      .resource-bar-container {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .resource-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--secondary-text-color);
+        min-width: 28px;
+      }
+
+      .resource-bar {
+        width: 60px;
+        height: 6px;
+        background: var(--divider-color);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      .resource-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        background: var(--primary-color);
+      }
+
+      .resource-bar-fill.bar-warn {
+        background: var(--warning-color, #ff9800);
+      }
+
+      .node-count {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-bottom: 8px;
+      }
+
+      @media (max-width: 768px) {
+        .node-row {
+          grid-template-columns: 1fr auto auto;
+          gap: 8px;
+        }
+
+        .node-ip,
+        .node-resources,
+        .node-age {
+          display: none;
+        }
+      }
+    `,
+  ];
 
   protected render() {
     if (this._loading) {
@@ -498,7 +534,27 @@ export class K8sNodesTable extends LitElement {
       return html`<div class="empty">No Kubernetes clusters configured.</div>`;
     }
 
-    return html`${this._data.clusters.map((c) => this._renderCluster(c))}`;
+    return html`
+      ${
+        this._actionError
+          ? html`
+              <div class="action-error">
+                <span>${this._actionError}</span>
+                <button
+                  class="dismiss-btn"
+                  @click=${() => {
+                    this._actionError = null;
+                  }}
+                  title="Dismiss"
+                >
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>
+              </div>
+            `
+          : nothing
+      }
+      ${this._data.clusters.map((c) => this._renderCluster(c))}
+    `;
   }
 
   private _renderCluster(cluster: ClusterNodes) {
@@ -632,6 +688,19 @@ export class K8sNodesTable extends LitElement {
             }
           </div>
           <span class="node-age">${this._formatAge(node.creation_timestamp)}</span>
+          <button
+            class="action-btn ${node.schedulable ? "cordon" : "uncordon"}"
+            title=${node.schedulable ? "Cordon (stop scheduling new pods)" : "Uncordon"}
+            ?disabled=${this._actionInProgress.has(nodeKey)}
+            @click=${(e: Event) => {
+              e.stopPropagation();
+              this._setSchedulable(entryId, node, !node.schedulable);
+            }}
+          >
+            <ha-icon
+              icon=${node.schedulable ? "mdi:server-off" : "mdi:server"}
+            ></ha-icon>
+          </button>
         </div>
         ${expanded ? this._renderNodeDetails(node, conditions) : nothing}
       </ha-card>
