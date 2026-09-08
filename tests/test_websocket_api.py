@@ -2,8 +2,12 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.kubernetes.const import DOMAIN
 from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.websocket_api import (
     _build_alerts,
@@ -2225,3 +2229,77 @@ class TestWebsocketSubscribeUpdates:
 
         connection.send_result.assert_called_once_with(1)
         connection.send_message.assert_not_called()
+
+
+class TestWebsocketSuspendCronJobEndToEnd:
+    """Drive kubernetes/cronjobs/suspend through HA's real WebSocket stack.
+
+    The other tests call the ``_handle_*`` functions directly, which leaves the
+    decorated wrapper (``require_admin`` + ``websocket_command`` +
+    ``async_response``) unexercised. This class registers the commands for
+    real and talks to them over a WebSocket connection.
+    """
+
+    @staticmethod
+    def _add_loaded_entry(hass: HomeAssistant, client: MagicMock) -> MagicMock:
+        """Add a LOADED config entry whose coordinator wraps ``client``."""
+        coordinator = MagicMock()
+        coordinator.client = client
+        coordinator.async_request_refresh = AsyncMock()
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="entry_1",
+            data={"host": "test", "cluster_name": "test"},
+            state=ConfigEntryState.LOADED,
+        )
+        entry.add_to_hass(hass)
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data, client=client, coordinator=coordinator
+        )
+        return coordinator
+
+    @staticmethod
+    def _suspend_msg(msg_id: int, suspend: bool) -> dict:
+        return {
+            "id": msg_id,
+            "type": "kubernetes/cronjobs/suspend",
+            "entry_id": "entry_1",
+            "cronjob_name": "backup",
+            "namespace": "default",
+            "suspend": suspend,
+        }
+
+    async def test_admin_can_suspend(self, hass: HomeAssistant, hass_ws_client):
+        """An admin connection suspends the CronJob and gets success back."""
+        client = MagicMock()
+        client.suspend_cronjob = AsyncMock(return_value={"success": True})
+        coordinator = self._add_loaded_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json(self._suspend_msg(5, True))
+        msg = await ws.receive_json()
+
+        assert msg["id"] == 5
+        assert msg["success"] is True
+        assert msg["result"] == {"success": True}
+        client.suspend_cronjob.assert_awaited_once_with("backup", "default")
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_non_admin_is_rejected(
+        self, hass: HomeAssistant, hass_ws_client, hass_read_only_access_token
+    ):
+        """A read-only user is refused before the handler runs."""
+        client = MagicMock()
+        client.resume_cronjob = AsyncMock(return_value={"success": True})
+        self._add_loaded_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass, hass_read_only_access_token)
+
+        await ws.send_json(self._suspend_msg(6, False))
+        msg = await ws.receive_json()
+
+        assert msg["id"] == 6
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "unauthorized"
+        client.resume_cronjob.assert_not_called()
