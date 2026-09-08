@@ -89,7 +89,7 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect to Kubernetes cluster",
+      "cannot_connect": "Failed to connect to Kubernetes cluster. Check the host and port, and for a self-signed or custom CA either provide the CA certificate path or disable Verify SSL.",
       "cannot_fetch_namespaces": "Failed to fetch namespaces from cluster. Please check your connection settings and permissions.",
       "kubernetes_not_installed": "Kubernetes Python package is not installed. Please install it using: pip install kubernetes==33.1.0",
       "at_least_one_namespace_required": "At least one namespace is required when not monitoring all namespaces",

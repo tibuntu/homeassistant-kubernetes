@@ -3466,3 +3466,103 @@ class TestReauthFlow:
         assert result["type"] is FlowResultType.ABORT
         assert result["reason"] == "reauth_successful"
         assert mock_config_entry.data[CONF_API_TOKEN] == "good-token"
+
+
+# ---------------------------------------------------------------------------
+# The aiohttp calls made by the flow honor verify_ssl / ca_cert
+# ---------------------------------------------------------------------------
+
+
+def _mock_session(status: int = 200, json_body: dict | None = None) -> MagicMock:
+    """Build an aiohttp.ClientSession mock whose GET returns ``status``."""
+    mock_response = MagicMock()
+    mock_response.status = status
+    mock_response.json = AsyncMock(return_value=json_body or {"items": []})
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=None)
+
+    mock_session = MagicMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+    mock_session.get = MagicMock(return_value=mock_response)
+    return mock_session
+
+
+class TestFlowHonorsTls:
+    """Both aiohttp call sites must pass the same ssl= value the runtime client uses.
+
+    Before this, both hardcoded ``ssl=False``. Because the aiohttp fallback runs
+    exactly when the official client fails, a certificate error passed
+    validation and the entry then broke at runtime.
+    """
+
+    @pytest.mark.parametrize(
+        "method", ["_test_connection_aiohttp", "_fetch_namespaces"]
+    )
+    async def test_passes_built_ssl_param(self, hass: HomeAssistant, method: str):
+        """verify_ssl on + ca_cert -> the helper's return value reaches session.get."""
+        flow = KubernetesConfigFlow()
+        flow.hass = hass
+        sentinel = object()
+        mock_session = _mock_session()
+
+        with (
+            patch("aiohttp.ClientSession", return_value=mock_session),
+            patch(
+                "custom_components.kubernetes.kubernetes_client.build_ssl_param",
+                new_callable=AsyncMock,
+                return_value=sentinel,
+            ) as mock_build,
+        ):
+            await getattr(flow, method)(
+                {
+                    CONF_HOST: "test-host",
+                    CONF_API_TOKEN: "test-token",
+                    CONF_VERIFY_SSL: True,
+                    CONF_CA_CERT: "/path/ca.crt",
+                }
+            )
+
+        mock_build.assert_awaited_once_with(True, "/path/ca.crt")
+        assert mock_session.get.call_args.kwargs["ssl"] is sentinel
+
+    @pytest.mark.parametrize(
+        "method", ["_test_connection_aiohttp", "_fetch_namespaces"]
+    )
+    async def test_verify_ssl_off_disables_verification(
+        self, hass: HomeAssistant, method: str
+    ):
+        """verify_ssl off -> ssl=False, end to end through the real helper."""
+        flow = KubernetesConfigFlow()
+        flow.hass = hass
+        mock_session = _mock_session()
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            await getattr(flow, method)(
+                {
+                    CONF_HOST: "test-host",
+                    CONF_API_TOKEN: "test-token",
+                    CONF_VERIFY_SSL: False,
+                }
+            )
+
+        assert mock_session.get.call_args.kwargs["ssl"] is False
+
+    async def test_unreadable_ca_cert_fails_connection_test(self, hass: HomeAssistant):
+        """A CA path that cannot be loaded makes the probe fail instead of bypassing TLS."""
+        flow = KubernetesConfigFlow()
+        flow.hass = hass
+        mock_session = _mock_session()
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await flow._test_connection_aiohttp(
+                {
+                    CONF_HOST: "test-host",
+                    CONF_API_TOKEN: "test-token",
+                    CONF_VERIFY_SSL: True,
+                    CONF_CA_CERT: "/nonexistent/ca.crt",
+                }
+            )
+
+        assert result is False
+        mock_session.get.assert_not_called()

@@ -79,6 +79,31 @@ def normalize_host(host: str) -> str:
     return host
 
 
+async def build_ssl_param(
+    verify_ssl: bool, ca_cert: str | None
+) -> ssl.SSLContext | bool:
+    """Return the value to pass to aiohttp's ``ssl=`` argument.
+
+    A bare ``ssl=True`` makes aiohttp verify against the system trust store,
+    ignoring a cluster-issued CA (issue #265), so verification always goes
+    through an ``SSLContext``. ``create_default_context`` reads ``ca_cert``
+    from disk, hence the executor.
+
+    - ``verify_ssl=False`` -> ``False`` (no verification)
+    - ``verify_ssl=True`` + ``ca_cert`` -> context trusting that CA
+    - ``verify_ssl=True`` + no ``ca_cert`` -> default context (system trust)
+
+    Shared by the runtime client and the config flow so setup validates the
+    connection with exactly the TLS settings the entry will run with.
+    """
+    if not verify_ssl:
+        return False
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None, lambda: ssl.create_default_context(cafile=ca_cert)
+    )
+
+
 class ResourceVersionExpired(Exception):
     """Raised when Kubernetes returns HTTP 410 for a watch (resourceVersion too old)."""
 
@@ -131,9 +156,9 @@ class KubernetesClient:
         self.ca_cert = config_data.get(CONF_CA_CERT)
         self.verify_ssl = config_data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
-        # Cached aiohttp SSL context (built lazily from ca_cert; see
+        # Cached aiohttp ssl= value (built lazily via build_ssl_param; see
         # _get_ssl_param). None until first use.
-        self._ssl_context: ssl.SSLContext | None = None
+        self._ssl_context: ssl.SSLContext | bool | None = None
 
         # Error deduplication tracking
         self._last_auth_error_time = 0.0
@@ -360,30 +385,13 @@ class KubernetesClient:
         )
 
     async def _get_ssl_param(self) -> ssl.SSLContext | bool:
-        """Return the value to pass to aiohttp's ``ssl=`` argument.
+        """Cached ``build_ssl_param`` for this client's verify_ssl / ca_cert.
 
-        Honors ``verify_ssl`` and ``ca_cert``. A bare ``ssl=True`` makes
-        aiohttp verify against the system trust store, ignoring the configured
-        cluster CA (see issue #265). Building an ``SSLContext`` from
-        ``ca_cert`` fixes that. The context is built once and cached;
-        ``create_default_context`` reads ``ca_cert`` from disk, so the first
-        build runs in the executor to avoid blocking the event loop.
-
-        Semantics match the official client / watch path:
-        - ``verify_ssl=False`` -> ``False`` (no verification)
-        - ``verify_ssl=True`` + ``ca_cert`` -> context trusting that CA
-        - ``verify_ssl=True`` + no ``ca_cert`` -> default context (system trust)
+        Lock-free on purpose: two concurrent first-callers may each build a
+        context, but both are equivalent so the second write is idempotent.
         """
-        if not self.verify_ssl:
-            return False
         if self._ssl_context is None:
-            # Lock-free on purpose: two concurrent first-callers may each build
-            # a context, but both are equivalent so the second write is
-            # idempotent. A lock would cost more than the rare double-build.
-            loop = asyncio.get_running_loop()
-            self._ssl_context = await loop.run_in_executor(
-                None, lambda: ssl.create_default_context(cafile=self.ca_cert)
-            )
+            self._ssl_context = await build_ssl_param(self.verify_ssl, self.ca_cert)
         return self._ssl_context
 
     async def _test_connection(self) -> bool:
