@@ -10,6 +10,7 @@ import pytest
 from custom_components.kubernetes.kubernetes_client import (
     KubernetesClient,
     ResourceVersionExpired,
+    build_ssl_param,
     normalize_host,
 )
 
@@ -142,6 +143,44 @@ def _make_client(config):
     """Build a KubernetesClient with the k8s official client patched out."""
     with patch("custom_components.kubernetes.kubernetes_client.k8s_client"):
         return KubernetesClient(config)
+
+
+class TestBuildSslParam:
+    """The module-level helper shared by the runtime client and the config flow."""
+
+    async def test_false_when_verify_disabled(self):
+        """verify_ssl=False -> False, and no context is built even with a CA."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.ssl.create_default_context"
+        ) as mock_ctx:
+            result = await build_ssl_param(False, "/path/ca.crt")
+
+        assert result is False
+        mock_ctx.assert_not_called()
+
+    async def test_context_from_ca_cert(self):
+        """verify_ssl=True + ca_cert -> context built from that CA file."""
+        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
+            return_value=sentinel_ctx,
+        ) as mock_ctx:
+            result = await build_ssl_param(True, "/path/ca.crt")
+
+        assert result is sentinel_ctx
+        mock_ctx.assert_called_once_with(cafile="/path/ca.crt")
+
+    async def test_default_context_without_ca_cert(self):
+        """verify_ssl=True + no ca_cert -> default context (system trust store)."""
+        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
+            return_value=sentinel_ctx,
+        ) as mock_ctx:
+            result = await build_ssl_param(True, None)
+
+        assert result is sentinel_ctx
+        mock_ctx.assert_called_once_with(cafile=None)
 
 
 class TestSslParam:

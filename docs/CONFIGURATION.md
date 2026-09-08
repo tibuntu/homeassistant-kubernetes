@@ -16,7 +16,7 @@ This guide covers all configuration options for the Kubernetes Home Assistant In
 |---------|-------------|---------|
 | **Port** | Kubernetes API port | `6443` |
 | **CA Certificate** | Path to your cluster's CA certificate | `null` |
-| **Verify SSL** | Whether to verify SSL certificates | `false` |
+| **Verify SSL** | Whether to verify SSL certificates | `true` |
 | **Monitor All Namespaces** | Enable to monitor all namespaces | `true` |
 | **Namespaces** | List of namespaces to monitor (only shown when "Monitor All Namespaces" is disabled) | Selected from cluster |
 | **Device Grouping Mode** | How entities are organized (by Namespace or by Cluster) | `namespace` |
@@ -82,11 +82,12 @@ The panel is registered automatically by default. To disable it, go to **Setting
 
 ### SSL Configuration
 
-For self-signed certificates or custom CA:
+**Verify SSL** defaults to `true`. The connection test during setup, reconfiguration, and re-authentication uses exactly the TLS settings you enter, so a cluster whose certificate cannot be verified fails setup with *Failed to connect* instead of appearing to work and then breaking once the integration runs.
 
-- **Verify SSL** defaults to `false` to support self-signed certificates out of the box
-- Set "Verify SSL" to `true` for production environments with proper certificates
-- Provide the CA certificate path for custom Certificate Authorities
+For clusters with a self-signed or custom Certificate Authority, do one of:
+
+- Provide the **CA Certificate** path (a file readable by Home Assistant) and keep **Verify SSL** on — this is the secure option
+- Turn **Verify SSL** off, which disables certificate verification entirely
 
 ### Performance Tuning
 

@@ -809,6 +809,22 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             else:
                 raise ValueError(f"Connection test failed: {str(ex)}") from ex
 
+    @staticmethod
+    async def _ssl_param(user_input: dict[str, Any]) -> Any:
+        """Build the aiohttp ``ssl=`` value from the flow's verify_ssl / ca_cert.
+
+        Delegates to the runtime client's helper so setup validates with the
+        exact TLS settings the entry will run with. Imported lazily because
+        ``kubernetes_client`` imports the ``kubernetes`` package at module
+        level and the flow must survive that package being absent.
+        """
+        from .kubernetes_client import build_ssl_param
+
+        return await build_ssl_param(
+            user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+            user_input.get(CONF_CA_CERT),
+        )
+
     async def _test_connection_aiohttp(self, user_input: dict[str, Any]) -> bool:
         """Test the connection using aiohttp as fallback."""
         try:
@@ -819,12 +835,13 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
             host = user_input[CONF_HOST]
             port = user_input.get(CONF_PORT, DEFAULT_PORT)
+            ssl_param = await self._ssl_param(user_input)
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"https://{host}:{port}/api/v1/",
                     headers=headers,
-                    ssl=False,
+                    ssl=ssl_param,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
@@ -851,17 +868,13 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
             host = user_input[CONF_HOST]
             port = user_input.get(CONF_PORT, DEFAULT_PORT)
-
-            # Match the SSL handling from _test_connection_aiohttp
-            # For now, use ssl=False to avoid certificate issues during config flow
-            # The actual connection will use the verify_ssl setting from user_input
-            ssl_context = False
+            ssl_param = await self._ssl_param(user_input)
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"https://{host}:{port}/api/v1/namespaces",
                     headers=headers,
-                    ssl=ssl_context,
+                    ssl=ssl_param,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
                     if response.status == 200:
