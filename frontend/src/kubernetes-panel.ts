@@ -131,22 +131,6 @@ export class KubernetesPanel extends LitElement {
       flex: 1;
       box-sizing: border-box;
     }
-
-    .coming-soon {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      text-align: center;
-      --mdc-icon-size: 48px;
-    }
-
-    .coming-soon p {
-      margin-top: 16px;
-      font-size: 16px;
-    }
   `;
 
   protected render() {
@@ -189,13 +173,6 @@ export class KubernetesPanel extends LitElement {
         return html`<k8s-network .hass=${this.hass}></k8s-network>`;
       case "settings":
         return html`<k8s-settings .hass=${this.hass}></k8s-settings>`;
-      default:
-        return html`
-          <div class="coming-soon">
-            <ha-icon icon="mdi:hammer-wrench"></ha-icon>
-            <p>This tab is coming in a future release.</p>
-          </div>
-        `;
     }
   }
 }

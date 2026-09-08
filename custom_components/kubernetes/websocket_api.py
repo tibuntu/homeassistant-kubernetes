@@ -33,9 +33,6 @@ from .const import (
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
-    WORKLOAD_TYPE_DAEMONSET,
-    WORKLOAD_TYPE_DEPLOYMENT,
-    WORKLOAD_TYPE_STATEFULSET,
 )
 from .coordinator import KubernetesDataCoordinator, get_loaded_entries
 
@@ -63,7 +60,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_config_list)
     websocket_api.async_register_command(hass, websocket_delete_pod)
     websocket_api.async_register_command(hass, websocket_delete_job)
-    websocket_api.async_register_command(hass, websocket_restart_workload)
+    websocket_api.async_register_command(hass, websocket_suspend_cronjob)
     websocket_api.async_register_command(hass, websocket_subscribe_updates)
 
 
@@ -625,39 +622,38 @@ def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "kubernetes/workloads/restart",
+        vol.Required("type"): "kubernetes/cronjobs/suspend",
         vol.Required("entry_id"): str,
-        vol.Required("workload_name"): str,
+        vol.Required("cronjob_name"): str,
         vol.Required("namespace"): str,
-        vol.Required("workload_type"): vol.In(
-            [
-                WORKLOAD_TYPE_DEPLOYMENT,
-                WORKLOAD_TYPE_STATEFULSET,
-                WORKLOAD_TYPE_DAEMONSET,
-            ]
-        ),
+        vol.Required("suspend"): bool,
     }
 )
 @websocket_api.async_response
-async def websocket_restart_workload(
+async def websocket_suspend_cronjob(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Perform a rollout restart of a workload."""
-    await _handle_restart_workload(hass, connection, msg)
+    """Suspend (``suspend: true``) or resume (``suspend: false``) a CronJob."""
+    await _handle_suspend_cronjob(hass, connection, msg)
 
 
-async def _handle_restart_workload(
+async def _handle_suspend_cronjob(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Handle workload rollout restart logic."""
+    """Handle CronJob suspend/resume logic.
+
+    The panel goes through WebSocket here because the dedicated
+    ``suspend_cronjob``/``resume_cronjob`` services were retired in favor of
+    the CronJob switch, and the panel works with workload names, not entity ids.
+    """
     entry_id = msg["entry_id"]
-    workload_name = msg["workload_name"]
+    cronjob_name = msg["cronjob_name"]
     namespace = msg["namespace"]
-    workload_type = msg["workload_type"]
+    suspend = msg["suspend"]
 
     coordinator = _get_coordinator(hass, entry_id)
     if coordinator is None:
@@ -665,32 +661,19 @@ async def _handle_restart_workload(
         return
 
     client = coordinator.client
+    action = client.suspend_cronjob if suspend else client.resume_cronjob
+    result = await action(cronjob_name, namespace)
 
-    restart_methods = {
-        WORKLOAD_TYPE_DEPLOYMENT: client.rollout_restart_deployment,
-        WORKLOAD_TYPE_STATEFULSET: client.rollout_restart_statefulset,
-        WORKLOAD_TYPE_DAEMONSET: client.rollout_restart_daemonset,
-    }
-
-    restart_fn = restart_methods.get(workload_type)
-    if restart_fn is None:
-        connection.send_error(
-            msg["id"],
-            "invalid_type",
-            f"Unsupported workload type: {workload_type}",
-        )
-        return
-
-    success = await restart_fn(workload_name, namespace)
-
-    if success:
+    if result.get("success"):
         await coordinator.async_request_refresh()
         connection.send_result(msg["id"], {"success": True})
     else:
+        verb = "suspend" if suspend else "resume"
         connection.send_error(
             msg["id"],
-            "restart_failed",
-            f"Failed to restart {workload_type} {workload_name} in namespace {namespace}",
+            f"{verb}_failed",
+            result.get("error")
+            or f"Failed to {verb} CronJob {cronjob_name} in namespace {namespace}",
         )
 
 

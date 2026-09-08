@@ -20,10 +20,10 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **Workload Control**: Scale, start, stop, and rolling-restart deployments, statefulsets, and daemonsets from Home Assistant
 - **Pod Management**: Delete individual pods directly from the sidebar panel (requires HA admin role); per-pod sensors expose container-state diagnostics — CrashLoopBackOff, ImagePullBackOff, OOMKilled (including a recovered OOMKill that already restarted, via `last_terminated_reason`), and scheduling failures — plus a derived `problem`/`problem_reason` attribute for easy automations and alerts
 - **Job Management**: Delete Jobs (including failed Jobs) via the sidebar panel or `kubernetes.delete_job` service; cascades to pods
-- **CronJob Management**: Control CronJob suspension state and trigger jobs manually via service calls
-- **Node Management**: Cordon and uncordon nodes via per-node switches (on = schedulable) or the `kubernetes.cordon_node` / `kubernetes.uncordon_node` services
+- **CronJob Management**: Suspend, resume, and trigger CronJobs from the sidebar panel, via the per-CronJob switch, or via `kubernetes.start_workload`
+- **Node Management**: Cordon and uncordon nodes from the sidebar panel, via per-node switches (on = schedulable), or via the `kubernetes.cordon_node` / `kubernetes.uncordon_node` services
 - **Dynamic Entity Management**: Automatic entity creation and cleanup as cluster resources change
-- **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts; a Network tab lists Ingresses with clickable URLs, backing service, and TLS status
+- **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts; Workloads tab with start/stop/rolling-restart, CronJob suspend/resume/trigger, and Job deletion; Nodes tab with cordon/uncordon; a Network tab lists Ingresses with clickable URLs, backing service, and TLS status
 - **Diagnostics**: Native Home Assistant Diagnostics download with redacted credentials for easier bug reporting
 - **System Health**: Cluster reachability and aggregate pod/node counts shown in *Settings → System → Repairs → System Information*
 - **Repair Issues**: Surfaces silent failures (missing kubernetes Python package, metrics-server unavailable, watch connection failing) as actionable repair issues with auto-clear once resolved
