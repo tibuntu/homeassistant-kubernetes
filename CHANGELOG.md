@@ -2,24 +2,25 @@
 
 ## [1.10.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.9.2...v1.10.0) (2026-09-09)
 
+This release brings **Kubernetes Services into the sidebar panel**, adds the **CronJob and node controls** the panel documentation had been promising, and closes a **TLS gap in the setup flow**. It also changes how a missing RBAC permission is reported. Two behaviour changes are called out in the upgrade notes below.
 
-### Features
+### New features
 
-* **client:** parse and fetch Kubernetes Services ([3c3e50a](https://github.com/tibuntu/homeassistant-kubernetes/commit/3c3e50a1ead74cb633ba2ee11c6e1ec1e35df419))
-* **coordinator:** fetch, bucket and watch Kubernetes Services ([b4b8a7a](https://github.com/tibuntu/homeassistant-kubernetes/commit/b4b8a7ac1a0d63e8e540e1a9e99dd4191f3fd1ff))
-* **panel:** list Kubernetes Services in the Network tab ([4a49aba](https://github.com/tibuntu/homeassistant-kubernetes/commit/4a49aba2342ba12023817b7d94d4d4be5000b129))
-* **panel:** suspend/resume CronJobs and cordon/uncordon nodes from the panel ([116ce6d](https://github.com/tibuntu/homeassistant-kubernetes/commit/116ce6d3a06c6569672fd1c047d4312f514e172e))
-* **rbac:** grant read access to services in both chart modes ([2108aee](https://github.com/tibuntu/homeassistant-kubernetes/commit/2108aee737f55e4e102c312c126f852ed3cbca73))
-* **repairs:** raise a dedicated issue when a watched resource returns 403 ([6228f2e](https://github.com/tibuntu/homeassistant-kubernetes/commit/6228f2e42aabed69b6c265a3362516a0c93851d4))
-* **sensor:** add Services Count sensor ([8cbdc5c](https://github.com/tibuntu/homeassistant-kubernetes/commit/8cbdc5c26a246241c6ef57016f51041d3d6580a2))
-* **websocket:** add kubernetes/services/list for the Network tab ([bff8e7b](https://github.com/tibuntu/homeassistant-kubernetes/commit/bff8e7bee135555ee0484e7e933c380e9d0e61a8))
+**Services in the Network tab.** Home labs expose most applications through MetalLB LoadBalancer IPs and NodePorts rather than Ingresses, and until now the Network tab could not see them. It now lists every Service below the Ingress table with its type, cluster IP, external addresses, ports and age. LoadBalancer and external IPs become clickable links: port 443 opens `https://`, port 80 opens `http://`, and any other TCP port opens `http://address:port` — a simple rule, documented as such. Filter by type with the new chips (LoadBalancer, NodePort, ClusterIP, ExternalName); the search box matches both tables. A *Services Count* sensor joins the other aggregate counts, and a *Services* entry under **Configure → Disable data collection for** switches the fetch off entirely when you don't need it. Services are watched in real time like every other resource.
 
+**Suspend, resume and cordon from the panel.** Every CronJob card in the Workloads tab has a **Suspend** / **Resume** button next to *Trigger now*, and every node row in the Nodes tab has a **Cordon** / **Uncordon** button — the same operations as the CronJob and *Schedulable* switches, one click away in the panel. Suspending and resuming require the Home Assistant admin role, like the existing delete buttons; cordoning calls the existing `kubernetes.cordon_node` / `kubernetes.uncordon_node` services.
 
-### Bug Fixes
+**A repair issue that names the missing permission.** When the ServiceAccount is not allowed to list or watch a resource, the Kubernetes API answers 403. Previously that fed the generic *Watch connection failing* issue, pinned the integration to fast polling and logged a reconnect attempt every minute. Now the affected stream stops, every other stream keeps running, and a new **Missing permissions** repair issue lists exactly which resources the ServiceAccount cannot read, with a link to the RBAC reference. If every stream is forbidden — the `minimal` RBAC mode grants `list` but not `watch` — the integration polls at the regular interval as before. The issue clears once you add the rule and reload the integration; to stay on interval polling instead, disable the Watch API under **Configure**.
 
-* **config_flow:** honor verify_ssl and ca_cert during setup validation ([3511ee4](https://github.com/tibuntu/homeassistant-kubernetes/commit/3511ee46cbd2b16fc36055e5859bd2c01f7e37a4))
-* **repairs:** ignore an empty watch-task list in the all-forbidden check ([11a67db](https://github.com/tibuntu/homeassistant-kubernetes/commit/11a67dbe5a20865cfbdda896c2ced9b3ba110696))
-* **repairs:** keep fast polling when every watch stream is forbidden ([68cf9db](https://github.com/tibuntu/homeassistant-kubernetes/commit/68cf9dbbece23b67759b507a6b0850275a24a5e2))
+### Fixes & improvements
+
+* **Setup validates with your real TLS settings.** The connection test's fallback and the namespace discovery step both ignored **Verify SSL** and the **CA Certificate** and connected without verification. Because the fallback runs exactly when the official client fails, a certificate problem passed validation and the entry then broke at runtime. Both now use the same TLS settings the running integration uses, and the *Failed to connect* error points at the CA certificate and Verify SSL fields. The configuration guide also wrongly stated that Verify SSL defaults to off; it has always defaulted to on.
+* The panel documentation described controls that did not exist (scale-to-N, node sorting, a role filter) and omitted ones that did (rolling restart, Job deletion). It now matches the panel. An unused `kubernetes/workloads/restart` WebSocket command and a dead "coming soon" tab branch were removed.
+* Dependency updates: ruff, the Home Assistant test tooling, ESLint and the frontend dev dependencies.
+
+> **Upgrading — RBAC:** Service support needs read access to `services` in the core API group. The chart's `full` and `minimal` modes and both bundled manifests already include it — run `helm upgrade` (with `--reset-then-reuse-values`) or re-apply the manifests. Custom RBAC needs `get, list` (plus `watch` for the Watch API); without it you will see the new *Missing permissions* repair issue and an empty Services table until the rule is added and the integration reloaded.
+>
+> **Upgrading — TLS:** a cluster whose certificate cannot be verified with the entered settings now fails setup, reconfiguration and re-authentication with *Failed to connect* instead of appearing to work. For a self-signed or private CA, either enter the CA certificate path or turn **Verify SSL** off. Entries that are already running are unaffected — the running integration always honoured these settings.
 
 ## [1.9.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.9.1...v1.9.2) (2026-09-01)
 
