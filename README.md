@@ -13,7 +13,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 ## Features
 
-- **Cluster Monitoring**: Monitor pods, nodes, deployments, statefulsets, daemonsets, cronjobs, and ingresses
+- **Cluster Monitoring**: Monitor pods, nodes, deployments, statefulsets, daemonsets, cronjobs, ingresses, and services
 - **Real-Time Updates**: The Kubernetes Watch API streams resource changes into Home Assistant within seconds (enabled by default; falls back to interval polling automatically when watch is unavailable)
 - **Node Sensors**: Per-node sensors for status, IP addresses, memory/CPU resources, real-time usage metrics, and system information
 - **Multi-Namespace Support**: Monitor a single namespace or all namespaces
@@ -23,13 +23,13 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **CronJob Management**: Suspend, resume, and trigger CronJobs from the sidebar panel, via the per-CronJob switch, or via `kubernetes.start_workload`
 - **Node Management**: Cordon and uncordon nodes from the sidebar panel, via per-node switches (on = schedulable), or via the `kubernetes.cordon_node` / `kubernetes.uncordon_node` services
 - **Dynamic Entity Management**: Automatic entity creation and cleanup as cluster resources change
-- **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts; Workloads tab with start/stop/rolling-restart, CronJob suspend/resume/trigger, and Job deletion; Nodes tab with cordon/uncordon; a Network tab lists Ingresses with clickable URLs, backing service, and TLS status
+- **Dashboard Panel**: Built-in sidebar panel with cluster overview, resource counts, health monitoring, and alerts; Workloads tab with start/stop/rolling-restart, CronJob suspend/resume/trigger, and Job deletion; Nodes tab with cordon/uncordon; a Network tab lists Ingresses with clickable URLs, backing service, and TLS status and Services with type, cluster IP, external addresses (LoadBalancer IPs as clickable links), and ports
 - **Diagnostics**: Native Home Assistant Diagnostics download with redacted credentials for easier bug reporting
 - **System Health**: Cluster reachability and aggregate pod/node counts shown in *Settings → System → Repairs → System Information*
-- **Repair Issues**: Surfaces silent failures (missing kubernetes Python package, metrics-server unavailable, watch connection failing) as actionable repair issues with auto-clear once resolved
+- **Repair Issues**: Surfaces silent failures (missing kubernetes Python package, metrics-server unavailable, watch connection failing, missing RBAC permission for a watched resource) as actionable repair issues with auto-clear once resolved
 - **In-Cluster ServiceAccount Support**: When Home Assistant runs inside the Kubernetes cluster, the config flow auto-fills host/port/token/CA cert from the pod's ServiceAccount, and an opt-in runtime mode re-reads the bearer token on each request to handle automatic projected-token rotation
 - **Cluster Event Platform**: Opt-in HA event entity ("Cluster events") per cluster that fires Home Assistant events for Kubernetes cluster activity — OOMKilling, FailedScheduling, BackOff, Evicted, Unhealthy, ImagePullBackOff, and more. Use events to drive automations and alerts. Warning-type events only by default; configurable to include all events. Enable via **Configure → Enable Cluster Events**
-- **Data Collection Opt-Out**: Opt out of collecting selected data categories (pods, jobs, ingresses, CPU/memory metrics, count sensors, …) to reduce entity count, recorder/database growth, and Kubernetes API load. Switches keep working for opted-out workload types. Configure via **Configure → Disable data collection for** — see the [configuration guide](docs/CONFIGURATION.md#data-collection-opt-out)
+- **Data Collection Opt-Out**: Opt out of collecting selected data categories (pods, jobs, ingresses, services, CPU/memory metrics, count sensors, …) to reduce entity count, recorder/database growth, and Kubernetes API load. Switches keep working for opted-out workload types. Configure via **Configure → Disable data collection for** — see the [configuration guide](docs/CONFIGURATION.md#data-collection-opt-out)
 
 ## Installation
 

@@ -95,6 +95,16 @@ The service account needs these permissions:
   verbs: ["get", "list", "watch", "patch", "update"]
 ```
 
+## Missing Permissions Repair Issue
+
+### Problem
+
+Home Assistant shows a repair issue titled **Missing permissions for `<resources>` on `<cluster>`**, and the named resources (for example `services`) show no data in the panel and a count of 0.
+
+### Solution
+
+The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named resource — typically after upgrading to a release that monitors a new resource type. Re-apply the bundled RBAC (`helm upgrade` with the chart, or `kubectl apply -f manifests/full/`), or add the rule to your custom manifest, then reload the integration (**Settings → Devices & Services → Kubernetes → ⋮ → Reload**). The issue clears on reload. See the [RBAC Reference](RBAC.md) for the full permission matrix.
+
 ## Connection Issues
 
 ### Problem

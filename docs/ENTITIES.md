@@ -16,6 +16,7 @@ The integration provides the following sensors to monitor your Kubernetes cluste
 | **CronJobs Count** | Number of cronjobs in the monitored namespace(s) | `5` | cronjobs |
 | **Jobs Count** | Number of jobs in the monitored namespace(s) | `3` | jobs |
 | **Ingresses Count** | Number of ingresses in the monitored namespace(s) | `4` | ingresses |
+| **Services Count** | Number of services in the monitored namespace(s) | `12` | services |
 
 ### Individual Node Sensors
 
@@ -363,6 +364,7 @@ Cluster Device (e.g., "production-cluster")
 │   ├── CronJobs Count (sensor)
 │   ├── Jobs Count (sensor)
 │   ├── Ingresses Count (sensor)
+│   ├── Services Count (sensor)
 │   ├── Cluster events (event — opt-in, only when enable_events is on)
 │   ├── Individual Node sensors (one per node)
 │   ├── Node condition binary sensors (4 per node: Memory/Disk/PID Pressure, Network Unavailable)
@@ -421,7 +423,7 @@ The integration automatically discovers and creates entities for:
 - Individual Kubernetes nodes in the cluster
 - Node condition binary sensors (4 per node: Memory Pressure, Disk Pressure, PID Pressure, Network Unavailable)
 - Node schedulable switches (one per node, for cordon / uncordon)
-- Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs, jobs, ingresses count)
+- Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs, jobs, ingresses, services count)
 - Overall cluster health
 
 Entities are automatically added when new resources are created and removed when resources are deleted from the cluster.
