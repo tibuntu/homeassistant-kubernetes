@@ -146,6 +146,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Resource types whose watch returned HTTP 403; feeds the
         # watch_forbidden repair issue and is only reset on unload.
         self._forbidden_resources: set[str] = set()
+        # Per-(resource_type, url) loops that hit that 403, used to detect
+        # when *every* watch task is forbidden (only reset on unload).
+        self._forbidden_loops: set[str] = set()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via Kubernetes client.
@@ -804,19 +807,29 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         """Record that the ServiceAccount may not list/watch ``resource_type``.
 
         A 403 is permanent until RBAC changes, so the calling loop exits
-        instead of feeding the failure streak: the poll interval and the
-        generic watch issue stay untouched, and a dedicated issue names the
-        resource(s) so the user knows which rule to add. Re-creating the
-        issue with the same id updates its placeholders in place.
+        instead of feeding the failure streak: the generic watch issue stays
+        untouched, and a dedicated issue names the resource(s) so the user
+        knows which rule to add. Re-creating the issue with the same id
+        updates its placeholders in place. If this was the last remaining
+        watch task, there is no live data source left at all, so the poll
+        interval is sped back up to the regular fast interval (see
+        `_forbidden_loops` below) instead of staying at the slow watch
+        fallback.
         """
-        _LOGGER.warning(
-            "Watch %s: HTTP 403 Forbidden — the ServiceAccount may not list/watch "
-            "this resource; live updates for it are off until the RBAC rule is "
-            "added and the integration is reloaded",
-            resource_type,
-        )
+        if resource_type not in self._forbidden_resources:
+            _LOGGER.warning(
+                "Watch %s: HTTP 403 Forbidden — the ServiceAccount may not "
+                "list/watch this resource; live updates for it are off until "
+                "the RBAC rule is added and the integration is reloaded",
+                resource_type,
+            )
         self._sync_watch_repair_issue(loop_key, failing=False)
         self._forbidden_resources.add(resource_type)
+        self._forbidden_loops.add(loop_key)
+        # With every stream forbidden there is no live data source left, so
+        # poll at the regular interval instead of the slow watch fallback.
+        if self._watch_enabled and len(self._forbidden_loops) >= len(self._watch_tasks):
+            self.update_interval = timedelta(seconds=self._poll_interval)
         ir.async_create_issue(
             self.hass,
             DOMAIN,
@@ -847,6 +860,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._watch_issue_active = False
         self._failing_watch_loops.clear()
         self._forbidden_resources.clear()
+        self._forbidden_loops.clear()
 
     @callback
     def async_cleanup_stale_repair_issues(self) -> None:
