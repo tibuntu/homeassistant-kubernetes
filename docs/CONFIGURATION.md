@@ -68,7 +68,7 @@ Once the integration is set up, a **Kubernetes** entry appears in the Home Assis
 - **Nodes** — Expandable list of all cluster nodes with status, real-time CPU/memory usage (requires metrics-server), and, when expanded, IPs, capacity, OS/kernel/runtime/kubelet details and conditions. Filterable by name and status. Each node has a **Cordon** / **Uncordon** button (the equivalent of the *Schedulable* switch).
 - **Workloads** — Management view for Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. Deployments and StatefulSets can be started (scale to 1), stopped (scale to 0), and rolling-restarted; DaemonSets rolling-restarted; CronJobs suspended, resumed, and triggered; Jobs deleted (requires HA admin role). Filterable by type, namespace, and status.
 - **Pods** — Sortable table of all pods with phase, containers, restarts, node, IP, and age. Filterable by name, namespace, and phase; each pod can be deleted (requires HA admin role).
-- **Network** — Table of all Ingresses with class, clickable URLs (derived from TLS coverage), backing service, TLS status, and age. Filterable by name, namespace, and host. Auto-refreshes every 30 seconds.
+- **Network** — Two tables. Ingresses with class, clickable URLs (derived from TLS coverage), backing service, TLS status, and age. Services with type, cluster IP, external addresses, ports, and age — LoadBalancer and external IPs render as clickable links using a simple rule (port 443 → https, port 80 → http, any other TCP port → http://address:port). Filter Services by type with the chips; the search box matches both tables by name, namespace, Ingress host, or Service external address. Auto-refreshes every 30 seconds.
 - **Settings** — Read-only view of current integration configuration (connection, namespaces, timing, features). Links to the HA integration page for editing settings.
 
 The panel is registered automatically by default. To disable it, go to **Settings > Devices & Services > Kubernetes > Configure** and set **Enable Panel** to off. The panel is shown if any configured cluster entry has it enabled.
@@ -106,6 +106,8 @@ After the integration is set up, you can configure additional options by clickin
 | **Enable Watch API** | Use the Kubernetes watch API for real-time updates instead of interval polling | `true` |
 
 When enabled (the default), the integration establishes long-lived HTTP streams to the Kubernetes API server and receives `ADDED`, `MODIFIED`, and `DELETED` events as they happen. Pod and resource state changes typically appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback. Disable the option to use interval polling only (the **Switch Update Interval**, 60 seconds by default).
+
+If the ServiceAccount is not allowed to list or watch one of the monitored resources (HTTP 403), that resource's stream is stopped and a **Missing permissions** repair issue names the affected resource(s); the other streams and the poll interval are unaffected. Add the RBAC rule (the chart's `full` mode and `manifests/full/` include every rule the integration needs) and reload the integration to clear it.
 
 > **RBAC:** The watch feature requires the service account to have `watch` permission on all monitored resources — granted by the `full` permission set, but **not** by `minimal`. If the permission is missing, the watch connection cannot be established: the integration raises a repair issue and automatically falls back to regular interval polling, so data stays current. See the [RBAC guide](RBAC.md) for details.
 
@@ -173,16 +175,17 @@ The categories come in two tiers:
 | **DaemonSets** | Fetch skipped entirely; no DaemonSet sensors |
 | **Jobs** | Fetch skipped entirely; no Job sensors |
 | **Ingresses** | Fetch skipped entirely; ingress data disappears from the panel |
+| **Services** | Fetch skipped entirely; service data disappears from the panel |
 | **Node sensors** | Node status sensors and the 4 condition binary sensors are removed; the fetch continues so the cordon/uncordon switches keep working |
 | **Deployment sensors** | Status and CPU/memory sensors removed; scale switches keep working |
 | **StatefulSet sensors** | Same as Deployment sensors |
 | **CronJob sensors** | CronJob status sensors removed; suspend switches keep working |
 | **CPU/memory metrics** | The Kubernetes Metrics API is never called — removes all workload CPU/memory sensors and node usage data (the "metrics server unavailable" repair issue is suppressed too) |
-| **Aggregate count sensors** | The 8 per-cluster count sensors (Pods Count, Nodes Count, …) are removed and their count API calls skipped |
+| **Aggregate count sensors** | The 9 per-cluster count sensors (Pods Count, Nodes Count, …) are removed and their count API calls skipped |
 
 Notes:
 
-- Fully-skipped categories (Pods, DaemonSets, Jobs, Ingresses) also stop their watch streams when the Watch API is enabled.
+- Fully-skipped categories (Pods, DaemonSets, Jobs, Ingresses, Services) also stop their watch streams when the Watch API is enabled.
 - Existing entities of a disabled category are removed from Home Assistant automatically on the next update cycle.
 - If a fully-skipped category is disabled while **Aggregate count sensors** stay enabled, its count sensor keeps working via a lightweight count API call.
 - The `delete_job` service still works with Jobs disabled, but can no longer resolve a Job's namespace automatically — it falls back to the configured default namespace, so pass the namespace explicitly.
