@@ -481,12 +481,27 @@ async def test_async_clear_repair_issues_removes_forbidden_issue(
     coordinator.async_clear_repair_issues()
 
     assert coordinator._forbidden_resources == set()
+    assert coordinator._forbidden_loops == set()
     assert (
         ir.async_get(hass).async_get_issue(
             DOMAIN, _expected_forbidden_issue_id(mock_entry)
         )
         is None
     )
+
+
+async def test_forbidden_warning_logged_once_per_resource(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, caplog: pytest.LogCaptureFixture
+):
+    """The 403 warning is logged once per resource, not once per loop call."""
+    coordinator = _make_coordinator(hass, mock_entry)
+
+    with caplog.at_level("WARNING"):
+        coordinator._handle_watch_forbidden("services:u1", "services")
+        coordinator._handle_watch_forbidden("services:u1", "services")
+
+    matching = [m for m in caplog.messages if "HTTP 403 Forbidden" in m]
+    assert len(matching) == 1
 
 
 def _create_orphaned_forbidden_issue(

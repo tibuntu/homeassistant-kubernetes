@@ -1,6 +1,7 @@
 """Tests for the Kubernetes coordinator."""
 
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -2374,6 +2375,67 @@ class TestRunWatchLoopExtended:
         assert coord._forbidden_resources == {"pods"}
         assert create.call_args.args[2] == (
             f"watch_forbidden_{coord.config_entry.entry_id}"
+        )
+
+    async def test_run_watch_loop_403_on_stream_stops_loop(self, coord, mock_client):
+        """A 403 raised mid-stream (after a successful list) also stops the loop."""
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        async def _stream_raises_403(url, rv):
+            raise aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=403, message="Forbidden"
+            )
+            yield  # pragma: no cover - unreachable, makes this an async generator
+
+        mock_client.watch_stream = _stream_raises_403
+
+        with (
+            patch("asyncio.wait_for") as wait_for,
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        wait_for.assert_not_called()
+        assert coord._forbidden_resources == {"pods"}
+
+    async def test_all_streams_forbidden_restores_fast_polling(
+        self, coord, mock_client
+    ):
+        """When every watch task is forbidden, poll at the fast interval."""
+        coord._watch_tasks = [MagicMock()]
+        mock_client.list_resource_with_version.side_effect = (
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=403, message="Forbidden"
+            )
+        )
+
+        with patch("custom_components.kubernetes.coordinator.ir.async_create_issue"):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert coord.update_interval == timedelta(seconds=coord._poll_interval)
+
+    async def test_partially_forbidden_keeps_watch_fallback_interval(
+        self, coord, mock_client
+    ):
+        """When only some watch tasks are forbidden, keep the slow fallback."""
+        coord._watch_tasks = [MagicMock(), MagicMock()]
+        mock_client.list_resource_with_version.side_effect = (
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=403, message="Forbidden"
+            )
+        )
+
+        with patch("custom_components.kubernetes.coordinator.ir.async_create_issue"):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert coord.update_interval == timedelta(
+            seconds=DEFAULT_FALLBACK_POLL_INTERVAL
         )
 
     async def test_run_watch_loop_other_http_error_still_backs_off(
