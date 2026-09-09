@@ -24,7 +24,9 @@ from custom_components.kubernetes.const import (
 from custom_components.kubernetes.coordinator import (
     ISSUE_METRICS_SERVER_UNAVAILABLE,
     ISSUE_WATCH_CONNECTION_FAILING,
+    ISSUE_WATCH_FORBIDDEN,
     METRICS_SERVER_LEARN_MORE_URL,
+    RBAC_LEARN_MORE_URL,
     KubernetesDataCoordinator,
 )
 
@@ -400,5 +402,141 @@ async def test_metrics_issue_kept_when_metrics_enabled(
         ir.async_get(hass).async_get_issue(
             DOMAIN, _expected_metrics_issue_id(mock_entry)
         )
+        is not None
+    )
+
+
+# ---------------------------------------------------------------------------
+# Missing-permission issue (403 on a watched resource)
+# ---------------------------------------------------------------------------
+
+
+def _expected_forbidden_issue_id(entry: MockConfigEntry) -> str:
+    return f"{ISSUE_WATCH_FORBIDDEN}_{entry.entry_id}"
+
+
+async def test_forbidden_issue_created_with_resource_name(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+):
+    """A 403 on one resource raises the issue naming that resource."""
+    coordinator = _make_coordinator(hass, mock_entry)
+
+    coordinator._handle_watch_forbidden(
+        "services:https://host/api/v1/services", "services"
+    )
+
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, _expected_forbidden_issue_id(mock_entry)
+    )
+    assert issue is not None
+    assert issue.severity == ir.IssueSeverity.WARNING
+    assert issue.is_fixable is False
+    assert issue.translation_key == ISSUE_WATCH_FORBIDDEN
+    assert issue.translation_placeholders == {
+        "cluster": "test-cluster",
+        "resources": "services",
+    }
+    assert issue.learn_more_url == RBAC_LEARN_MORE_URL
+
+
+async def test_forbidden_issue_lists_every_forbidden_resource(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+):
+    """A second forbidden resource extends the placeholder, sorted."""
+    coordinator = _make_coordinator(hass, mock_entry)
+
+    coordinator._handle_watch_forbidden("services:u1", "services")
+    coordinator._handle_watch_forbidden("pods:u2", "pods")
+
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, _expected_forbidden_issue_id(mock_entry)
+    )
+    assert issue.translation_placeholders["resources"] == "pods, services"
+
+
+async def test_forbidden_does_not_mark_loop_failing(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+):
+    """A forbidden loop is removed from the failing set, not added to it."""
+    coordinator = _make_coordinator(hass, mock_entry)
+    coordinator._sync_watch_repair_issue("services:u1", failing=True)
+
+    coordinator._handle_watch_forbidden("services:u1", "services")
+
+    assert coordinator._failing_watch_loops == set()
+    assert coordinator._watch_issue_active is False
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, _expected_watch_issue_id(mock_entry))
+        is None
+    )
+
+
+async def test_async_clear_repair_issues_removes_forbidden_issue(
+    hass: HomeAssistant, mock_entry: MockConfigEntry
+):
+    """Unload deletes the forbidden issue and forgets the resources."""
+    coordinator = _make_coordinator(hass, mock_entry)
+    coordinator._handle_watch_forbidden("services:u1", "services")
+
+    coordinator.async_clear_repair_issues()
+
+    assert coordinator._forbidden_resources == set()
+    assert (
+        ir.async_get(hass).async_get_issue(
+            DOMAIN, _expected_forbidden_issue_id(mock_entry)
+        )
+        is None
+    )
+
+
+def _create_orphaned_forbidden_issue(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> None:
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        _expected_forbidden_issue_id(entry),
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=ISSUE_WATCH_FORBIDDEN,
+    )
+
+
+async def test_stale_forbidden_issue_removed_when_watch_and_events_disabled(
+    hass: HomeAssistant,
+):
+    """Switching to polling mode removes a leftover forbidden issue."""
+    entry = _options_entry(hass, {CONF_ENABLE_WATCH: False})
+    _create_orphaned_forbidden_issue(hass, entry)
+    coordinator = _make_coordinator(hass, entry)
+
+    coordinator.async_cleanup_stale_repair_issues()
+
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, _expected_forbidden_issue_id(entry))
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {},
+        {CONF_ENABLE_WATCH: True},
+        {CONF_ENABLE_WATCH: False, CONF_ENABLE_EVENTS: True},
+    ],
+)
+async def test_forbidden_issue_kept_while_a_watch_feature_is_enabled(
+    hass: HomeAssistant, options: dict
+):
+    """The watch/event loops own the issue while either feature is on."""
+    entry = _options_entry(hass, options)
+    _create_orphaned_forbidden_issue(hass, entry)
+    coordinator = _make_coordinator(hass, entry)
+
+    coordinator.async_cleanup_stale_repair_issues()
+
+    assert (
+        ir.async_get(hass).async_get_issue(DOMAIN, _expected_forbidden_issue_id(entry))
         is not None
     )
