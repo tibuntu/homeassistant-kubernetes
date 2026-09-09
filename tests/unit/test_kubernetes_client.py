@@ -1078,6 +1078,32 @@ async def test_parse_service_item_externalname(mock_client):
     assert result["urls"] == []
 
 
+async def test_parse_service_item_externalname_without_target(mock_client):
+    """ExternalName without externalName key: external_ips and urls are empty."""
+    item = _service_item()
+    item["spec"] = {
+        "type": "ExternalName",
+        "ports": [{"port": 5432, "protocol": "TCP"}],
+    }
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["type"] == "ExternalName"
+    assert result["external_ips"] == []
+    assert result["urls"] == []
+
+
+async def test_parse_service_item_without_ports(mock_client):
+    """Service without ports key: ports and urls are empty."""
+    item = _service_item()
+    del item["spec"]["ports"]
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["ports"] == []
+    assert result["urls"] == []
+
+
 async def test_parse_service_item_malformed_returns_none(mock_client):
     """An item without metadata is skipped with a warning."""
     assert mock_client._parse_service_item({}) is None
