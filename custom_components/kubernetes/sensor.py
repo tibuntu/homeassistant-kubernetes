@@ -58,6 +58,7 @@ async def async_setup_entry(
                     KubernetesCronJobsSensor(coordinator, client, config_entry),
                     KubernetesJobsSensor(coordinator, client, config_entry),
                     KubernetesIngressesSensor(coordinator, client, config_entry),
+                    KubernetesServicesSensor(coordinator, client, config_entry),
                 ]
             )
 
@@ -893,6 +894,51 @@ class KubernetesIngressesSensor(KubernetesBaseSensor):
                     self._attr_native_value = count
         except Exception as ex:
             _LOGGER.error("Failed to update ingresses sensor: %s", ex)
+            self._attr_native_value = 0
+
+
+class KubernetesServicesSensor(KubernetesBaseSensor):
+    """Sensor for Kubernetes Services count."""
+
+    def __init__(
+        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
+    ) -> None:
+        """Initialize the Services sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self._attr_name = "Services Count"
+        self._attr_unique_id = f"{config_entry.entry_id}_services_count"
+        self._attr_native_unit_of_measurement = "services"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    @property
+    def native_value(self) -> int:
+        """Return the native value of the sensor."""
+        if not self.coordinator.data:
+            return 0
+
+        # Fully-off services leave the bucket empty; the coordinator then
+        # provides the count from the cheap count endpoint instead.
+        if "services_count" in self.coordinator.data:
+            return self.coordinator.data["services_count"]
+        if "services" in self.coordinator.data:
+            return len(self.coordinator.data["services"])
+
+        return 0
+
+    async def async_update(self) -> None:
+        """Update the services sensor state."""
+        try:
+            await super().async_update()
+            if not self.coordinator.data or "services" not in self.coordinator.data:
+                if hasattr(self.client, "get_services_count"):
+                    count = await self.client.get_services_count()
+                    self._attr_native_value = count
+        except Exception as ex:
+            _LOGGER.error("Failed to update services sensor: %s", ex)
             self._attr_native_value = 0
 
 

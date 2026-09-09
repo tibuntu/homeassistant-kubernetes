@@ -30,6 +30,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesNodesSensor,
     KubernetesPodSensor,
     KubernetesPodsSensor,
+    KubernetesServicesSensor,
     KubernetesStatefulSetsSensor,
     KubernetesWorkloadMetricSensor,
     KubernetesWorkloadStatusSensor,
@@ -377,6 +378,82 @@ class TestKubernetesIngressesSensor:
         assert sensor.native_value == 0
 
 
+class TestKubernetesServicesSensor:
+    """Test Kubernetes services count sensor."""
+
+    def test_sensor_initialization(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Name, unique_id and unit follow the other count sensors."""
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        assert sensor.name == "Services Count"
+        assert sensor.unique_id == "test_entry_id_services_count"
+        assert sensor.native_unit_of_measurement == "services"
+
+    def test_value_from_bucket(self, mock_config_entry, mock_client, mock_coordinator):
+        """Without a count key the value is the bucket length."""
+        mock_coordinator.data = {"services": {"default_web": {}, "prod_api": {}}}
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        assert sensor.native_value == 2
+
+    def test_value_prefers_count_key(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """A services_count key (type fully off, counts on) wins over the bucket."""
+        mock_coordinator.data = {"services": {}, "services_count": 6}
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        assert sensor.native_value == 6
+
+    def test_missing_bucket_and_none_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """No bucket or no data at all -> 0."""
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        mock_coordinator.data = {}
+        assert sensor.native_value == 0
+        mock_coordinator.data = None
+        assert sensor.native_value == 0
+
+    async def test_async_update_falls_back_to_client(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Without a bucket, async_update asks the client for the count."""
+        mock_coordinator.data = {}
+        mock_client.get_services_count = AsyncMock(return_value=4)
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        sensor.async_write_ha_state = MagicMock()
+
+        # Use the same mechanism as test_sensor_update_failure in TestKubernetesIngressesSensor
+        await sensor.async_update()
+
+        assert sensor._attr_native_value == 4
+
+    async def test_async_update_failure(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """An exception while updating resets the value to 0."""
+        mock_coordinator.data = {}
+        mock_client.get_services_count = AsyncMock(side_effect=Exception("boom"))
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        await sensor.async_update()
+
+        assert sensor._attr_native_value == 0
+
+
 class TestKubernetesClusterHealthSensor:
     """Test Kubernetes cluster health binary sensor."""
 
@@ -456,8 +533,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 8 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses) + number of node sensors from coordinator
-        expected_count = 8 + len(mock_coordinator.get_all_nodes_data())
+        # 9 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses, Services) + number of node sensors from coordinator
+        expected_count = 9 + len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
