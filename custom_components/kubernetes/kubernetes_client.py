@@ -1075,6 +1075,69 @@ class KubernetesClient:
             _LOGGER.warning("Failed to parse ingress item: %s", ex)
             return None
 
+    def _parse_service_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw Service API object into the internal representation."""
+        try:
+            metadata = item["metadata"]
+            spec = item.get("spec", {})
+            service_type = spec.get("type") or "ClusterIP"
+
+            external_ips: list[str] = []
+            if service_type == "ExternalName":
+                if spec.get("externalName"):
+                    external_ips.append(spec["externalName"])
+            else:
+                lb_ingress = (
+                    item.get("status", {}).get("loadBalancer", {}).get("ingress") or []
+                )
+                candidates = [lb.get("ip") or lb.get("hostname") for lb in lb_ingress]
+                candidates.extend(spec.get("externalIPs") or [])
+                for addr in candidates:
+                    if addr and addr not in external_ips:
+                        external_ips.append(addr)
+
+            ports = [
+                {
+                    "name": p.get("name"),
+                    "port": p.get("port"),
+                    "target_port": p.get("targetPort"),
+                    "node_port": p.get("nodePort"),
+                    "protocol": p.get("protocol") or "TCP",
+                }
+                for p in spec.get("ports") or []
+            ]
+
+            # Heuristic links for externally reachable addresses: 443 -> https,
+            # 80 -> http, anything else http://host:port. ExternalName targets
+            # are in-cluster DNS aliases and get none.
+            urls: list[str] = []
+            if service_type != "ExternalName":
+                for addr in external_ips:
+                    host = normalize_host(addr)
+                    for p in ports:
+                        if p["protocol"] != "TCP":
+                            continue
+                        if p["port"] == 443:
+                            urls.append(f"https://{host}")
+                        elif p["port"] == 80:
+                            urls.append(f"http://{host}")
+                        else:
+                            urls.append(f"http://{host}:{p['port']}")
+
+            return {
+                "name": metadata["name"],
+                "namespace": metadata["namespace"],
+                "type": service_type,
+                "cluster_ip": spec.get("clusterIP", ""),
+                "external_ips": external_ips,
+                "ports": ports,
+                "urls": urls,
+                "creation_timestamp": metadata.get("creationTimestamp", ""),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse service item: %s", ex)
+            return None
+
     async def _fetch_resource_list(
         self,
         api_path: str,
@@ -2355,6 +2418,30 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get ingresses", ex)
+            return []
+
+    async def get_services_count(self) -> int:
+        """Get the count of Services in the namespace(s)."""
+        try:
+            result = await self._fetch_resource_count("api/v1", "services")
+            if result is not None:
+                self._log_success("get services count", f"count: {result}")
+            return result or 0
+        except Exception as ex:
+            self._log_error("get services count", ex)
+            return 0
+
+    async def get_services(self) -> list[dict[str, Any]]:
+        """Get all Services in the namespace(s) with their details."""
+        try:
+            result = await self._fetch_resource_list(
+                "api/v1", "services", self._parse_service_item
+            )
+            if result:
+                self._log_success("get services", f"retrieved {len(result)} services")
+            return result
+        except Exception as ex:
+            self._log_error("get services", ex)
             return []
 
     # CronJob methods
