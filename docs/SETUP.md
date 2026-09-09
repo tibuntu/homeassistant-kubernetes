@@ -176,7 +176,7 @@ metadata:
 rules:
 # Monitoring permissions within namespace
 - apiGroups: [""]
-  resources: ["pods", "events"]
+  resources: ["pods", "events", "services"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
