@@ -22,7 +22,7 @@ rules:
     resources: ["nodes"]
     verbs: ["get", "list", "watch", "patch"]
   - apiGroups: [""]
-    resources: ["namespaces", "events"]
+    resources: ["namespaces", "events", "services"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods"]

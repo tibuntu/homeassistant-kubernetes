@@ -89,7 +89,7 @@ Enables all integration features:
 - Sensors and binary sensors (monitoring)
 - Switches (deployment / statefulset scaling, CronJob suspension, node cordon/uncordon)
 - Workload rollout restart (deployments, statefulsets, daemonsets)
-- Ingress monitoring (Network tab in the sidebar panel, with clickable URLs)
+- Ingress and Service monitoring (Network tab in the sidebar panel, with clickable URLs)
 - Pod and Job deletion from the sidebar panel (requires Home Assistant admin role)
 - Cluster Events platform (`events`)
 - Watch API (real-time updates via `?watch=true`, enabled by default)
@@ -117,6 +117,7 @@ Read-only access to every resource the integration monitors. No write permission
 | **nodes** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Node sensors and binary sensors; `patch` enables cordon/uncordon |
 | **namespaces** | `get`, `list` | ✅ | ✅ | Namespace discovery |
 | **events** | `get`, `list`, `watch` | ✅ | ❌ | Enhanced troubleshooting |
+| **services** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Services Count sensor + Network tab in the sidebar panel |
 
 ### Apps API Group (`apps`)
 
@@ -271,7 +272,7 @@ metadata:
   name: homeassistant-kubernetes-integration
 rules:
 - apiGroups: [""]
-  resources: ["pods", "events"]
+  resources: ["pods", "events", "services"]
   verbs: ["get", "list", "watch", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]

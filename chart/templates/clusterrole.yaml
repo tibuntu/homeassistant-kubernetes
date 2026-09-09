@@ -25,7 +25,7 @@ rules:
     resources: ["nodes"]
     verbs: ["get", "list", "watch", "patch"]
   - apiGroups: [""]
-    resources: ["namespaces", "events"]
+    resources: ["namespaces", "events", "services"]
     verbs: ["get", "list", "watch"]
   - apiGroups: [""]
     resources: ["pods"]
@@ -80,7 +80,7 @@ rules:
 rules:
   # Core resources — monitoring only
   - apiGroups: [""]
-    resources: ["pods", "nodes", "namespaces"]
+    resources: ["pods", "nodes", "namespaces", "services"]
     verbs: ["get", "list"]
   # Apps resources — monitoring only
   - apiGroups: ["apps"]
