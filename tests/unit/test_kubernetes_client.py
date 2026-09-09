@@ -1,5 +1,6 @@
 """Tests for the Kubernetes integration client."""
 
+import ipaddress
 import ssl
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
@@ -851,6 +852,235 @@ async def test_parse_ingress_item_load_balancer_hostname(mock_client):
 async def test_parse_ingress_item_malformed_returns_none(mock_client):
     """Missing metadata returns None instead of raising."""
     assert mock_client._parse_ingress_item({}) is None
+
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+
+
+async def test_get_services_count_success(mock_client):
+    """Test successful services count retrieval."""
+    mock_client._fetch_resource_count = AsyncMock(return_value=7)
+
+    count = await mock_client.get_services_count()
+
+    assert count == 7
+    mock_client._fetch_resource_count.assert_awaited_once_with("api/v1", "services")
+
+
+async def test_get_services_count_empty(mock_client):
+    """Count retrieval when no services exist."""
+    mock_client._fetch_resource_count = AsyncMock(return_value=0)
+
+    assert await mock_client.get_services_count() == 0
+
+
+async def test_get_services_count_api_exception(mock_client):
+    """Count retrieval returns 0 when the API raises."""
+    mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
+
+    assert await mock_client.get_services_count() == 0
+
+
+async def test_get_services_success(mock_client):
+    """Services are fetched from the core API group with the service parser."""
+    mock_client._fetch_resource_list = AsyncMock(
+        return_value=[{"name": "web", "namespace": "default"}]
+    )
+
+    services = await mock_client.get_services()
+
+    assert services == [{"name": "web", "namespace": "default"}]
+    mock_client._fetch_resource_list.assert_awaited_once_with(
+        "api/v1", "services", mock_client._parse_service_item
+    )
+
+
+async def test_get_services_empty(mock_client):
+    """Services retrieval when none exist."""
+    mock_client._fetch_resource_list = AsyncMock(return_value=[])
+
+    assert await mock_client.get_services() == []
+
+
+async def test_get_services_api_exception(mock_client):
+    """Services retrieval returns [] when the API raises."""
+    mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
+
+    assert await mock_client.get_services() == []
+
+
+def _service_item(**overrides):
+    """Build a raw Service API object for parse tests."""
+    item = {
+        "metadata": {
+            "name": "web",
+            "namespace": "default",
+            "creationTimestamp": "2026-01-01T00:00:00Z",
+        },
+        "spec": {
+            "type": "ClusterIP",
+            "clusterIP": "10.96.0.10",
+            "ports": [
+                {"name": "http", "port": 80, "targetPort": 8080, "protocol": "TCP"}
+            ],
+        },
+    }
+    item.update(overrides)
+    return item
+
+
+def _lb_status(*addresses):
+    """LoadBalancer status block; each address is an IP or a hostname."""
+    entries = []
+    for addr in addresses:
+        try:
+            ipaddress.ip_address(addr)
+            entries.append({"ip": addr})
+        except ValueError:
+            entries.append({"hostname": addr})
+    return {"loadBalancer": {"ingress": entries}}
+
+
+async def test_parse_service_item_clusterip(mock_client):
+    """A plain ClusterIP service: no external addresses, no URLs."""
+    result = mock_client._parse_service_item(_service_item())
+
+    assert result == {
+        "name": "web",
+        "namespace": "default",
+        "type": "ClusterIP",
+        "cluster_ip": "10.96.0.10",
+        "external_ips": [],
+        "ports": [
+            {
+                "name": "http",
+                "port": 80,
+                "target_port": 8080,
+                "node_port": None,
+                "protocol": "TCP",
+            }
+        ],
+        "urls": [],
+        "creation_timestamp": "2026-01-01T00:00:00Z",
+    }
+
+
+async def test_parse_service_item_defaults_type_and_protocol(mock_client):
+    """Missing spec.type / port protocol default to ClusterIP / TCP."""
+    item = _service_item()
+    del item["spec"]["type"]
+    del item["spec"]["ports"][0]["protocol"]
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["type"] == "ClusterIP"
+    assert result["ports"][0]["protocol"] == "TCP"
+
+
+async def test_parse_service_item_headless_keeps_none_cluster_ip(mock_client):
+    """Headless services report the literal 'None' the API returns."""
+    item = _service_item()
+    item["spec"]["clusterIP"] = "None"
+
+    assert mock_client._parse_service_item(item)["cluster_ip"] == "None"
+
+
+async def test_parse_service_item_nodeport(mock_client):
+    """NodePort keeps node_port but gets no URL (no node address to link)."""
+    item = _service_item()
+    item["spec"]["type"] = "NodePort"
+    item["spec"]["ports"][0]["nodePort"] = 30080
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["type"] == "NodePort"
+    assert result["ports"][0]["node_port"] == 30080
+    assert result["urls"] == []
+
+
+async def test_parse_service_item_loadbalancer_urls(mock_client):
+    """LoadBalancer IP + ports 80/443 -> http and https links."""
+    item = _service_item(status=_lb_status("192.168.1.50"))
+    item["spec"]["type"] = "LoadBalancer"
+    item["spec"]["ports"] = [
+        {"port": 80, "targetPort": 8080, "protocol": "TCP"},
+        {"port": 443, "targetPort": 8443, "protocol": "TCP"},
+    ]
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["external_ips"] == ["192.168.1.50"]
+    assert result["urls"] == ["http://192.168.1.50", "https://192.168.1.50"]
+
+
+async def test_parse_service_item_loadbalancer_hostname_other_port(mock_client):
+    """A hostname address and a non-80/443 port -> http://host:port."""
+    item = _service_item(status=_lb_status("lb.example.com"))
+    item["spec"]["type"] = "LoadBalancer"
+    item["spec"]["ports"] = [{"port": 32400, "protocol": "TCP"}]
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["external_ips"] == ["lb.example.com"]
+    assert result["urls"] == ["http://lb.example.com:32400"]
+
+
+async def test_parse_service_item_external_ips_deduplicated(mock_client):
+    """spec.externalIPs are merged after LoadBalancer addresses, without repeats."""
+    item = _service_item(status=_lb_status("192.168.1.50"))
+    item["spec"]["type"] = "LoadBalancer"
+    item["spec"]["externalIPs"] = ["192.168.1.50", "192.168.1.51"]
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["external_ips"] == ["192.168.1.50", "192.168.1.51"]
+    assert result["urls"] == ["http://192.168.1.50", "http://192.168.1.51"]
+
+
+async def test_parse_service_item_udp_port_gets_no_url(mock_client):
+    """UDP ports never produce a link."""
+    item = _service_item(status=_lb_status("192.168.1.53"))
+    item["spec"]["type"] = "LoadBalancer"
+    item["spec"]["ports"] = [{"port": 53, "protocol": "UDP"}]
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["external_ips"] == ["192.168.1.53"]
+    assert result["urls"] == []
+
+
+async def test_parse_service_item_ipv6_address_is_bracketed(mock_client):
+    """IPv6 addresses are bracketed in URLs (reuses normalize_host)."""
+    item = _service_item(status=_lb_status("2001:db8::1"))
+    item["spec"]["type"] = "LoadBalancer"
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["urls"] == ["http://[2001:db8::1]"]
+
+
+async def test_parse_service_item_externalname(mock_client):
+    """ExternalName exposes the target name as the external address, no URL."""
+    item = _service_item()
+    item["spec"] = {
+        "type": "ExternalName",
+        "externalName": "db.example.com",
+        "ports": [{"port": 5432, "protocol": "TCP"}],
+    }
+
+    result = mock_client._parse_service_item(item)
+
+    assert result["type"] == "ExternalName"
+    assert result["cluster_ip"] == ""
+    assert result["external_ips"] == ["db.example.com"]
+    assert result["urls"] == []
+
+
+async def test_parse_service_item_malformed_returns_none(mock_client):
+    """An item without metadata is skipped with a warning."""
+    assert mock_client._parse_service_item({}) is None
 
 
 async def test_is_cluster_healthy_success(mock_client):
