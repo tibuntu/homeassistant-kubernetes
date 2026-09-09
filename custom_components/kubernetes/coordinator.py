@@ -828,7 +828,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._forbidden_loops.add(loop_key)
         # With every stream forbidden there is no live data source left, so
         # poll at the regular interval instead of the slow watch fallback.
-        if self._watch_enabled and len(self._forbidden_loops) >= len(self._watch_tasks):
+        # `self._watch_tasks` must be non-empty here too: an empty list means
+        # no tasks are registered yet (e.g. called directly in a test), not
+        # that "all of them" are forbidden.
+        if (
+            self._watch_enabled
+            and self._watch_tasks
+            and len(self._forbidden_loops) >= len(self._watch_tasks)
+        ):
             self.update_interval = timedelta(seconds=self._poll_interval)
         ir.async_create_issue(
             self.hass,
