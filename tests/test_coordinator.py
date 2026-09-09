@@ -57,12 +57,14 @@ def mock_client():
     client.get_cronjobs = AsyncMock(return_value=[])
     client.get_jobs = AsyncMock(return_value=[])
     client.get_ingresses = AsyncMock(return_value=[])
+    client.get_services = AsyncMock(return_value=[])
     client.get_deployments_count = AsyncMock(return_value=0)
     client.get_statefulsets_count = AsyncMock(return_value=0)
     client.get_daemonsets_count = AsyncMock(return_value=0)
     client.get_cronjobs_count = AsyncMock(return_value=0)
     client.get_jobs_count = AsyncMock(return_value=0)
     client.get_ingresses_count = AsyncMock(return_value=0)
+    client.get_services_count = AsyncMock(return_value=0)
     client.get_pods_count = AsyncMock(return_value=0)
     client.get_pods = AsyncMock(return_value=[])
     client.get_nodes_count = AsyncMock(return_value=0)
@@ -150,6 +152,16 @@ class TestKubernetesDataCoordinator:
         ]
         mock_client.get_ingresses.return_value = mock_ingresses
 
+        mock_services = [
+            {
+                "name": "web",
+                "namespace": "default",
+                "type": "LoadBalancer",
+                "external_ips": ["192.168.1.50"],
+            }
+        ]
+        mock_client.get_services.return_value = mock_services
+
         mock_nodes = [
             {
                 "name": "worker-node-1",
@@ -196,6 +208,7 @@ class TestKubernetesDataCoordinator:
         assert "cronjobs" in result
         assert "jobs" in result
         assert "ingresses" in result
+        assert "services" in result
         assert "nodes" in result
         assert "pods_count" in result
         assert "nodes_count" in result
@@ -231,6 +244,11 @@ class TestKubernetesDataCoordinator:
         assert result["ingresses"]["default_web"]["name"] == "web"
         assert result["ingresses"]["default_web"]["namespace"] == "default"
         assert result["ingresses"]["default_web"]["status"] == "Active"
+
+        assert "services" in result
+        assert "default_web" in result["services"]
+        assert result["services"]["default_web"]["type"] == "LoadBalancer"
+        assert result["services"]["default_web"]["external_ips"] == ["192.168.1.50"]
 
         assert "worker-node-1" in result["nodes"]
         assert result["nodes"]["worker-node-1"]["name"] == "worker-node-1"
@@ -822,6 +840,24 @@ class TestKubernetesDataCoordinator:
         coordinator.data = None
         result = coordinator.get_ingress_data("default", "web")
         assert result is None
+
+    async def test_get_service_data(self, coordinator):
+        """Test getting Service data by namespace and name."""
+        coordinator.data = {
+            "services": {
+                "default_web": {"name": "web", "namespace": "default"},
+                "prod_api": {"name": "api", "namespace": "prod"},
+            }
+        }
+        assert coordinator.get_service_data("default", "web")["name"] == "web"
+        assert coordinator.get_service_data("prod", "api")["namespace"] == "prod"
+        assert coordinator.get_service_data("default", "missing") is None
+
+        coordinator.data = {}
+        assert coordinator.get_service_data("default", "web") is None
+
+        coordinator.data = None
+        assert coordinator.get_service_data("default", "web") is None
 
     async def test_get_pod_data(self, coordinator):
         """Test getting pod data by namespace and name."""
@@ -2327,6 +2363,7 @@ class TestBuildWatchConfigs:
         client._format_cronjob_from_dict = MagicMock()
         client._format_job_from_dict = MagicMock()
         client._parse_ingress_item = MagicMock()
+        client._parse_service_item = MagicMock()
         return client
 
     @pytest.fixture
@@ -2371,13 +2408,14 @@ class TestBuildWatchConfigs:
         assert "cronjobs" in resource_types
         assert "jobs" in resource_types
         assert "ingresses" in resource_types
+        assert "services" in resource_types
 
         # All URLs should be cluster-wide (no /namespaces/ in them)
         for url in urls:
             assert "/namespaces/" not in url
 
-        # 8 resource types total
-        assert len(configs) == 8
+        # 9 resource types total
+        assert len(configs) == 9
 
     async def test_per_namespace_configs_when_not_monitor_all(self, coord, mock_client):
         """When monitor_all_namespaces=False, should return per-namespace URLs."""
@@ -2387,8 +2425,8 @@ class TestBuildWatchConfigs:
 
         configs = coord._build_watch_configs(base_url)
 
-        # Nodes is always cluster-scoped (1 config) plus 7 resource types * 2 namespaces
-        assert len(configs) == 1 + 7 * 2
+        # Nodes is always cluster-scoped (1 config) plus 8 resource types * 2 namespaces
+        assert len(configs) == 1 + 8 * 2
 
         # The nodes URL should be cluster-wide
         nodes_configs = [(rt, url) for rt, url, _ in configs if rt == "nodes"]
@@ -2402,15 +2440,15 @@ class TestBuildWatchConfigs:
         assert any("/namespaces/kube-system/pods" in url for _, url in pod_configs)
 
     async def test_single_namespace_config(self, coord, mock_client):
-        """With one namespace and not monitoring all, should have 8 configs."""
+        """With one namespace and not monitoring all, should have 9 configs."""
         mock_client.monitor_all_namespaces = False
         mock_client.namespaces = ["production"]
         base_url = "https://test-cluster.example.com:6443"
 
         configs = coord._build_watch_configs(base_url)
 
-        # 1 nodes (cluster-wide) + 7 per-namespace resources * 1 namespace
-        assert len(configs) == 8
+        # 1 nodes (cluster-wide) + 8 per-namespace resources * 1 namespace
+        assert len(configs) == 9
 
         # Verify namespace appears in URLs for namespace-scoped resources
         ns_urls = [url for rt, url, _ in configs if rt != "nodes"]
@@ -2434,6 +2472,7 @@ class TestBuildWatchConfigs:
         assert parse_fn_map["cronjobs"] is mock_client._format_cronjob_from_dict
         assert parse_fn_map["jobs"] is mock_client._format_job_from_dict
         assert parse_fn_map["ingresses"] is mock_client._parse_ingress_item
+        assert parse_fn_map["services"] is mock_client._parse_service_item
 
     async def test_watch_configs_include_ingresses_all_namespaces(
         self, coord, mock_client
@@ -2467,6 +2506,32 @@ class TestBuildWatchConfigs:
             in urls
         )
 
+    async def test_watch_configs_include_services_all_namespaces(
+        self, coord, mock_client
+    ):
+        """Services are watched cluster-wide on the core API group."""
+        mock_client.monitor_all_namespaces = True
+        configs = coord._build_watch_configs("https://host:6443")
+
+        service_configs = [c for c in configs if c[0] == "services"]
+        assert len(service_configs) == 1
+        assert service_configs[0][1] == "https://host:6443/api/v1/services"
+        assert service_configs[0][2] is mock_client._parse_service_item
+
+    async def test_watch_configs_include_services_per_namespace(
+        self, coord, mock_client
+    ):
+        """Services get one watch per configured namespace."""
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["default", "kube-system"]
+        configs = coord._build_watch_configs("https://host:6443")
+
+        urls = [c[1] for c in configs if c[0] == "services"]
+        assert urls == [
+            "https://host:6443/api/v1/namespaces/default/services",
+            "https://host:6443/api/v1/namespaces/kube-system/services",
+        ]
+
 
 class TestStartStopWatchTasksExtended:
     """Extended tests for async_start_watch_tasks and async_stop_watch_tasks."""
@@ -2487,6 +2552,7 @@ class TestStartStopWatchTasksExtended:
         client._format_cronjob_from_dict = MagicMock()
         client._format_job_from_dict = MagicMock()
         client._parse_ingress_item = MagicMock()
+        client._parse_service_item = MagicMock()
         client.list_resource_with_version = AsyncMock(return_value=([], "123"))
 
         async def _empty_stream(url, rv):
@@ -2532,8 +2598,8 @@ class TestStartStopWatchTasksExtended:
         ):
             await coord.async_start_watch_tasks()
 
-        # 8 resource types for monitor_all_namespaces=True
-        assert len(coord._watch_tasks) == 8
+        # 9 resource types for monitor_all_namespaces=True
+        assert len(coord._watch_tasks) == 9
 
         for coro in created_coros:
             coro.close()
@@ -3221,6 +3287,37 @@ class TestSameNameDifferentNamespace:
         assert prod_web["namespace"] == "prod"
         assert prod_web["status"] == "Pending"
 
+    async def test_services_same_name_different_namespace_both_kept(
+        self, hass: HomeAssistant, coordinator, mock_client
+    ):
+        """Two Services both named 'web' in different namespaces must both survive
+        the poll cycle instead of one clobbering the other in coordinator.data."""
+        mock_client.get_services.return_value = [
+            {"name": "web", "namespace": "default", "type": "ClusterIP"},
+            {"name": "web", "namespace": "prod", "type": "NodePort"},
+        ]
+
+        mock_device_registry = MagicMock()
+        mock_device_registry.async_get_device = MagicMock(return_value=None)
+        mock_device_registry.async_get_or_create = MagicMock(return_value=MagicMock())
+
+        with (
+            patch(
+                "custom_components.kubernetes.device.dr.async_get",
+                return_value=mock_device_registry,
+            ),
+            patch(
+                "custom_components.kubernetes.device.dr.async_entries_for_config_entry",
+                return_value=[],
+            ),
+        ):
+            result = await coordinator._async_update_data()
+
+        assert "default_web" in result["services"]
+        assert "prod_web" in result["services"]
+        assert result["services"]["default_web"]["type"] == "ClusterIP"
+        assert result["services"]["prod_web"]["type"] == "NodePort"
+
     async def test_apply_watch_event_updates_only_matching_namespace(self, coordinator):
         """A MODIFIED watch event for one namespace's deployment must update only
         that namespace's entry, leaving the same-named deployment in another
@@ -3286,11 +3383,12 @@ class TestDisabledResources:
     ):
         """Fully-off resources are not fetched and their buckets stay empty."""
         coordinator = self._make_coordinator(
-            hass, mock_client, ["pods", "daemonsets", "jobs", "ingresses"]
+            hass, mock_client, ["pods", "daemonsets", "jobs", "ingresses", "services"]
         )
         mock_client.get_daemonsets_count.return_value = 4
         mock_client.get_jobs_count.return_value = 2
         mock_client.get_ingresses_count.return_value = 3
+        mock_client.get_services_count.return_value = 6
 
         data = await coordinator._async_update_data()
 
@@ -3298,15 +3396,18 @@ class TestDisabledResources:
         mock_client.get_daemonsets.assert_not_called()
         mock_client.get_jobs.assert_not_called()
         mock_client.get_ingresses.assert_not_called()
+        mock_client.get_services.assert_not_called()
         assert data["pods"] == {}
         assert data["daemonsets"] == {}
         assert data["jobs"] == {}
         assert data["ingresses"] == {}
+        assert data["services"] == {}
         # Counts stay on by default and fall back to the cheap count endpoints
         mock_client.get_pods_count.assert_called_once()
         assert data["daemonsets_count"] == 4
         assert data["jobs_count"] == 2
         assert data["ingresses_count"] == 3
+        assert data["services_count"] == 6
 
     async def test_sensors_off_resources_keep_fetch(
         self, hass: HomeAssistant, mock_client
@@ -3413,7 +3514,15 @@ class TestDisabledResources:
         coordinator = self._make_coordinator(
             hass,
             mock_client,
-            ["pods", "daemonsets", "jobs", "ingresses", "deployments", "nodes"],
+            [
+                "pods",
+                "daemonsets",
+                "jobs",
+                "ingresses",
+                "services",
+                "deployments",
+                "nodes",
+            ],
         )
         mock_client.monitor_all_namespaces = True
 
@@ -3424,6 +3533,7 @@ class TestDisabledResources:
         assert "daemonsets" not in resource_types
         assert "jobs" not in resource_types
         assert "ingresses" not in resource_types
+        assert "services" not in resource_types
         # Sensors-off resources keep their watch (switches consume the data)
         assert "deployments" in resource_types
         assert "nodes" in resource_types

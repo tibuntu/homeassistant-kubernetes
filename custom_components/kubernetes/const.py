@@ -103,7 +103,9 @@ CONF_DISABLED_RESOURCES = "disabled_resources"
 # resource categories (nodes, deployments, statefulsets, cronjobs) keep their
 # fetch because switches read the coordinator data — disabling them only
 # suppresses their sensor entities.
-FULLY_DISABLEABLE_RESOURCES = frozenset({"pods", "daemonsets", "jobs", "ingresses"})
+FULLY_DISABLEABLE_RESOURCES = frozenset(
+    {"pods", "daemonsets", "jobs", "ingresses", "services"}
+)
 # All categories offered in the options flow. "metrics" gates the Metrics API
 # (node usage + workload CPU/memory sensors); "counts" gates the aggregate
 # count sensors and their count API calls.
@@ -116,6 +118,7 @@ DISABLABLE_RESOURCES = (
     "cronjobs",
     "jobs",
     "ingresses",
+    "services",
     "metrics",
     "counts",
 )

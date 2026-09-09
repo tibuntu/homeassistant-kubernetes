@@ -172,6 +172,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 ingresses = (
                     [] if "ingresses" in disabled else await self.client.get_ingresses()
                 )
+                services = (
+                    [] if "services" in disabled else await self.client.get_services()
+                )
 
                 _LOGGER.debug("Starting to fetch detailed node information")
                 nodes = await self.client.get_nodes()
@@ -258,6 +261,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     "ingresses": {
                         f"{i['namespace']}_{i['name']}": i for i in ingresses
                     },
+                    "services": {f"{s['namespace']}_{s['name']}": s for s in services},
                     "nodes": {node["name"]: node for node in nodes},
                     "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                     "pods_count": pods_count,
@@ -280,15 +284,18 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         data[
                             "ingresses_count"
                         ] = await self.client.get_ingresses_count()
+                    if "services" in disabled:
+                        data["services_count"] = await self.client.get_services_count()
 
                 _LOGGER.debug(
-                    "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d jobs, %d ingresses, %d pods (detailed: %d), %d nodes (detailed: %d)",
+                    "Successfully updated Kubernetes data: %d deployments, %d statefulsets, %d daemonsets, %d cronjobs, %d jobs, %d ingresses, %d services, %d pods (detailed: %d), %d nodes (detailed: %d)",
                     len(deployments),
                     len(statefulsets),
                     len(daemonsets),
                     len(cronjobs),
                     len(jobs),
                     len(ingresses),
+                    len(services),
                     pods_count,
                     len(pods),
                     nodes_count,
@@ -359,6 +366,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "ingresses" not in self.data:
             return None
         return self.data["ingresses"].get(f"{namespace}_{ingress_name}")
+
+    def get_service_data(
+        self, namespace: str, service_name: str
+    ) -> dict[str, Any] | None:
+        """Get service data by namespace and name."""
+        if not self.data or "services" not in self.data:
+            return None
+        return self.data["services"].get(f"{namespace}_{service_name}")
 
     def get_node_data(self, node_name: str) -> dict[str, Any] | None:
         """Get node data by name."""
@@ -434,6 +449,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 "cronjobs_count",
                 "jobs_count",
                 "ingresses_count",
+                "services_count",
             ):
                 expected.add(f"{eid}_{suffix}")
 
@@ -606,6 +622,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         f"{base_url}/apis/networking.k8s.io/v1/ingresses",
                         client._parse_ingress_item,
                     ),
+                    (
+                        "services",
+                        f"{base_url}/api/v1/services",
+                        client._parse_service_item,
+                    ),
                 ]
             )
         else:
@@ -648,6 +669,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             "ingresses",
                             f"{base_url}/apis/networking.k8s.io/v1/namespaces/{ns}/ingresses",
                             client._parse_ingress_item,
+                        ),
+                        (
+                            "services",
+                            f"{base_url}/api/v1/namespaces/{ns}/services",
+                            client._parse_service_item,
                         ),
                     ]
                 )
