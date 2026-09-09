@@ -28,14 +28,54 @@ interface IngressesResponse {
   clusters: ClusterIngresses[];
 }
 
+interface ServicePort {
+  name: string | null;
+  port: number;
+  target_port: number | string | null;
+  node_port: number | null;
+  protocol: string;
+}
+
+interface ServiceData {
+  name: string;
+  namespace: string;
+  type: string;
+  cluster_ip: string;
+  external_ips: string[];
+  ports: ServicePort[];
+  urls: string[];
+  creation_timestamp: string;
+}
+
+interface ClusterServices {
+  entry_id: string;
+  cluster_name: string;
+  services: ServiceData[];
+}
+
+interface ServicesResponse {
+  clusters: ClusterServices[];
+}
+
+const SERVICE_TYPES = [
+  "LoadBalancer",
+  "NodePort",
+  "ClusterIP",
+  "ExternalName",
+] as const;
+type ServiceTypeFilter = "all" | (typeof SERVICE_TYPES)[number];
+
 @customElement("k8s-network")
 export class K8sNetwork extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
 
   @state() private _data: IngressesResponse | null = null;
+  @state() private _services: ServicesResponse | null = null;
   @state() private _loading = true;
   @state() private _error: string | null = null;
+  @state() private _servicesError: string | null = null;
   @state() private _searchQuery: string = "";
+  @state() private _typeFilter: ServiceTypeFilter = "all";
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
   private _loadingInFlight = false;
@@ -78,21 +118,29 @@ export class K8sNetwork extends LitElement {
   private async _loadData(): Promise<void> {
     if (this._loadingInFlight) return;
     this._loadingInFlight = true;
-    if (!this._data) {
+    if (!this._data && !this._services) {
       this._loading = true;
     }
-    this._error = null;
-    try {
-      const result: IngressesResponse = await this.hass.callWS({
-        type: "kubernetes/ingresses/list",
-      });
-      this._data = result;
-    } catch (err: any) {
-      this._error = err.message || "Failed to load ingress data";
-    } finally {
-      this._loading = false;
-      this._loadingInFlight = false;
+    // Each list fails on its own, so a missing RBAC rule for one resource
+    // does not blank the other section.
+    const [ingresses, services] = await Promise.allSettled([
+      this.hass.callWS<IngressesResponse>({ type: "kubernetes/ingresses/list" }),
+      this.hass.callWS<ServicesResponse>({ type: "kubernetes/services/list" }),
+    ]);
+    if (ingresses.status === "fulfilled") {
+      this._data = ingresses.value;
+      this._error = null;
+    } else {
+      this._error = ingresses.reason?.message || "Failed to load ingress data";
     }
+    if (services.status === "fulfilled") {
+      this._services = services.value;
+      this._servicesError = null;
+    } else {
+      this._servicesError = services.reason?.message || "Failed to load service data";
+    }
+    this._loading = false;
+    this._loadingInFlight = false;
   }
 
   private _formatAge(timestamp: string): string {
@@ -117,7 +165,24 @@ export class K8sNetwork extends LitElement {
     );
   }
 
-  private _services(ingress: IngressData): string {
+  private _getFilteredServices(services: ServiceData[]): ServiceData[] {
+    let filtered = services;
+    if (this._typeFilter !== "all") {
+      filtered = filtered.filter((s) => s.type === this._typeFilter);
+    }
+    if (this._searchQuery) {
+      const q = this._searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.namespace.toLowerCase().includes(q) ||
+          s.external_ips.some((ip) => ip.toLowerCase().includes(q)),
+      );
+    }
+    return filtered;
+  }
+
+  private _services_of(ingress: IngressData): string {
     return [...new Set(ingress.rules.map((r) => r.service_name))]
       .filter(Boolean)
       .join(", ");
@@ -127,6 +192,15 @@ export class K8sNetwork extends LitElement {
     return (
       ingress.tls_hosts.length > 0 || ingress.urls.some((u) => u.startsWith("https://"))
     );
+  }
+
+  private _formatPort(p: ServicePort): string {
+    const target =
+      p.target_port != null && String(p.target_port) !== String(p.port)
+        ? `→${p.target_port}`
+        : "";
+    const node = p.node_port ? ` (node ${p.node_port})` : "";
+    return `${p.port}${target}/${p.protocol}${node}`;
   }
 
   static styles = css`
@@ -154,6 +228,19 @@ export class K8sNetwork extends LitElement {
       margin: 16px 0;
     }
 
+    .inline-error {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      margin-bottom: 16px;
+      border-radius: 8px;
+      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+      color: var(--error-color, #f44336);
+      font-size: 14px;
+      --mdc-icon-size: 18px;
+    }
+
     .retry-btn {
       cursor: pointer;
       padding: 8px 24px;
@@ -171,9 +258,20 @@ export class K8sNetwork extends LitElement {
 
     .empty {
       text-align: center;
-      padding: 64px 16px;
+      padding: 32px 16px;
       color: var(--secondary-text-color);
       font-size: 16px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--primary-text-color);
+      margin: 24px 0 12px;
+    }
+
+    .section-title:first-of-type {
+      margin-top: 0;
     }
 
     .cluster-section {
@@ -210,13 +308,37 @@ export class K8sNetwork extends LitElement {
       border-color: var(--primary-color);
     }
 
-    .ingress-table {
+    .filter-chip {
+      padding: 6px 14px;
+      border-radius: 16px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid var(--divider-color);
+      background: transparent;
+      color: var(--primary-text-color);
+      user-select: none;
+      transition:
+        background 0.2s,
+        border-color 0.2s;
+    }
+
+    .filter-chip:hover {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+    }
+
+    .filter-chip[active] {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
+      border-color: var(--primary-color);
+      color: var(--primary-color);
+    }
+
+    .network-table {
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
     }
 
-    .ingress-table th {
+    .network-table th {
       text-align: left;
       padding: 10px 12px;
       color: var(--secondary-text-color);
@@ -225,18 +347,23 @@ export class K8sNetwork extends LitElement {
       white-space: nowrap;
     }
 
-    .ingress-table td {
+    .network-table td {
       padding: 8px 12px;
       border-bottom: 1px solid var(--divider-color);
       vertical-align: middle;
     }
 
-    .ingress-table tr:last-child td {
+    .network-table tr:last-child td {
       border-bottom: none;
     }
 
-    .ingress-table tr:hover td {
+    .network-table tr:hover td {
       background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
+    }
+
+    .mono {
+      font-family: monospace;
+      white-space: nowrap;
     }
 
     .url-link {
@@ -260,14 +387,26 @@ export class K8sNetwork extends LitElement {
       white-space: nowrap;
     }
 
-    .badge-tls {
+    .badge-tls,
+    .badge-type-loadbalancer {
       background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
       color: var(--success-color, #4caf50);
     }
 
-    .badge-plain {
+    .badge-plain,
+    .badge-type-externalname {
       background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
       color: var(--warning-color, #ff9800);
+    }
+
+    .badge-type-nodeport {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
+      color: var(--primary-color);
+    }
+
+    .badge-type-clusterip {
+      background: rgba(var(--rgb-secondary-text-color, 114, 114, 114), 0.15);
+      color: var(--secondary-text-color);
     }
   `;
 
@@ -278,7 +417,7 @@ export class K8sNetwork extends LitElement {
       </div>`;
     }
 
-    if (this._error) {
+    if (this._error && this._servicesError) {
       return html`
         <div class="error-card">
           <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -288,9 +427,12 @@ export class K8sNetwork extends LitElement {
       `;
     }
 
-    const clusters = this._data?.clusters ?? [];
-    if (!clusters.length || clusters.every((c) => !c.ingresses.length)) {
-      return html`<div class="empty">No ingresses found.</div>`;
+    const ingressClusters = this._data?.clusters ?? [];
+    const serviceClusters = this._services?.clusters ?? [];
+    const hasIngresses = ingressClusters.some((c) => c.ingresses.length > 0);
+    const hasServices = serviceClusters.some((c) => c.services.length > 0);
+    if (!this._error && !this._servicesError && !hasIngresses && !hasServices) {
+      return html`<div class="empty">No ingresses or services found.</div>`;
     }
 
     return html`
@@ -298,13 +440,52 @@ export class K8sNetwork extends LitElement {
         <input
           class="search-input"
           type="text"
-          placeholder="Search ingresses…"
+          placeholder="Search ingresses and services…"
           .value=${this._searchQuery}
           @input=${(e: InputEvent) =>
             (this._searchQuery = (e.target as HTMLInputElement).value)}
         />
+        ${(["all", ...SERVICE_TYPES] as const).map(
+          (t) => html`
+            <button
+              class="filter-chip"
+              ?active=${this._typeFilter === t}
+              @click=${() => {
+                this._typeFilter = t;
+              }}
+            >
+              ${t === "all" ? "All types" : t}
+            </button>
+          `,
+        )}
       </div>
-      ${clusters.map((cluster) => this._renderCluster(cluster))}
+
+      <h2 class="section-title">Ingresses</h2>
+      ${
+        this._error
+          ? this._renderInlineError(this._error)
+          : hasIngresses
+            ? ingressClusters.map((cluster) => this._renderCluster(cluster))
+            : html`<div class="empty">No ingresses found.</div>`
+      }
+
+      <h2 class="section-title">Services</h2>
+      ${
+        this._servicesError
+          ? this._renderInlineError(this._servicesError)
+          : hasServices
+            ? serviceClusters.map((cluster) => this._renderServiceCluster(cluster))
+            : html`<div class="empty">No services found.</div>`
+      }
+    `;
+  }
+
+  private _renderInlineError(message: string) {
+    return html`
+      <div class="inline-error">
+        <ha-icon icon="mdi:alert-circle"></ha-icon>
+        <span>${message}</span>
+      </div>
     `;
   }
 
@@ -330,7 +511,7 @@ export class K8sNetwork extends LitElement {
 
   private _renderTable(ingresses: IngressData[]) {
     return html`
-      <table class="ingress-table">
+      <table class="network-table">
         <thead>
           <tr>
             <th>Name</th>
@@ -349,8 +530,8 @@ export class K8sNetwork extends LitElement {
                 <td>${ingress.name}</td>
                 <td>${ingress.namespace}</td>
                 <td>${ingress.ingress_class || "—"}</td>
-                <td>${this._renderUrls(ingress)}</td>
-                <td>${this._services(ingress) || "—"}</td>
+                <td>${this._renderUrls(ingress.urls)}</td>
+                <td>${this._services_of(ingress) || "—"}</td>
                 <td>${this._renderTlsBadge(ingress)}</td>
                 <td>${this._formatAge(ingress.creation_timestamp)}</td>
               </tr>
@@ -361,9 +542,80 @@ export class K8sNetwork extends LitElement {
     `;
   }
 
-  private _renderUrls(ingress: IngressData) {
-    if (!ingress.urls.length) return "—";
-    return ingress.urls.map(
+  private _renderServiceCluster(cluster: ClusterServices) {
+    if (!cluster.services.length) return nothing;
+    const services = this._getFilteredServices(cluster.services);
+
+    return html`
+      <div class="cluster-section">
+        ${
+          this._services!.clusters.length > 1
+            ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
+            : nothing
+        }
+        ${
+          services.length === 0
+            ? html`<div class="empty">No services match your filters.</div>`
+            : this._renderServicesTable(services)
+        }
+      </div>
+    `;
+  }
+
+  private _renderServicesTable(services: ServiceData[]) {
+    return html`
+      <table class="network-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Namespace</th>
+            <th>Type</th>
+            <th>Cluster IP</th>
+            <th>External</th>
+            <th>Ports</th>
+            <th>Age</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${services.map(
+            (svc) => html`
+              <tr>
+                <td>${svc.name}</td>
+                <td>${svc.namespace}</td>
+                <td>
+                  <span class="badge badge-type-${svc.type.toLowerCase()}"
+                    >${svc.type}</span
+                  >
+                </td>
+                <td class="mono">${svc.cluster_ip || "—"}</td>
+                <td>${this._renderExternal(svc)}</td>
+                <td class="mono">
+                  ${
+                    svc.ports.length
+                      ? svc.ports.map((p) => html`<div>${this._formatPort(p)}</div>`)
+                      : "—"
+                  }
+                </td>
+                <td>${this._formatAge(svc.creation_timestamp)}</td>
+              </tr>
+            `,
+          )}
+        </tbody>
+      </table>
+    `;
+  }
+
+  private _renderExternal(svc: ServiceData) {
+    if (svc.urls.length) return this._renderUrls(svc.urls);
+    if (svc.external_ips.length) {
+      return svc.external_ips.map((ip) => html`<div class="mono">${ip}</div>`);
+    }
+    return "—";
+  }
+
+  private _renderUrls(urls: string[]) {
+    if (!urls.length) return "—";
+    return urls.map(
       (url) => html`
         <a class="url-link" href=${url} target="_blank" rel="noopener noreferrer"
           >${url}</a
