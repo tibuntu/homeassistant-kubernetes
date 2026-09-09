@@ -423,6 +423,26 @@ class TestKubernetesServicesSensor:
         mock_coordinator.data = None
         assert sensor.native_value == 0
 
+    def test_device_info(self, mock_config_entry, mock_client, mock_coordinator):
+        """Device info matches cluster device."""
+        from custom_components.kubernetes.device import get_cluster_device_info
+
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        expected = get_cluster_device_info(mock_config_entry)
+        assert sensor.device_info["identifiers"] == expected["identifiers"]
+
+    def test_value_with_bare_data(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """With data but no services/services_count keys, return 0."""
+        mock_coordinator.data = {"pods": {}}
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        assert sensor.native_value == 0
+
     async def test_async_update_falls_back_to_client(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -432,9 +452,7 @@ class TestKubernetesServicesSensor:
         sensor = KubernetesServicesSensor(
             mock_coordinator, mock_client, mock_config_entry
         )
-        sensor.async_write_ha_state = MagicMock()
 
-        # Use the same mechanism as test_sensor_update_failure in TestKubernetesIngressesSensor
         await sensor.async_update()
 
         assert sensor._attr_native_value == 4
@@ -452,6 +470,21 @@ class TestKubernetesServicesSensor:
         await sensor.async_update()
 
         assert sensor._attr_native_value == 0
+
+    async def test_async_update_bucket_present(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """When bucket is present, client fallback is not called."""
+        mock_coordinator.data = {"services": {"default_web": {}}}
+        mock_client.get_services_count = AsyncMock(return_value=99)
+        sensor = KubernetesServicesSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+
+        await sensor.async_update()
+
+        mock_client.get_services_count.assert_not_called()
+        assert getattr(sensor, "_attr_native_value", None) != 99
 
 
 class TestKubernetesClusterHealthSensor:
