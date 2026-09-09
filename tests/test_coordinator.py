@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import entity_registry as er
@@ -2345,6 +2346,58 @@ class TestRunWatchLoopExtended:
             assert coord._watch_issue_active is False
             assert coord._failing_watch_loops == set()
 
+    async def test_run_watch_loop_403_stops_loop_without_failure_streak(
+        self, coord, mock_client
+    ):
+        """A 403 on the initial list ends the loop: no backoff, no failing state."""
+        mock_client.list_resource_with_version.side_effect = (
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=403, message="Forbidden"
+            )
+        )
+        interval_before = coord.update_interval
+
+        with (
+            patch("asyncio.wait_for") as wait_for,
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_create_issue"
+            ) as create,
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        wait_for.assert_not_called()
+        assert coord._failing_watch_loops == set()
+        assert coord._watch_issue_active is False
+        assert coord.update_interval == interval_before
+        assert coord._forbidden_resources == {"pods"}
+        assert create.call_args.args[2] == (
+            f"watch_forbidden_{coord.config_entry.entry_id}"
+        )
+
+    async def test_run_watch_loop_other_http_error_still_backs_off(
+        self, coord, mock_client
+    ):
+        """A non-403 HTTP error keeps the existing reconnect/backoff path."""
+        mock_client.list_resource_with_version.side_effect = (
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=500, message="boom"
+            )
+        )
+
+        async def _wait_for(coro, timeout):
+            coord._watch_stop_event.set()
+            return None
+
+        with patch("asyncio.wait_for", side_effect=_wait_for) as wait_for:
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        wait_for.assert_called_once()
+        assert coord._forbidden_resources == set()
+
 
 class TestBuildWatchConfigs:
     """Tests for _build_watch_configs method."""
@@ -2981,6 +3034,28 @@ class TestEventWatchLoop:
             )
 
         assert call_count == 2
+
+    async def test_event_watch_loop_403_stops_and_marks_forbidden(
+        self, coord_warning, mock_client
+    ):
+        """A 403 from the events API ends the loop and flags 'events' as forbidden."""
+        mock_client.list_resource_with_version.side_effect = (
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=403, message="Forbidden"
+            )
+        )
+
+        with (
+            patch("asyncio.wait_for") as wait_for,
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+        ):
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        wait_for.assert_not_called()
+        assert coord_warning._forbidden_resources == {"events"}
+        assert coord_warning._failing_watch_loops == set()
 
     async def test_event_watch_loop_dispatches_modified_event(
         self, coord_warning, mock_client

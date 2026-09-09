@@ -11,6 +11,7 @@ import random
 import time
 from typing import Any
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
@@ -51,6 +52,10 @@ ISSUE_WATCH_CONNECTION_FAILING = "watch_connection_failing"
 WATCH_LEARN_MORE_URL = (
     "https://kubernetes.io/docs/reference/using-api/api-concepts/"
     "#efficient-detection-of-changes"
+)
+ISSUE_WATCH_FORBIDDEN = "watch_forbidden"
+RBAC_LEARN_MORE_URL = (
+    "https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md"
 )
 
 
@@ -138,6 +143,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._metrics_issue_active: bool = False
         self._watch_issue_active: bool = False
         self._failing_watch_loops: set[str] = set()
+        # Resource types whose watch returned HTTP 403; feeds the
+        # watch_forbidden repair issue and is only reset on unload.
+        self._forbidden_resources: set[str] = set()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via Kubernetes client.
@@ -787,6 +795,42 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
             self._watch_issue_active = False
 
+    def _forbidden_issue_id(self) -> str:
+        """Issue id for the per-entry missing-RBAC-permission repair issue."""
+        return f"{ISSUE_WATCH_FORBIDDEN}_{self.config_entry.entry_id}"
+
+    @callback
+    def _handle_watch_forbidden(self, loop_key: str, resource_type: str) -> None:
+        """Record that the ServiceAccount may not list/watch ``resource_type``.
+
+        A 403 is permanent until RBAC changes, so the calling loop exits
+        instead of feeding the failure streak: the poll interval and the
+        generic watch issue stay untouched, and a dedicated issue names the
+        resource(s) so the user knows which rule to add. Re-creating the
+        issue with the same id updates its placeholders in place.
+        """
+        _LOGGER.warning(
+            "Watch %s: HTTP 403 Forbidden — the ServiceAccount may not list/watch "
+            "this resource; live updates for it are off until the RBAC rule is "
+            "added and the integration is reloaded",
+            resource_type,
+        )
+        self._sync_watch_repair_issue(loop_key, failing=False)
+        self._forbidden_resources.add(resource_type)
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self._forbidden_issue_id(),
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_WATCH_FORBIDDEN,
+            translation_placeholders={
+                "cluster": getattr(self.client, "cluster_name", "") or "unknown",
+                "resources": ", ".join(sorted(self._forbidden_resources)),
+            },
+            learn_more_url=RBAC_LEARN_MORE_URL,
+        )
+
     @callback
     def async_clear_repair_issues(self) -> None:
         """Remove repair issues owned by this coordinator on unload.
@@ -798,9 +842,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         """
         ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
         ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
+        ir.async_delete_issue(self.hass, DOMAIN, self._forbidden_issue_id())
         self._metrics_issue_active = False
         self._watch_issue_active = False
         self._failing_watch_loops.clear()
+        self._forbidden_resources.clear()
 
     @callback
     def async_cleanup_stale_repair_issues(self) -> None:
@@ -817,6 +863,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         )
         if not self._watch_enabled and not events_enabled:
             ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
+            ir.async_delete_issue(self.hass, DOMAIN, self._forbidden_issue_id())
         if "metrics" in self._disabled:
             ir.async_delete_issue(self.hass, DOMAIN, self._metrics_issue_id())
 
@@ -982,6 +1029,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 return
 
             except Exception as ex:
+                if isinstance(ex, aiohttp.ClientResponseError) and ex.status == 403:
+                    self._handle_watch_forbidden(loop_key, resource_type)
+                    return
                 failure_streak += 1
                 delay = min(
                     DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
@@ -1089,6 +1139,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 self._failing_watch_loops.discard(rt)
                 return
             except Exception as ex:
+                if isinstance(ex, aiohttp.ClientResponseError) and ex.status == 403:
+                    self._handle_watch_forbidden(rt, "events")
+                    return
                 failure_streak += 1
                 delay = min(
                     DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
