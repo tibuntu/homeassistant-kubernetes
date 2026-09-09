@@ -57,6 +57,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_pods_list)
     websocket_api.async_register_command(hass, websocket_workloads_list)
     websocket_api.async_register_command(hass, websocket_ingresses_list)
+    websocket_api.async_register_command(hass, websocket_services_list)
     websocket_api.async_register_command(hass, websocket_config_list)
     websocket_api.async_register_command(hass, websocket_delete_pod)
     websocket_api.async_register_command(hass, websocket_delete_job)
@@ -121,6 +122,18 @@ async def websocket_ingresses_list(
 ) -> None:
     """Return all ingresses from all config entries."""
     result = _get_ingresses_list_data(hass)
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/services/list"})
+@websocket_api.async_response
+async def websocket_services_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all services from all config entries."""
+    result = _get_services_list_data(hass)
     connection.send_result(msg["id"], result)
 
 
@@ -453,6 +466,30 @@ def _get_ingresses_list_data(hass: HomeAssistant) -> dict[str, Any]:
                 "entry_id": entry_id,
                 "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
                 "ingresses": ingresses_list,
+            }
+        )
+
+    return {"clusters": clusters}
+
+
+def _get_services_list_data(hass: HomeAssistant) -> dict[str, Any]:
+    """Gather service data from all config entries."""
+    clusters: list[dict[str, Any]] = []
+
+    for entry in get_loaded_entries(hass):
+        entry_data = entry.runtime_data
+        data = entry_data.coordinator.data
+        services_list: list[dict[str, Any]] = []
+        if data:
+            services_list = list(data.get("services", {}).values())
+
+        clusters.append(
+            {
+                "entry_id": entry.entry_id,
+                "cluster_name": entry_data.config.get(
+                    CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME
+                ),
+                "services": services_list,
             }
         )
 

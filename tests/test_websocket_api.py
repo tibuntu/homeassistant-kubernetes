@@ -19,6 +19,7 @@ from custom_components.kubernetes.websocket_api import (
     _get_ingresses_list_data,
     _get_nodes_list_data,
     _get_pods_list_data,
+    _get_services_list_data,
     _get_workloads_list_data,
     _handle_delete_job,
     _handle_delete_pod,
@@ -174,7 +175,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 10
+            assert mock_ws_api.async_register_command.call_count == 11
 
 
 class TestWebsocketClusterOverview:
@@ -966,6 +967,108 @@ class TestWebsocketIngressesList:
         assert len(result["clusters"]) == 2
         total_ingresses = sum(len(c["ingresses"]) for c in result["clusters"])
         assert total_ingresses == 3
+
+
+class TestWebsocketServicesList:
+    """Tests for the kubernetes/services/list command logic."""
+
+    def test_returns_empty_when_no_entries(self, mock_hass):
+        """No loaded entries -> empty clusters list."""
+        _load_entries(mock_hass)
+        assert _get_services_list_data(mock_hass) == {"clusters": []}
+
+    def test_returns_services_per_cluster(self, mock_hass):
+        """Services from coordinator data are returned per cluster."""
+        coordinator = _make_coordinator(
+            {
+                "services": {
+                    "default_web": {
+                        "name": "web",
+                        "namespace": "default",
+                        "type": "LoadBalancer",
+                        "urls": ["http://192.168.1.50"],
+                    }
+                },
+                "ingresses": {},
+                "nodes": {},
+                "pods": {},
+                "last_update": 0.0,
+            }
+        )
+        _load_entries(
+            mock_hass,
+            _make_entry("entry1", coordinator, {"cluster_name": "test-cluster"}),
+        )
+
+        result = _get_services_list_data(mock_hass)
+
+        assert len(result["clusters"]) == 1
+        cluster = result["clusters"][0]
+        assert cluster["entry_id"] == "entry1"
+        assert cluster["cluster_name"] == "test-cluster"
+        assert cluster["services"] == [
+            {
+                "name": "web",
+                "namespace": "default",
+                "type": "LoadBalancer",
+                "urls": ["http://192.168.1.50"],
+            }
+        ]
+
+    def test_none_coordinator_data(self, mock_hass):
+        """A coordinator with no data yields an empty service list."""
+        coordinator = _make_coordinator(None)
+        _load_entries(mock_hass, _make_entry("entry1", coordinator))
+
+        assert _get_services_list_data(mock_hass)["clusters"][0]["services"] == []
+
+    def test_multi_cluster(self, mock_hass):
+        """Each loaded entry contributes its own cluster block."""
+        c1 = _make_coordinator({"services": {"a_x": {"name": "x", "namespace": "a"}}})
+        c2 = _make_coordinator({"services": {}})
+        _load_entries(
+            mock_hass,
+            _make_entry("e1", c1, {"cluster_name": "one"}),
+            _make_entry("e2", c2, {"cluster_name": "two"}),
+        )
+
+        result = _get_services_list_data(mock_hass)
+
+        assert [c["cluster_name"] for c in result["clusters"]] == ["one", "two"]
+        assert len(result["clusters"][0]["services"]) == 1
+        assert result["clusters"][1]["services"] == []
+
+    async def test_end_to_end_over_websocket(self, hass: HomeAssistant, hass_ws_client):
+        """The registered command answers a real WebSocket request.
+
+        The unit tests above call the payload builder directly, which leaves
+        the decorated wrapper uncovered; this drives it for real.
+        """
+        coordinator = MagicMock()
+        coordinator.data = {
+            "services": {"default_web": {"name": "web", "namespace": "default"}}
+        }
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="entry_1",
+            data={"host": "test", "cluster_name": "test"},
+            state=ConfigEntryState.LOADED,
+        )
+        entry.add_to_hass(hass)
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data, client=MagicMock(), coordinator=coordinator
+        )
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json({"id": 3, "type": "kubernetes/services/list"})
+        msg = await ws.receive_json()
+
+        assert msg["id"] == 3
+        assert msg["success"] is True
+        assert msg["result"]["clusters"][0]["services"] == [
+            {"name": "web", "namespace": "default"}
+        ]
 
 
 class TestWebsocketConfigList:
