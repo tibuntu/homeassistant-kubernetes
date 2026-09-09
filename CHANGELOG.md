@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.10.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.9.2...v1.10.0) (2026-09-09)
+
+
+### Features
+
+* **client:** parse and fetch Kubernetes Services ([3c3e50a](https://github.com/tibuntu/homeassistant-kubernetes/commit/3c3e50a1ead74cb633ba2ee11c6e1ec1e35df419))
+* **coordinator:** fetch, bucket and watch Kubernetes Services ([b4b8a7a](https://github.com/tibuntu/homeassistant-kubernetes/commit/b4b8a7ac1a0d63e8e540e1a9e99dd4191f3fd1ff))
+* **panel:** list Kubernetes Services in the Network tab ([4a49aba](https://github.com/tibuntu/homeassistant-kubernetes/commit/4a49aba2342ba12023817b7d94d4d4be5000b129))
+* **panel:** suspend/resume CronJobs and cordon/uncordon nodes from the panel ([116ce6d](https://github.com/tibuntu/homeassistant-kubernetes/commit/116ce6d3a06c6569672fd1c047d4312f514e172e))
+* **rbac:** grant read access to services in both chart modes ([2108aee](https://github.com/tibuntu/homeassistant-kubernetes/commit/2108aee737f55e4e102c312c126f852ed3cbca73))
+* **repairs:** raise a dedicated issue when a watched resource returns 403 ([6228f2e](https://github.com/tibuntu/homeassistant-kubernetes/commit/6228f2e42aabed69b6c265a3362516a0c93851d4))
+* **sensor:** add Services Count sensor ([8cbdc5c](https://github.com/tibuntu/homeassistant-kubernetes/commit/8cbdc5c26a246241c6ef57016f51041d3d6580a2))
+* **websocket:** add kubernetes/services/list for the Network tab ([bff8e7b](https://github.com/tibuntu/homeassistant-kubernetes/commit/bff8e7bee135555ee0484e7e933c380e9d0e61a8))
+
+
+### Bug Fixes
+
+* **config_flow:** honor verify_ssl and ca_cert during setup validation ([3511ee4](https://github.com/tibuntu/homeassistant-kubernetes/commit/3511ee46cbd2b16fc36055e5859bd2c01f7e37a4))
+* **repairs:** ignore an empty watch-task list in the all-forbidden check ([11a67db](https://github.com/tibuntu/homeassistant-kubernetes/commit/11a67dbe5a20865cfbdda896c2ced9b3ba110696))
+* **repairs:** keep fast polling when every watch stream is forbidden ([68cf9db](https://github.com/tibuntu/homeassistant-kubernetes/commit/68cf9dbbece23b67759b507a6b0850275a24a5e2))
+
 ## [1.9.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.9.1...v1.9.2) (2026-09-01)
 
 
