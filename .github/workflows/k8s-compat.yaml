@@ -103,7 +103,7 @@ jobs:
           echo "K8S_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           echo "K8S_SERVER=${SERVER}" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
 
