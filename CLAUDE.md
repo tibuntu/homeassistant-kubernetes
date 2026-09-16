@@ -165,6 +165,10 @@ Whenever changes are implemented to any integration code, always add or update t
 - Cover the happy path, edge cases (missing data, `None` coordinator data), and all distinct return values.
 - Use `MockConfigEntry` from `pytest_homeassistant_custom_component.common` and the real `hass` fixture for platform setup tests. Entity unit tests (testing properties, state, edge cases) can directly instantiate entities with `MockConfigEntry` + mock coordinator/client. Use the shared K8s-specific fixtures from `conftest.py` (`mock_client`, `mock_coordinator`) rather than creating new ones where possible.
 
+### HA deprecation guard
+
+The autouse `fail_on_ha_deprecations` fixture in `conftest.py` monitors the `homeassistant.helpers.frame` logger and fails any test that triggers an HA deprecation warning. This catches deprecated API usage (e.g. `via_device`, `async_get_device`) at CI time rather than in production logs. Tests that exercise code through real HA fixtures (platform setup, device creation, `async_add_entities`) will trigger these warnings — mock-only unit tests won't, since they bypass HA internals.
+
 ### Test directory structure
 
 Pure unit tests (no HA dependency) live in `tests/unit/`. Currently `test_kubernetes_client.py` is the only file there — it tests the K8s API wrapper in isolation. All other test files in `tests/` use HA fixtures via `pytest-homeassistant-custom-component`. pytest discovers both directories recursively via `testpaths = ["tests"]`.
