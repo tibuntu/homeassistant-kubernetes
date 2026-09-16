@@ -2,6 +2,10 @@
 
 This guide walks you through setting up the required Kubernetes service account and RBAC permissions for the Home Assistant Kubernetes Integration.
 
+## Kubernetes Version
+
+The integration supports **Kubernetes 1.35 – 1.37** (the three most recent stable releases). Only stable GA APIs are used, so older clusters may work but are not CI-tested. The supported range is tracked in [`.github/workflows/k8s-compat.yaml`](../.github/workflows/k8s-compat.yaml) and updates automatically via Renovate when a new Kubernetes release is published.
+
 ## Picking the right path
 
 | Where Home Assistant runs | Recommended setup |

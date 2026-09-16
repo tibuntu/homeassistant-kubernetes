@@ -249,6 +249,12 @@ pytest tests/test_kubernetes_integration.py
 pytest --cov=custom_components/kubernetes
 ```
 
+### Kubernetes API Compatibility Tests
+
+CI runs the `tests/k8s_compat/` suite against real kind clusters (Kubernetes N, N-1, N-2 — see `.github/workflows/k8s-compat.yaml`). These tests exercise every `KubernetesClient` method against a live API server with the chart's actual RBAC deployed. They are marked `k8s_compat` and auto-skip locally when `K8S_SERVER`/`K8S_TOKEN` are not set.
+
+The latest supported Kubernetes version is pinned as `K8S_LATEST` in the workflow and tracked by Renovate (`kubernetes/kubernetes` github-releases). When a new release is tagged, Renovate opens a PR that bumps the pin and auto-updates the supported-version range in README.md and docs/SETUP.md via `scripts/update-k8s-support-range.sh`.
+
 ### Setting Up a Test Kubernetes Cluster
 
 #### Using minikube

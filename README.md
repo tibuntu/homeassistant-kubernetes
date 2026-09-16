@@ -31,6 +31,16 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **Cluster Event Platform**: Opt-in HA event entity ("Cluster events") per cluster that fires Home Assistant events for Kubernetes cluster activity — OOMKilling, FailedScheduling, BackOff, Evicted, Unhealthy, ImagePullBackOff, and more. Use events to drive automations and alerts. Warning-type events only by default; configurable to include all events. Enable via **Configure → Enable Cluster Events**
 - **Data Collection Opt-Out**: Opt out of collecting selected data categories (pods, jobs, ingresses, services, CPU/memory metrics, count sensors, …) to reduce entity count, recorder/database growth, and Kubernetes API load. Switches keep working for opted-out workload types. Configure via **Configure → Disable data collection for** — see the [configuration guide](docs/CONFIGURATION.md#data-collection-opt-out)
 
+## Requirements
+
+| Component | Version |
+|-----------|---------|
+| Home Assistant | 2024.1+ |
+| Python | 3.13+ |
+| Kubernetes | **1.35 – 1.37** (the three most recent stable releases) |
+
+The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `networking.k8s.io/v1`, core `v1`), so older clusters may work but are not tested. CI runs the full API compatibility suite against all three listed versions on every PR — see [`.github/workflows/k8s-compat.yaml`](.github/workflows/k8s-compat.yaml). The supported range updates automatically when a new Kubernetes stable release is published.
+
 ## Installation
 
 ### HACS (Recommended)

@@ -1,0 +1,117 @@
+---
+name: Kubernetes Compatibility
+
+on:
+  pull_request:
+    branches-ignore:
+      - release-please--branches--main
+    paths:
+      - "custom_components/kubernetes/**"
+      - "tests/k8s_compat/**"
+      - "chart/**"
+      - "pyproject.toml"
+      - ".github/workflows/k8s-compat.yaml"
+  schedule:
+    # Weekly Monday 06:00 UTC — catches upstream k8s changes between PRs.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The latest stable Kubernetes minor version.  Renovate tracks this pin and
+# opens a PR when a new stable release is tagged on kubernetes/kubernetes.
+# The matrix tests this version plus the two preceding minors.
+# renovate: datasource=github-releases depName=kubernetes/kubernetes versioning=semver
+env:
+  K8S_LATEST: "1.37.0"
+
+jobs:
+  build-matrix:
+    name: Build version matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Resolve kind node images for N, N-1, N-2
+        id: matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MINOR=$(echo "$K8S_LATEST" | cut -d. -f2)
+          TARGETS=("1.$((MINOR))" "1.$((MINOR-1))" "1.$((MINOR-2))")
+
+          # Fetch all kindest/node tags from the latest kind release notes.
+          IMAGES=$(gh api repos/kubernetes-sigs/kind/releases/latest \
+            --jq '.body' | grep -oP 'kindest/node:v[0-9.]+' | sort -uV)
+
+          MATRIX="["
+          FIRST=true
+          for TARGET in "${TARGETS[@]}"; do
+            # Find the latest patch image for this minor version.
+            IMAGE=$(echo "$IMAGES" | grep "kindest/node:v${TARGET}\." | tail -1)
+            if [ -z "$IMAGE" ]; then
+              echo "::warning::No kind image found for k8s ${TARGET}, skipping"
+              continue
+            fi
+            TAG=${IMAGE#kindest/node:}
+            if [ "$FIRST" = true ]; then FIRST=false; else MATRIX+=","; fi
+            MATRIX+="{\"k8s-minor\":\"${TARGET}\",\"node-image\":\"${IMAGE}\",\"tag\":\"${TAG}\"}"
+          done
+          MATRIX+="]"
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+
+  k8s-compat:
+    name: "k8s ${{ matrix.k8s-minor }}"
+    runs-on: ubuntu-latest
+    needs: build-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.build-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v5
+        with:
+          version: v4.3.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.33.0
+          node_image: ${{ matrix.node-image }}
+          cluster_name: compat
+          wait: 120s
+
+      - name: Deploy integration RBAC (full mode)
+        run: helm install ha-k8s chart --set mode=full --wait
+
+      - name: Deploy test workloads
+        run: |
+          kubectl apply -f tests/k8s_compat/manifests/
+          kubectl wait --for=condition=available deployment/test-nginx --timeout=120s
+
+      - name: Extract cluster connection info
+        run: |
+          TOKEN=$(kubectl create token homeassistant-kubernetes-integration --duration=1h)
+          SERVER=$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}')
+          echo "K8S_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          echo "K8S_SERVER=${SERVER}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install -e . pytest pytest-asyncio
+
+      - name: Run compatibility tests
+        env:
+          K8S_TOKEN: ${{ env.K8S_TOKEN }}
+          K8S_SERVER: ${{ env.K8S_SERVER }}
+        run: pytest tests/k8s_compat/ -m k8s_compat -v -o "addopts="
