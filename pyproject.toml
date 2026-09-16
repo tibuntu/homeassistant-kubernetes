@@ -135,6 +135,7 @@ markers = [
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
     "security: marks tests as security tests",
+    "k8s_compat: Kubernetes API compatibility tests (require a real cluster)",
 ]
 filterwarnings = [
     "error",

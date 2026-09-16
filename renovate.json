@@ -123,6 +123,21 @@
       "matchDepNames": ["helm/helm"],
       "groupName": "helm",
       "semanticCommitScope": "deps-actions"
+    },
+    {
+      "description": "Kubernetes stable version pin for the compat CI matrix — also updates the supported-version range in docs",
+      "matchDepNames": ["kubernetes/kubernetes"],
+      "semanticCommitScope": "deps-actions",
+      "postUpgradeTasks": {
+        "commands": [
+          "scripts/update-k8s-support-range.sh {{{newVersion}}}"
+        ],
+        "fileFilters": [
+          "README.md",
+          "docs/SETUP.md"
+        ],
+        "executionMode": "branch"
+      }
     }
   ],
   "customManagers": [
@@ -148,6 +163,19 @@
       ],
       "depNameTemplate": "python",
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Track the latest stable Kubernetes version for the compat CI matrix",
+      "managerFilePatterns": [
+        "/\\.github/workflows/k8s-compat\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "K8S_LATEST:\\s*\"(?<currentValue>[0-9.]+)\""
+      ],
+      "depNameTemplate": "kubernetes/kubernetes",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
     },
     {
       "customType": "regex",

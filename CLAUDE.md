@@ -152,7 +152,9 @@ When adding features, check the current rule set at the link above before implem
 
 ## CI
 
-GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + build (ESLint, Prettier, Vite), Helm chart lint + `manifests/` drift check (`.github/workflows/helm.yaml`), and CodeQL (`.github/workflows/codeql.yml`). The frontend workflow also verifies the committed `kubernetes-panel.js` bundle matches a fresh build — if a developer edits `.ts` source without rebuilding, CI will fail. Releases automated via release-please.
+GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + build (ESLint, Prettier, Vite), Helm chart lint + `manifests/` drift check (`.github/workflows/helm.yaml`), Kubernetes API compatibility tests (`.github/workflows/k8s-compat.yaml`), and CodeQL (`.github/workflows/codeql.yml`). The frontend workflow also verifies the committed `kubernetes-panel.js` bundle matches a fresh build — if a developer edits `.ts` source without rebuilding, CI will fail. Releases automated via release-please.
+
+The **k8s-compat workflow** spins up real kind clusters (Kubernetes N, N-1, N-2 — currently 1.35, 1.36, 1.37) and runs the `tests/k8s_compat/` suite against each. It deploys the chart in `full` mode for real RBAC, creates test workloads, and exercises every `get_*`, `watch_stream`, and mutation method on `KubernetesClient`. The latest stable k8s version is pinned as `K8S_LATEST` in the workflow's `env:` block, tracked by Renovate via a custom regex manager (`kubernetes/kubernetes` github-releases datasource). When a new k8s stable release is tagged, Renovate opens a PR that bumps the pin; `postUpgradeTasks` runs `scripts/update-k8s-support-range.sh` to update the version range in README.md and docs/SETUP.md automatically. Triggers: path-filtered PRs (integration code, tests, chart, pyproject.toml, the workflow), weekly Monday schedule, and manual dispatch.
 
 CodeQL uses **advanced setup** (a committed workflow) rather than GitHub's default setup, because default setup does not run on pull requests from forks — its required status checks could never be satisfied by an external contributor's PR. The matrix job name must stay `Analyze (<language>)` for `actions`, `javascript-typescript`, and `python`: branch protection on `main` requires those exact context names. The separate `CodeQL` context is posted by the code-scanning service (the `github-advanced-security` app) on SARIF upload, not by this workflow.
 
@@ -171,7 +173,7 @@ The autouse `fail_on_ha_deprecations` fixture in `conftest.py` monitors the `hom
 
 ### Test directory structure
 
-Pure unit tests (no HA dependency) live in `tests/unit/`. Currently `test_kubernetes_client.py` is the only file there — it tests the K8s API wrapper in isolation. All other test files in `tests/` use HA fixtures via `pytest-homeassistant-custom-component`. pytest discovers both directories recursively via `testpaths = ["tests"]`.
+Pure unit tests (no HA dependency) live in `tests/unit/`. Currently `test_kubernetes_client.py` is the only file there — it tests the K8s API wrapper in isolation. All other test files in `tests/` use HA fixtures via `pytest-homeassistant-custom-component`. `tests/k8s_compat/` contains API compatibility tests that run against a real kind cluster (marked `k8s_compat`); they auto-skip when `K8S_SERVER`/`K8S_TOKEN` env vars are not set, so the regular CI test suite collects but skips them. pytest discovers all directories recursively via `testpaths = ["tests"]`.
 - Do not attempt to run tests locally — the CI pipeline handles test execution.
 - Do not install packages locally (no `pip install`). All dependencies are managed by the CI pipeline.
 
@@ -189,5 +191,6 @@ Renovate handles all dependency updates. When making any change that involves ve
 - Versions pinned in `custom_components/kubernetes/manifest.json` are tracked via a custom regex manager.
 - Pre-commit hook versions in `.pre-commit-config.yaml` are managed by Renovate's pre-commit manager.
 - The Helm CLI version pinned in `.github/workflows/{helm,release}.yaml` is tracked via a custom regex manager (`helm/helm`, github-releases) and grouped as `helm`. Keep both workflows on the same version — the `manifests/` drift check depends on it.
+- The latest stable Kubernetes version `K8S_LATEST` in `.github/workflows/k8s-compat.yaml` is tracked via a custom regex manager (`kubernetes/kubernetes`, github-releases). `postUpgradeTasks` runs `scripts/update-k8s-support-range.sh` to keep the supported-version range in README.md and docs/SETUP.md in sync.
 - `chart/Chart.yaml` `version`/`appVersion` are bumped by release-please (generic updater, `x-release-please-version` comments), not Renovate.
 - When the same package appears in multiple files, add a `groupName` rule in `renovate.json` so updates are batched into a single PR.
