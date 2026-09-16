@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.10.1...v1.10.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* replace deprecated async_get_device with async_get_device_by_identifier ([058406b](https://github.com/tibuntu/homeassistant-kubernetes/commit/058406bf2c09ddd31d2b615ffae0fa3aa42f535a))
+
 ## [1.10.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.10.0...v1.10.1) (2026-09-16)
 
 
