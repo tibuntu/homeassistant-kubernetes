@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.10.0...v1.10.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* replace deprecated via_device with via_device_id ([33ecf3b](https://github.com/tibuntu/homeassistant-kubernetes/commit/33ecf3b26a87549f1db8c98041c2bf32a7010d23))
+
 ## [1.10.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.9.2...v1.10.0) (2026-09-09)
 
 This release brings **Kubernetes Services into the sidebar panel**, adds the **CronJob and node controls** the panel documentation had been promising, and closes a **TLS gap in the setup flow**. It also changes how a missing RBAC permission is reported. Two behaviour changes are called out in the upgrade notes below.
