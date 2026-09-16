@@ -1657,7 +1657,7 @@ class TestKubernetesPodSensor:
             mock_parent_update.assert_called_once()
 
     def test_pod_sensor_device_info(
-        self, mock_config_entry, mock_coordinator, mock_client
+        self, hass, mock_config_entry, mock_coordinator, mock_client
     ):
         """Test pod sensor device info."""
         namespace = "default"
@@ -1665,6 +1665,7 @@ class TestKubernetesPodSensor:
         sensor = KubernetesPodSensor(
             mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
         )
+        sensor.hass = hass
         device_info = sensor.device_info
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_default")
@@ -1819,7 +1820,7 @@ class TestKubernetesWorkloadMetricSensor:
         assert dep_mem.unique_id != sts_cpu.unique_id
 
     def test_device_info_uses_namespace_device(
-        self, mock_config_entry, mock_client, mock_coordinator
+        self, hass, mock_config_entry, mock_client, mock_coordinator
     ):
         """Test that metric sensors are attached to their namespace device."""
         sensor = KubernetesWorkloadMetricSensor(
@@ -1831,6 +1832,7 @@ class TestKubernetesWorkloadMetricSensor:
             "deployment",
             "cpu",
         )
+        sensor.hass = hass
         device_info = sensor.device_info
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_default")
@@ -2138,12 +2140,13 @@ class TestKubernetesDaemonSetSensor:
         assert sensor.state_class is None
 
     def test_device_info_uses_namespace_device(
-        self, mock_config_entry, mock_client, mock_coordinator
+        self, hass, mock_config_entry, mock_client, mock_coordinator
     ):
         """Test that the sensor belongs to its namespace device."""
         sensor = KubernetesDaemonSetSensor(
             mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
         )
+        sensor.hass = hass
         device_info = sensor.device_info
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_kube-system")
@@ -2423,7 +2426,7 @@ class TestKubernetesWorkloadStatusSensor:
         assert dep.unique_id != sts.unique_id
 
     def test_device_info_uses_namespace_device(
-        self, mock_config_entry, mock_client, mock_coordinator
+        self, hass, mock_config_entry, mock_client, mock_coordinator
     ):
         """Test sensor is attached to its namespace device."""
         sensor = KubernetesWorkloadStatusSensor(
@@ -2434,6 +2437,7 @@ class TestKubernetesWorkloadStatusSensor:
             "default",
             "deployment",
         )
+        sensor.hass = hass
         device_info = sensor.device_info
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_default")
@@ -2751,10 +2755,11 @@ class TestKubernetesCronJobSensor:
         assert sensor.state_class is None
 
     def test_device_info_uses_namespace_device(
-        self, mock_config_entry, mock_client, mock_coordinator
+        self, hass, mock_config_entry, mock_client, mock_coordinator
     ):
         """Test sensor is attached to the namespace device."""
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        sensor.hass = hass
         device_info = sensor.device_info
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_default")
@@ -3063,10 +3068,11 @@ class TestKubernetesJobSensor:
         assert sensor.state_class is None
 
     def test_device_info_uses_namespace_device(
-        self, mock_config_entry, mock_client, mock_coordinator
+        self, hass, mock_config_entry, mock_client, mock_coordinator
     ):
         """Test sensor is attached to the namespace device."""
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        sensor.hass = hass
         device_info = sensor.device_info
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_default")

@@ -72,7 +72,7 @@ async def get_or_create_namespace_device(
     device_identifier = get_namespace_device_identifier(config_entry, namespace)
 
     # Get or create cluster device first (parent)
-    await get_or_create_cluster_device(hass, config_entry)
+    cluster_device = await get_or_create_cluster_device(hass, config_entry)
 
     # async_get_or_create is idempotent, so no existence pre-check is needed
     device = device_registry.async_get_or_create(
@@ -82,7 +82,7 @@ async def get_or_create_namespace_device(
         manufacturer="Kubernetes",
         model="Namespace",
         sw_version=None,
-        via_device=(DOMAIN, get_cluster_device_identifier(config_entry)),
+        via_device_id=cluster_device.id,
     )
 
     _LOGGER.debug(
@@ -102,7 +102,9 @@ def get_cluster_device_info(config_entry: ConfigEntry) -> DeviceInfo:
     )
 
 
-def get_namespace_device_info(config_entry: ConfigEntry, namespace: str) -> DeviceInfo:
+def get_namespace_device_info(
+    hass: HomeAssistant, config_entry: ConfigEntry, namespace: str
+) -> DeviceInfo:
     """Get device info for namespace device or cluster device based on grouping mode."""
     grouping_mode = config_entry.data.get(
         CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
@@ -115,12 +117,15 @@ def get_namespace_device_info(config_entry: ConfigEntry, namespace: str) -> Devi
     # In namespace mode, use namespace devices
     device_identifier = get_namespace_device_identifier(config_entry, namespace)
     cluster_name = config_entry.data.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME)
+    device_registry = dr.async_get(hass)
+    cluster_identifier = (DOMAIN, get_cluster_device_identifier(config_entry))
+    cluster_device = device_registry.async_get_device(identifiers={cluster_identifier})
     return DeviceInfo(
         identifiers={(DOMAIN, device_identifier)},
         name=f"{cluster_name}: {namespace}",
         manufacturer="Kubernetes",
         model="Namespace",
-        via_device=(DOMAIN, get_cluster_device_identifier(config_entry)),
+        via_device_id=cluster_device.id if cluster_device else None,
     )
 
 

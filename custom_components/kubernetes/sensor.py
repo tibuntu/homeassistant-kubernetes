@@ -1035,7 +1035,7 @@ class KubernetesPodSensor(KubernetesBaseSensor):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
+        return get_namespace_device_info(self.hass, self.config_entry, self.namespace)
 
     @property
     def native_value(self) -> str:
@@ -1133,7 +1133,7 @@ class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
+        return get_namespace_device_info(self.hass, self.config_entry, self.namespace)
 
     @property
     def native_value(self) -> float | None:
@@ -1178,7 +1178,7 @@ class KubernetesWorkloadStatusSensor(KubernetesBaseSensor):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
+        return get_namespace_device_info(self.hass, self.config_entry, self.namespace)
 
     @property
     def native_value(self) -> str:
@@ -1247,7 +1247,7 @@ class KubernetesDaemonSetSensor(KubernetesBaseSensor):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
+        return get_namespace_device_info(self.hass, self.config_entry, self.namespace)
 
     @property
     def native_value(self) -> str:
@@ -1319,7 +1319,7 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
+        return get_namespace_device_info(self.hass, self.config_entry, self.namespace)
 
     @property
     def native_value(self) -> str:
@@ -1428,7 +1428,7 @@ class KubernetesJobSensor(KubernetesBaseSensor):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
+        return get_namespace_device_info(self.hass, self.config_entry, self.namespace)
 
     @property
     def native_value(self) -> str:
