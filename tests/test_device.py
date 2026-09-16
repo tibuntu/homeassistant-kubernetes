@@ -55,16 +55,29 @@ class TestDeviceInfo:
         assert device_info["manufacturer"] == "Kubernetes"
         assert device_info["model"] == "Cluster"
 
-    def test_get_namespace_device_info(self, mock_config_entry):
+    async def test_get_namespace_device_info(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
         """Test namespace device info."""
-        device_info = get_namespace_device_info(mock_config_entry, "default")
+        cluster_device = await get_or_create_cluster_device(hass, mock_config_entry)
+        device_info = get_namespace_device_info(hass, mock_config_entry, "default")
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_default")
         }
         assert device_info["name"] == "test-cluster: default"
         assert device_info["manufacturer"] == "Kubernetes"
         assert device_info["model"] == "Namespace"
-        assert device_info["via_device"] == ("kubernetes", "test_entry_id_cluster")
+        assert device_info["via_device_id"] == cluster_device.id
+
+    def test_get_namespace_device_info_no_cluster_device(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
+        """Test namespace device info when cluster device does not exist yet."""
+        device_info = get_namespace_device_info(hass, mock_config_entry, "default")
+        assert device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_namespace_default")
+        }
+        assert device_info["via_device_id"] is None
 
 
 class TestGetAllNamespaces:
@@ -155,12 +168,13 @@ class TestDeviceCreation:
         assert device.name == "test-cluster: default"
         assert (DOMAIN, "test_entry_id_namespace_default") in device.identifiers
 
-        # Verify the via_device relationship — cluster device should exist
+        # Verify the via_device_id relationship — cluster device should exist
         registry = dr.async_get(hass)
         cluster_device = registry.async_get_device_by_identifier(
             (DOMAIN, "test_entry_id_cluster"), mock_config_entry.entry_id
         )
         assert cluster_device is not None
+        assert device.via_device_id == cluster_device.id
 
 
 class TestDeviceCleanup:

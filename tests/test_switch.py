@@ -641,13 +641,14 @@ class TestKubernetesDeploymentSwitch:
         assert attributes["cpu_usage_(millicores)"] == "500"
         assert attributes["memory_usage_(MiB)"] == "256"
 
-    def test_device_info(self, mock_config_entry):
+    def test_device_info(self, hass, mock_config_entry):
         """Test deployment switch device info."""
         coordinator = MagicMock()
         coordinator.last_update_success = True
         switch = KubernetesDeploymentSwitch(
             coordinator, mock_config_entry, "test-deployment", "default"
         )
+        switch.hass = hass
         device_info = switch.device_info
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_default")
@@ -1013,13 +1014,14 @@ class TestKubernetesStatefulSetSwitch:
         assert attributes["cpu_usage_(millicores)"] == "500"
         assert attributes["memory_usage_(MiB)"] == "256"
 
-    def test_device_info(self, mock_config_entry):
+    def test_device_info(self, hass, mock_config_entry):
         """Test StatefulSet switch device info."""
         coordinator = MagicMock()
         coordinator.last_update_success = True
         switch = KubernetesStatefulSetSwitch(
             coordinator, mock_config_entry, "test-statefulset", "default"
         )
+        switch.hass = hass
         device_info = switch.device_info
         assert device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_namespace_default")

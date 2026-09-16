@@ -305,7 +305,7 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
+        return get_namespace_device_info(self.hass, self.config_entry, self.namespace)
 
     @property
     def is_on(self) -> bool:
@@ -611,7 +611,7 @@ class KubernetesCronJobSwitch(SwitchEntity):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
-        return get_namespace_device_info(self.config_entry, self.namespace)
+        return get_namespace_device_info(self.hass, self.config_entry, self.namespace)
 
     @property
     def available(self) -> bool:
