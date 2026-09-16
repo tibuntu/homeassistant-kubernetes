@@ -1,8 +1,22 @@
 """Test configuration and fixtures for the Kubernetes integration."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def fail_on_ha_deprecations(caplog):
+    """Fail tests that trigger Home Assistant deprecation warnings."""
+    caplog.set_level(logging.WARNING, logger="homeassistant.helpers.frame")
+    yield
+    for record in caplog.records:
+        if (
+            record.name == "homeassistant.helpers.frame"
+            and "deprecated" in record.message.lower()
+        ):
+            pytest.fail(f"HA deprecation warning: {record.message}")
 
 
 @pytest.fixture
