@@ -119,7 +119,9 @@ def get_namespace_device_info(
     cluster_name = config_entry.data.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME)
     device_registry = dr.async_get(hass)
     cluster_identifier = (DOMAIN, get_cluster_device_identifier(config_entry))
-    cluster_device = device_registry.async_get_device(identifiers={cluster_identifier})
+    cluster_device = device_registry.async_get_device_by_identifier(
+        cluster_identifier, config_entry.entry_id
+    )
     return DeviceInfo(
         identifiers={(DOMAIN, device_identifier)},
         name=f"{cluster_name}: {namespace}",
