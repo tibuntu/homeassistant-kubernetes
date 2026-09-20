@@ -31,7 +31,6 @@ interface ClusterOverview {
   entry_id: string;
   cluster_name: string;
   healthy: boolean | null;
-  watch_enabled: boolean;
   last_update: number;
   counts: Record<string, number>;
   namespaces: Record<string, Record<string, number>>;
@@ -278,16 +277,6 @@ export class K8sOverview extends LitElement {
     .badge-unknown {
       background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
       color: var(--disabled-color, #9e9e9e);
-    }
-
-    .badge-watch {
-      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
-      color: var(--info-color, #2196f3);
-    }
-
-    .badge-watch-off {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.1);
-      color: var(--secondary-text-color);
     }
 
     .meta-row {
@@ -553,7 +542,6 @@ export class K8sOverview extends LitElement {
         <div class="cluster-header">
           <span class="cluster-name">${cluster.cluster_name}</span>
           ${this._renderHealthBadge(cluster.healthy)}
-          ${this._renderWatchBadge(cluster.watch_enabled)}
         </div>
 
         <div class="meta-row">
@@ -621,21 +609,6 @@ export class K8sOverview extends LitElement {
       return html`<span class="badge badge-unhealthy">Unhealthy</span>`;
     }
     return html`<span class="badge badge-unknown">Unknown</span>`;
-  }
-
-  private _renderWatchBadge(enabled: boolean) {
-    if (enabled) {
-      return html`
-        <span class="badge badge-watch">
-          <ha-icon icon="mdi:eye"></ha-icon> Watch Active
-        </span>
-      `;
-    }
-    return html`
-      <span class="badge badge-watch-off">
-        <ha-icon icon="mdi:eye-off"></ha-icon> Polling
-      </span>
-    `;
   }
 
   private _renderNamespaceSection(cluster: ClusterOverview) {

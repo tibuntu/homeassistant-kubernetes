@@ -257,31 +257,6 @@ class TestWebsocketClusterOverview:
         assert cluster["counts"]["nodes"] == 0
         assert cluster["namespaces"] == {}
 
-    def test_watch_enabled_from_options(self, mock_hass):
-        """Test watch_enabled is read from config entry options."""
-        coordinator = _make_coordinator(
-            {
-                "deployments": {},
-                "statefulsets": {},
-                "daemonsets": {},
-                "cronjobs": {},
-                "jobs": {},
-                "nodes": {},
-                "pods": {},
-                "pods_count": 0,
-                "nodes_count": 0,
-                "last_update": 0.0,
-            },
-            options={"enable_watch": True},
-        )
-        _load_entries(
-            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
-        )
-
-        result = _get_cluster_overview_data(mock_hass)
-
-        assert result["clusters"][0]["watch_enabled"] is True
-
 
 class TestBuildClusterOverview:
     """Tests for the _build_cluster_overview helper."""

@@ -89,6 +89,7 @@ export class K8sWorkloads extends LitElement {
     namespace: string;
   } | null = null;
   @state() private _deletingJob = false;
+  @state() private _collapsedCategories: Set<string> = new Set();
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
   private _loadingInFlight = false;
@@ -190,6 +191,23 @@ export class K8sWorkloads extends LitElement {
     for (const cj of cluster.cronjobs) namespaces.add(cj.namespace);
     for (const j of cluster.jobs) namespaces.add(j.namespace);
     return [...namespaces].sort();
+  }
+
+  private _toggleCategory(category: string): void {
+    const updated = new Set(this._collapsedCategories);
+    if (updated.has(category)) {
+      updated.delete(category);
+    } else {
+      updated.add(category);
+    }
+    this._collapsedCategories = updated;
+  }
+
+  private _handleCategoryKeydown(e: KeyboardEvent, category: string): void {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this._toggleCategory(category);
+    }
   }
 
   private _matchesNamespace(namespace: string): boolean {
@@ -392,6 +410,22 @@ export class K8sWorkloads extends LitElement {
         font-weight: 500;
         color: var(--primary-text-color);
         --mdc-icon-size: 20px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .category-header:hover {
+        color: var(--primary-color);
+      }
+
+      .category-chevron {
+        --mdc-icon-size: 18px;
+        transition: transform 0.2s;
+        margin-left: auto;
+      }
+
+      .category-chevron[data-collapsed] {
+        transform: rotate(-90deg);
       }
 
       .category-count {
@@ -796,12 +830,23 @@ export class K8sWorkloads extends LitElement {
 
     return html`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("deployments")}
+          @keydown=${(e: KeyboardEvent) => this._handleCategoryKeydown(e, "deployments")}
+        >
           <ha-icon icon="mdi:rocket-launch"></ha-icon>
           Deployments
           <span class="category-count">(${filtered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("deployments")}
+          ></ha-icon>
         </div>
-        ${filtered.map((d) => this._renderDeploymentCard(d, entryId))}
+        ${this._collapsedCategories.has("deployments") ? nothing : filtered.map((d) => this._renderDeploymentCard(d, entryId))}
       </div>
     `;
   }
@@ -904,12 +949,23 @@ export class K8sWorkloads extends LitElement {
 
     return html`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("statefulsets")}
+          @keydown=${(e: KeyboardEvent) => this._handleCategoryKeydown(e, "statefulsets")}
+        >
           <ha-icon icon="mdi:database"></ha-icon>
           StatefulSets
           <span class="category-count">(${filtered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("statefulsets")}
+          ></ha-icon>
         </div>
-        ${filtered.map((s) => this._renderStatefulSetCard(s, entryId))}
+        ${this._collapsedCategories.has("statefulsets") ? nothing : filtered.map((s) => this._renderStatefulSetCard(s, entryId))}
       </div>
     `;
   }
@@ -1012,12 +1068,23 @@ export class K8sWorkloads extends LitElement {
 
     return html`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("daemonsets")}
+          @keydown=${(e: KeyboardEvent) => this._handleCategoryKeydown(e, "daemonsets")}
+        >
           <ha-icon icon="mdi:lan"></ha-icon>
           DaemonSets
           <span class="category-count">(${filtered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("daemonsets")}
+          ></ha-icon>
         </div>
-        ${filtered.map((ds) => this._renderDaemonSetCard(ds, entryId))}
+        ${this._collapsedCategories.has("daemonsets") ? nothing : filtered.map((ds) => this._renderDaemonSetCard(ds, entryId))}
       </div>
     `;
   }
@@ -1086,12 +1153,23 @@ export class K8sWorkloads extends LitElement {
 
     return html`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("cronjobs")}
+          @keydown=${(e: KeyboardEvent) => this._handleCategoryKeydown(e, "cronjobs")}
+        >
           <ha-icon icon="mdi:clock-outline"></ha-icon>
           CronJobs
           <span class="category-count">(${statusFiltered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("cronjobs")}
+          ></ha-icon>
         </div>
-        ${statusFiltered.map((cj) => this._renderCronJobCard(cj, entryId))}
+        ${this._collapsedCategories.has("cronjobs") ? nothing : statusFiltered.map((cj) => this._renderCronJobCard(cj, entryId))}
       </div>
     `;
   }
@@ -1186,12 +1264,23 @@ export class K8sWorkloads extends LitElement {
 
     return html`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("jobs")}
+          @keydown=${(e: KeyboardEvent) => this._handleCategoryKeydown(e, "jobs")}
+        >
           <ha-icon icon="mdi:briefcase-check"></ha-icon>
           Jobs
           <span class="category-count">(${statusFiltered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("jobs")}
+          ></ha-icon>
         </div>
-        ${statusFiltered.map((j) => this._renderJobCard(entryId, j))}
+        ${this._collapsedCategories.has("jobs") ? nothing : statusFiltered.map((j) => this._renderJobCard(entryId, j))}
       </div>
     `;
   }
