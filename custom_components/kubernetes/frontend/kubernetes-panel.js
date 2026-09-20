@@ -3269,6 +3269,9 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		this._jobDeleteConfirm = null;
 		this._deletingJob = false;
 		this._collapsedCategories = /* @__PURE__ */ new Set();
+		this._scaleTarget = null;
+		this._scaleValue = 0;
+		this._scaling = false;
 		this._loadingInFlight = false;
 		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 	}
@@ -3654,6 +3657,20 @@ var K8sWorkloads = class K8sWorkloads extends i {
         white-space: nowrap;
       }
 
+      .replica-info.scalable {
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 2px 6px;
+        transition: background 0.2s;
+      }
+
+      .replica-info.scalable:hover,
+      .replica-info.scalable:focus {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+        color: var(--primary-color);
+        outline: none;
+      }
+
       .schedule-info {
         font-size: 13px;
         color: var(--secondary-text-color);
@@ -3747,6 +3764,71 @@ var K8sWorkloads = class K8sWorkloads extends i {
         cursor: not-allowed;
       }
 
+      .scale-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .scale-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 1px solid var(--divider-color);
+        background: transparent;
+        color: var(--primary-text-color);
+        cursor: pointer;
+        --mdc-icon-size: 18px;
+      }
+
+      .scale-btn:hover:not(:disabled) {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+      }
+
+      .scale-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .scale-input {
+        width: 64px;
+        text-align: center;
+        font-size: 20px;
+        font-weight: 500;
+        padding: 6px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color, var(--primary-background-color));
+        color: var(--primary-text-color);
+      }
+
+      .scale-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
+
+      .confirm-actions .scale-action {
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+        border-color: var(--primary-color);
+      }
+
+      .confirm-actions .scale-action:hover:not(:disabled) {
+        opacity: 0.9;
+      }
+
+      .confirm-actions .scale-action:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
       @media (max-width: 768px) {
         .workload-row {
           flex-wrap: wrap;
@@ -3793,6 +3875,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
             ` : A}
       ${this._data.clusters.map((c) => this._renderCluster(c))}
       ${this._jobDeleteConfirm ? this._renderJobDeleteDialog() : A}
+      ${this._scaleTarget ? this._renderScaleDialog() : A}
     `;
 	}
 	_renderCluster(cluster) {
@@ -3938,7 +4021,19 @@ var K8sWorkloads = class K8sWorkloads extends i {
             <div class="workload-name">${d.name}</div>
             <div class="workload-namespace">${d.namespace}</div>
           </div>
-          <span class="replica-info">
+          <span
+            class="replica-info scalable"
+            role="button"
+            tabindex="0"
+            title="Click to scale"
+            @click=${() => this._openScaleDialog(entryId, d.name, d.namespace, d.replicas)}
+            @keydown=${(e) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				this._openScaleDialog(entryId, d.name, d.namespace, d.replicas);
+			}
+		}}
+          >
             ${d.available_replicas ?? 0}/${d.replicas} ready
           </span>
           <span class="badge ${this._statusBadgeClass(status)}">
@@ -4026,7 +4121,19 @@ var K8sWorkloads = class K8sWorkloads extends i {
             <div class="workload-name">${s.name}</div>
             <div class="workload-namespace">${s.namespace}</div>
           </div>
-          <span class="replica-info">
+          <span
+            class="replica-info scalable"
+            role="button"
+            tabindex="0"
+            title="Click to scale"
+            @click=${() => this._openScaleDialog(entryId, s.name, s.namespace, s.replicas)}
+            @keydown=${(e) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				this._openScaleDialog(entryId, s.name, s.namespace, s.replicas);
+			}
+		}}
+          >
             ${s.ready_replicas ?? 0}/${s.replicas} ready
           </span>
           <span class="badge ${this._statusBadgeClass(status)}">
@@ -4278,6 +4385,92 @@ var K8sWorkloads = class K8sWorkloads extends i {
       </ha-card>
     `;
 	}
+	_openScaleDialog(entryId, name, namespace, current) {
+		this._scaleTarget = {
+			entry_id: entryId,
+			workload_name: name,
+			namespace,
+			current
+		};
+		this._scaleValue = current;
+	}
+	_cancelScale() {
+		this._scaleTarget = null;
+	}
+	async _confirmScale() {
+		if (!this._scaleTarget) return;
+		this._scaling = true;
+		try {
+			await this.hass.callService("kubernetes", "scale_workload", {
+				workload_name: this._scaleTarget.workload_name,
+				namespace: this._scaleTarget.namespace,
+				entry_id: this._scaleTarget.entry_id,
+				replicas: this._scaleValue
+			});
+			this._scaleTarget = null;
+			setTimeout(() => this._loadData(), 2e3);
+		} catch (err) {
+			this._actionError = err?.message || "Failed to scale workload";
+			this._scaleTarget = null;
+		} finally {
+			this._scaling = false;
+		}
+	}
+	_renderScaleDialog() {
+		const target = this._scaleTarget;
+		return b`
+      <div
+        class="confirm-overlay"
+        @click=${this._scaling ? A : this._cancelScale}
+      >
+        <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
+          <h3>Scale Workload</h3>
+          <p>
+            <span class="job-ref">${target.namespace}/${target.workload_name}</span>
+          </p>
+          <div class="scale-controls">
+            <button
+              class="scale-btn"
+              ?disabled=${this._scaleValue <= 0 || this._scaling}
+              @click=${() => this._scaleValue--}
+            >
+              <ha-icon icon="mdi:minus"></ha-icon>
+            </button>
+            <input
+              class="scale-input"
+              type="number"
+              min="0"
+              .value=${String(this._scaleValue)}
+              ?disabled=${this._scaling}
+              @input=${(e) => {
+			const v = parseInt(e.target.value, 10);
+			if (!isNaN(v) && v >= 0) this._scaleValue = v;
+		}}
+            />
+            <button
+              class="scale-btn"
+              ?disabled=${this._scaling}
+              @click=${() => this._scaleValue++}
+            >
+              <ha-icon icon="mdi:plus"></ha-icon>
+            </button>
+          </div>
+          <div class="confirm-actions">
+            <button @click=${this._cancelScale} ?disabled=${this._scaling}>
+              Cancel
+            </button>
+            <button
+              class="scale-action"
+              @click=${this._confirmScale}
+              ?disabled=${this._scaling || this._scaleValue === target.current}
+            >
+              ${this._scaling ? "Scaling..." : "Scale"}
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+	}
 	_requestJobDelete(entryId, j) {
 		this._jobDeleteConfirm = {
 			entry_id: entryId,
@@ -4351,6 +4544,9 @@ __decorate([r()], K8sWorkloads.prototype, "_actionError", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_jobDeleteConfirm", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_deletingJob", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_collapsedCategories", void 0);
+__decorate([r()], K8sWorkloads.prototype, "_scaleTarget", void 0);
+__decorate([r()], K8sWorkloads.prototype, "_scaleValue", void 0);
+__decorate([r()], K8sWorkloads.prototype, "_scaling", void 0);
 K8sWorkloads = __decorate([t("k8s-workloads")], K8sWorkloads);
 //#endregion
 //#region src/views/k8s-settings.ts

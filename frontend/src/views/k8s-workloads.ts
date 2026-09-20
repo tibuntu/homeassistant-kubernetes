@@ -90,6 +90,14 @@ export class K8sWorkloads extends LitElement {
   } | null = null;
   @state() private _deletingJob = false;
   @state() private _collapsedCategories: Set<string> = new Set();
+  @state() private _scaleTarget: {
+    entry_id: string;
+    workload_name: string;
+    namespace: string;
+    current: number;
+  } | null = null;
+  @state() private _scaleValue: number = 0;
+  @state() private _scaling = false;
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
   private _loadingInFlight = false;
@@ -524,6 +532,20 @@ export class K8sWorkloads extends LitElement {
         white-space: nowrap;
       }
 
+      .replica-info.scalable {
+        cursor: pointer;
+        border-radius: 4px;
+        padding: 2px 6px;
+        transition: background 0.2s;
+      }
+
+      .replica-info.scalable:hover,
+      .replica-info.scalable:focus {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+        color: var(--primary-color);
+        outline: none;
+      }
+
       .schedule-info {
         font-size: 13px;
         color: var(--secondary-text-color);
@@ -617,6 +639,71 @@ export class K8sWorkloads extends LitElement {
         cursor: not-allowed;
       }
 
+      .scale-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .scale-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 1px solid var(--divider-color);
+        background: transparent;
+        color: var(--primary-text-color);
+        cursor: pointer;
+        --mdc-icon-size: 18px;
+      }
+
+      .scale-btn:hover:not(:disabled) {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+      }
+
+      .scale-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .scale-input {
+        width: 64px;
+        text-align: center;
+        font-size: 20px;
+        font-weight: 500;
+        padding: 6px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: var(--card-background-color, var(--primary-background-color));
+        color: var(--primary-text-color);
+      }
+
+      .scale-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+      }
+
+      .confirm-actions .scale-action {
+        background: var(--primary-color);
+        color: var(--text-primary-color, #fff);
+        border-color: var(--primary-color);
+      }
+
+      .confirm-actions .scale-action:hover:not(:disabled) {
+        opacity: 0.9;
+      }
+
+      .confirm-actions .scale-action:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
       @media (max-width: 768px) {
         .workload-row {
           flex-wrap: wrap;
@@ -677,6 +764,7 @@ export class K8sWorkloads extends LitElement {
       }
       ${this._data.clusters.map((c) => this._renderCluster(c))}
       ${this._jobDeleteConfirm ? this._renderJobDeleteDialog() : nothing}
+      ${this._scaleTarget ? this._renderScaleDialog() : nothing}
     `;
   }
 
@@ -863,7 +951,19 @@ export class K8sWorkloads extends LitElement {
             <div class="workload-name">${d.name}</div>
             <div class="workload-namespace">${d.namespace}</div>
           </div>
-          <span class="replica-info">
+          <span
+            class="replica-info scalable"
+            role="button"
+            tabindex="0"
+            title="Click to scale"
+            @click=${() => this._openScaleDialog(entryId, d.name, d.namespace, d.replicas)}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                this._openScaleDialog(entryId, d.name, d.namespace, d.replicas);
+              }
+            }}
+          >
             ${d.available_replicas ?? 0}/${d.replicas} ready
           </span>
           <span class="badge ${this._statusBadgeClass(status)}">
@@ -982,7 +1082,19 @@ export class K8sWorkloads extends LitElement {
             <div class="workload-name">${s.name}</div>
             <div class="workload-namespace">${s.namespace}</div>
           </div>
-          <span class="replica-info">
+          <span
+            class="replica-info scalable"
+            role="button"
+            tabindex="0"
+            title="Click to scale"
+            @click=${() => this._openScaleDialog(entryId, s.name, s.namespace, s.replicas)}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                this._openScaleDialog(entryId, s.name, s.namespace, s.replicas);
+              }
+            }}
+          >
             ${s.ready_replicas ?? 0}/${s.replicas} ready
           </span>
           <span class="badge ${this._statusBadgeClass(status)}">
@@ -1331,6 +1443,101 @@ export class K8sWorkloads extends LitElement {
           </div>
         </div>
       </ha-card>
+    `;
+  }
+
+  private _openScaleDialog(
+    entryId: string,
+    name: string,
+    namespace: string,
+    current: number,
+  ): void {
+    this._scaleTarget = {
+      entry_id: entryId,
+      workload_name: name,
+      namespace,
+      current,
+    };
+    this._scaleValue = current;
+  }
+
+  private _cancelScale(): void {
+    this._scaleTarget = null;
+  }
+
+  private async _confirmScale(): Promise<void> {
+    if (!this._scaleTarget) return;
+    this._scaling = true;
+    try {
+      await this.hass.callService("kubernetes", "scale_workload", {
+        workload_name: this._scaleTarget.workload_name,
+        namespace: this._scaleTarget.namespace,
+        entry_id: this._scaleTarget.entry_id,
+        replicas: this._scaleValue,
+      });
+      this._scaleTarget = null;
+      setTimeout(() => this._loadData(), 2000);
+    } catch (err: any) {
+      this._actionError = err?.message || "Failed to scale workload";
+      this._scaleTarget = null;
+    } finally {
+      this._scaling = false;
+    }
+  }
+
+  private _renderScaleDialog() {
+    const target = this._scaleTarget!;
+    return html`
+      <div
+        class="confirm-overlay"
+        @click=${this._scaling ? nothing : this._cancelScale}
+      >
+        <div class="confirm-dialog" @click=${(e: Event) => e.stopPropagation()}>
+          <h3>Scale Workload</h3>
+          <p>
+            <span class="job-ref">${target.namespace}/${target.workload_name}</span>
+          </p>
+          <div class="scale-controls">
+            <button
+              class="scale-btn"
+              ?disabled=${this._scaleValue <= 0 || this._scaling}
+              @click=${() => this._scaleValue--}
+            >
+              <ha-icon icon="mdi:minus"></ha-icon>
+            </button>
+            <input
+              class="scale-input"
+              type="number"
+              min="0"
+              .value=${String(this._scaleValue)}
+              ?disabled=${this._scaling}
+              @input=${(e: InputEvent) => {
+                const v = parseInt((e.target as HTMLInputElement).value, 10);
+                if (!isNaN(v) && v >= 0) this._scaleValue = v;
+              }}
+            />
+            <button
+              class="scale-btn"
+              ?disabled=${this._scaling}
+              @click=${() => this._scaleValue++}
+            >
+              <ha-icon icon="mdi:plus"></ha-icon>
+            </button>
+          </div>
+          <div class="confirm-actions">
+            <button @click=${this._cancelScale} ?disabled=${this._scaling}>
+              Cancel
+            </button>
+            <button
+              class="scale-action"
+              @click=${this._confirmScale}
+              ?disabled=${this._scaling || this._scaleValue === target.current}
+            >
+              ${this._scaling ? "Scaling..." : "Scale"}
+            </button>
+          </div>
+        </div>
+      </div>
     `;
   }
 
