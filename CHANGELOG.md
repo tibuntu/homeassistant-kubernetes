@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.11.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.10.2...v1.11.0) (2026-09-20)
+
+A panel-focused release that brings the sidebar closer to a real dashboard: **scale workloads from the UI**, **choose which columns the Pods table shows**, and a visual consistency pass across every tab.
+
+### New features
+
+**Scale deployments and statefulsets from the panel.** Click the replica count on any deployment or statefulset card to open a scale dialog with +/- buttons and a number input. The dialog calls the existing `scale_workload` service — no RBAC changes needed.
+
+**Column visibility on the Pods table.** A new column-toggle button in the filter bar lets you show or hide optional columns (Ready, Restarts, Node, IP, Owner, Age). Your selection is saved in the browser so it sticks across visits. Namespace, Name and Phase are always visible.
+
+**Ingress and Service counts on the Overview tab.** The resource-count grid now includes Ingresses and Services alongside Pods, Nodes and the workload types. The per-namespace breakdown includes them too.
+
+### Improvements
+
+* **Visual consistency across all tabs.** The Network tab now wraps its tables in `ha-card` containers, uses a dropdown instead of filter chips for the type selector (matching the Workloads category dropdown), subscribes to WebSocket updates for live data, and polls at 60 s like every other tab. An "Ingress" entry was added to the type filter so you can view ingresses or services separately.
+* **Collapsible workload sections.** Each category in the Workloads tab (Deployments, StatefulSets, DaemonSets, CronJobs, Jobs) can be collapsed by clicking its header. The item count stays visible when collapsed. All headers are keyboard-accessible.
+* **Watch badge removed from the Overview tab.** The "Watch Active" / "Polling" badge was added when watch was opt-in; now that it is the default, the badge is noise and has been removed. The backend field (`watch_enabled`) is still sent in the config list endpoint for the Settings tab but no longer in the overview response.
+
 ## [1.10.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.10.1...v1.10.2) (2026-09-16)
 
 
