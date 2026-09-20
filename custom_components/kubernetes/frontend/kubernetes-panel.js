@@ -2050,6 +2050,49 @@ var PHASE_CLASSES = {
 	Failed: "badge-failed",
 	Unknown: "badge-unknown"
 };
+var TOGGLEABLE_COLUMNS = [
+	{
+		key: "ready",
+		label: "Ready"
+	},
+	{
+		key: "restarts",
+		label: "Restarts"
+	},
+	{
+		key: "node",
+		label: "Node"
+	},
+	{
+		key: "ip",
+		label: "IP"
+	},
+	{
+		key: "owner",
+		label: "Owner"
+	},
+	{
+		key: "age",
+		label: "Age"
+	}
+];
+var ALL_COLUMN_KEYS = new Set(TOGGLEABLE_COLUMNS.map((c) => c.key));
+var STORAGE_KEY = "k8s-pods-columns";
+function loadColumnPrefs() {
+	try {
+		const stored = localStorage.getItem(STORAGE_KEY);
+		if (stored) {
+			const valid = JSON.parse(stored).filter((k) => ALL_COLUMN_KEYS.has(k));
+			if (valid.length) return new Set(valid);
+		}
+	} catch {}
+	return new Set(ALL_COLUMN_KEYS);
+}
+function saveColumnPrefs(cols) {
+	try {
+		localStorage.setItem(STORAGE_KEY, JSON.stringify([...cols]));
+	} catch {}
+}
 var K8sPodsTable = class K8sPodsTable extends i {
 	constructor(..._args) {
 		super(..._args);
@@ -2063,19 +2106,26 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		this._sortAsc = true;
 		this._deleteConfirm = null;
 		this._deleting = false;
+		this._visibleColumns = loadColumnPrefs();
+		this._columnMenuOpen = false;
 		this._loadingInFlight = false;
 		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+		this._boundCloseMenu = () => {
+			this._columnMenuOpen = false;
+		};
 	}
 	firstUpdated(_changedProps) {
 		this._loadData();
 		this._startPolling();
 		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+		document.addEventListener("click", this._boundCloseMenu);
 		this._subscribeUpdates();
 	}
 	disconnectedCallback() {
 		super.disconnectedCallback();
 		this._stopPolling();
 		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+		document.removeEventListener("click", this._boundCloseMenu);
 		this._unsubUpdates?.().catch(() => {});
 		this._unsubUpdates = void 0;
 		if (this._updateDebounce) {
@@ -2536,12 +2586,60 @@ var K8sPodsTable = class K8sPodsTable extends i {
       overflow-x: auto;
     }
 
-    @media (max-width: 768px) {
-      .col-node,
-      .col-ip,
-      .col-owner {
-        display: none;
-      }
+    .column-menu-wrapper {
+      position: relative;
+      margin-left: auto;
+    }
+
+    .column-toggle-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      --mdc-icon-size: 18px;
+    }
+
+    .column-toggle-btn:hover {
+      color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+
+    .column-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      padding: 8px 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 10;
+      min-width: 140px;
+    }
+
+    .column-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      font-size: 13px;
+      color: var(--primary-text-color);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .column-option:hover {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
+    }
+
+    .column-option input[type="checkbox"] {
+      accent-color: var(--primary-color);
     }
   `;
 	}
@@ -2616,6 +2714,7 @@ var K8sPodsTable = class K8sPodsTable extends i {
                 ${phase}
               </button>
             `)}
+          ${this._renderColumnMenu()}
         </div>
 
         <div class="pod-count">${filtered.length}/${cluster.pods.length} pods</div>
@@ -2644,30 +2743,21 @@ var K8sPodsTable = class K8sPodsTable extends i {
                                     icon=${this._sortIcon("phase")}
                                   ></ha-icon>` : A}
                           </th>
-                          <th>Ready</th>
-                          <th @click=${() => this._handleSort("restarts")}>
-                            Restarts
-                            ${this._sortIcon("restarts") ? b`<ha-icon
-                                    icon=${this._sortIcon("restarts")}
-                                  ></ha-icon>` : A}
-                          </th>
-                          <th
-                            class="col-node"
-                            @click=${() => this._handleSort("node_name")}
-                          >
-                            Node
-                            ${this._sortIcon("node_name") ? b`<ha-icon
-                                    icon=${this._sortIcon("node_name")}
-                                  ></ha-icon>` : A}
-                          </th>
-                          <th class="col-ip">IP</th>
-                          <th class="col-owner">Owner</th>
-                          <th @click=${() => this._handleSort("age")}>
-                            Age
-                            ${this._sortIcon("age") ? b`<ha-icon
-                                    icon=${this._sortIcon("age")}
-                                  ></ha-icon>` : A}
-                          </th>
+                          ${this._colVisible("ready") ? b`<th>Ready</th>` : A}
+                          ${this._colVisible("restarts") ? b`<th @click=${() => this._handleSort("restarts")}>
+                                  Restarts
+                                  ${this._sortIcon("restarts") ? b`<ha-icon icon=${this._sortIcon("restarts")}></ha-icon>` : A}
+                                </th>` : A}
+                          ${this._colVisible("node") ? b`<th @click=${() => this._handleSort("node_name")}>
+                                  Node
+                                  ${this._sortIcon("node_name") ? b`<ha-icon icon=${this._sortIcon("node_name")}></ha-icon>` : A}
+                                </th>` : A}
+                          ${this._colVisible("ip") ? b`<th>IP</th>` : A}
+                          ${this._colVisible("owner") ? b`<th>Owner</th>` : A}
+                          ${this._colVisible("age") ? b`<th @click=${() => this._handleSort("age")}>
+                                  Age
+                                  ${this._sortIcon("age") ? b`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : A}
+                                </th>` : A}
                           <th class="col-actions"></th>
                         </tr>
                       </thead>
@@ -2681,6 +2771,46 @@ var K8sPodsTable = class K8sPodsTable extends i {
       </div>
     `;
 	}
+	_colVisible(key) {
+		return this._visibleColumns.has(key);
+	}
+	_toggleColumn(key) {
+		const updated = new Set(this._visibleColumns);
+		if (updated.has(key)) updated.delete(key);
+		else updated.add(key);
+		this._visibleColumns = updated;
+		saveColumnPrefs(updated);
+	}
+	_renderColumnMenu() {
+		return b`
+      <div class="column-menu-wrapper">
+        <button
+          class="column-toggle-btn"
+          title="Toggle columns"
+          @click=${(e) => {
+			e.stopPropagation();
+			this._columnMenuOpen = !this._columnMenuOpen;
+		}}
+        >
+          <ha-icon icon="mdi:table-column"></ha-icon>
+        </button>
+        ${this._columnMenuOpen ? b`
+                <div class="column-menu" @click=${(e) => e.stopPropagation()}>
+                  ${TOGGLEABLE_COLUMNS.map((col) => b`
+                      <label class="column-option">
+                        <input
+                          type="checkbox"
+                          .checked=${this._visibleColumns.has(col.key)}
+                          @change=${() => this._toggleColumn(col.key)}
+                        />
+                        ${col.label}
+                      </label>
+                    `)}
+                </div>
+              ` : A}
+      </div>
+    `;
+	}
 	_renderPodRow(entryId, pod) {
 		const phaseClass = PHASE_CLASSES[pod.phase] || "badge-unknown";
 		return b`
@@ -2688,18 +2818,12 @@ var K8sPodsTable = class K8sPodsTable extends i {
         <td>${pod.namespace}</td>
         <td class="pod-name">${pod.name}</td>
         <td><span class="badge ${phaseClass}">${pod.phase}</span></td>
-        <td>${pod.ready_containers}/${pod.total_containers}</td>
-        <td class=${pod.restart_count > 5 ? "restart-warn" : ""}>
-          ${pod.restart_count}
-        </td>
-        <td class="col-node">${pod.node_name}</td>
-        <td class="col-ip mono">${pod.pod_ip}</td>
-        <td class="col-owner">
-          ${pod.owner_kind !== "N/A" ? b`<span class="owner-info"
-                  >${pod.owner_kind}/${pod.owner_name}</span
-                >` : b`<span class="owner-info">-</span>`}
-        </td>
-        <td>${this._formatAge(pod.creation_timestamp)}</td>
+        ${this._colVisible("ready") ? b`<td>${pod.ready_containers}/${pod.total_containers}</td>` : A}
+        ${this._colVisible("restarts") ? b`<td class=${pod.restart_count > 5 ? "restart-warn" : ""}>${pod.restart_count}</td>` : A}
+        ${this._colVisible("node") ? b`<td>${pod.node_name}</td>` : A}
+        ${this._colVisible("ip") ? b`<td class="mono">${pod.pod_ip}</td>` : A}
+        ${this._colVisible("owner") ? b`<td>${pod.owner_kind !== "N/A" ? b`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>` : b`<span class="owner-info">-</span>`}</td>` : A}
+        ${this._colVisible("age") ? b`<td>${this._formatAge(pod.creation_timestamp)}</td>` : A}
         <td>
           <button
             class="delete-btn"
@@ -2754,6 +2878,8 @@ __decorate([r()], K8sPodsTable.prototype, "_sortField", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_sortAsc", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_deleteConfirm", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_deleting", void 0);
+__decorate([r()], K8sPodsTable.prototype, "_visibleColumns", void 0);
+__decorate([r()], K8sPodsTable.prototype, "_columnMenuOpen", void 0);
 K8sPodsTable = __decorate([t("k8s-pods-table")], K8sPodsTable);
 //#endregion
 //#region src/views/k8s-network.ts
