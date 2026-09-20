@@ -40,6 +40,40 @@ const PHASE_CLASSES: Record<string, string> = {
   Unknown: "badge-unknown",
 };
 
+const TOGGLEABLE_COLUMNS = [
+  { key: "ready", label: "Ready" },
+  { key: "restarts", label: "Restarts" },
+  { key: "node", label: "Node" },
+  { key: "ip", label: "IP" },
+  { key: "owner", label: "Owner" },
+  { key: "age", label: "Age" },
+] as const;
+type ColumnKey = (typeof TOGGLEABLE_COLUMNS)[number]["key"];
+const ALL_COLUMN_KEYS: Set<ColumnKey> = new Set(TOGGLEABLE_COLUMNS.map((c) => c.key));
+const STORAGE_KEY = "k8s-pods-columns";
+
+function loadColumnPrefs(): Set<ColumnKey> {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as string[];
+      const valid = parsed.filter((k) => ALL_COLUMN_KEYS.has(k as ColumnKey));
+      if (valid.length) return new Set(valid as ColumnKey[]);
+    }
+  } catch {
+    // localStorage unavailable or corrupt — use defaults
+  }
+  return new Set(ALL_COLUMN_KEYS);
+}
+
+function saveColumnPrefs(cols: Set<ColumnKey>): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...cols]));
+  } catch {
+    // localStorage unavailable — no-op
+  }
+}
+
 @customElement("k8s-pods-table")
 export class K8sPodsTable extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -54,10 +88,15 @@ export class K8sPodsTable extends LitElement {
   @state() private _sortAsc: boolean = true;
   @state() private _deleteConfirm: PodIdentifier | null = null;
   @state() private _deleting = false;
+  @state() private _visibleColumns: Set<ColumnKey> = loadColumnPrefs();
+  @state() private _columnMenuOpen = false;
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
   private _loadingInFlight = false;
   private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+  private _boundCloseMenu = () => {
+    this._columnMenuOpen = false;
+  };
   private _unsubUpdates?: () => Promise<void>;
   private _updateDebounce?: ReturnType<typeof setTimeout>;
 
@@ -65,6 +104,7 @@ export class K8sPodsTable extends LitElement {
     this._loadData();
     this._startPolling();
     document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+    document.addEventListener("click", this._boundCloseMenu);
     void this._subscribeUpdates();
   }
 
@@ -72,6 +112,7 @@ export class K8sPodsTable extends LitElement {
     super.disconnectedCallback();
     this._stopPolling();
     document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+    document.removeEventListener("click", this._boundCloseMenu);
     void this._unsubUpdates?.().catch(() => {});
     this._unsubUpdates = undefined;
     if (this._updateDebounce) {
@@ -575,12 +616,60 @@ export class K8sPodsTable extends LitElement {
       overflow-x: auto;
     }
 
-    @media (max-width: 768px) {
-      .col-node,
-      .col-ip,
-      .col-owner {
-        display: none;
-      }
+    .column-menu-wrapper {
+      position: relative;
+      margin-left: auto;
+    }
+
+    .column-toggle-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      --mdc-icon-size: 18px;
+    }
+
+    .column-toggle-btn:hover {
+      color: var(--primary-color);
+      border-color: var(--primary-color);
+    }
+
+    .column-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: var(--card-background-color, #fff);
+      border: 1px solid var(--divider-color);
+      border-radius: 8px;
+      padding: 8px 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 10;
+      min-width: 140px;
+    }
+
+    .column-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      font-size: 13px;
+      color: var(--primary-text-color);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .column-option:hover {
+      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
+    }
+
+    .column-option input[type="checkbox"] {
+      accent-color: var(--primary-color);
     }
   `;
 
@@ -672,6 +761,7 @@ export class K8sPodsTable extends LitElement {
               </button>
             `,
           )}
+          ${this._renderColumnMenu()}
         </div>
 
         <div class="pod-count">${filtered.length}/${cluster.pods.length} pods</div>
@@ -715,42 +805,33 @@ export class K8sPodsTable extends LitElement {
                                 : nothing
                             }
                           </th>
-                          <th>Ready</th>
-                          <th @click=${() => this._handleSort("restarts")}>
-                            Restarts
-                            ${
-                              this._sortIcon("restarts")
-                                ? html`<ha-icon
-                                    icon=${this._sortIcon("restarts")}
-                                  ></ha-icon>`
-                                : nothing
-                            }
-                          </th>
-                          <th
-                            class="col-node"
-                            @click=${() => this._handleSort("node_name")}
-                          >
-                            Node
-                            ${
-                              this._sortIcon("node_name")
-                                ? html`<ha-icon
-                                    icon=${this._sortIcon("node_name")}
-                                  ></ha-icon>`
-                                : nothing
-                            }
-                          </th>
-                          <th class="col-ip">IP</th>
-                          <th class="col-owner">Owner</th>
-                          <th @click=${() => this._handleSort("age")}>
-                            Age
-                            ${
-                              this._sortIcon("age")
-                                ? html`<ha-icon
-                                    icon=${this._sortIcon("age")}
-                                  ></ha-icon>`
-                                : nothing
-                            }
-                          </th>
+                          ${this._colVisible("ready") ? html`<th>Ready</th>` : nothing}
+                          ${
+                            this._colVisible("restarts")
+                              ? html`<th @click=${() => this._handleSort("restarts")}>
+                                  Restarts
+                                  ${this._sortIcon("restarts") ? html`<ha-icon icon=${this._sortIcon("restarts")}></ha-icon>` : nothing}
+                                </th>`
+                              : nothing
+                          }
+                          ${
+                            this._colVisible("node")
+                              ? html`<th @click=${() => this._handleSort("node_name")}>
+                                  Node
+                                  ${this._sortIcon("node_name") ? html`<ha-icon icon=${this._sortIcon("node_name")}></ha-icon>` : nothing}
+                                </th>`
+                              : nothing
+                          }
+                          ${this._colVisible("ip") ? html`<th>IP</th>` : nothing}
+                          ${this._colVisible("owner") ? html`<th>Owner</th>` : nothing}
+                          ${
+                            this._colVisible("age")
+                              ? html`<th @click=${() => this._handleSort("age")}>
+                                  Age
+                                  ${this._sortIcon("age") ? html`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : nothing}
+                                </th>`
+                              : nothing
+                          }
                           <th class="col-actions"></th>
                         </tr>
                       </thead>
@@ -768,6 +849,58 @@ export class K8sPodsTable extends LitElement {
     `;
   }
 
+  private _colVisible(key: ColumnKey): boolean {
+    return this._visibleColumns.has(key);
+  }
+
+  private _toggleColumn(key: ColumnKey): void {
+    const updated = new Set(this._visibleColumns);
+    if (updated.has(key)) {
+      updated.delete(key);
+    } else {
+      updated.add(key);
+    }
+    this._visibleColumns = updated;
+    saveColumnPrefs(updated);
+  }
+
+  private _renderColumnMenu() {
+    return html`
+      <div class="column-menu-wrapper">
+        <button
+          class="column-toggle-btn"
+          title="Toggle columns"
+          @click=${(e: Event) => {
+            e.stopPropagation();
+            this._columnMenuOpen = !this._columnMenuOpen;
+          }}
+        >
+          <ha-icon icon="mdi:table-column"></ha-icon>
+        </button>
+        ${
+          this._columnMenuOpen
+            ? html`
+                <div class="column-menu" @click=${(e: Event) => e.stopPropagation()}>
+                  ${TOGGLEABLE_COLUMNS.map(
+                    (col) => html`
+                      <label class="column-option">
+                        <input
+                          type="checkbox"
+                          .checked=${this._visibleColumns.has(col.key)}
+                          @change=${() => this._toggleColumn(col.key)}
+                        />
+                        ${col.label}
+                      </label>
+                    `,
+                  )}
+                </div>
+              `
+            : nothing
+        }
+      </div>
+    `;
+  }
+
   private _renderPodRow(entryId: string, pod: PodData) {
     const phaseClass = PHASE_CLASSES[pod.phase] || "badge-unknown";
 
@@ -776,22 +909,12 @@ export class K8sPodsTable extends LitElement {
         <td>${pod.namespace}</td>
         <td class="pod-name">${pod.name}</td>
         <td><span class="badge ${phaseClass}">${pod.phase}</span></td>
-        <td>${pod.ready_containers}/${pod.total_containers}</td>
-        <td class=${pod.restart_count > 5 ? "restart-warn" : ""}>
-          ${pod.restart_count}
-        </td>
-        <td class="col-node">${pod.node_name}</td>
-        <td class="col-ip mono">${pod.pod_ip}</td>
-        <td class="col-owner">
-          ${
-            pod.owner_kind !== "N/A"
-              ? html`<span class="owner-info"
-                  >${pod.owner_kind}/${pod.owner_name}</span
-                >`
-              : html`<span class="owner-info">-</span>`
-          }
-        </td>
-        <td>${this._formatAge(pod.creation_timestamp)}</td>
+        ${this._colVisible("ready") ? html`<td>${pod.ready_containers}/${pod.total_containers}</td>` : nothing}
+        ${this._colVisible("restarts") ? html`<td class=${pod.restart_count > 5 ? "restart-warn" : ""}>${pod.restart_count}</td>` : nothing}
+        ${this._colVisible("node") ? html`<td>${pod.node_name}</td>` : nothing}
+        ${this._colVisible("ip") ? html`<td class="mono">${pod.pod_ip}</td>` : nothing}
+        ${this._colVisible("owner") ? html`<td>${pod.owner_kind !== "N/A" ? html`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>` : html`<span class="owner-info">-</span>`}</td>` : nothing}
+        ${this._colVisible("age") ? html`<td>${this._formatAge(pod.creation_timestamp)}</td>` : nothing}
         <td>
           <button
             class="delete-btn"
