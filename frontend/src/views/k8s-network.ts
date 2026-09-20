@@ -57,13 +57,14 @@ interface ServicesResponse {
   clusters: ClusterServices[];
 }
 
-const SERVICE_TYPES = [
+const NETWORK_TYPES = [
+  "Ingress",
   "LoadBalancer",
   "NodePort",
   "ClusterIP",
   "ExternalName",
 ] as const;
-type ServiceTypeFilter = "all" | (typeof SERVICE_TYPES)[number];
+type NetworkTypeFilter = "all" | (typeof NETWORK_TYPES)[number];
 
 @customElement("k8s-network")
 export class K8sNetwork extends LitElement {
@@ -75,22 +76,31 @@ export class K8sNetwork extends LitElement {
   @state() private _error: string | null = null;
   @state() private _servicesError: string | null = null;
   @state() private _searchQuery: string = "";
-  @state() private _typeFilter: ServiceTypeFilter = "all";
+  @state() private _typeFilter: NetworkTypeFilter = "all";
 
   private _refreshInterval?: ReturnType<typeof setInterval>;
   private _loadingInFlight = false;
   private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+  private _unsubUpdates?: () => Promise<void>;
+  private _updateDebounce?: ReturnType<typeof setTimeout>;
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     this._loadData();
     this._startPolling();
     document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+    void this._subscribeUpdates();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._stopPolling();
     document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
+    void this._unsubUpdates?.().catch(() => {});
+    this._unsubUpdates = undefined;
+    if (this._updateDebounce) {
+      clearTimeout(this._updateDebounce);
+      this._updateDebounce = undefined;
+    }
   }
 
   private _handleVisibilityChange(): void {
@@ -104,7 +114,7 @@ export class K8sNetwork extends LitElement {
 
   private _startPolling(): void {
     if (!this._refreshInterval) {
-      this._refreshInterval = setInterval(() => this._loadData(), 30000);
+      this._refreshInterval = setInterval(() => this._loadData(), 60000);
     }
   }
 
@@ -113,6 +123,31 @@ export class K8sNetwork extends LitElement {
       clearInterval(this._refreshInterval);
       this._refreshInterval = undefined;
     }
+  }
+
+  private async _subscribeUpdates(): Promise<void> {
+    try {
+      const unsub = await this.hass.connection.subscribeMessage(
+        () => this._scheduleLoad(),
+        { type: "kubernetes/subscribe_updates" },
+      );
+      if (!this.isConnected) {
+        void unsub().catch(() => {});
+        return;
+      }
+      this._unsubUpdates = unsub;
+    } catch {
+      // Backend without subscription support — interval polling covers it.
+    }
+  }
+
+  private _scheduleLoad(): void {
+    if (document.hidden) return;
+    if (this._updateDebounce) return;
+    this._updateDebounce = setTimeout(() => {
+      this._updateDebounce = undefined;
+      this._loadData();
+    }, 1000);
   }
 
   private async _loadData(): Promise<void> {
@@ -308,28 +343,13 @@ export class K8sNetwork extends LitElement {
       border-color: var(--primary-color);
     }
 
-    .filter-chip {
-      padding: 6px 14px;
-      border-radius: 16px;
-      font-size: 13px;
-      cursor: pointer;
+    select.filter-select {
+      padding: 6px 12px;
       border: 1px solid var(--divider-color);
-      background: transparent;
+      border-radius: 8px;
+      background: var(--card-background-color, var(--primary-background-color));
       color: var(--primary-text-color);
-      user-select: none;
-      transition:
-        background 0.2s,
-        border-color 0.2s;
-    }
-
-    .filter-chip:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-    }
-
-    .filter-chip[active] {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-      border-color: var(--primary-color);
-      color: var(--primary-color);
+      font-size: 13px;
     }
 
     .network-table {
@@ -408,6 +428,10 @@ export class K8sNetwork extends LitElement {
       background: rgba(var(--rgb-secondary-text-color, 114, 114, 114), 0.15);
       color: var(--secondary-text-color);
     }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
   `;
 
   protected render() {
@@ -419,11 +443,13 @@ export class K8sNetwork extends LitElement {
 
     if (this._error && this._servicesError) {
       return html`
-        <div class="error-card">
-          <ha-icon icon="mdi:alert-circle"></ha-icon>
-          <p>${this._error}</p>
-          <button class="retry-btn" @click=${() => this._loadData()}>Retry</button>
-        </div>
+        <ha-card>
+          <div class="error-card">
+            <ha-icon icon="mdi:alert-circle"></ha-icon>
+            <p>${this._error}</p>
+            <button class="retry-btn" @click=${() => this._loadData()}>Retry</button>
+          </div>
+        </ha-card>
       `;
     }
 
@@ -445,37 +471,48 @@ export class K8sNetwork extends LitElement {
           @input=${(e: InputEvent) =>
             (this._searchQuery = (e.target as HTMLInputElement).value)}
         />
-        ${(["all", ...SERVICE_TYPES] as const).map(
-          (t) => html`
-            <button
-              class="filter-chip"
-              ?active=${this._typeFilter === t}
-              @click=${() => {
-                this._typeFilter = t;
-              }}
-            >
-              ${t === "all" ? "All types" : t}
-            </button>
-          `,
-        )}
+        <select
+          class="filter-select"
+          .value=${this._typeFilter}
+          @change=${(e: Event) => {
+            this._typeFilter = (e.target as HTMLSelectElement)
+              .value as NetworkTypeFilter;
+          }}
+        >
+          <option value="all">All types</option>
+          ${NETWORK_TYPES.map((t) => html`<option value=${t}>${t}</option>`)}
+        </select>
       </div>
 
-      <h2 class="section-title">Ingresses</h2>
       ${
-        this._error
-          ? this._renderInlineError(this._error)
-          : hasIngresses
-            ? ingressClusters.map((cluster) => this._renderCluster(cluster))
-            : html`<div class="empty">No ingresses found.</div>`
+        this._typeFilter === "all" || this._typeFilter === "Ingress"
+          ? html`
+              <h2 class="section-title">Ingresses</h2>
+              ${
+                this._error
+                  ? this._renderInlineError(this._error)
+                  : hasIngresses
+                    ? ingressClusters.map((cluster) => this._renderCluster(cluster))
+                    : html`<div class="empty">No ingresses found.</div>`
+              }
+            `
+          : nothing
       }
-
-      <h2 class="section-title">Services</h2>
       ${
-        this._servicesError
-          ? this._renderInlineError(this._servicesError)
-          : hasServices
-            ? serviceClusters.map((cluster) => this._renderServiceCluster(cluster))
-            : html`<div class="empty">No services found.</div>`
+        this._typeFilter === "all" || this._typeFilter !== "Ingress"
+          ? html`
+              <h2 class="section-title">Services</h2>
+              ${
+                this._servicesError
+                  ? this._renderInlineError(this._servicesError)
+                  : hasServices
+                    ? serviceClusters.map((cluster) =>
+                        this._renderServiceCluster(cluster),
+                      )
+                    : html`<div class="empty">No services found.</div>`
+              }
+            `
+          : nothing
       }
     `;
   }
@@ -511,34 +548,38 @@ export class K8sNetwork extends LitElement {
 
   private _renderTable(ingresses: IngressData[]) {
     return html`
-      <table class="network-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Namespace</th>
-            <th>Class</th>
-            <th>URLs</th>
-            <th>Service</th>
-            <th>TLS</th>
-            <th>Age</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${ingresses.map(
-            (ingress) => html`
+      <ha-card>
+        <div class="table-wrapper">
+          <table class="network-table">
+            <thead>
               <tr>
-                <td>${ingress.name}</td>
-                <td>${ingress.namespace}</td>
-                <td>${ingress.ingress_class || "—"}</td>
-                <td>${this._renderUrls(ingress.urls)}</td>
-                <td>${this._services_of(ingress) || "—"}</td>
-                <td>${this._renderTlsBadge(ingress)}</td>
-                <td>${this._formatAge(ingress.creation_timestamp)}</td>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>Class</th>
+                <th>URLs</th>
+                <th>Service</th>
+                <th>TLS</th>
+                <th>Age</th>
               </tr>
-            `,
-          )}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              ${ingresses.map(
+                (ingress) => html`
+                  <tr>
+                    <td>${ingress.name}</td>
+                    <td>${ingress.namespace}</td>
+                    <td>${ingress.ingress_class || "—"}</td>
+                    <td>${this._renderUrls(ingress.urls)}</td>
+                    <td>${this._services_of(ingress) || "—"}</td>
+                    <td>${this._renderTlsBadge(ingress)}</td>
+                    <td>${this._formatAge(ingress.creation_timestamp)}</td>
+                  </tr>
+                `,
+              )}
+            </tbody>
+          </table>
+        </div>
+      </ha-card>
     `;
   }
 
@@ -564,44 +605,50 @@ export class K8sNetwork extends LitElement {
 
   private _renderServicesTable(services: ServiceData[]) {
     return html`
-      <table class="network-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Namespace</th>
-            <th>Type</th>
-            <th>Cluster IP</th>
-            <th>External</th>
-            <th>Ports</th>
-            <th>Age</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${services.map(
-            (svc) => html`
+      <ha-card>
+        <div class="table-wrapper">
+          <table class="network-table">
+            <thead>
               <tr>
-                <td>${svc.name}</td>
-                <td>${svc.namespace}</td>
-                <td>
-                  <span class="badge badge-type-${svc.type.toLowerCase()}"
-                    >${svc.type}</span
-                  >
-                </td>
-                <td class="mono">${svc.cluster_ip || "—"}</td>
-                <td>${this._renderExternal(svc)}</td>
-                <td class="mono">
-                  ${
-                    svc.ports.length
-                      ? svc.ports.map((p) => html`<div>${this._formatPort(p)}</div>`)
-                      : "—"
-                  }
-                </td>
-                <td>${this._formatAge(svc.creation_timestamp)}</td>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>Type</th>
+                <th>Cluster IP</th>
+                <th>External</th>
+                <th>Ports</th>
+                <th>Age</th>
               </tr>
-            `,
-          )}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              ${services.map(
+                (svc) => html`
+                  <tr>
+                    <td>${svc.name}</td>
+                    <td>${svc.namespace}</td>
+                    <td>
+                      <span class="badge badge-type-${svc.type.toLowerCase()}"
+                        >${svc.type}</span
+                      >
+                    </td>
+                    <td class="mono">${svc.cluster_ip || "—"}</td>
+                    <td>${this._renderExternal(svc)}</td>
+                    <td class="mono">
+                      ${
+                        svc.ports.length
+                          ? svc.ports.map(
+                              (p) => html`<div>${this._formatPort(p)}</div>`,
+                            )
+                          : "—"
+                      }
+                    </td>
+                    <td>${this._formatAge(svc.creation_timestamp)}</td>
+                  </tr>
+                `,
+              )}
+            </tbody>
+          </table>
+        </div>
+      </ha-card>
     `;
   }
 
