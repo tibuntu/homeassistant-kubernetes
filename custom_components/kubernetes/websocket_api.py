@@ -160,16 +160,12 @@ def _build_cluster_overview(
 ) -> dict[str, Any]:
     """Build overview data for a single cluster."""
     data = coordinator.data
-    watch_enabled = coordinator.config_entry.options.get(
-        CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH
-    )
 
     if not data:
         return {
             "entry_id": entry_id,
             "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
             "healthy": None,
-            "watch_enabled": watch_enabled,
             "last_update": 0.0,
             "counts": _empty_counts(),
             "namespaces": {},
@@ -193,7 +189,6 @@ def _build_cluster_overview(
         "entry_id": entry_id,
         "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
         "healthy": coordinator.last_update_success,
-        "watch_enabled": watch_enabled,
         "last_update": data.get("last_update", 0.0),
         "counts": counts,
         "namespaces": namespaces,

@@ -900,16 +900,6 @@ var K8sOverview = class K8sOverview extends i {
       color: var(--disabled-color, #9e9e9e);
     }
 
-    .badge-watch {
-      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
-      color: var(--info-color, #2196f3);
-    }
-
-    .badge-watch-off {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.1);
-      color: var(--secondary-text-color);
-    }
-
     .meta-row {
       display: flex;
       align-items: center;
@@ -1159,7 +1149,6 @@ var K8sOverview = class K8sOverview extends i {
         <div class="cluster-header">
           <span class="cluster-name">${cluster.cluster_name}</span>
           ${this._renderHealthBadge(cluster.healthy)}
-          ${this._renderWatchBadge(cluster.watch_enabled)}
         </div>
 
         <div class="meta-row">
@@ -1216,18 +1205,6 @@ var K8sOverview = class K8sOverview extends i {
 		if (healthy === true) return b`<span class="badge badge-healthy">Healthy</span>`;
 		if (healthy === false) return b`<span class="badge badge-unhealthy">Unhealthy</span>`;
 		return b`<span class="badge badge-unknown">Unknown</span>`;
-	}
-	_renderWatchBadge(enabled) {
-		if (enabled) return b`
-        <span class="badge badge-watch">
-          <ha-icon icon="mdi:eye"></ha-icon> Watch Active
-        </span>
-      `;
-		return b`
-      <span class="badge badge-watch-off">
-        <ha-icon icon="mdi:eye-off"></ha-icon> Polling
-      </span>
-    `;
 	}
 	_renderNamespaceSection(cluster) {
 		const nsEntries = Object.entries(cluster.namespaces);
@@ -3287,6 +3264,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		this._actionError = null;
 		this._jobDeleteConfirm = null;
 		this._deletingJob = false;
+		this._collapsedCategories = /* @__PURE__ */ new Set();
 		this._loadingInFlight = false;
 		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 	}
@@ -3364,6 +3342,18 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		for (const cj of cluster.cronjobs) namespaces.add(cj.namespace);
 		for (const j of cluster.jobs) namespaces.add(j.namespace);
 		return [...namespaces].sort();
+	}
+	_toggleCategory(category) {
+		const updated = new Set(this._collapsedCategories);
+		if (updated.has(category)) updated.delete(category);
+		else updated.add(category);
+		this._collapsedCategories = updated;
+	}
+	_handleCategoryKeydown(e, category) {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			this._toggleCategory(category);
+		}
 	}
 	_matchesNamespace(namespace) {
 		return this._namespaceFilter === "all" || namespace === this._namespaceFilter;
@@ -3546,6 +3536,22 @@ var K8sWorkloads = class K8sWorkloads extends i {
         font-weight: 500;
         color: var(--primary-text-color);
         --mdc-icon-size: 20px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .category-header:hover {
+        color: var(--primary-color);
+      }
+
+      .category-chevron {
+        --mdc-icon-size: 18px;
+        transition: transform 0.2s;
+        margin-left: auto;
+      }
+
+      .category-chevron[data-collapsed] {
+        transform: rotate(-90deg);
       }
 
       .category-count {
@@ -3897,12 +3903,23 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		if (filtered.length === 0) return A;
 		return b`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("deployments")}
+          @keydown=${(e) => this._handleCategoryKeydown(e, "deployments")}
+        >
           <ha-icon icon="mdi:rocket-launch"></ha-icon>
           Deployments
           <span class="category-count">(${filtered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("deployments")}
+          ></ha-icon>
         </div>
-        ${filtered.map((d) => this._renderDeploymentCard(d, entryId))}
+        ${this._collapsedCategories.has("deployments") ? A : filtered.map((d) => this._renderDeploymentCard(d, entryId))}
       </div>
     `;
 	}
@@ -3974,12 +3991,23 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		if (filtered.length === 0) return A;
 		return b`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("statefulsets")}
+          @keydown=${(e) => this._handleCategoryKeydown(e, "statefulsets")}
+        >
           <ha-icon icon="mdi:database"></ha-icon>
           StatefulSets
           <span class="category-count">(${filtered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("statefulsets")}
+          ></ha-icon>
         </div>
-        ${filtered.map((s) => this._renderStatefulSetCard(s, entryId))}
+        ${this._collapsedCategories.has("statefulsets") ? A : filtered.map((s) => this._renderStatefulSetCard(s, entryId))}
       </div>
     `;
 	}
@@ -4051,12 +4079,23 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		if (filtered.length === 0) return A;
 		return b`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("daemonsets")}
+          @keydown=${(e) => this._handleCategoryKeydown(e, "daemonsets")}
+        >
           <ha-icon icon="mdi:lan"></ha-icon>
           DaemonSets
           <span class="category-count">(${filtered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("daemonsets")}
+          ></ha-icon>
         </div>
-        ${filtered.map((ds) => this._renderDaemonSetCard(ds, entryId))}
+        ${this._collapsedCategories.has("daemonsets") ? A : filtered.map((ds) => this._renderDaemonSetCard(ds, entryId))}
       </div>
     `;
 	}
@@ -4106,12 +4145,23 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		if (statusFiltered.length === 0) return A;
 		return b`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("cronjobs")}
+          @keydown=${(e) => this._handleCategoryKeydown(e, "cronjobs")}
+        >
           <ha-icon icon="mdi:clock-outline"></ha-icon>
           CronJobs
           <span class="category-count">(${statusFiltered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("cronjobs")}
+          ></ha-icon>
         </div>
-        ${statusFiltered.map((cj) => this._renderCronJobCard(cj, entryId))}
+        ${this._collapsedCategories.has("cronjobs") ? A : statusFiltered.map((cj) => this._renderCronJobCard(cj, entryId))}
       </div>
     `;
 	}
@@ -4173,12 +4223,23 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		if (statusFiltered.length === 0) return A;
 		return b`
       <div class="category-section">
-        <div class="category-header">
+        <div
+          class="category-header"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleCategory("jobs")}
+          @keydown=${(e) => this._handleCategoryKeydown(e, "jobs")}
+        >
           <ha-icon icon="mdi:briefcase-check"></ha-icon>
           Jobs
           <span class="category-count">(${statusFiltered.length})</span>
+          <ha-icon
+            class="category-chevron"
+            icon="mdi:chevron-down"
+            ?data-collapsed=${this._collapsedCategories.has("jobs")}
+          ></ha-icon>
         </div>
-        ${statusFiltered.map((j) => this._renderJobCard(entryId, j))}
+        ${this._collapsedCategories.has("jobs") ? A : statusFiltered.map((j) => this._renderJobCard(entryId, j))}
       </div>
     `;
 	}
@@ -4285,6 +4346,7 @@ __decorate([r()], K8sWorkloads.prototype, "_actionInProgress", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_actionError", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_jobDeleteConfirm", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_deletingJob", void 0);
+__decorate([r()], K8sWorkloads.prototype, "_collapsedCategories", void 0);
 K8sWorkloads = __decorate([t("k8s-workloads")], K8sWorkloads);
 //#endregion
 //#region src/views/k8s-settings.ts
