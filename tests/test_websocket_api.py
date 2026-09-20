@@ -119,6 +119,39 @@ def sample_coordinator_data():
                 "phase": "Failed",
             },
         },
+        "ingresses": {
+            "default_my-ingress": {
+                "name": "my-ingress",
+                "namespace": "default",
+                "ingress_class": "nginx",
+                "rules": [],
+                "tls_hosts": [],
+                "urls": [],
+                "creation_timestamp": "2024-01-01T00:00:00Z",
+            },
+        },
+        "services": {
+            "default_my-service": {
+                "name": "my-service",
+                "namespace": "default",
+                "type": "ClusterIP",
+                "cluster_ip": "10.0.0.1",
+                "external_ips": [],
+                "ports": [],
+                "urls": [],
+                "creation_timestamp": "2024-01-01T00:00:00Z",
+            },
+            "production_api-svc": {
+                "name": "api-svc",
+                "namespace": "production",
+                "type": "LoadBalancer",
+                "cluster_ip": "10.0.0.2",
+                "external_ips": ["1.2.3.4"],
+                "ports": [],
+                "urls": [],
+                "creation_timestamp": "2024-01-01T00:00:00Z",
+            },
+        },
         "pods_count": 3,
         "nodes_count": 2,
         "last_update": 1700000000.0,
@@ -212,6 +245,8 @@ class TestWebsocketClusterOverview:
         assert cluster["counts"]["daemonsets"] == 1
         assert cluster["counts"]["cronjobs"] == 1
         assert cluster["counts"]["jobs"] == 1
+        assert cluster["counts"]["ingresses"] == 1
+        assert cluster["counts"]["services"] == 2
 
     def test_multi_cluster_aggregation(self, mock_hass, sample_coordinator_data):
         """Test aggregates data from multiple config entries."""
@@ -311,10 +346,13 @@ class TestBuildNamespaceBreakdown:
         assert result["default"]["deployments"] == 1
         assert result["default"]["statefulsets"] == 1
         assert result["default"]["cronjobs"] == 1
+        assert result["default"]["ingresses"] == 1
+        assert result["default"]["services"] == 1
 
         assert result["production"]["pods"] == 1
         assert result["production"]["deployments"] == 1
         assert result["production"]["jobs"] == 1
+        assert result["production"]["services"] == 1
 
         assert result["kube-system"]["daemonsets"] == 1
 

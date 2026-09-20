@@ -49,6 +49,8 @@ const RESOURCE_ICONS: Record<string, string> = {
   daemonsets: "mdi:lan",
   cronjobs: "mdi:clock-outline",
   jobs: "mdi:briefcase-check",
+  ingresses: "mdi:earth",
+  services: "mdi:swap-horizontal",
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -59,6 +61,8 @@ const RESOURCE_LABELS: Record<string, string> = {
   daemonsets: "DaemonSets",
   cronjobs: "CronJobs",
   jobs: "Jobs",
+  ingresses: "Ingresses",
+  services: "Services",
 };
 
 const CONDITION_LABELS: Record<string, string> = {

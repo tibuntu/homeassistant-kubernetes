@@ -180,6 +180,8 @@ def _build_cluster_overview(
         "daemonsets": len(data.get("daemonsets", {})),
         "cronjobs": len(data.get("cronjobs", {})),
         "jobs": len(data.get("jobs", {})),
+        "ingresses": len(data.get("ingresses", {})),
+        "services": len(data.get("services", {})),
     }
 
     namespaces = _build_namespace_breakdown(data)
@@ -229,6 +231,16 @@ def _build_namespace_breakdown(data: dict[str, Any]) -> dict[str, dict[str, int]
         ns = job.get("namespace", "unknown")
         ns_counts.setdefault(ns, _empty_ns_counts())
         ns_counts[ns]["jobs"] += 1
+
+    for ingress in data.get("ingresses", {}).values():
+        ns = ingress.get("namespace", "unknown")
+        ns_counts.setdefault(ns, _empty_ns_counts())
+        ns_counts[ns]["ingresses"] += 1
+
+    for svc in data.get("services", {}).values():
+        ns = svc.get("namespace", "unknown")
+        ns_counts.setdefault(ns, _empty_ns_counts())
+        ns_counts[ns]["services"] += 1
 
     return ns_counts
 
@@ -325,6 +337,8 @@ def _empty_counts() -> dict[str, int]:
         "daemonsets": 0,
         "cronjobs": 0,
         "jobs": 0,
+        "ingresses": 0,
+        "services": 0,
     }
 
 
@@ -337,6 +351,8 @@ def _empty_ns_counts() -> dict[str, int]:
         "daemonsets": 0,
         "cronjobs": 0,
         "jobs": 0,
+        "ingresses": 0,
+        "services": 0,
     }
 
 
