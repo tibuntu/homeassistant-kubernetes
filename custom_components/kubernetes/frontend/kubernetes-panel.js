@@ -701,7 +701,9 @@ var RESOURCE_ICONS = {
 	statefulsets: "mdi:database",
 	daemonsets: "mdi:lan",
 	cronjobs: "mdi:clock-outline",
-	jobs: "mdi:briefcase-check"
+	jobs: "mdi:briefcase-check",
+	ingresses: "mdi:earth",
+	services: "mdi:swap-horizontal"
 };
 var RESOURCE_LABELS = {
 	pods: "Pods",
@@ -710,7 +712,9 @@ var RESOURCE_LABELS = {
 	statefulsets: "StatefulSets",
 	daemonsets: "DaemonSets",
 	cronjobs: "CronJobs",
-	jobs: "Jobs"
+	jobs: "Jobs",
+	ingresses: "Ingresses",
+	services: "Services"
 };
 var CONDITION_LABELS$1 = {
 	memory_pressure: "Memory Pressure",
