@@ -225,7 +225,7 @@ export class K8sPodsTable extends LitElement {
       );
     }
 
-    filtered.sort((a, b) => {
+    filtered = [...filtered].sort((a, b) => {
       let valA: string | number;
       let valB: string | number;
       const field = this._sortField;
@@ -252,6 +252,13 @@ export class K8sPodsTable extends LitElement {
     } else {
       this._sortField = field;
       this._sortAsc = true;
+    }
+  }
+
+  private _handleSortKeydown(e: KeyboardEvent, field: string): void {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this._handleSort(field);
     }
   }
 
@@ -775,7 +782,13 @@ export class K8sPodsTable extends LitElement {
                     <table class="pods-table">
                       <thead>
                         <tr>
-                          <th @click=${() => this._handleSort("namespace")}>
+                          <th
+                            role="button"
+                            tabindex="0"
+                            @click=${() => this._handleSort("namespace")}
+                            @keydown=${(e: KeyboardEvent) =>
+                              this._handleSortKeydown(e, "namespace")}
+                          >
                             Namespace
                             ${
                               this._sortIcon("namespace")
@@ -785,7 +798,13 @@ export class K8sPodsTable extends LitElement {
                                 : nothing
                             }
                           </th>
-                          <th @click=${() => this._handleSort("name")}>
+                          <th
+                            role="button"
+                            tabindex="0"
+                            @click=${() => this._handleSort("name")}
+                            @keydown=${(e: KeyboardEvent) =>
+                              this._handleSortKeydown(e, "name")}
+                          >
                             Name
                             ${
                               this._sortIcon("name")
@@ -795,7 +814,13 @@ export class K8sPodsTable extends LitElement {
                                 : nothing
                             }
                           </th>
-                          <th @click=${() => this._handleSort("phase")}>
+                          <th
+                            role="button"
+                            tabindex="0"
+                            @click=${() => this._handleSort("phase")}
+                            @keydown=${(e: KeyboardEvent) =>
+                              this._handleSortKeydown(e, "phase")}
+                          >
                             Phase
                             ${
                               this._sortIcon("phase")
@@ -808,7 +833,13 @@ export class K8sPodsTable extends LitElement {
                           ${this._colVisible("ready") ? html`<th>Ready</th>` : nothing}
                           ${
                             this._colVisible("restarts")
-                              ? html`<th @click=${() => this._handleSort("restarts")}>
+                              ? html`<th
+                                  role="button"
+                                  tabindex="0"
+                                  @click=${() => this._handleSort("restarts")}
+                                  @keydown=${(e: KeyboardEvent) =>
+                                    this._handleSortKeydown(e, "restarts")}
+                                >
                                   Restarts
                                   ${this._sortIcon("restarts") ? html`<ha-icon icon=${this._sortIcon("restarts")}></ha-icon>` : nothing}
                                 </th>`
@@ -816,7 +847,13 @@ export class K8sPodsTable extends LitElement {
                           }
                           ${
                             this._colVisible("node")
-                              ? html`<th @click=${() => this._handleSort("node_name")}>
+                              ? html`<th
+                                  role="button"
+                                  tabindex="0"
+                                  @click=${() => this._handleSort("node_name")}
+                                  @keydown=${(e: KeyboardEvent) =>
+                                    this._handleSortKeydown(e, "node_name")}
+                                >
                                   Node
                                   ${this._sortIcon("node_name") ? html`<ha-icon icon=${this._sortIcon("node_name")}></ha-icon>` : nothing}
                                 </th>`
@@ -826,7 +863,13 @@ export class K8sPodsTable extends LitElement {
                           ${this._colVisible("owner") ? html`<th>Owner</th>` : nothing}
                           ${
                             this._colVisible("age")
-                              ? html`<th @click=${() => this._handleSort("age")}>
+                              ? html`<th
+                                  role="button"
+                                  tabindex="0"
+                                  @click=${() => this._handleSort("age")}
+                                  @keydown=${(e: KeyboardEvent) =>
+                                    this._handleSortKeydown(e, "age")}
+                                >
                                   Age
                                   ${this._sortIcon("age") ? html`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : nothing}
                                 </th>`

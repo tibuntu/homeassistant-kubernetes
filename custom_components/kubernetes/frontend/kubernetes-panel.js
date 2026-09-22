@@ -1217,7 +1217,15 @@ var K8sOverview = class K8sOverview extends i {
 		return b`
       <div
         class="section-header"
+        role="button"
+        tabindex="0"
         @click=${() => this._toggleNamespaces(cluster.entry_id)}
+        @keydown=${(e) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				this._toggleNamespaces(cluster.entry_id);
+			}
+		}}
       >
         <ha-icon icon=${expanded ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
         <span>Namespaces (${nsEntries.length})</span>
@@ -1887,7 +1895,18 @@ var K8sNodesTable = class K8sNodesTable extends i {
 		const memPercent = hasMetrics ? Math.round(memUsageGib / node.memory_capacity_gib * 100) : 0;
 		return b`
       <ha-card class="node-card">
-        <div class="node-row" @click=${() => this._toggleNode(nodeKey)}>
+        <div
+          class="node-row"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleNode(nodeKey)}
+          @keydown=${(e) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				this._toggleNode(nodeKey);
+			}
+		}}
+        >
           <div class="node-name">
             <ha-icon
               icon=${expanded ? "mdi:chevron-down" : "mdi:chevron-right"}
@@ -2202,7 +2221,7 @@ var K8sPodsTable = class K8sPodsTable extends i {
 			const q = this._searchQuery.toLowerCase();
 			filtered = filtered.filter((p) => p.name.toLowerCase().includes(q) || p.namespace.toLowerCase().includes(q) || p.node_name.toLowerCase().includes(q) || p.owner_name.toLowerCase().includes(q));
 		}
-		filtered.sort((a, b) => {
+		filtered = [...filtered].sort((a, b) => {
 			let valA;
 			let valB;
 			const field = this._sortField;
@@ -2226,6 +2245,12 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		else {
 			this._sortField = field;
 			this._sortAsc = true;
+		}
+	}
+	_handleSortKeydown(e, field) {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			this._handleSort(field);
 		}
 	}
 	_requestDelete(entryId, pod) {
@@ -2725,36 +2750,66 @@ var K8sPodsTable = class K8sPodsTable extends i {
                     <table class="pods-table">
                       <thead>
                         <tr>
-                          <th @click=${() => this._handleSort("namespace")}>
+                          <th
+                            role="button"
+                            tabindex="0"
+                            @click=${() => this._handleSort("namespace")}
+                            @keydown=${(e) => this._handleSortKeydown(e, "namespace")}
+                          >
                             Namespace
                             ${this._sortIcon("namespace") ? b`<ha-icon
                                     icon=${this._sortIcon("namespace")}
                                   ></ha-icon>` : A}
                           </th>
-                          <th @click=${() => this._handleSort("name")}>
+                          <th
+                            role="button"
+                            tabindex="0"
+                            @click=${() => this._handleSort("name")}
+                            @keydown=${(e) => this._handleSortKeydown(e, "name")}
+                          >
                             Name
                             ${this._sortIcon("name") ? b`<ha-icon
                                     icon=${this._sortIcon("name")}
                                   ></ha-icon>` : A}
                           </th>
-                          <th @click=${() => this._handleSort("phase")}>
+                          <th
+                            role="button"
+                            tabindex="0"
+                            @click=${() => this._handleSort("phase")}
+                            @keydown=${(e) => this._handleSortKeydown(e, "phase")}
+                          >
                             Phase
                             ${this._sortIcon("phase") ? b`<ha-icon
                                     icon=${this._sortIcon("phase")}
                                   ></ha-icon>` : A}
                           </th>
                           ${this._colVisible("ready") ? b`<th>Ready</th>` : A}
-                          ${this._colVisible("restarts") ? b`<th @click=${() => this._handleSort("restarts")}>
+                          ${this._colVisible("restarts") ? b`<th
+                                  role="button"
+                                  tabindex="0"
+                                  @click=${() => this._handleSort("restarts")}
+                                  @keydown=${(e) => this._handleSortKeydown(e, "restarts")}
+                                >
                                   Restarts
                                   ${this._sortIcon("restarts") ? b`<ha-icon icon=${this._sortIcon("restarts")}></ha-icon>` : A}
                                 </th>` : A}
-                          ${this._colVisible("node") ? b`<th @click=${() => this._handleSort("node_name")}>
+                          ${this._colVisible("node") ? b`<th
+                                  role="button"
+                                  tabindex="0"
+                                  @click=${() => this._handleSort("node_name")}
+                                  @keydown=${(e) => this._handleSortKeydown(e, "node_name")}
+                                >
                                   Node
                                   ${this._sortIcon("node_name") ? b`<ha-icon icon=${this._sortIcon("node_name")}></ha-icon>` : A}
                                 </th>` : A}
                           ${this._colVisible("ip") ? b`<th>IP</th>` : A}
                           ${this._colVisible("owner") ? b`<th>Owner</th>` : A}
-                          ${this._colVisible("age") ? b`<th @click=${() => this._handleSort("age")}>
+                          ${this._colVisible("age") ? b`<th
+                                  role="button"
+                                  tabindex="0"
+                                  @click=${() => this._handleSort("age")}
+                                  @keydown=${(e) => this._handleSortKeydown(e, "age")}
+                                >
                                   Age
                                   ${this._sortIcon("age") ? b`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : A}
                                 </th>` : A}
@@ -3417,6 +3472,17 @@ var K8sWorkloads = class K8sWorkloads extends i {
 			clearTimeout(this._updateDebounce);
 			this._updateDebounce = void 0;
 		}
+		if (this._reloadTimer) {
+			clearTimeout(this._reloadTimer);
+			this._reloadTimer = void 0;
+		}
+	}
+	_scheduleReload(delayMs) {
+		if (this._reloadTimer) clearTimeout(this._reloadTimer);
+		this._reloadTimer = setTimeout(() => {
+			this._reloadTimer = void 0;
+			this._loadData();
+		}, delayMs);
 	}
 	_handleVisibilityChange() {
 		if (document.hidden) this._stopPolling();
@@ -3524,7 +3590,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 	_callService(service, data, actionKey) {
 		return this._runAction(actionKey, async () => {
 			await this.hass.callService("kubernetes", service, data);
-			setTimeout(() => this._loadData(), 2e3);
+			this._scheduleReload(2e3);
 		});
 	}
 	_setCronJobSuspend(entryId, cj, suspend, actionKey) {
@@ -4534,7 +4600,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 				replicas: this._scaleValue
 			});
 			this._scaleTarget = null;
-			setTimeout(() => this._loadData(), 2e3);
+			this._scheduleReload(2e3);
 		} catch (err) {
 			this._actionError = err?.message || "Failed to scale workload";
 			this._scaleTarget = null;
@@ -5204,7 +5270,18 @@ var KubernetesPanel = class KubernetesPanel extends i {
 	render() {
 		return b`
       <div class="toolbar">
-        <div class="menu-btn" @click=${this._toggleSidebar}>
+        <div
+          class="menu-btn"
+          role="button"
+          tabindex="0"
+          @click=${this._toggleSidebar}
+          @keydown=${(e) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				this._toggleSidebar();
+			}
+		}}
+        >
           <ha-icon icon="mdi:menu"></ha-icon>
         </div>
         <h1>Kubernetes</h1>
@@ -5213,8 +5290,16 @@ var KubernetesPanel = class KubernetesPanel extends i {
         ${this._tabs.map((tab) => b`
             <div
               class="tab"
+              role="button"
+              tabindex="0"
               ?active=${this._activeTab === tab.id}
               @click=${() => this._handleTabChange(tab.id)}
+              @keydown=${(e) => {
+			if (e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				this._handleTabChange(tab.id);
+			}
+		}}
             >
               <ha-icon icon=${tab.icon}></ha-icon>
               <span>${tab.label}</span>

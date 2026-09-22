@@ -136,7 +136,18 @@ export class KubernetesPanel extends LitElement {
   protected render() {
     return html`
       <div class="toolbar">
-        <div class="menu-btn" @click=${this._toggleSidebar}>
+        <div
+          class="menu-btn"
+          role="button"
+          tabindex="0"
+          @click=${this._toggleSidebar}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              this._toggleSidebar();
+            }
+          }}
+        >
           <ha-icon icon="mdi:menu"></ha-icon>
         </div>
         <h1>Kubernetes</h1>
@@ -146,8 +157,16 @@ export class KubernetesPanel extends LitElement {
           (tab) => html`
             <div
               class="tab"
+              role="button"
+              tabindex="0"
               ?active=${this._activeTab === tab.id}
               @click=${() => this._handleTabChange(tab.id)}
+              @keydown=${(e: KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  this._handleTabChange(tab.id);
+                }
+              }}
             >
               <ha-icon icon=${tab.icon}></ha-icon>
               <span>${tab.label}</span>

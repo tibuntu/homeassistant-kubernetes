@@ -630,7 +630,18 @@ export class K8sNodesTable extends LitElement {
 
     return html`
       <ha-card class="node-card">
-        <div class="node-row" @click=${() => this._toggleNode(nodeKey)}>
+        <div
+          class="node-row"
+          role="button"
+          tabindex="0"
+          @click=${() => this._toggleNode(nodeKey)}
+          @keydown=${(e: KeyboardEvent) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              this._toggleNode(nodeKey);
+            }
+          }}
+        >
           <div class="node-name">
             <ha-icon
               icon=${expanded ? "mdi:chevron-down" : "mdi:chevron-right"}

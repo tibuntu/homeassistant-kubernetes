@@ -104,6 +104,7 @@ export class K8sWorkloads extends LitElement {
   private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
   private _unsubUpdates?: () => Promise<void>;
   private _updateDebounce?: ReturnType<typeof setTimeout>;
+  private _reloadTimer?: ReturnType<typeof setTimeout>;
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     this._loadData();
@@ -122,6 +123,18 @@ export class K8sWorkloads extends LitElement {
       clearTimeout(this._updateDebounce);
       this._updateDebounce = undefined;
     }
+    if (this._reloadTimer) {
+      clearTimeout(this._reloadTimer);
+      this._reloadTimer = undefined;
+    }
+  }
+
+  private _scheduleReload(delayMs: number): void {
+    if (this._reloadTimer) clearTimeout(this._reloadTimer);
+    this._reloadTimer = setTimeout(() => {
+      this._reloadTimer = undefined;
+      this._loadData();
+    }, delayMs);
   }
 
   private _handleVisibilityChange(): void {
@@ -264,7 +277,7 @@ export class K8sWorkloads extends LitElement {
     return this._runAction(actionKey, async () => {
       await this.hass.callService("kubernetes", service, data);
       // Reload data after action
-      setTimeout(() => this._loadData(), 2000);
+      this._scheduleReload(2000);
     });
   }
 
@@ -1476,7 +1489,7 @@ export class K8sWorkloads extends LitElement {
         replicas: this._scaleValue,
       });
       this._scaleTarget = null;
-      setTimeout(() => this._loadData(), 2000);
+      this._scheduleReload(2000);
     } catch (err: any) {
       this._actionError = err?.message || "Failed to scale workload";
       this._scaleTarget = null;

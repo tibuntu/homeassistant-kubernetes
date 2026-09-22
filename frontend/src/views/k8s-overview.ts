@@ -624,7 +624,15 @@ export class K8sOverview extends LitElement {
     return html`
       <div
         class="section-header"
+        role="button"
+        tabindex="0"
         @click=${() => this._toggleNamespaces(cluster.entry_id)}
+        @keydown=${(e: KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            this._toggleNamespaces(cluster.entry_id);
+          }
+        }}
       >
         <ha-icon icon=${expanded ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
         <span>Namespaces (${nsEntries.length})</span>
