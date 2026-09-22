@@ -178,17 +178,65 @@ class KubernetesClient:
         # ConfigEntryAuthFailed so Home Assistant starts the reauth flow.
         self.auth_failed = False
 
+        # In-flight background token-file refresh (see api_token / async_refresh_token).
+        self._token_refresh_task: asyncio.Task[None] | None = None
+
         # Initialize Kubernetes client
         self._setup_kubernetes_client()
+
+    def _read_token_file(self) -> str | None:
+        """Synchronously read+strip the projected SA token file.
+
+        Blocking by design — callers must run this off the event loop (see
+        async_refresh_token) except when no loop is running at all.
+        """
+        try:
+            with open(IN_CLUSTER_TOKEN_PATH, encoding="utf-8") as fh:
+                return fh.read().strip()
+        except OSError as err:
+            _LOGGER.debug(
+                "Failed to read in-cluster token at %s (%s); using last cached/static token",
+                IN_CLUSTER_TOKEN_PATH,
+                err,
+            )
+            return None
+
+    def _ensure_refresh_task(self) -> asyncio.Task[None]:
+        """Start (or return the already in-flight) background token refresh."""
+        if self._token_refresh_task is None:
+            self._token_refresh_task = asyncio.get_running_loop().create_task(
+                self._do_refresh_token()
+            )
+        return self._token_refresh_task
+
+    async def _do_refresh_token(self) -> None:
+        """Read the token file in the executor and update the cache."""
+        try:
+            loop = asyncio.get_running_loop()
+            token = await loop.run_in_executor(None, self._read_token_file)
+            if token:
+                self._token_cache = token
+                self._token_cache_time = time.time()
+        finally:
+            self._token_refresh_task = None
+
+    async def async_refresh_token(self) -> None:
+        """Re-read the projected SA token off the event loop.
+
+        Concurrent callers share one in-flight refresh instead of each
+        starting their own executor read.
+        """
+        await self._ensure_refresh_task()
 
     @property
     def api_token(self) -> str:
         """Bearer token used for the cluster API.
 
-        When use_in_cluster=True the projected SA token file is read with a
-        short TTL cache so token rotations are picked up without restarting
-        the integration. On read failure the last cached value (or the static
-        token from the config entry) is returned as a fallback.
+        When use_in_cluster=True the projected SA token file backs this
+        property with a short TTL cache so token rotations are picked up
+        without restarting the integration. On read failure the last cached
+        value (or the static token from the config entry) is returned as a
+        fallback.
 
         Thread-safety: the cache check-then-update is intentionally lock-free.
         Two concurrent expirations may both read the file and write the same
@@ -207,19 +255,24 @@ class KubernetesClient:
             return self._token_cache
 
         try:
-            with open(IN_CLUSTER_TOKEN_PATH, encoding="utf-8") as fh:
-                token = fh.read().strip()
-        except OSError as err:
-            _LOGGER.debug(
-                "Failed to read in-cluster token at %s (%s); using last cached/static token",
-                IN_CLUSTER_TOKEN_PATH,
-                err,
-            )
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No loop running (e.g. urllib3's refresh_api_key_hook, which
+            # runs in the official client's executor thread) — blocking here
+            # is safe.
+            token = self._read_token_file()
+            if token:
+                self._token_cache = token
+                self._token_cache_time = now
             return self._token_cache or self._static_api_token
 
-        if token:
-            self._token_cache = token
-            self._token_cache_time = now
+        # ponytail: a loop is running, so we must not block it. Kick off (or
+        # join) a background refresh and serve the stale cached/static token
+        # for this call — projected tokens overlap well beyond the 60s TTL,
+        # so a request made in the few ms before the refresh lands is fine.
+        # Upgrade path: none needed unless the SA token TTL is ever tightened
+        # to seconds, in which case this call would need to await the refresh.
+        self._ensure_refresh_task()
         return self._token_cache or self._static_api_token
 
     @api_token.setter
@@ -440,6 +493,7 @@ class KubernetesClient:
                     # the cached read and this request. Drop the cache and retry
                     # once so routine rotation never triggers a reauth prompt.
                     self.invalidate_token_cache()
+                    await self.async_refresh_token()
                     status = await self._probe_api(session)
                 self.auth_failed = status == 401
                 if status == 200:
