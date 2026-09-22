@@ -145,9 +145,7 @@ This creates a secret containing the service account token for authentication. S
 
 ### 5. Extract the Token
 
-```bash
-kubectl get secret homeassistant-kubernetes-integration-token -n homeassistant -o jsonpath='{.data.token}' | base64 -d
-```
+Same command as [Quick Setup step 2](#2-extract-the-token) above.
 
 ## RBAC Permissions
 
@@ -171,39 +169,7 @@ metadata:
 
 ### 2. Create Role (instead of ClusterRole)
 
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  namespace: your-target-namespace
-  name: homeassistant-kubernetes-integration
-rules:
-# Monitoring permissions within namespace
-- apiGroups: [""]
-  resources: ["pods", "events", "services"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
-  verbs: ["get", "list", "watch"]
-# Control permissions within namespace
-- apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale"]
-  verbs: ["patch", "update", "get"]
-- apiGroups: ["apps"]
-  resources: ["statefulsets/status"]
-  verbs: ["get", "patch", "update"]
-# Batch API permissions for CronJobs within namespace
-- apiGroups: ["batch"]
-  resources: ["cronjobs", "jobs"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs", "cronjobs/status", "jobs"]
-  verbs: ["get", "patch", "update", "create"]
-# Networking permissions within namespace
-- apiGroups: ["networking.k8s.io"]
-  resources: ["ingresses"]
-  verbs: ["get", "list", "watch"]
-```
+For the full `Role` definition with the correct verb set for every resource (matching `full`-mode permissions), see the [Namespace-Scoped Example](RBAC.md#namespace-scoped-example) in the RBAC Reference Guide — it also covers the small cluster-scoped `ClusterRole` still needed for `nodes` and `namespaces`.
 
 ### 3. Create RoleBinding (instead of ClusterRoleBinding)
 
@@ -272,11 +238,11 @@ Then combine with namespace-specific roles for actual workload control.
 - Regularly rotate service account tokens
 - Use Kubernetes secrets for token storage
 
-### Minimal Permissions
+### Permission Scope
 
-- The provided RBAC permissions follow the principle of least privilege
-- Only `patch` permission is granted for scaling operations
-- No `delete` or `create` permissions are included
+- `full` mode follows least privilege for its feature set, not a read-only model: it grants `delete` on `pods` and `jobs` (pod/Job deletion from the panel and the `delete_job` service), `create` on `jobs`/`cronjobs` (CronJob triggering), and `patch` on workloads (`deployments`, `statefulsets`, `daemonsets`) and `nodes` (rollout restart, scaling, cordon/uncordon)
+- `minimal` mode is fully read-only: `get` and `list` only, no `watch`, `patch`, `create`, or `delete`
+- Start with `minimal` if you only need sensors and binary sensors, and move to `full` only when you need switches, rollout restart, deletion, or the Watch API
 
 ### Network Security
 

@@ -115,7 +115,7 @@ Read-only access to every resource the integration monitors. No write permission
 |----------|-------|:----:|:-------:|---------|
 | **pods** | `get`, `list`, `watch`, `delete` | ✅ | `get`, `list` only | Pod count and status sensors, pod deletion |
 | **nodes** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Node sensors and binary sensors; `patch` enables cordon/uncordon |
-| **namespaces** | `get`, `list` | ✅ | ✅ | Namespace discovery |
+| **namespaces** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Namespace discovery |
 | **events** | `get`, `list`, `watch` | ✅ | ❌ | Enhanced troubleshooting |
 | **services** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Services Count sensor + Network tab in the sidebar panel |
 
@@ -133,11 +133,13 @@ Read-only access to every resource the integration monitors. No write permission
 
 ### Batch API Group (`batch`)
 
+> **Note:** In `full` mode a single ClusterRole rule grants the same verb set — `get`, `list`, `watch`, `patch`, `update`, `create`, `delete` — to `cronjobs`, `cronjobs/status`, and `jobs` together. The table below lists each resource separately with the feature it enables, but the underlying grant is one rule, not three.
+
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **cronjobs** | `get`, `list`, `watch` | ✅ | `get`, `list` only | CronJob sensors |
-| **cronjobs/status** | `get`, `patch`, `update` | ✅ | ❌ | CronJob switch (suspend/resume) |
-| **jobs** | `get`, `list`, `watch`, `create` | ✅ | `get`, `list` only | Job sensors + CronJob triggering |
+| **cronjobs** | `get`, `list`, `watch`, `patch`, `update`, `create`, `delete` | ✅ | `get`, `list` only | CronJob sensors, suspend/resume switch, and triggering (`start_workload` creates a Job) |
+| **cronjobs/status** | `get`, `list`, `watch`, `patch`, `update`, `create`, `delete` | ✅ | ❌ | Same rule as `cronjobs`; keeps CronJob switch state accurate |
+| **jobs** | `get`, `list`, `watch`, `patch`, `update`, `create`, `delete` | ✅ | `get`, `list` only | Job sensors, CronJob triggering, and Job deletion (sidebar panel / `delete_job` service) |
 
 ### Networking API Group (`networking.k8s.io`)
 
@@ -259,10 +261,10 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["nodes"]
-  verbs: ["get", "list", "patch"]
+  verbs: ["get", "list", "watch", "patch"]
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["get", "list"]
+  verbs: ["get", "list", "watch"]
 ---
 # Namespace-scoped role (repeat per monitored namespace)
 apiVersion: rbac.authorization.k8s.io/v1
@@ -281,11 +283,14 @@ rules:
   resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
+  resources: ["deployments", "statefulsets", "daemonsets"]
+  verbs: ["patch"]
+- apiGroups: ["apps"]
   resources: ["deployments/scale", "statefulsets/scale", "statefulsets/status"]
   verbs: ["get", "patch", "update"]
 - apiGroups: ["batch"]
   resources: ["cronjobs", "cronjobs/status", "jobs"]
-  verbs: ["get", "list", "watch", "patch", "update", "create"]
+  verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
   verbs: ["get", "list", "watch"]
