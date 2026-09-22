@@ -329,6 +329,13 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 # only for ConfigEntryAuthFailed, not for UpdateFailed.
                 raise
             except Exception as ex:
+                # The client's list/count methods raise on any failure, so a
+                # 401 aborts the fetch before the in-line check above runs.
+                # Route it to reauth instead of UpdateFailed.
+                if self.client.auth_failed is True:
+                    raise ConfigEntryAuthFailed(
+                        "Kubernetes API rejected the configured token"
+                    ) from ex
                 _LOGGER.error("Failed to update Kubernetes data: %s", ex)
                 raise UpdateFailed(f"Failed to update Kubernetes data: {ex}") from ex
 
