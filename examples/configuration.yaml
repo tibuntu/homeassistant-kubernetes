@@ -274,25 +274,25 @@ lovelace:
             - type: entities
               title: "Production Deployments"
               entities:
-                - entity: switch.production_api_deployment
-                - entity: switch.api_gateway_deployment
+                - entity: switch.production_default_api
+                - entity: switch.production_default_api_gateway
             - type: entities
               title: "Development Deployments"
               entities:
-                - entity: switch.development_api_deployment
-                - entity: switch.development_database_deployment
+                - entity: switch.production_development_api
+                - entity: switch.production_development_database
         - type: vertical-stack
           title: "StatefulSet Control"
           cards:
             - type: entities
               title: "Production StatefulSets"
               entities:
-                - entity: switch.redis_cache_statefulset
-                - entity: switch.postgres_db_statefulset
+                - entity: switch.production_default_redis_cache
+                - entity: switch.production_default_postgres_db
             - type: entities
               title: "Development StatefulSets"
               entities:
-                - entity: switch.development_redis_statefulset
+                - entity: switch.production_development_redis
         - type: vertical-stack
           title: "Quick Actions"
           cards:

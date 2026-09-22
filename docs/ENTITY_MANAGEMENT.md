@@ -49,7 +49,7 @@ The cleanup process provides detailed logging:
 
 ```
 [INFO] Deployment my-app no longer exists, marking entity for removal
-[INFO] Removing orphaned entity: switch.my_app_deployment
+[INFO] Removing orphaned entity: switch.production_default_my_app
 [INFO] Removed 1 orphaned entities
 ```
 
@@ -78,7 +78,7 @@ The integration automatically detects new deployments, statefulsets, pods, nodes
 If you create a new deployment called `web-server` in your cluster:
 
 1. The next polling cycle will detect the new deployment
-2. A new switch entity `switch.web_server_deployment` will be automatically created
+2. A new switch entity `switch.production_default_web_server` will be automatically created
 3. The entity will be immediately available in Home Assistant
 
 ## Configuration

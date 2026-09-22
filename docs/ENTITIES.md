@@ -237,7 +237,7 @@ The integration automatically creates switches for controlling Kubernetes worklo
 
 ### Deployment Switches
 
-- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[deployment_name]_deployment` (e.g. `switch.production_default_web_app_deployment`)
+- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[deployment_name]` (e.g. `switch.production_default_web_app`)
 - **Function**: Control individual deployments (scale to 0/1 replicas)
 - **States**:
   - `on`: Deployment is running (replicas > 0)
@@ -245,7 +245,7 @@ The integration automatically creates switches for controlling Kubernetes worklo
 
 ### StatefulSet Switches
 
-- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[statefulset_name]_statefulset` (e.g. `switch.production_default_postgres_statefulset`)
+- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[statefulset_name]` (e.g. `switch.production_default_postgres`)
 - **Function**: Control individual statefulsets (scale to 0/1 replicas)
 - **States**:
   - `on`: StatefulSet is running (replicas > 0)
@@ -253,7 +253,7 @@ The integration automatically creates switches for controlling Kubernetes worklo
 
 ### CronJob Switches
 
-- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[cronjob_name]_cronjob` (e.g. `switch.production_default_backup_cronjob`)
+- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[cronjob_name]` (e.g. `switch.production_default_backup`)
 - **Function**: Control CronJob suspension
 - **States**:
   - `on`: CronJob is enabled (`suspend=false`)
@@ -430,12 +430,14 @@ Setting **Device Grouping Mode** to `cluster` (see [Configuration](CONFIGURATION
 
 With device-based grouping, entities are automatically named using the following patterns:
 
-- **Cluster-level Sensors**: `sensor.[cluster_name]_[metric_type]` (e.g., `sensor.production_cluster_nodes_count`)
-- **Cluster-level Binary Sensors**: `binary_sensor.[cluster_name]_cluster_health` (e.g., `binary_sensor.production_cluster_cluster_health`)
-- **Node Sensors**: `sensor.[cluster_name]_[node_name]` (e.g., `sensor.production_cluster_worker_node_1`)
-- **Node Schedulable Switches**: `switch.[cluster_name]_[node_name]_schedulable` (e.g., `switch.production_cluster_worker_node_1_schedulable`)
-- **Namespace-level Pod Sensors**: `sensor.[cluster_name]_[namespace]_[pod_name]` (e.g., `sensor.production_cluster_default_my_app_pod`)
-- **Namespace-level Switches**: `switch.[cluster_name]_[namespace]_[resource_name]_[resource_type]` (e.g., `switch.production_cluster_default_my_deployment_deployment`)
+- **Cluster-level Sensors**: `sensor.[cluster_name]_[metric_type]` (e.g., `sensor.production_nodes_count`)
+- **Cluster-level Binary Sensors**: `binary_sensor.[cluster_name]_cluster_health` (e.g., `binary_sensor.production_cluster_health`)
+- **Node Sensors**: `sensor.[cluster_name]_[node_name]` (e.g., `sensor.production_worker_node_1`)
+- **Node Schedulable Switches**: `switch.[cluster_name]_[node_name]_schedulable` (e.g., `switch.production_worker_node_1_schedulable`)
+- **Namespace-level Pod Sensors**: `sensor.[cluster_name]_[namespace]_[pod_name]` (e.g., `sensor.production_default_my_app_pod`)
+- **Namespace-level Switches**: `switch.[cluster_name]_[namespace]_[resource_name]` (e.g., `switch.production_default_web_app`)
+
+In `cluster` grouping mode there is no namespace device, so the namespace segment is absent from namespace-level switch entity IDs (e.g. `switch.production_web_app`).
 
 The device hierarchy ensures that entity names include cluster and namespace context, making it clear what each entity represents.
 

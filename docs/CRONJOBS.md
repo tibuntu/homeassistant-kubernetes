@@ -29,7 +29,7 @@ A sensor that displays the total number of CronJobs in your cluster or namespace
 
 Individual switches for each CronJob that control the suspension state.
 
-**Entity ID**: `switch.[cluster_name]_[namespace]_[cronjob_name]_cronjob` (e.g. `switch.production_default_backup_cronjob`)
+**Entity ID**: `switch.[cluster_name]_[namespace]_[cronjob_name]` (e.g. `switch.production_default_backup`)
 
 **Switch Behavior**:
 - **ON** = CronJob is **enabled** (`suspend=false`)
@@ -55,10 +55,11 @@ Individual switches for each CronJob that control the suspension state.
 Triggers one or more CronJobs immediately (creates a job from the CronJob template).
 
 **Parameters**:
-- `workload_name` (string or entity ID, optional): Single CronJob name or entity ID (e.g., `switch.backup_job`)
+- `workload_name` (string or entity ID, optional): Single CronJob name or entity ID (e.g., `switch.production_default_backup`)
 - `workload_names` (list or target selector, optional): Multiple CronJob names or entity IDs
 - `namespace` (string, optional): Target namespace (defaults to configured namespace)
 - `replicas` (integer, optional): Ignored for CronJobs
+- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
 
 **Examples**:
 
@@ -66,16 +67,16 @@ Triggers one or more CronJobs immediately (creates a job from the CronJob templa
 # Trigger a single CronJob using entity ID
 service: kubernetes.start_workload
 data:
-  workload_name: switch.backup_job
+  workload_name: switch.production_default_backup
   namespace: default
 
 # Trigger multiple CronJobs
 service: kubernetes.start_workload
 data:
   workload_names:
-    - switch.backup_job
-    - switch.cleanup_job
-  namespace: production
+    - switch.production_default_backup
+    - switch.production_default_cleanup
+  namespace: default
 
 # Trigger using direct CronJob name
 service: kubernetes.start_workload

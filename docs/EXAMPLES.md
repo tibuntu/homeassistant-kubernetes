@@ -18,10 +18,10 @@ automation:
       - service: kubernetes.stop_workload
         data:
           workload_names:
-            - switch.development_api
-            - switch.staging_api
-            - switch.monitoring
-          namespace: "production"
+            - switch.production_default_development_api
+            - switch.production_default_staging_api
+            - switch.production_default_monitoring
+          namespace: "default"
 ```
 
 #### Start Multiple Deployments in the Morning
@@ -36,11 +36,11 @@ automation:
       - service: kubernetes.start_workload
         data:
           workload_names:
-            - switch.web_app
-            - switch.api_server
-            - switch.cache_service
+            - switch.production_default_web_app
+            - switch.production_default_api_server
+            - switch.production_default_cache_service
           replicas: 3
-          namespace: "production"
+          namespace: "default"
 ```
 
 #### Scale Down During Off-Hours
@@ -63,10 +63,10 @@ automation:
       - service: kubernetes.scale_workload
         data:
           workload_names:
-            - switch.web_frontend
-            - switch.api_backend
+            - switch.production_default_web_frontend
+            - switch.production_default_api_backend
           replicas: 1
-          namespace: "production"
+          namespace: "default"
 ```
 
 ### Resource-Based Automations
@@ -103,16 +103,16 @@ automation:
       - service: kubernetes.stop_workload
         data:
           workload_names:
-            - switch.non_critical_app
-            - switch.development_services
+            - switch.production_default_non_critical_app
+            - switch.production_default_development_services
           namespace: "default"
       - delay: "00:02:00"
       - service: kubernetes.scale_workload
         data:
           workload_names:
-            - switch.critical_app
+            - switch.production_default_critical_app
           replicas: 1
-          namespace: "production"
+          namespace: "default"
 ```
 
 ### StatefulSet Examples
@@ -133,8 +133,8 @@ automation:
       - service: kubernetes.scale_workload
         data:
           workload_names:
-            - switch.database_primary
-            - switch.database_replica
+            - switch.production_database_database_primary
+            - switch.production_database_database_replica
           replicas: 1
           namespace: "database"
 ```
@@ -155,8 +155,8 @@ automation:
       - service: kubernetes.stop_workload
         data:
           workload_names:
-            - switch.dev_postgres
-            - switch.dev_redis
+            - switch.production_development_dev_postgres
+            - switch.production_development_dev_redis
           namespace: "development"
 ```
 
@@ -193,9 +193,9 @@ automation:
       - service: kubernetes.restart_workload
         data:
           workload_names:
-            - switch.production_web_app
-            - switch.production_api_server
-          namespace: "production"
+            - switch.production_default_web_app
+            - switch.production_default_api_server
+          namespace: "default"
 ```
 
 ### Node Monitoring Automations
@@ -318,14 +318,14 @@ views:
       - type: entities
         title: "Production Deployments"
         entities:
-          - switch.production_default_web_app_deployment
-          - switch.production_default_api_server_deployment
-          - switch.production_default_cache_service_deployment
+          - switch.production_default_web_app
+          - switch.production_default_api_server
+          - switch.production_default_cache_service
       - type: entities
         title: "Development Services"
         entities:
-          - switch.production_default_dev_api_deployment
-          - switch.production_default_test_runner_deployment
+          - switch.production_default_dev_api
+          - switch.production_default_test_runner
 ```
 
 ### Resource Monitoring
@@ -378,7 +378,7 @@ views:
             # distinguishing prefix (see Entity Naming) and a "sensor.production_*"
             # wildcard would also match the count sensors.
             - attributes:
-                OS_image: ".*"
+                OS_image: "*"
         sort:
           method: name
       - type: markdown
@@ -406,11 +406,11 @@ script:
       - service: kubernetes.scale_workload
         data:
           workload_names:
-            - switch.web_frontend
-            - switch.api_backend
-            - switch.worker_queue
+            - switch.production_default_web_frontend
+            - switch.production_default_api_backend
+            - switch.production_default_worker_queue
           replicas: "{{ replicas | default(3) }}"
-          namespace: "production"
+          namespace: "default"
 ```
 
 #### Rolling Restart
@@ -442,7 +442,7 @@ automation:
   - alias: "Alert on deployment failure"
     trigger:
       platform: state
-      entity_id: switch.production_default_critical_app_deployment
+      entity_id: switch.production_default_critical_app
       to: "off"
       for:
         minutes: 2
