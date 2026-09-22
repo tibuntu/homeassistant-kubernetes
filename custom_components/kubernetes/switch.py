@@ -52,8 +52,13 @@ async def async_setup_entry(
     # Store the add_entities callback for dynamic entity management
     switches: list[SwitchEntity] = []
 
+    # Build the initial switches from the coordinator's first refresh — never
+    # re-fetch from the client here: a transient API error would fail the
+    # whole platform setup instead of being retried on the next poll.
+    data = coordinator.data or {}
+
     # Get all deployments and create switches for them
-    deployments = await client.get_deployments()
+    deployments = data.get("deployments", {}).values()
     deployment_namespaces = set()
     for deployment in deployments:
         namespace = deployment.get("namespace", "default")
@@ -65,7 +70,7 @@ async def async_setup_entry(
         )
 
     # Get all StatefulSets and create switches for them
-    statefulsets = await client.get_statefulsets()
+    statefulsets = data.get("statefulsets", {}).values()
     statefulset_namespaces = set()
     for statefulset in statefulsets:
         namespace = statefulset.get("namespace", "default")
@@ -77,7 +82,7 @@ async def async_setup_entry(
         )
 
     # Get all CronJobs and create switches for them
-    cronjobs = await client.get_cronjobs()
+    cronjobs = data.get("cronjobs", {}).values()
     cronjob_namespaces = set()
     for cronjob in cronjobs:
         namespace = cronjob.get("namespace", "default")
@@ -89,10 +94,9 @@ async def async_setup_entry(
         )
 
     # Get all nodes and create schedulable (cordon/uncordon) switches for them
-    nodes = await client.get_nodes()
-    for node in nodes:
+    for node_name in data.get("nodes", {}):
         switches.append(
-            KubernetesNodeSchedulableSwitch(coordinator, config_entry, node["name"])
+            KubernetesNodeSchedulableSwitch(coordinator, config_entry, node_name)
         )
 
     # Ensure all namespace devices exist

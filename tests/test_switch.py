@@ -96,20 +96,8 @@ class TestSwitchSetup:
     async def test_async_setup_entry_success(
         self, hass: HomeAssistant, mock_config_entry
     ):
-        """Test successful switch setup."""
+        """Initial switches are built from the coordinator's first refresh."""
         client = MagicMock()
-        client.get_deployments = AsyncMock(
-            return_value=[{"name": "test-deployment", "namespace": "default"}]
-        )
-        client.get_statefulsets = AsyncMock(
-            return_value=[{"name": "test-statefulset", "namespace": "default"}]
-        )
-        client.get_cronjobs = AsyncMock(
-            return_value=[{"name": "test-cronjob", "namespace": "default"}]
-        )
-        client.get_nodes = AsyncMock(
-            return_value=[{"name": "test-node", "status": "Ready"}]
-        )
 
         coordinator = MagicMock()
         coordinator.last_update_success = True
@@ -137,6 +125,7 @@ class TestSwitchSetup:
                     "suspend": False,
                 }
             },
+            "nodes": {"test-node": {"name": "test-node", "status": "Ready"}},
         }
         coordinator.client = client
 
@@ -160,15 +149,23 @@ class TestSwitchSetup:
         assert KubernetesCronJobSwitch in entity_types
         assert KubernetesNodeSchedulableSwitch in entity_types
 
+        node_switch = next(
+            e for e in added_entities if isinstance(e, KubernetesNodeSchedulableSwitch)
+        )
+        assert node_switch.node_name == "test-node"
+
+        # Setup must never hit the API directly — a transient error there
+        # would fail the platform instead of being retried on the next poll.
+        client.get_deployments.assert_not_called()
+        client.get_statefulsets.assert_not_called()
+        client.get_cronjobs.assert_not_called()
+        client.get_nodes.assert_not_called()
+
     async def test_async_setup_entry_empty_resources(
         self, hass: HomeAssistant, mock_config_entry
     ):
         """Test switch setup with no resources."""
         client = MagicMock()
-        client.get_deployments = AsyncMock(return_value=[])
-        client.get_statefulsets = AsyncMock(return_value=[])
-        client.get_cronjobs = AsyncMock(return_value=[])
-        client.get_nodes = AsyncMock(return_value=[])
 
         coordinator = MagicMock()
         coordinator.last_update_success = True
@@ -176,6 +173,7 @@ class TestSwitchSetup:
             "deployments": {},
             "statefulsets": {},
             "cronjobs": {},
+            "nodes": {},
         }
 
         mock_config_entry.runtime_data = KubernetesEntryData(
@@ -190,6 +188,28 @@ class TestSwitchSetup:
         mock_add_entities.assert_called_once()
         added_entities = mock_add_entities.call_args[0][0]
         assert len(added_entities) == 0
+
+    async def test_async_setup_entry_no_coordinator_data(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
+        """No coordinator data yields no switches and no client calls."""
+        client = MagicMock()
+
+        coordinator = MagicMock()
+        coordinator.last_update_success = True
+        coordinator.data = None
+
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=client, coordinator=coordinator
+        )
+
+        mock_add_entities = MagicMock()
+
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        mock_add_entities.assert_called_once_with([])
+        client.get_deployments.assert_not_called()
+        client.get_nodes.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
