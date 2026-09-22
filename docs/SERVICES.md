@@ -319,8 +319,14 @@ Services require the following Kubernetes RBAC permissions:
 - `apps/daemonsets`: `get`, `list`, `patch`
 
 **For CronJobs**:
-- `batch/cronjobs`: `get`, `list`, `watch`, `patch`
-- `batch/jobs`: `get`, `list`, `watch`, `create`
+- `batch/cronjobs`: `get`, `list`, `watch`, `patch` (suspend/resume via switch)
+- `batch/jobs`: `get`, `list`, `watch`, `create` (CronJob triggering via `start_workload`)
+
+**For Jobs (deletion)**:
+- `batch/jobs`: `get`, `list`, `delete` (`delete_job` service)
+
+**For Nodes (cordon/uncordon)**:
+- `nodes`: `get`, `list`, `patch` (`cordon_node` / `uncordon_node` services)
 
 **General**:
 - Access to the target namespaces
