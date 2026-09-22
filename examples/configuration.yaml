@@ -46,10 +46,10 @@ automation:
       - service: kubernetes.stop_workload
         data:
           workload_names:
-            - switch.web_app
-            - switch.api_server
-            - switch.cache_service
-          namespace: "production"
+            - switch.production_default_web_app
+            - switch.production_default_api_server
+            - switch.production_default_cache_service
+          namespace: "default"
 
   # Start multiple workloads with specific replica counts
   - alias: "Start Multiple Workloads"
@@ -60,10 +60,10 @@ automation:
       - service: kubernetes.start_workload
         data:
           workload_names:
-            - switch.web_app
-            - switch.api_server
+            - switch.production_default_web_app
+            - switch.production_default_api_server
           replicas: 3
-          namespace: "production"
+          namespace: "default"
 
   # Scale multiple StatefulSets
   - alias: "Scale Multiple StatefulSets"
@@ -74,8 +74,8 @@ automation:
       - service: kubernetes.scale_workload
         data:
           workload_names:
-            - switch.database_primary
-            - switch.database_replica
+            - switch.production_database_database_primary
+            - switch.production_database_database_replica
           replicas: 2
           namespace: "database"
 
@@ -87,7 +87,7 @@ automation:
     action:
       - service: kubernetes.stop_workload
         data:
-          workload_name: switch.monitoring
+          workload_name: switch.production_monitoring_monitoring
           namespace: "monitoring"
 
   # Trigger a CronJob manually
@@ -98,7 +98,7 @@ automation:
     action:
       - service: kubernetes.start_workload
         data:
-          workload_name: switch.backup_job
+          workload_name: switch.production_default_backup
           namespace: "default"
 
   # Multiple workloads with different replica counts (requires multiple calls)
@@ -110,15 +110,15 @@ automation:
       - service: kubernetes.scale_workload
         data:
           workload_names:
-            - switch.redis_cache
-            - switch.redis_session
+            - switch.production_cache_redis_cache
+            - switch.production_cache_redis_session
           replicas: 3
           namespace: "cache"
       - service: kubernetes.scale_workload
         data:
           workload_names:
-            - switch.elasticsearch_data
-            - switch.elasticsearch_master
+            - switch.production_logging_elasticsearch_data
+            - switch.production_logging_elasticsearch_master
           replicas: 1
           namespace: "logging"
 
@@ -141,9 +141,9 @@ script:
     sequence:
       - service: kubernetes.scale_workload
         data:
-          workload_name: switch.production_api
+          workload_name: switch.production_default_api
           replicas: 3
-          namespace: production
+          namespace: default
 
   stop_development:
     alias: "Stop Development Environment"
@@ -151,8 +151,8 @@ script:
       - service: kubernetes.stop_workload
         data:
           workload_names:
-            - switch.development_api
-            - switch.development_database
+            - switch.production_development_development_api
+            - switch.production_development_development_database
           namespace: development
       - service: notify.mobile_app
         data:
@@ -165,8 +165,8 @@ script:
       - service: kubernetes.start_workload
         data:
           workload_names:
-            - switch.development_api
-            - switch.development_database
+            - switch.production_development_development_api
+            - switch.production_development_development_database
           replicas: 1
           namespace: development
       - service: notify.mobile_app
@@ -180,15 +180,15 @@ script:
       - service: kubernetes.scale_workload
         data:
           workload_names:
-            - switch.redis_cache
-            - switch.postgres_db
+            - switch.production_default_redis_cache
+            - switch.production_default_postgres_db
           replicas: 3
-          namespace: production
+          namespace: default
       - service: kubernetes.scale_workload
         data:
-          workload_name: switch.postgres_db
+          workload_name: switch.production_default_postgres_db
           replicas: 2
-          namespace: production
+          namespace: default
 
   stop_production_databases:
     alias: "Stop Production Databases"
@@ -196,9 +196,9 @@ script:
       - service: kubernetes.stop_workload
         data:
           workload_names:
-            - switch.redis_cache
-            - switch.postgres_db
-          namespace: production
+            - switch.production_default_redis_cache
+            - switch.production_default_postgres_db
+          namespace: default
       - service: notify.mobile_app
         data:
           title: "Production Databases"
