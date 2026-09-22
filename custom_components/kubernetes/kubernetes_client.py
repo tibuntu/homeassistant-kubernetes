@@ -108,6 +108,15 @@ class ResourceVersionExpired(Exception):
     """Raised when Kubernetes returns HTTP 410 for a watch (resourceVersion too old)."""
 
 
+class KubernetesApiError(Exception):
+    """Raised when a list/count request returns a non-200 status.
+
+    List/count methods raise instead of returning empty results so the
+    coordinator reports ``UpdateFailed`` — an outage must never look like an
+    empty cluster and prune the user's entities.
+    """
+
+
 class KubernetesClient:
     """Kubernetes client for Home Assistant integration."""
 
@@ -418,8 +427,9 @@ class KubernetesClient:
         This probe runs on every poll cycle (via get_pods/get_pods_count), which
         makes it the single place that decides whether the configured token is
         still accepted. ``auth_failed`` is set only by a confirmed 401 here and
-        cleared by any other status, so the coordinator never has to inspect the
-        many call sites that swallow errors and return empty results.
+        cleared by any other status. The coordinator checks it whenever a poll
+        raises, so a 401 becomes ``ConfigEntryAuthFailed`` rather than
+        ``UpdateFailed``.
         """
         try:
             _LOGGER.debug("Testing connection with aiohttp...")
@@ -446,8 +456,7 @@ class KubernetesClient:
         try:
             # Test connection first
             if not await self._test_connection():
-                _LOGGER.error("Cannot connect to Kubernetes API")
-                return 0
+                raise KubernetesApiError("Cannot connect to Kubernetes API")
 
             result = await self._fetch_resource_count("api/v1", "pods")
             if result is not None:
@@ -456,15 +465,14 @@ class KubernetesClient:
 
         except Exception as ex:
             self._log_error("get pods count", ex)
-            return 0
+            raise
 
     async def get_pods(self) -> list[dict[str, Any]]:
         """Get detailed information about all pods in the namespace(s)."""
         try:
             # Test connection first
             if not await self._test_connection():
-                _LOGGER.error("Cannot connect to Kubernetes API")
-                return []
+                raise KubernetesApiError("Cannot connect to Kubernetes API")
 
             # Use aiohttp as primary since it works better with SSL configuration
             if self.monitor_all_namespaces:
@@ -478,7 +486,7 @@ class KubernetesClient:
 
         except Exception as ex:
             self._log_error("get pods", ex)
-            return []
+            raise
 
     async def _get_pods_aiohttp(self) -> list[dict[str, Any]]:
         """Get pods using aiohttp for configured namespaces."""
@@ -490,30 +498,19 @@ class KubernetesClient:
 
         async with aiohttp.ClientSession() as session:
             for namespace in self.namespaces:
-                try:
-                    async with session.get(
-                        f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods",
-                        headers=headers,
-                        ssl=await self._get_ssl_param(),
-                        timeout=aiohttp.ClientTimeout(total=10),
-                    ) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            all_pods.extend(
-                                self._parse_pods_data(data.get("items", []))
-                            )
-                        else:
-                            _LOGGER.warning(
-                                "aiohttp pods request failed for namespace %s with status: %s",
-                                namespace,
-                                response.status,
-                            )
-                except Exception as ex:
-                    _LOGGER.warning(
-                        "aiohttp get pods failed for namespace %s: %s",
-                        namespace,
-                        ex,
-                    )
+                async with session.get(
+                    f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods",
+                    headers=headers,
+                    ssl=await self._get_ssl_param(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        raise KubernetesApiError(
+                            f"pods request failed for namespace {namespace} "
+                            f"with status {response.status}"
+                        )
+                    data = await response.json()
+                    all_pods.extend(self._parse_pods_data(data.get("items", [])))
         return all_pods
 
     async def _get_pods_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
@@ -531,18 +528,15 @@ class KubernetesClient:
                     ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return self._parse_pods_data(data.get("items", []))
-                    else:
-                        _LOGGER.error(
-                            "aiohttp all pods request failed with status: %s",
-                            response.status,
+                    if response.status != 200:
+                        raise KubernetesApiError(
+                            f"pods request failed with status {response.status}"
                         )
-                        return []
+                    data = await response.json()
+                    return self._parse_pods_data(data.get("items", []))
         except Exception as ex:
             self._log_error("aiohttp get all pods", ex)
-            return []
+            raise
 
     def _parse_pods_data(self, pods: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Parse raw pod data from Kubernetes API into standardized format."""
@@ -696,7 +690,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get nodes count", ex)
-            return 0
+            raise
 
     async def get_nodes(self) -> list[dict[str, Any]]:
         """Get detailed information about all nodes in the cluster."""
@@ -710,7 +704,7 @@ class KubernetesClient:
         except Exception as ex:
             _LOGGER.error("get_nodes() failed with exception: %s", ex, exc_info=True)
             self._log_error("get nodes", ex)
-            return []
+            raise
 
     async def _get_nodes_aiohttp(self) -> list[dict[str, Any]]:
         """Get detailed nodes information using aiohttp."""
@@ -866,16 +860,13 @@ class KubernetesClient:
                                 continue
                         _LOGGER.debug("Successfully parsed %d nodes", len(nodes))
                         return nodes
-                    else:
-                        _LOGGER.error(
-                            "aiohttp nodes request failed with status: %s",
-                            response.status,
-                        )
-                        return []
+                    raise KubernetesApiError(
+                        f"nodes request failed with status {response.status}"
+                    )
         except Exception as ex:
             _LOGGER.error("Exception in _get_nodes_aiohttp: %s", ex, exc_info=True)
             self._log_error("aiohttp get nodes", ex)
-            return []
+            raise
 
     def _parse_memory(self, memory_str: str, output_type: str = "MiB") -> float:
         """Parse Kubernetes memory string to specified unit (KiB, MiB, or GiB)."""
@@ -1167,48 +1158,35 @@ class KubernetesClient:
                     ssl=await self._get_ssl_param(),
                     timeout=timeout,
                 ) as response:
-                    if response.status == 200:
+                    if response.status != 200:
+                        raise KubernetesApiError(
+                            f"{resource_name} request failed with status "
+                            f"{response.status}"
+                        )
+                    data = await response.json()
+                    for item in data.get("items", []):
+                        parsed = parse_fn(item)
+                        if parsed is not None:
+                            results.append(parsed)
+            else:
+                for namespace in self.namespaces:
+                    url = f"https://{self.host}:{self.port}/{api_path}/namespaces/{namespace}/{resource_name}"
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        ssl=await self._get_ssl_param(),
+                        timeout=timeout,
+                    ) as response:
+                        if response.status != 200:
+                            raise KubernetesApiError(
+                                f"{resource_name} request failed for namespace "
+                                f"{namespace} with status {response.status}"
+                            )
                         data = await response.json()
                         for item in data.get("items", []):
                             parsed = parse_fn(item)
                             if parsed is not None:
                                 results.append(parsed)
-                    else:
-                        _LOGGER.warning(
-                            "aiohttp %s request failed with status: %s",
-                            resource_name,
-                            response.status,
-                        )
-            else:
-                for namespace in self.namespaces:
-                    try:
-                        url = f"https://{self.host}:{self.port}/{api_path}/namespaces/{namespace}/{resource_name}"
-                        async with session.get(
-                            url,
-                            headers=headers,
-                            ssl=await self._get_ssl_param(),
-                            timeout=timeout,
-                        ) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                for item in data.get("items", []):
-                                    parsed = parse_fn(item)
-                                    if parsed is not None:
-                                        results.append(parsed)
-                            else:
-                                _LOGGER.warning(
-                                    "aiohttp %s request failed for namespace %s with status: %s",
-                                    resource_name,
-                                    namespace,
-                                    response.status,
-                                )
-                    except Exception as ex:
-                        _LOGGER.warning(
-                            "aiohttp get %s failed for namespace %s: %s",
-                            resource_name,
-                            namespace,
-                            ex,
-                        )
         return results
 
     async def _fetch_resource_count(
@@ -1238,42 +1216,29 @@ class KubernetesClient:
                     ssl=await self._get_ssl_param(),
                     timeout=timeout,
                 ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        total_count = len(data.get("items", []))
-                    else:
-                        _LOGGER.warning(
-                            "aiohttp %s count request failed with status: %s",
-                            resource_name,
-                            response.status,
+                    if response.status != 200:
+                        raise KubernetesApiError(
+                            f"{resource_name} count request failed with status "
+                            f"{response.status}"
                         )
+                    data = await response.json()
+                    total_count = len(data.get("items", []))
             else:
                 for namespace in self.namespaces:
-                    try:
-                        url = f"https://{self.host}:{self.port}/{api_path}/namespaces/{namespace}/{resource_name}"
-                        async with session.get(
-                            url,
-                            headers=headers,
-                            ssl=await self._get_ssl_param(),
-                            timeout=timeout,
-                        ) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                total_count += len(data.get("items", []))
-                            else:
-                                _LOGGER.warning(
-                                    "aiohttp %s count request failed for namespace %s with status: %s",
-                                    resource_name,
-                                    namespace,
-                                    response.status,
-                                )
-                    except Exception as ex:
-                        _LOGGER.warning(
-                            "aiohttp get %s count failed for namespace %s: %s",
-                            resource_name,
-                            namespace,
-                            ex,
-                        )
+                    url = f"https://{self.host}:{self.port}/{api_path}/namespaces/{namespace}/{resource_name}"
+                    async with session.get(
+                        url,
+                        headers=headers,
+                        ssl=await self._get_ssl_param(),
+                        timeout=timeout,
+                    ) as response:
+                        if response.status != 200:
+                            raise KubernetesApiError(
+                                f"{resource_name} count request failed for "
+                                f"namespace {namespace} with status {response.status}"
+                            )
+                        data = await response.json()
+                        total_count += len(data.get("items", []))
         return total_count
 
     async def get_deployments_count(self) -> int:
@@ -1287,7 +1252,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get deployments count", ex)
-            return 0
+            raise
 
     async def get_deployments(
         self, include_metrics: bool = True
@@ -1306,7 +1271,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get deployments", ex)
-            return []
+            raise
 
     async def scale_deployment(
         self, deployment_name: str, replicas: int, namespace: str | None = None
@@ -1454,7 +1419,7 @@ class KubernetesClient:
             return result or 0
         except Exception as ex:
             self._log_error("get statefulsets count", ex)
-            return 0
+            raise
 
     async def get_statefulsets(
         self, include_metrics: bool = True
@@ -1473,7 +1438,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get statefulsets", ex)
-            return []
+            raise
 
     async def scale_statefulset(
         self, statefulset_name: str, replicas: int, namespace: str | None = None
@@ -2376,7 +2341,7 @@ class KubernetesClient:
             return result or 0
         except Exception as ex:
             self._log_error("get daemonsets count", ex)
-            return 0
+            raise
 
     async def get_daemonsets(self) -> list[dict[str, Any]]:
         """Get all DaemonSets in the namespace(s) with their details."""
@@ -2391,7 +2356,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get daemonsets", ex)
-            return []
+            raise
 
     # Ingress methods
     async def get_ingresses_count(self) -> int:
@@ -2405,7 +2370,7 @@ class KubernetesClient:
             return result or 0
         except Exception as ex:
             self._log_error("get ingresses count", ex)
-            return 0
+            raise
 
     async def get_ingresses(self) -> list[dict[str, Any]]:
         """Get all Ingresses in the namespace(s) with their details."""
@@ -2418,7 +2383,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get ingresses", ex)
-            return []
+            raise
 
     async def get_services_count(self) -> int:
         """Get the count of Services in the namespace(s)."""
@@ -2429,7 +2394,7 @@ class KubernetesClient:
             return result or 0
         except Exception as ex:
             self._log_error("get services count", ex)
-            return 0
+            raise
 
     async def get_services(self) -> list[dict[str, Any]]:
         """Get all Services in the namespace(s) with their details."""
@@ -2442,7 +2407,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get services", ex)
-            return []
+            raise
 
     # CronJob methods
     async def get_cronjobs_count(self) -> int:
@@ -2454,7 +2419,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get_cronjobs_count", ex)
-            return 0
+            raise
 
     async def get_cronjobs(self) -> list[dict[str, Any]]:
         """Get detailed information about CronJobs in the cluster."""
@@ -2467,7 +2432,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get_cronjobs", ex)
-            return []
+            raise
 
     async def _patch_cronjob_aiohttp(
         self,
@@ -2727,7 +2692,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get_jobs_count", ex)
-            return 0
+            raise
 
     async def get_jobs(self) -> list[dict[str, Any]]:
         """Get detailed information about Jobs in the cluster."""
@@ -2740,7 +2705,7 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get_jobs", ex)
-            return []
+            raise
 
     def _format_job_from_dict(self, job_dict: dict[str, Any]) -> dict[str, Any]:
         """Format a Job API response dict to the internal representation."""

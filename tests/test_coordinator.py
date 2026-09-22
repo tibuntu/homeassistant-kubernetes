@@ -420,6 +420,44 @@ class TestKubernetesDataCoordinator:
         ):
             await coordinator._async_update_data()
 
+    async def test_async_update_data_transport_error_skips_orphan_cleanup(
+        self, coordinator, mock_client
+    ):
+        """A network outage fails the poll without pruning any entities.
+
+        The client raises instead of returning empty results, so the fetch
+        aborts as UpdateFailed before the orphan cleanup ever runs.
+        """
+        mock_client.auth_failed = False
+        mock_client.get_pods.side_effect = aiohttp.ClientConnectionError(
+            "Connection refused"
+        )
+
+        with (
+            patch.object(
+                coordinator, "_cleanup_orphaned_entities", new_callable=AsyncMock
+            ) as mock_cleanup,
+            patch(
+                "custom_components.kubernetes.coordinator.cleanup_orphaned_namespace_devices",
+                new_callable=AsyncMock,
+            ) as mock_device_cleanup,
+            pytest.raises(UpdateFailed, match="Connection refused"),
+        ):
+            await coordinator._async_update_data()
+
+        mock_cleanup.assert_not_called()
+        mock_device_cleanup.assert_not_called()
+
+    async def test_async_update_data_raising_fetch_with_auth_failed_reauths(
+        self, coordinator, mock_client
+    ):
+        """A fetch that raises after a confirmed 401 becomes ConfigEntryAuthFailed."""
+        mock_client.auth_failed = True
+        mock_client.get_pods.side_effect = Exception("Cannot connect to Kubernetes API")
+
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coordinator._async_update_data()
+
     async def test_get_deployment_data(self, coordinator):
         """Test getting deployment data."""
         coordinator.data = {

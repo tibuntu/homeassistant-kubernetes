@@ -9,6 +9,7 @@ from kubernetes.client import ApiException
 import pytest
 
 from custom_components.kubernetes.kubernetes_client import (
+    KubernetesApiError,
     KubernetesClient,
     ResourceVersionExpired,
     build_ssl_param,
@@ -372,20 +373,21 @@ async def test_get_pods_count_empty(mock_client):
 
 
 async def test_get_pods_count_api_exception(mock_client):
-    """Test pods count retrieval when API raises exception."""
+    """A failed connection probe raises instead of reporting zero pods."""
     # Mock aiohttp session to simulate connection failure
     mock_session = MagicMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = AsyncMock(side_effect=Exception("Connection failed"))
 
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-        return_value=mock_session,
+    with (
+        patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ),
+        pytest.raises(KubernetesApiError, match="Cannot connect"),
     ):
-        count = await mock_client.get_pods_count()
-
-    assert count == 0
+        await mock_client.get_pods_count()
 
 
 async def test_get_nodes_count_success(mock_client):
@@ -677,21 +679,19 @@ async def test_get_ingresses_count_empty(mock_client):
 
 
 async def test_get_ingresses_count_api_exception(mock_client):
-    """Test Ingresses count retrieval when API raises exception."""
+    """Ingresses count propagates API exceptions."""
     mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
 
-    count = await mock_client.get_ingresses_count()
-
-    assert count == 0
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_ingresses_count()
 
 
 async def test_get_ingresses_api_exception(mock_client):
-    """Test Ingresses retrieval when API raises exception."""
+    """Ingresses retrieval propagates API exceptions."""
     mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
 
-    ingresses = await mock_client.get_ingresses()
-
-    assert ingresses == []
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_ingresses()
 
 
 async def test_get_ingresses_empty(mock_client):
@@ -877,10 +877,11 @@ async def test_get_services_count_empty(mock_client):
 
 
 async def test_get_services_count_api_exception(mock_client):
-    """Count retrieval returns 0 when the API raises."""
+    """Count retrieval propagates API exceptions."""
     mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
 
-    assert await mock_client.get_services_count() == 0
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_services_count()
 
 
 async def test_get_services_success(mock_client):
@@ -905,10 +906,11 @@ async def test_get_services_empty(mock_client):
 
 
 async def test_get_services_api_exception(mock_client):
-    """Services retrieval returns [] when the API raises."""
+    """Services retrieval propagates API exceptions."""
     mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
 
-    assert await mock_client.get_services() == []
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_services()
 
 
 def _service_item(**overrides):
@@ -1326,12 +1328,11 @@ async def test_get_cronjobs_count_all_namespaces(mock_client):
 
 
 async def test_get_cronjobs_count_api_exception(mock_client):
-    """Test CronJobs count retrieval when API raises exception."""
+    """CronJobs count propagates API exceptions."""
     mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
 
-    count = await mock_client.get_cronjobs_count()
-
-    assert count == 0
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_cronjobs_count()
 
 
 async def test_get_cronjobs_success(mock_client):
@@ -1401,12 +1402,11 @@ async def test_get_cronjobs_all_namespaces(mock_client):
 
 
 async def test_get_cronjobs_api_exception(mock_client):
-    """Test CronJobs retrieval when API raises exception."""
+    """CronJobs retrieval propagates API exceptions."""
     mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
 
-    cronjobs = await mock_client.get_cronjobs()
-
-    assert len(cronjobs) == 0
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_cronjobs()
 
 
 async def test_trigger_cronjob_success(mock_client):
@@ -2255,18 +2255,22 @@ class TestKubernetesClientExtended:
             assert nodes[0]["status"] == "NotReady"
 
     async def test_get_nodes_aiohttp_failure(self, extended_client):
-        """Test _get_nodes_aiohttp failure scenarios."""
+        """_get_nodes_aiohttp raises on non-200 and propagates transport errors."""
         # Test non-200 status
         with patch("aiohttp.ClientSession.get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 500
             mock_get.return_value.__aenter__.return_value = mock_response
 
-            assert await extended_client._get_nodes_aiohttp() == []
+            with pytest.raises(KubernetesApiError, match="status 500"):
+                await extended_client._get_nodes_aiohttp()
 
         # Test exception
-        with patch("aiohttp.ClientSession.get", side_effect=Exception("Network error")):
-            assert await extended_client._get_nodes_aiohttp() == []
+        with (
+            patch("aiohttp.ClientSession.get", side_effect=Exception("Network error")),
+            pytest.raises(Exception, match="Network error"),
+        ):
+            await extended_client._get_nodes_aiohttp()
 
 
 class TestKubernetesClientGetPods:
@@ -2371,24 +2375,26 @@ class TestKubernetesClientGetPods:
 
     @pytest.mark.asyncio
     async def test_get_pods_http_error(self, mock_client):
-        """Test get_pods with HTTP error."""
+        """get_pods raises when the connection probe sees an HTTP error."""
         with patch("aiohttp.ClientSession.get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 500
             mock_get.return_value.__aenter__.return_value = mock_response
 
-            result = await mock_client.get_pods()
-            assert result == []
+            with pytest.raises(KubernetesApiError):
+                await mock_client.get_pods()
 
     @pytest.mark.asyncio
     async def test_get_pods_connection_error(self, mock_client):
-        """Test get_pods with connection error."""
-        with patch(
-            "aiohttp.ClientSession.get",
-            side_effect=aiohttp.ClientError("Connection error"),
+        """get_pods raises when the connection probe cannot reach the API."""
+        with (
+            patch(
+                "aiohttp.ClientSession.get",
+                side_effect=aiohttp.ClientError("Connection error"),
+            ),
+            pytest.raises(KubernetesApiError),
         ):
-            result = await mock_client.get_pods()
-            assert result == []
+            await mock_client.get_pods()
 
     @pytest.mark.asyncio
     async def test_get_pods_all_namespaces(self, mock_client):
@@ -2530,7 +2536,7 @@ class TestFetchResourceCount:
         assert count == 3
 
     async def test_error_status(self, mock_client):
-        """Test counting returns 0 on non-200 status."""
+        """A non-200 per-namespace count raises KubernetesApiError."""
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
@@ -2544,18 +2550,21 @@ class TestFetchResourceCount:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(return_value=mock_response)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(
+                KubernetesApiError,
+                match="deployments count request failed for namespace default "
+                "with status 403",
+            ),
         ):
-            count = await mock_client._fetch_resource_count(
-                "apis/apps/v1", "deployments"
-            )
-
-        assert count == 0
+            await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
     async def test_exception(self, mock_client):
-        """Test counting returns 0 on exception."""
+        """Transport errors propagate out of the per-namespace count loop."""
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
@@ -2564,15 +2573,14 @@ class TestFetchResourceCount:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(side_effect=Exception("Network error"))
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(Exception, match="Network error"),
         ):
-            count = await mock_client._fetch_resource_count(
-                "apis/apps/v1", "deployments"
-            )
-
-        assert count == 0
+            await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
     async def test_cluster_scoped(self, mock_client):
         """Test counting cluster-scoped resources (like nodes)."""
@@ -2734,7 +2742,7 @@ class TestFetchResourceList:
         assert len(result) == 2
 
     async def test_error_status(self, mock_client):
-        """Test fetch returns empty on non-200 status."""
+        """A non-200 per-namespace list raises KubernetesApiError."""
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
@@ -2748,20 +2756,25 @@ class TestFetchResourceList:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(return_value=mock_response)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(
+                KubernetesApiError,
+                match="deployments request failed for namespace default "
+                "with status 403",
+            ),
         ):
-            result = await mock_client._fetch_resource_list(
+            await mock_client._fetch_resource_list(
                 "apis/apps/v1",
                 "deployments",
                 mock_client._parse_replica_workload_item,
             )
 
-        assert result == []
-
     async def test_exception(self, mock_client):
-        """Test fetch returns empty on exception."""
+        """Transport errors propagate out of the per-namespace list loop."""
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
@@ -2770,17 +2783,18 @@ class TestFetchResourceList:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(side_effect=Exception("Network error"))
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(Exception, match="Network error"),
         ):
-            result = await mock_client._fetch_resource_list(
+            await mock_client._fetch_resource_list(
                 "apis/apps/v1",
                 "deployments",
                 mock_client._parse_replica_workload_item,
             )
-
-        assert result == []
 
     async def test_parse_fn_returning_none_skips_item(self, mock_client):
         """Test that items where parse_fn returns None are skipped."""
@@ -4173,7 +4187,7 @@ class TestFetchResourceCountExtended:
     """Extended tests for _fetch_resource_count edge cases."""
 
     async def test_ssl_error(self, mock_client):
-        """_fetch_resource_count returns 0 on SSL errors."""
+        """_fetch_resource_count propagates SSL errors."""
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
@@ -4186,18 +4200,17 @@ class TestFetchResourceCountExtended:
             )
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(aiohttp.ClientSSLError),
         ):
-            count = await mock_client._fetch_resource_count(
-                "apis/apps/v1", "deployments"
-            )
-
-        assert count == 0
+            await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
     async def test_timeout_error(self, mock_client):
-        """_fetch_resource_count returns 0 on timeout."""
+        """_fetch_resource_count propagates timeouts."""
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
@@ -4206,18 +4219,17 @@ class TestFetchResourceCountExtended:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(side_effect=TimeoutError())
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(TimeoutError),
         ):
-            count = await mock_client._fetch_resource_count(
-                "apis/apps/v1", "deployments"
-            )
-
-        assert count == 0
+            await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
     async def test_multiple_namespaces_partial_failure(self, mock_client):
-        """_fetch_resource_count sums only successful namespaces."""
+        """A failing namespace fails the whole count instead of being skipped."""
         mock_client.namespaces = ["default", "broken", "prod"]
         mock_client.monitor_all_namespaces = False
 
@@ -4258,19 +4270,20 @@ class TestFetchResourceCountExtended:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(side_effect=make_get)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(Exception, match="Network error for broken namespace"),
         ):
-            count = await mock_client._fetch_resource_count(
-                "apis/apps/v1", "deployments"
-            )
+            await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
-        # default(1) + broken(0) + prod(2) = 3
-        assert count == 3
+        # The loop stops at the broken namespace; prod is never requested.
+        assert call_count == 2
 
     async def test_non_200_all_namespaces(self, mock_client):
-        """_fetch_resource_count returns 0 on non-200 for all namespaces mode."""
+        """_fetch_resource_count raises on non-200 in all-namespaces mode."""
         mock_client.monitor_all_namespaces = True
 
         mock_response = MagicMock()
@@ -4283,22 +4296,24 @@ class TestFetchResourceCountExtended:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(return_value=mock_response)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(
+                KubernetesApiError,
+                match="deployments count request failed with status 500",
+            ),
         ):
-            count = await mock_client._fetch_resource_count(
-                "apis/apps/v1", "deployments"
-            )
-
-        assert count == 0
+            await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
 
 class TestFetchResourceListExtended:
     """Extended tests for _fetch_resource_list edge cases."""
 
     async def test_ssl_error(self, mock_client):
-        """_fetch_resource_list returns empty on SSL errors."""
+        """_fetch_resource_list propagates SSL errors."""
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
@@ -4311,17 +4326,18 @@ class TestFetchResourceListExtended:
             )
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(aiohttp.ClientSSLError),
         ):
-            result = await mock_client._fetch_resource_list(
+            await mock_client._fetch_resource_list(
                 "apis/apps/v1",
                 "deployments",
                 mock_client._parse_replica_workload_item,
             )
-
-        assert result == []
 
     async def test_cluster_scoped_success(self, mock_client):
         """_fetch_resource_list with cluster_scoped=True uses cluster-wide URL."""
@@ -4359,7 +4375,7 @@ class TestFetchResourceListExtended:
         assert len(result) == 1
 
     async def test_multiple_namespaces_partial_failure(self, mock_client):
-        """_fetch_resource_list collects results from successful namespaces only."""
+        """A failing namespace fails the whole list instead of being skipped."""
         mock_client.namespaces = ["good", "bad"]
         mock_client.monitor_all_namespaces = False
 
@@ -4390,21 +4406,21 @@ class TestFetchResourceListExtended:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(side_effect=make_get)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(Exception, match="Namespace not accessible"),
         ):
-            result = await mock_client._fetch_resource_list(
+            await mock_client._fetch_resource_list(
                 "apis/apps/v1",
                 "deployments",
                 mock_client._parse_replica_workload_item,
             )
 
-        assert len(result) == 1
-        assert result[0]["name"] == "dep1"
-
     async def test_non_200_per_namespace(self, mock_client):
-        """_fetch_resource_list skips namespaces with non-200 responses."""
+        """_fetch_resource_list raises on a non-200 per-namespace response."""
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
@@ -4418,17 +4434,47 @@ class TestFetchResourceListExtended:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.get = MagicMock(return_value=mock_response)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(KubernetesApiError, match="status 404"),
         ):
-            result = await mock_client._fetch_resource_list(
+            await mock_client._fetch_resource_list(
                 "apis/apps/v1",
                 "deployments",
                 mock_client._parse_replica_workload_item,
             )
 
-        assert result == []
+    async def test_non_200_all_namespaces(self, mock_client):
+        """_fetch_resource_list raises on non-200 in all-namespaces mode."""
+        mock_client.monitor_all_namespaces = True
+
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(
+                KubernetesApiError, match="deployments request failed with status 500"
+            ),
+        ):
+            await mock_client._fetch_resource_list(
+                "apis/apps/v1",
+                "deployments",
+                mock_client._parse_replica_workload_item,
+            )
 
 
 class TestScaleDeploymentExtended:
@@ -4826,26 +4872,51 @@ class TestGetPodsExtended:
         assert result[1]["name"] == "Unknown"
 
     async def test_get_pods_connection_failure(self, mock_client):
-        """get_pods returns empty when connection test fails."""
+        """get_pods raises when the connection test fails."""
         mock_client._test_connection = AsyncMock(return_value=False)
 
-        result = await mock_client.get_pods()
+        with pytest.raises(KubernetesApiError, match="Cannot connect"):
+            await mock_client.get_pods()
 
-        assert result == []
+    async def test_get_pods_aiohttp_non_200_raises(self, mock_client):
+        """_get_pods_aiohttp raises KubernetesApiError on a non-200 namespace."""
+        mock_client.namespaces = ["default"]
+
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 503
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            with pytest.raises(
+                KubernetesApiError,
+                match="pods request failed for namespace default with status 503",
+            ):
+                await mock_client._get_pods_aiohttp()
+
+    async def test_get_pods_all_namespaces_non_200_raises(self, mock_client):
+        """_get_pods_all_namespaces_aiohttp raises KubernetesApiError on non-200."""
+        with patch("aiohttp.ClientSession.get") as mock_get:
+            mock_response = AsyncMock()
+            mock_response.status = 502
+            mock_get.return_value.__aenter__.return_value = mock_response
+
+            with pytest.raises(
+                KubernetesApiError, match="pods request failed with status 502"
+            ):
+                await mock_client._get_pods_all_namespaces_aiohttp()
 
 
 class TestGetNodesExtended:
     """Extended tests for get_nodes."""
 
-    async def test_get_nodes_exception_returns_empty(self, mock_client):
-        """get_nodes returns empty list on exception."""
+    async def test_get_nodes_exception_propagates(self, mock_client):
+        """get_nodes propagates exceptions instead of returning an empty list."""
         mock_client._get_nodes_aiohttp = AsyncMock(
             side_effect=Exception("Catastrophic failure")
         )
 
-        result = await mock_client.get_nodes()
-
-        assert result == []
+        with pytest.raises(Exception, match="Catastrophic failure"):
+            await mock_client.get_nodes()
 
 
 class TestParseReplicaWorkloadItem:
@@ -4926,12 +4997,11 @@ class TestGetJobs:
         assert result[1]["active"] == 1
 
     async def test_get_jobs_handles_error(self, mock_client):
-        """get_jobs returns empty list on exception."""
+        """get_jobs propagates exceptions."""
         mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API error"))
 
-        result = await mock_client.get_jobs()
-
-        assert result == []
+        with pytest.raises(Exception, match="API error"):
+            await mock_client.get_jobs()
 
     async def test_get_jobs_empty_response(self, mock_client):
         """get_jobs returns empty list when no jobs exist."""
@@ -4954,14 +5024,13 @@ class TestGetJobsCount:
         assert count == 5
 
     async def test_get_jobs_count_handles_error(self, mock_client):
-        """get_jobs_count returns 0 on exception."""
+        """get_jobs_count propagates exceptions."""
         mock_client._fetch_resource_count = AsyncMock(
             side_effect=Exception("Connection failed")
         )
 
-        count = await mock_client.get_jobs_count()
-
-        assert count == 0
+        with pytest.raises(Exception, match="Connection failed"):
+            await mock_client.get_jobs_count()
 
     async def test_get_jobs_count_returns_zero(self, mock_client):
         """get_jobs_count returns 0 when no jobs exist."""
@@ -5861,23 +5930,21 @@ class TestGetPodsCountSuccessLogging:
         mock_client._fetch_resource_count.assert_called_once_with("api/v1", "pods")
 
     async def test_get_pods_count_connection_failure(self, mock_client):
-        """Test get_pods_count returns 0 when connection fails."""
+        """get_pods_count raises when the connection test fails."""
         mock_client._test_connection = AsyncMock(return_value=False)
 
-        count = await mock_client.get_pods_count()
-
-        assert count == 0
+        with pytest.raises(KubernetesApiError, match="Cannot connect"):
+            await mock_client.get_pods_count()
 
     async def test_get_pods_count_exception(self, mock_client):
-        """Test get_pods_count returns 0 on exception."""
+        """get_pods_count propagates exceptions."""
         mock_client._test_connection = AsyncMock(return_value=True)
         mock_client._fetch_resource_count = AsyncMock(
             side_effect=Exception("API error")
         )
 
-        count = await mock_client.get_pods_count()
-
-        assert count == 0
+        with pytest.raises(Exception, match="API error"):
+            await mock_client.get_pods_count()
 
 
 class TestGetNodesCountSuccessLogging:
@@ -5892,14 +5959,13 @@ class TestGetNodesCountSuccessLogging:
         assert count == 3
 
     async def test_get_nodes_count_exception(self, mock_client):
-        """Test get_nodes_count returns 0 on exception."""
+        """get_nodes_count propagates exceptions."""
         mock_client._fetch_resource_count = AsyncMock(
             side_effect=Exception("Cluster unreachable")
         )
 
-        count = await mock_client.get_nodes_count()
-
-        assert count == 0
+        with pytest.raises(Exception, match="Cluster unreachable"):
+            await mock_client.get_nodes_count()
 
 
 class TestGetNodesAiohttpNodeParseException:
@@ -6024,24 +6090,22 @@ class TestGetPodsSuccessLogging:
 
         assert len(result) == 2
 
-    async def test_get_pods_connection_failure_returns_empty(self, mock_client):
-        """Test get_pods returns empty list when connection fails."""
+    async def test_get_pods_connection_failure_raises(self, mock_client):
+        """get_pods raises when the connection test fails."""
         mock_client._test_connection = AsyncMock(return_value=False)
 
-        result = await mock_client.get_pods()
+        with pytest.raises(KubernetesApiError, match="Cannot connect"):
+            await mock_client.get_pods()
 
-        assert result == []
-
-    async def test_get_pods_exception_returns_empty(self, mock_client):
-        """Test get_pods returns empty list on general exception."""
+    async def test_get_pods_exception_propagates(self, mock_client):
+        """get_pods propagates a general exception after logging it."""
         mock_client._test_connection = AsyncMock(return_value=True)
         mock_client._get_pods_aiohttp = AsyncMock(
             side_effect=Exception("Unexpected error")
         )
 
-        result = await mock_client.get_pods()
-
-        assert result == []
+        with pytest.raises(Exception, match="Unexpected error"):
+            await mock_client.get_pods()
 
     async def test_get_pods_all_namespaces_success(self, mock_client):
         """Test get_pods with monitor_all_namespaces delegates correctly."""
@@ -6071,14 +6135,13 @@ class TestGetNodesSuccessLogging:
         assert len(result) == 2
 
     async def test_get_nodes_exception_logging(self, mock_client):
-        """Test get_nodes returns empty on exception and logs error."""
+        """get_nodes logs and re-raises exceptions."""
         mock_client._get_nodes_aiohttp = AsyncMock(
             side_effect=Exception("API unavailable")
         )
 
-        result = await mock_client.get_nodes()
-
-        assert result == []
+        with pytest.raises(Exception, match="API unavailable"):
+            await mock_client.get_nodes()
 
 
 class TestDeletePod:

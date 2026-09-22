@@ -99,7 +99,7 @@ The service account needs these permissions:
 
 ### Problem
 
-Home Assistant shows a repair issue titled **Missing permissions for `<resources>` on `<cluster>`**, and the named resources (for example `services`) show no data in the panel and a count of 0.
+Home Assistant shows a repair issue titled **Missing permissions for `<resources>` on `<cluster>`**. If the ServiceAccount also lacks `list` on that resource, every poll fails and all of the integration's entities become unavailable until the permission is granted — the integration never shows a partial or empty cluster.
 
 ### Solution
 
@@ -109,7 +109,7 @@ The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named re
 
 ### Problem
 
-Cannot connect to Kubernetes API server.
+Cannot connect to Kubernetes API server. While the API is unreachable (network outage, TLS error, 5xx from the API server) the coordinator's poll fails and every entity becomes **unavailable**; nothing is deleted, and the entities recover on the next successful poll.
 
 ### Solution
 
