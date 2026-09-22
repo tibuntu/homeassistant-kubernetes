@@ -233,12 +233,20 @@ automation:
     trigger:
       - platform: template
         value_template: >
-          {% set nodes = states.sensor | selectattr('entity_id', 'match', 'sensor.production_.*') | list %}
+          {# Node sensors are identified by the OS_image attribute, since their
+             entity_id no longer has a distinguishing prefix (see Entity Naming). #}
+          {% set nodes = states.sensor | selectattr('attributes.OS_image', 'defined') | list %}
           {% for node in nodes %}
-            {% set memory_used = state_attr(node.entity_id, 'memory_capacity_gb') | float - state_attr(node.entity_id, 'memory_allocatable_gb') | float %}
-            {% set memory_total = state_attr(node.entity_id, 'memory_capacity_gb') | float %}
-            {% if memory_used / memory_total > 0.9 %}
-              true
+            {# memory_capacity_(GiB) / memory_allocatable_(GiB) are formatted
+               strings like "16 GiB" — strip the unit before casting to float. #}
+            {% set capacity = state_attr(node.entity_id, 'memory_capacity_(GiB)') %}
+            {% set allocatable = state_attr(node.entity_id, 'memory_allocatable_(GiB)') %}
+            {% if capacity and allocatable %}
+              {% set memory_total = capacity.split(' ')[0] | float %}
+              {% set memory_used = memory_total - (allocatable.split(' ')[0] | float) %}
+              {% if memory_total > 0 and memory_used / memory_total > 0.9 %}
+                true
+              {% endif %}
             {% endif %}
           {% endfor %}
     action:
@@ -365,7 +373,12 @@ views:
           title: "All Cluster Nodes"
         filter:
           include:
-            - entity_id: "sensor.production_*"
+            # Filtering by the OS_image attribute (unique to node sensors) instead
+            # of an entity_id wildcard, since node sensor IDs no longer have a
+            # distinguishing prefix (see Entity Naming) and a "sensor.production_*"
+            # wildcard would also match the count sensors.
+            - attributes:
+                OS_image: ".*"
         sort:
           method: name
       - type: markdown
@@ -373,10 +386,10 @@ views:
           ## Node Resources
 
           **{{ states('sensor.production_worker_1') }}** Worker 1:
-          - Memory: {{ state_attr('sensor.production_worker_1', 'memory_allocatable_gb') }}GB / {{ state_attr('sensor.production_worker_1', 'memory_capacity_gb') }}GB
-          - CPU Cores: {{ state_attr('sensor.production_worker_1', 'cpu_cores') }}
-          - Internal IP: {{ state_attr('sensor.production_worker_1', 'internal_ip') }}
-          - OS: {{ state_attr('sensor.production_worker_1', 'os_image') }}
+          - Memory: {{ state_attr('sensor.production_worker_1', 'memory_allocatable_(GiB)') }} / {{ state_attr('sensor.production_worker_1', 'memory_capacity_(GiB)') }}
+          - CPU: {{ state_attr('sensor.production_worker_1', 'CPU') }}
+          - Internal IP: {{ state_attr('sensor.production_worker_1', 'internal_IP') }}
+          - OS: {{ state_attr('sensor.production_worker_1', 'OS_image') }}
 ```
 
 ## Script Examples
