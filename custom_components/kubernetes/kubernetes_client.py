@@ -178,7 +178,7 @@ class KubernetesClient:
         # ConfigEntryAuthFailed so Home Assistant starts the reauth flow.
         self.auth_failed = False
 
-        # In-flight background token-file refresh (see api_token / async_refresh_token).
+        # In-flight background token-file refresh (see api_token / _ensure_refresh_task).
         self._token_refresh_task: asyncio.Task[None] | None = None
 
         # Initialize Kubernetes client
@@ -188,7 +188,7 @@ class KubernetesClient:
         """Synchronously read+strip the projected SA token file.
 
         Blocking by design — callers must run this off the event loop (see
-        async_refresh_token) except when no loop is running at all.
+        _ensure_refresh_task) except when no loop is running at all.
         """
         try:
             with open(IN_CLUSTER_TOKEN_PATH, encoding="utf-8") as fh:
@@ -225,17 +225,6 @@ class KubernetesClient:
             _LOGGER.debug("In-cluster token refresh failed", exc_info=True)
         finally:
             self._token_refresh_task = None
-
-    async def async_refresh_token(self) -> None:
-        """Re-read the projected SA token off the event loop.
-
-        Concurrent callers share one in-flight refresh instead of each
-        starting their own executor read. Used by the api_token property; the
-        401 retry in _test_connection_aiohttp does its own direct read
-        instead, since joining an already-in-flight (possibly pre-rotation)
-        refresh would not guarantee a post-invalidation token.
-        """
-        await self._ensure_refresh_task()
 
     @property
     def api_token(self) -> str:
@@ -501,7 +490,7 @@ class KubernetesClient:
                     # A projected ServiceAccount token may have rotated between
                     # the cached read and this request. Drop the cache and retry
                     # once so routine rotation never triggers a reauth prompt.
-                    # Read directly here rather than via async_refresh_token:
+                    # Read directly here rather than via _ensure_refresh_task:
                     # joining an already in-flight refresh could return a
                     # token that finished reading before this invalidation,
                     # i.e. still the pre-rotation value.

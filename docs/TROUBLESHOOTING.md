@@ -109,7 +109,7 @@ The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named re
 
 ### Problem
 
-Cannot connect to Kubernetes API server. While the API is unreachable (network outage, TLS error, 5xx from the API server) the coordinator's poll fails and every entity becomes **unavailable**; nothing is deleted, and the entities recover on the next successful poll.
+Cannot connect to Kubernetes API server. While the API is unreachable (network outage, TLS error, 5xx from the API server) the coordinator's poll fails and every entity becomes **unavailable**; nothing is deleted, and the entities recover on the next successful poll. If the API is unreachable when Home Assistant starts, the integration shows "Retrying setup" and keeps retrying until the cluster answers — it no longer loads with empty entities.
 
 ### Solution
 
