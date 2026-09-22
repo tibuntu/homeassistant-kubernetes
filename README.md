@@ -35,7 +35,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 | Component | Version |
 |-----------|---------|
-| Home Assistant | 2024.1+ |
+| Home Assistant | 2025.7+ |
 | Python | 3.13+ |
 | Kubernetes | **1.35 – 1.37** (the three most recent stable releases) |
 
@@ -98,7 +98,7 @@ Custom integrations are not part of Home Assistant's official [Integration Quali
 
 - Fully UI-based setup with connection validation, duplicate detection, a reconfigure flow, and a re-authentication prompt when the API token becomes invalid
 - Service calls that surface errors in the UI and in automation traces instead of failing silently
-- An enforced test-coverage gate of 95% overall and 100% for the config flow
+- An enforced test-coverage gate of 95% overall; the config flow is kept at 100% by convention
 - Clean config entry lifecycle handling (typed runtime data, proper unload, no leftovers)
 
 These requirements are maintained for every change as part of code review.

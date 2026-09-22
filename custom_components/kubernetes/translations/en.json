@@ -148,36 +148,103 @@
       }
     }
   },
-  "entity": {
-    "sensor": {
-      "kubernetes_pods_count": {
-        "name": "Pods Count"
-      },
-      "kubernetes_nodes_count": {
-        "name": "Nodes Count"
-      },
-      "kubernetes_deployments_count": {
-        "name": "Deployments Count"
-      },
-      "kubernetes_statefulsets_count": {
-        "name": "StatefulSets Count"
-      }
-    },
-    "binary_sensor": {
-      "kubernetes_health": {
-        "name": "Cluster Health"
-      }
-    },
-    "switch": {
-      "kubernetes_deployment": {
-        "name": "Deployment"
-      },
-      "kubernetes_statefulset": {
-        "name": "StatefulSet"
-      }
-    }
-  },
   "services": {
+    "scale_workload": {
+      "name": "Scale Workload",
+      "description": "Scale one or more Kubernetes workloads (Deployments/StatefulSets) to the specified number of replicas.",
+      "fields": {
+        "workload_name": {
+          "name": "Workload Name",
+          "description": "The name of a single workload to scale (use workload_names for multiple)."
+        },
+        "workload_names": {
+          "name": "Workload Names",
+          "description": "A list of workload names to scale (use workload_name for single)."
+        },
+        "replicas": {
+          "name": "Replicas",
+          "description": "The number of replicas to scale to (0 or more)."
+        },
+        "namespace": {
+          "name": "Namespace",
+          "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target a specific configured cluster (optional; defaults to the first)."
+        }
+      }
+    },
+    "start_workload": {
+      "name": "Start Workload",
+      "description": "Start one or more Kubernetes workloads by scaling them to the specified number of replicas, or trigger CronJobs (creates a job immediately).",
+      "fields": {
+        "workload_name": {
+          "name": "Workload Name",
+          "description": "The name of a single workload to start (use workload_names for multiple)."
+        },
+        "workload_names": {
+          "name": "Workload Names",
+          "description": "A list of workload names to start (use workload_name for single)."
+        },
+        "replicas": {
+          "name": "Replicas",
+          "description": "The number of replicas to scale to for Deployments/StatefulSets (1 or more, defaults to 1). Ignored for CronJobs."
+        },
+        "namespace": {
+          "name": "Namespace",
+          "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target a specific configured cluster (optional; defaults to the first)."
+        }
+      }
+    },
+    "stop_workload": {
+      "name": "Stop Workload",
+      "description": "Stop one or more Kubernetes workloads by scaling them to 0 replicas (Deployments/StatefulSets). CronJobs are not affected - use the switch entity to suspend them.",
+      "fields": {
+        "workload_name": {
+          "name": "Workload Name",
+          "description": "The name of a single workload to stop (use workload_names for multiple)."
+        },
+        "workload_names": {
+          "name": "Workload Names",
+          "description": "A list of workload names to stop (use workload_name for single)."
+        },
+        "namespace": {
+          "name": "Namespace",
+          "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target a specific configured cluster (optional; defaults to the first)."
+        }
+      }
+    },
+    "restart_workload": {
+      "name": "Restart Workload",
+      "description": "Perform a rolling restart of one or more Kubernetes workloads (Deployments/StatefulSets/DaemonSets). Equivalent to \"kubectl rollout restart\".",
+      "fields": {
+        "workload_name": {
+          "name": "Workload Name",
+          "description": "The name of a single workload to restart (use workload_names for multiple)."
+        },
+        "workload_names": {
+          "name": "Workload Names",
+          "description": "A list of workload names to restart (use workload_name for single)."
+        },
+        "namespace": {
+          "name": "Namespace",
+          "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+        },
+        "entry_id": {
+          "name": "Config Entry ID",
+          "description": "Target a specific configured cluster (optional; defaults to the first)."
+        }
+      }
+    },
     "delete_job": {
       "name": "Delete Job",
       "description": "Delete one or more Kubernetes Jobs (also deletes their pods). Useful for clearing failed Jobs.",

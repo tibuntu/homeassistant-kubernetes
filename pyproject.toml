@@ -131,10 +131,6 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 pythonpath = ["."]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-    "security: marks tests as security tests",
     "k8s_compat: Kubernetes API compatibility tests (require a real cluster)",
 ]
 filterwarnings = [

@@ -34,6 +34,7 @@ Scale one or more Kubernetes workloads (Deployments or StatefulSets) to a specif
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
 - `replicas` (integer, required): Target number of replicas (0 or more)
+- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
 
 **Supported Workloads**: Deployments, StatefulSets
 
@@ -77,6 +78,7 @@ Start one or more Kubernetes workloads by scaling them to the specified number o
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
 - `replicas` (integer, optional): Number of replicas for Deployments/StatefulSets (default: 1, ignored for CronJobs)
+- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
 
 **Supported Workloads**:
 - **Deployments**: Scales to the specified number of replicas
@@ -119,6 +121,7 @@ Stop one or more Kubernetes workloads by scaling them to 0 replicas (Deployments
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.my_deployment`)
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
+- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
 
 **Supported Workloads**: Deployments, StatefulSets
 
@@ -152,6 +155,7 @@ Perform a rolling restart of one or more Kubernetes workloads. This is equivalen
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.my_deployment`)
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
+- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
 
 **Supported Workloads**: Deployments, StatefulSets, DaemonSets
 
