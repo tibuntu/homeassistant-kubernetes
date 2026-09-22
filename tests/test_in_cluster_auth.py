@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
@@ -525,6 +526,101 @@ def test_api_token_returns_fallback_when_file_yields_empty(monkeypatch):
     assert token == "static-fallback"
     # Empty tokens are never cached.
     assert client._token_cache == ""
+
+
+# ---------------------------------------------------------------------------
+# api_token / async_refresh_token — event-loop-safe token refresh
+# ---------------------------------------------------------------------------
+
+
+async def test_api_token_never_blocks_when_loop_running():
+    """With a running loop the property must not call open() itself — the read
+    is routed through run_in_executor, and a stale/static value is returned
+    immediately."""
+    client = _make_client(use_in_cluster=True, static_token="static-fallback")
+    client._token_cache = "stale-cached"
+    client._token_cache_time = 0.0  # expired
+
+    loop = asyncio.get_running_loop()
+    with patch.object(
+        loop, "run_in_executor", wraps=loop.run_in_executor
+    ) as run_in_executor_spy:
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.open",
+            mock_open(read_data="rotated-token"),
+        ) as opener:
+            token = client.api_token
+
+            # The stale value is served immediately; open() must not have run
+            # on this (the event loop) thread yet.
+            assert token == "stale-cached"
+            assert opener.call_count == 0
+
+            task = client._token_refresh_task
+            assert task is not None
+            await task
+
+    run_in_executor_spy.assert_called_once()
+    assert run_in_executor_spy.call_args.args[1] == client._read_token_file
+    assert client._token_cache == "rotated-token"
+
+
+async def test_api_token_concurrent_callers_share_one_refresh():
+    """Two callers hitting the stale cache in the same tick share one task."""
+    client = _make_client(use_in_cluster=True, static_token="static-fallback")
+    client._token_cache_time = 0.0
+
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.open",
+        mock_open(read_data="rotated-token"),
+    ) as opener:
+        _ = client.api_token
+        first_task = client._token_refresh_task
+        _ = client.api_token
+        second_task = client._token_refresh_task
+
+        assert first_task is second_task
+        await first_task
+
+    opener.assert_called_once()
+    assert client._token_cache == "rotated-token"
+
+
+async def test_async_refresh_token_updates_cache():
+    """async_refresh_token reads the file off the loop and updates the cache."""
+    client = _make_client(use_in_cluster=True, static_token="static-fallback")
+
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.open",
+        mock_open(read_data="fresh-token"),
+    ):
+        await client.async_refresh_token()
+
+    assert client._token_cache == "fresh-token"
+    assert client._token_refresh_task is None
+
+
+async def test_async_refresh_token_leaves_cache_on_read_error():
+    """A failed background read keeps the previous cached/static token."""
+    client = _make_client(use_in_cluster=True, static_token="static-fallback")
+    client._token_cache = "still-good"
+    client._token_cache_time = 0.0
+
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.open",
+        side_effect=OSError("denied"),
+    ):
+        await client.async_refresh_token()
+
+    assert client._token_cache == "still-good"
+    assert client._token_refresh_task is None
+
+
+def test_api_token_static_mode_never_touches_loop_check():
+    """Static-token mode returns immediately without any loop/refresh logic."""
+    client = _make_client(use_in_cluster=False, static_token="config-token")
+    assert client.api_token == "config-token"
+    assert client._token_refresh_task is None
 
 
 # ---------------------------------------------------------------------------
