@@ -530,7 +530,7 @@ def test_api_token_returns_fallback_when_file_yields_empty(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# api_token / async_refresh_token — event-loop-safe token refresh
+# api_token / _ensure_refresh_task — event-loop-safe token refresh
 # ---------------------------------------------------------------------------
 
 
@@ -587,21 +587,21 @@ async def test_api_token_concurrent_callers_share_one_refresh():
     assert client._token_cache == "rotated-token"
 
 
-async def test_async_refresh_token_updates_cache():
-    """async_refresh_token reads the file off the loop and updates the cache."""
+async def test_ensure_refresh_task_updates_cache():
+    """_ensure_refresh_task reads the file off the loop and updates the cache."""
     client = _make_client(use_in_cluster=True, static_token="static-fallback")
 
     with patch(
         "custom_components.kubernetes.kubernetes_client.open",
         mock_open(read_data="fresh-token"),
     ):
-        await client.async_refresh_token()
+        await client._ensure_refresh_task()
 
     assert client._token_cache == "fresh-token"
     assert client._token_refresh_task is None
 
 
-async def test_async_refresh_token_leaves_cache_on_read_error():
+async def test_ensure_refresh_task_leaves_cache_on_read_error():
     """A failed background read keeps the previous cached/static token."""
     client = _make_client(use_in_cluster=True, static_token="static-fallback")
     client._token_cache = "still-good"
@@ -611,7 +611,21 @@ async def test_async_refresh_token_leaves_cache_on_read_error():
         "custom_components.kubernetes.kubernetes_client.open",
         side_effect=OSError("denied"),
     ):
-        await client.async_refresh_token()
+        await client._ensure_refresh_task()
+
+    assert client._token_cache == "still-good"
+    assert client._token_refresh_task is None
+
+
+async def test_ensure_refresh_task_leaves_cache_on_unexpected_error():
+    """A non-OSError exception in the refresh path is swallowed and leaves
+    the cache untouched (the fire-and-forget task must never die loudly)."""
+    client = _make_client(use_in_cluster=True, static_token="static-fallback")
+    client._token_cache = "still-good"
+    client._token_cache_time = 0.0
+
+    with patch.object(client, "_read_token_file", side_effect=RuntimeError("boom")):
+        await client._ensure_refresh_task()
 
     assert client._token_cache == "still-good"
     assert client._token_refresh_task is None
@@ -650,7 +664,7 @@ async def test_401_retry_rereads_token_even_if_refresh_task_already_completed():
 
     with (
         patch("aiohttp.ClientSession.get", side_effect=fake_get),
-        patch.object(client, "async_refresh_token") as mock_async_refresh_token,
+        patch.object(client, "_ensure_refresh_task") as mock_ensure_refresh_task,
         patch(
             "custom_components.kubernetes.kubernetes_client.open",
             mock_open(read_data="brand-new-token"),
@@ -660,7 +674,7 @@ async def test_401_retry_rereads_token_even_if_refresh_task_already_completed():
 
     assert result is True
     assert client.auth_failed is False
-    mock_async_refresh_token.assert_not_called()
+    mock_ensure_refresh_task.assert_not_called()
     assert seen_headers == ["Bearer pre-rotation-token", "Bearer brand-new-token"]
 
 
