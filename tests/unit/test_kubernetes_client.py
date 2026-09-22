@@ -517,6 +517,22 @@ async def test_get_deployments_count_success(mock_client):
     assert count == 2
 
 
+async def test_get_deployments_count_api_exception(mock_client):
+    """Deployments count propagates API exceptions."""
+    mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
+
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_deployments_count()
+
+
+async def test_get_deployments_api_exception(mock_client):
+    """Deployments retrieval propagates API exceptions."""
+    mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
+
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_deployments()
+
+
 async def test_get_statefulsets_success(mock_client):
     """Test successful statefulsets retrieval."""
     # Mock the generic fetch method to return the expected statefulsets
@@ -584,6 +600,22 @@ async def test_get_statefulsets_count_success(mock_client):
     count = await mock_client.get_statefulsets_count()
 
     assert count == 3
+
+
+async def test_get_statefulsets_count_api_exception(mock_client):
+    """StatefulSets count propagates API exceptions."""
+    mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
+
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_statefulsets_count()
+
+
+async def test_get_statefulsets_api_exception(mock_client):
+    """StatefulSets retrieval propagates API exceptions."""
+    mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
+
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_statefulsets()
 
 
 async def test_get_daemonsets_count_success(mock_client):
@@ -658,6 +690,22 @@ async def test_get_daemonsets_all_namespaces(mock_client):
     daemonsets = await mock_client.get_daemonsets()
 
     assert len(daemonsets) == 2
+
+
+async def test_get_daemonsets_count_api_exception(mock_client):
+    """DaemonSets count propagates API exceptions."""
+    mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
+
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_daemonsets_count()
+
+
+async def test_get_daemonsets_api_exception(mock_client):
+    """DaemonSets retrieval propagates API exceptions."""
+    mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
+
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_daemonsets()
 
 
 async def test_get_ingresses_count_success(mock_client):
@@ -2834,6 +2882,44 @@ class TestFetchResourceList:
             )
 
         assert len(result) == 1
+
+    async def test_parse_fn_returning_none_skips_item_cluster_wide(self, mock_client):
+        """Test that a None from parse_fn is skipped on the cluster-wide path."""
+        mock_client.monitor_all_namespaces = True
+
+        items_data = [
+            {"metadata": {"name": "r1"}},
+            {"metadata": {"name": "r2"}},
+        ]
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"items": items_data})
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.get = MagicMock(return_value=mock_response)
+
+        call_count = 0
+
+        def parse_fn(item):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return None
+            return {"parsed": True}
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._fetch_resource_list(
+                "apis/apps/v1", "deployments", parse_fn
+            )
+
+        assert result == [{"parsed": True}]
 
 
 class TestCompareAuthenticationMethods:
