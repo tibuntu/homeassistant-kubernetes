@@ -29,28 +29,10 @@ frontend:
 # API configuration
 api:
 
-# Configuration for the Kubernetes integration
-# This will be configured through the UI, but here's an example of what it looks like:
-# kubernetes:
-#   - cluster_name: "production"
-#     host: "k8s-prod.example.com"
-#     port: 6443
-#     api_token: "your-api-token-here"
-#     ca_cert: "your-ca-cert"
-#     verify_ssl: false
-#     monitor_all_namespaces: true
-#     namespace: ["default", "production"]  # Only used when monitor_all_namespaces is false
-
-# Example configuration.yaml entry for Kubernetes integration
-kubernetes:
-  cluster_name: "production"
-  host: "your-k8s-cluster"
-  port: 6443
-  api_token: "your-api-token"
-  ca_cert: "your-ca-cert"
-  verify_ssl: false
-  monitor_all_namespaces: false
-  namespace: ["default", "production"] # List of namespaces when monitor_all_namespaces is false
+# The Kubernetes integration is set up entirely through the UI
+# (Settings -> Devices & Services -> Add Integration -> Kubernetes) — it has
+# no YAML configuration schema, so there is no "kubernetes:" block to add here.
+# See docs/SETUP.md for the setup walkthrough.
 
 # Example automations using the generic workload services
 
@@ -148,11 +130,11 @@ script:
       - service: homeassistant.update_entity
         target:
           entity_id:
-            - sensor.kubernetes_pods_count
-            - sensor.kubernetes_nodes_count
+            - sensor.production_pods_count
+            - sensor.production_nodes_count
 
-            - sensor.kubernetes_deployments_count
-            - binary_sensor.kubernetes_cluster_health
+            - sensor.production_deployments_count
+            - binary_sensor.production_cluster_health
 
   scale_production_api:
     alias: "Scale Production API"
@@ -227,36 +209,36 @@ scene:
   kubernetes_dashboard:
     name: "Kubernetes Dashboard"
     entities:
-      sensor.kubernetes_pods_count:
+      sensor.production_pods_count:
         state: "0"
-      sensor.kubernetes_nodes_count:
+      sensor.production_nodes_count:
         state: "0"
 
-      sensor.kubernetes_deployments_count:
+      sensor.production_deployments_count:
         state: "0"
-      sensor.kubernetes_statefulsets_count:
+      sensor.production_statefulsets_count:
         state: "0"
-      binary_sensor.kubernetes_cluster_health:
+      binary_sensor.production_cluster_health:
         state: "off"
 
   production_mode:
     name: "Production Mode"
     entities:
-      sensor.kubernetes_pods_count:
+      sensor.production_pods_count:
         state: "50"
-      sensor.kubernetes_deployments_count:
+      sensor.production_deployments_count:
         state: "10"
-      sensor.kubernetes_statefulsets_count:
+      sensor.production_statefulsets_count:
         state: "3"
 
   development_mode:
     name: "Development Mode"
     entities:
-      sensor.kubernetes_pods_count:
+      sensor.production_pods_count:
         state: "5"
-      sensor.kubernetes_deployments_count:
+      sensor.production_deployments_count:
         state: "3"
-      sensor.kubernetes_statefulsets_count:
+      sensor.production_statefulsets_count:
         state: "1"
 
 # Lovelace dashboard configuration (optional)
@@ -277,15 +259,15 @@ lovelace:
             - type: entities
               title: "Cluster Health"
               entities:
-                - entity: binary_sensor.kubernetes_cluster_health
+                - entity: binary_sensor.production_cluster_health
             - type: entities
               title: "Resource Counts"
               entities:
-                - entity: sensor.kubernetes_pods_count
-                - entity: sensor.kubernetes_nodes_count
+                - entity: sensor.production_pods_count
+                - entity: sensor.production_nodes_count
 
-                - entity: sensor.kubernetes_deployments_count
-                - entity: sensor.kubernetes_statefulsets_count
+                - entity: sensor.production_deployments_count
+                - entity: sensor.production_statefulsets_count
         - type: vertical-stack
           title: "Deployment Control"
           cards:

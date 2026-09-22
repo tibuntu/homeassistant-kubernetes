@@ -1,6 +1,6 @@
 # Examples and Automations
 
-This document provides practical examples of using the Kubernetes integration in Home Assistant automations and dashboards.
+This document provides practical examples of using the Kubernetes integration in Home Assistant automations and dashboards. Entity IDs below use `production` as the example cluster name — substitute the cluster name you chose when adding the integration (see [Entity Naming](ENTITIES.md#entity-naming)).
 
 ## Automation Examples
 
@@ -208,9 +208,9 @@ automation:
     trigger:
       - platform: state
         entity_id:
-          - sensor.kubernetes_node_master_1
-          - sensor.kubernetes_node_worker_1
-          - sensor.kubernetes_node_worker_2
+          - sensor.production_master_1
+          - sensor.production_worker_1
+          - sensor.production_worker_2
         to: "NotReady"
         for:
           minutes: 2
@@ -219,7 +219,7 @@ automation:
         data:
           title: "Kubernetes Node Alert"
           message: >
-            Node {{ trigger.entity_id.split('.')[-1].replace('kubernetes_node_', '').replace('_', '-') }}
+            Node {{ trigger.entity_id.split('.')[-1].replace('production_', '').replace('_', '-') }}
             is not ready. Status: {{ trigger.to_state.state }}
           data:
             priority: high
@@ -233,7 +233,7 @@ automation:
     trigger:
       - platform: template
         value_template: >
-          {% set nodes = states.sensor | selectattr('entity_id', 'match', 'sensor.kubernetes_node_.*') | list %}
+          {% set nodes = states.sensor | selectattr('entity_id', 'match', 'sensor.production_.*') | list %}
           {% for node in nodes %}
             {% set memory_used = state_attr(node.entity_id, 'memory_capacity_gb') | float - state_attr(node.entity_id, 'memory_allocatable_gb') | float %}
             {% set memory_total = state_attr(node.entity_id, 'memory_capacity_gb') | float %}
@@ -258,9 +258,9 @@ automation:
     trigger:
       - platform: state
         entity_id:
-          - sensor.kubernetes_node_master_1
-          - sensor.kubernetes_node_worker_1
-          - sensor.kubernetes_node_worker_2
+          - sensor.production_master_1
+          - sensor.production_worker_1
+          - sensor.production_worker_2
     condition:
       - condition: template
         value_template: "{{ trigger.from_state.state != trigger.to_state.state }}"
@@ -269,7 +269,7 @@ automation:
         data:
           name: "Kubernetes Node Status"
           message: >
-            Node {{ trigger.entity_id.split('.')[-1].replace('kubernetes_node_', '').replace('_', '-') }}
+            Node {{ trigger.entity_id.split('.')[-1].replace('production_', '').replace('_', '-') }}
             changed from {{ trigger.from_state.state }} to {{ trigger.to_state.state }}
           entity_id: "{{ trigger.entity_id }}"
 ```
@@ -286,17 +286,17 @@ views:
       - type: entities
         title: "Cluster Status"
         entities:
-          - entity: sensor.kubernetes_pods_count
+          - entity: sensor.production_pods_count
             name: "Running Pods"
-          - entity: sensor.kubernetes_nodes_count
+          - entity: sensor.production_nodes_count
             name: "Cluster Nodes"
-          - entity: sensor.kubernetes_deployments_count
+          - entity: sensor.production_deployments_count
             name: "Active Deployments"
-          - entity: sensor.kubernetes_statefulsets_count
+          - entity: sensor.production_statefulsets_count
             name: "StatefulSets"
-          - entity: sensor.kubernetes_cronjobs_count
+          - entity: sensor.production_cronjobs_count
             name: "CronJobs"
-          - entity: binary_sensor.kubernetes_cluster_health
+          - entity: binary_sensor.production_cluster_health
             name: "Cluster Health"
 ```
 
@@ -310,14 +310,14 @@ views:
       - type: entities
         title: "Production Deployments"
         entities:
-          - switch.kubernetes_deployment_web_app
-          - switch.kubernetes_deployment_api_server
-          - switch.kubernetes_deployment_cache_service
+          - switch.production_default_web_app_deployment
+          - switch.production_default_api_server_deployment
+          - switch.production_default_cache_service_deployment
       - type: entities
         title: "Development Services"
         entities:
-          - switch.kubernetes_deployment_dev_api
-          - switch.kubernetes_deployment_test_runner
+          - switch.production_default_dev_api_deployment
+          - switch.production_default_test_runner_deployment
 ```
 
 ### Resource Monitoring
@@ -328,7 +328,7 @@ views:
     path: kubernetes-resources
     cards:
       - type: gauge
-        entity: sensor.kubernetes_pods_count
+        entity: sensor.production_pods_count
         min: 0
         max: 50
         name: "Pod Count"
@@ -338,8 +338,8 @@ views:
           red: 45
       - type: history-graph
         entities:
-          - sensor.kubernetes_pods_count
-          - sensor.kubernetes_deployments_count
+          - sensor.production_pods_count
+          - sensor.production_deployments_count
         hours_to_show: 24
 
 ### Node Monitoring Dashboard
@@ -352,11 +352,11 @@ views:
       - type: entities
         title: "Node Overview"
         entities:
-          - entity: sensor.kubernetes_node_master_1
+          - entity: sensor.production_master_1
             name: "Master Node"
-          - entity: sensor.kubernetes_node_worker_1
+          - entity: sensor.production_worker_1
             name: "Worker Node 1"
-          - entity: sensor.kubernetes_node_worker_2
+          - entity: sensor.production_worker_2
             name: "Worker Node 2"
         show_header_toggle: false
       - type: custom:auto-entities
@@ -365,18 +365,18 @@ views:
           title: "All Cluster Nodes"
         filter:
           include:
-            - entity_id: "sensor.kubernetes_node_*"
+            - entity_id: "sensor.production_*"
         sort:
           method: name
       - type: markdown
         content: >
           ## Node Resources
 
-          **{{ states('sensor.kubernetes_node_worker_1') }}** Worker 1:
-          - Memory: {{ state_attr('sensor.kubernetes_node_worker_1', 'memory_allocatable_gb') }}GB / {{ state_attr('sensor.kubernetes_node_worker_1', 'memory_capacity_gb') }}GB
-          - CPU Cores: {{ state_attr('sensor.kubernetes_node_worker_1', 'cpu_cores') }}
-          - Internal IP: {{ state_attr('sensor.kubernetes_node_worker_1', 'internal_ip') }}
-          - OS: {{ state_attr('sensor.kubernetes_node_worker_1', 'os_image') }}
+          **{{ states('sensor.production_worker_1') }}** Worker 1:
+          - Memory: {{ state_attr('sensor.production_worker_1', 'memory_allocatable_gb') }}GB / {{ state_attr('sensor.production_worker_1', 'memory_capacity_gb') }}GB
+          - CPU Cores: {{ state_attr('sensor.production_worker_1', 'cpu_cores') }}
+          - Internal IP: {{ state_attr('sensor.production_worker_1', 'internal_ip') }}
+          - OS: {{ state_attr('sensor.production_worker_1', 'os_image') }}
 ```
 
 ## Script Examples
@@ -429,7 +429,7 @@ automation:
   - alias: "Alert on deployment failure"
     trigger:
       platform: state
-      entity_id: switch.kubernetes_deployment_critical_app
+      entity_id: switch.production_default_critical_app_deployment
       to: "off"
       for:
         minutes: 2
@@ -449,7 +449,7 @@ automation:
   - alias: "Cluster health alert"
     trigger:
       platform: state
-      entity_id: binary_sensor.kubernetes_cluster_health
+      entity_id: binary_sensor.production_cluster_health
       to: "off"
     action:
       - service: notify.slack
