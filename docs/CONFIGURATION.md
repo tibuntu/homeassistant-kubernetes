@@ -19,7 +19,7 @@ This guide covers all configuration options for the Kubernetes Home Assistant In
 | **Verify SSL** | Whether to verify SSL certificates | `true` |
 | **Monitor All Namespaces** | Enable to monitor all namespaces | `true` |
 | **Namespaces** | List of namespaces to monitor (only shown when "Monitor All Namespaces" is disabled) | Selected from cluster |
-| **Device Grouping Mode** | How entities are organized (by Namespace or by Cluster) | `namespace` |
+| **Device Grouping Mode** | How entities are organized: `namespace` creates a separate device per monitored namespace, `cluster` puts every entity on the single cluster device | `namespace` |
 | **Switch Update Interval** | How often to poll for switch state updates (seconds) | `60` |
 | **Scale Verification Timeout** | Maximum time to wait for scaling operations (seconds) | `30` |
 | **Scale Cooldown** | Cooldown period after scaling operations (seconds) | `10` |

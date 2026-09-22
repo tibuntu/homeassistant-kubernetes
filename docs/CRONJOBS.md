@@ -17,7 +17,7 @@ CronJobs are Kubernetes resources that run jobs on a time-based schedule. This i
 
 A sensor that displays the total number of CronJobs in your cluster or namespace.
 
-**Entity ID**: `sensor.kubernetes_cronjobs_count`
+**Entity ID**: `sensor.production_cronjobs_count` (using `production` as an example cluster name)
 
 **Attributes**:
 - `unit_of_measurement`: "cronjobs"
@@ -29,7 +29,7 @@ A sensor that displays the total number of CronJobs in your cluster or namespace
 
 Individual switches for each CronJob that control the suspension state.
 
-**Entity ID**: `switch.{cronjob_name}`
+**Entity ID**: `switch.[cluster_name]_[namespace]_[cronjob_name]_cronjob` (e.g. `switch.production_default_backup_cronjob`)
 
 **Switch Behavior**:
 - **ON** = CronJob is **enabled** (`suspend=false`)

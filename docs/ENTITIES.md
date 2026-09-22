@@ -112,19 +112,19 @@ Each node sensor provides comprehensive information about the node:
 
 | Attribute | Description | Example Value |
 |-----------|-------------|---------------|
-| **internal_ip** | Internal IP address of the node | `10.0.0.1` |
-| **external_ip** | External IP address of the node | `203.0.113.1` |
-| **memory_capacity_gb** | Total memory capacity in GB | `16.0` |
-| **memory_allocatable_gb** | Allocatable memory in GB | `14.5` |
-| **cpu_cores** | Number of CPU cores | `4.0` |
-| **os_image** | Operating system image | `Ubuntu 22.04.3 LTS` |
+| **internal_IP** | Internal IP address of the node | `10.0.0.1` |
+| **external_IP** | External IP address of the node | `203.0.113.1` |
+| **memory_capacity_(GiB)** | Total memory capacity | `16 GiB` |
+| **memory_allocatable_(GiB)** | Allocatable memory | `14.5 GiB` |
+| **CPU** | Number of CPU cores | `4 vCPU` |
+| **OS_image** | Operating system image | `Ubuntu 22.04.3 LTS` |
 | **kernel_version** | Kernel version | `5.15.0-56-generic` |
 | **container_runtime** | Container runtime version | `containerd://1.6.6` |
 | **kubelet_version** | Kubelet version | `v1.25.4` |
-| **cpu_usage_millicores** | Real-time CPU usage (requires metrics-server) | `410.0` |
-| **memory_usage_mib** | Real-time memory usage in MiB (requires metrics-server) | `2015.0` |
 | **schedulable** | Whether the node can schedule new pods | `true` / `false` |
 | **creation_timestamp** | When the node was created | `2023-01-01T00:00:00Z` |
+
+> **Note:** Real-time CPU/memory usage from metrics-server is merged into the node's coordinator data (used by the node device's overview) but is not exposed as an attribute on this sensor.
 
 #### Pod Sensor Attributes
 
@@ -183,14 +183,33 @@ Each Job sensor provides execution details:
 | **start_time** | When the Job started | `2025-01-01T00:00:00Z` |
 | **completion_time** | When the Job completed | `2025-01-01T00:05:00Z` |
 
+### Individual CronJob Sensors
+
+The integration creates a separate status sensor for each Kubernetes CronJob in the monitored namespace(s), in addition to the [CronJob switch](#cronjob-switches) that controls suspension:
+
+| Sensor | Description | Example Value |
+|--------|-------------|---------------|
+| **[cronjob-name]** | Individual CronJob status | `Suspended` / `Active` / `Scheduled` / `Unknown` |
+
+Status values:
+- `Suspended` — the CronJob's `suspend` field is `true`
+- `Active` — the CronJob is not suspended and has at least one currently active Job (`active_jobs_count > 0`)
+- `Scheduled` — the CronJob is not suspended and has no active Jobs
+- `Unknown` — data is unavailable
+
+#### CronJob Sensor Attributes
+
+| Attribute | Description | Example Value |
+|-----------|-------------|---------------|
+| **namespace** | Kubernetes namespace of the CronJob | `default` |
+| **schedule** | The cron schedule expression | `0 2 * * *` |
+| **last_schedule_time** | Last time the CronJob was scheduled | `2025-01-01T02:00:00Z` |
+| **next_schedule_time** | Next scheduled execution time | `2025-01-02T02:00:00Z` |
+| **active_jobs_count** | Number of currently active Jobs | `0` |
+
 ### Sensor Attributes
 
-Each sensor includes additional attributes with detailed information:
-
-- **Last Updated**: Timestamp of the last successful update
-- **Namespace**: The namespace being monitored
-- **Cluster Name**: Name of the Kubernetes cluster
-- **API Endpoint**: Kubernetes API server endpoint
+The cluster-wide count sensors (Pods Count, Nodes Count, Deployments Count, etc.) expose no extra attributes — only the numeric state. The per-resource sensors documented above (Node, Pod, DaemonSet, Job, CronJob, Workload Status) each expose their own set of attributes; see their respective sections for the exact keys.
 
 ## Binary Sensors
 
@@ -212,19 +231,13 @@ The integration creates binary sensors for each node condition on every node in 
 - **States**: `on` means the condition is active (problem detected), `off` means normal operation
 - **Device assignment**: Assigned to the cluster device alongside individual node sensors
 
-### Binary Sensor Attributes
-
-- **Last Check**: Timestamp of the last health check
-- **Error Message**: Details about connection issues (when unhealthy)
-- **Response Time**: API response time in milliseconds
-
 ## Switches
 
 The integration automatically creates switches for controlling Kubernetes workloads:
 
 ### Deployment Switches
 
-- **Entity ID Format**: `switch.kubernetes_deployment_[deployment_name]`
+- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[deployment_name]_deployment` (e.g. `switch.production_default_web_app_deployment`)
 - **Function**: Control individual deployments (scale to 0/1 replicas)
 - **States**:
   - `on`: Deployment is running (replicas > 0)
@@ -232,11 +245,19 @@ The integration automatically creates switches for controlling Kubernetes worklo
 
 ### StatefulSet Switches
 
-- **Entity ID Format**: `switch.kubernetes_statefulset_[statefulset_name]`
+- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[statefulset_name]_statefulset` (e.g. `switch.production_default_postgres_statefulset`)
 - **Function**: Control individual statefulsets (scale to 0/1 replicas)
 - **States**:
   - `on`: StatefulSet is running (replicas > 0)
   - `off`: StatefulSet is stopped (replicas = 0)
+
+### CronJob Switches
+
+- **Entity ID Format**: `switch.[cluster_name]_[namespace]_[cronjob_name]_cronjob` (e.g. `switch.production_default_backup_cronjob`)
+- **Function**: Control CronJob suspension
+- **States**:
+  - `on`: CronJob is enabled (`suspend=false`)
+  - `off`: CronJob is suspended (`suspend=true`)
 
 ### Node Schedulable Switches
 
@@ -258,17 +279,21 @@ The integration automatically creates switches for controlling Kubernetes worklo
 
 ### Switch Attributes
 
-Each switch includes detailed attributes:
+**Deployment and StatefulSet switches** (`KubernetesReplicaWorkloadSwitch`) expose:
 
-- **Current Replicas**: Current number of replicas
-- **Desired Replicas**: Target number of replicas
-- **Ready Replicas**: Number of ready replicas
-- **Last Scaled**: Timestamp of the last scaling operation
-- **Scale Status**: Success/failure status of the last scaling operation
-- **Namespace**: Kubernetes namespace
-- **Resource Type**: `deployment` or `statefulset`
-- **CPU Usage**: CPU usage in millicores (for Deployments and StatefulSets)
-- **Memory Usage**: Memory usage in MiB (for Deployments and StatefulSets)
+| Attribute | Description | Example Value |
+|-----------|-------------|---------------|
+| **deployment_name** / **statefulset_name** | Name of the workload (key matches the resource type) | `web-app` |
+| **namespace** | Kubernetes namespace | `default` |
+| **replicas** | Current number of replicas | `3` |
+| **workload_type** | `deployment` or `statefulset` | `deployment` |
+| **last_scale_attempt_failed** | `true` if the most recent scale operation failed | `false` |
+| **cpu_usage_(millicores)** | Aggregated CPU usage across the workload's pods | `142` |
+| **memory_usage_(MiB)** | Aggregated memory usage across the workload's pods | `256` |
+
+**CronJob switches** expose: `namespace`, `cronjob_name`, `schedule`, `suspend`, `suspended` (alias of `suspend`), `active_jobs_count`, `last_schedule_time`, `next_schedule_time`, `last_suspend_time`, `last_resume_time`, `workload_type`.
+
+**Node schedulable switches** expose the attributes listed under [Node Schedulable Switches](#node-schedulable-switches) above: `node_name`, `status`, `schedulable`, `cordoned`, `last_cordon_time`, `last_uncordon_time`.
 
 ## Cluster Events
 
@@ -379,9 +404,13 @@ Cluster Device (e.g., "production-cluster")
     ├── StatefulSet status sensors (one per statefulset)
     ├── StatefulSet CPU/memory sensors (one pair per statefulset)
     ├── DaemonSet sensors (all daemonsets in this namespace)
-    ├── CronJob switches (all cronjobs in this namespace)
+    ├── CronJob switches and status sensors (all cronjobs in this namespace)
     └── Job sensors (all jobs in this namespace)
 ```
+
+### `cluster` Grouping Mode
+
+Setting **Device Grouping Mode** to `cluster` (see [Configuration](CONFIGURATION.md)) puts every entity — cluster-level and namespace-scoped alike — on the single cluster device; no namespace devices are created (`device.py`'s `get_namespace_device_info`/`get_or_create_namespace_device` return the cluster device or `None` in this mode). Use it for small clusters or single-namespace deployments where per-namespace devices add clutter without benefit.
 
 ### Benefits of Device Organization
 
@@ -417,7 +446,7 @@ The integration automatically discovers and creates entities for:
 - All deployments in monitored namespaces (switch + status sensor + CPU/memory sensors)
 - All statefulsets in monitored namespaces (switch + status sensor + CPU/memory sensors)
 - All daemonsets in monitored namespaces (status sensor)
-- All cronjobs in monitored namespaces (switch)
+- All cronjobs in monitored namespaces (switch + status sensor)
 - All jobs in monitored namespaces (status sensor)
 - Individual Kubernetes pods in monitored namespaces
 - Individual Kubernetes nodes in the cluster
@@ -433,14 +462,14 @@ Entities are automatically added when new resources are created and removed when
 - **Automatic Creation**: Node sensors are automatically created for each node discovered during integration setup
 - **Dynamic Updates**: Node information is refreshed during regular coordinator updates
 - **Automatic Cleanup**: Node sensors are automatically removed when nodes are deleted from the cluster
-- **Entity Naming**: Node entities use the format `sensor.kubernetes_node_[node_name]`
+- **Entity Naming**: Node entities use the format `sensor.[cluster_name]_[node_name]` (e.g. `sensor.production_worker_node_1`)
 
 ### Pod Entity Management
 
 - **Automatic Creation**: Pod sensors are automatically created for each pod discovered during integration setup — except pods owned by a Job or CronJob, which are skipped by default (see [Job and CronJob Pods](CONFIGURATION.md#job-and-cronjob-pods))
 - **Dynamic Updates**: Pod information is refreshed during regular coordinator updates
 - **Automatic Cleanup**: Pod sensors are automatically removed when pods are deleted from the cluster
-- **Entity Naming**: Pod entities use the format `sensor.kubernetes_[pod_name]`
+- **Entity Naming**: Pod entities use the format `sensor.[cluster_name]_[namespace]_[pod_name]` (e.g. `sensor.production_default_my_app_pod`)
 - **Namespace Support**: Pods are tracked by both namespace and name for proper identification
 - **Phase Tracking**: Pod sensors show the current phase (Running, Pending, Failed, Succeeded, etc.)
 - **Container Status**: Detailed information about container readiness and restart counts
@@ -457,7 +486,7 @@ card:
   title: "Pods with Issues"
 filter:
   include:
-    - entity_id: sensor.kubernetes_*
+    - entity_id: sensor.production_*
       state:
         - "Pending"
         - "Failed"
