@@ -46,17 +46,17 @@ Scale one or more Kubernetes workloads (Deployments or StatefulSets) to a specif
 # Scale a single deployment using entity ID
 service: kubernetes.scale_workload
 data:
-  workload_name: switch.web_app
+  workload_name: switch.production_default_web_app
   replicas: 3
 
 # Scale multiple workloads
 service: kubernetes.scale_workload
 data:
   workload_names:
-    - switch.web_app
-    - switch.api_server
+    - switch.production_default_web_app
+    - switch.production_default_api_server
   replicas: 2
-  namespace: production
+  namespace: default
 
 # Scale using direct workload name
 service: kubernetes.scale_workload
@@ -91,21 +91,21 @@ Start one or more Kubernetes workloads by scaling them to the specified number o
 # Start a deployment with 2 replicas
 service: kubernetes.start_workload
 data:
-  workload_name: switch.web_app
+  workload_name: switch.production_default_web_app
   replicas: 2
 
 # Trigger a CronJob
 service: kubernetes.start_workload
 data:
-  workload_name: switch.backup_job
+  workload_name: switch.production_default_backup
   # replicas parameter is ignored for CronJobs
 
 # Start multiple StatefulSets
 service: kubernetes.start_workload
 data:
   workload_names:
-    - switch.database_primary
-    - switch.database_replica
+    - switch.production_database_database_primary
+    - switch.production_database_database_replica
   replicas: 1
   namespace: database
 ```
@@ -133,14 +133,14 @@ Stop one or more Kubernetes workloads by scaling them to 0 replicas (Deployments
 # Stop a single deployment
 service: kubernetes.stop_workload
 data:
-  workload_name: switch.web_app
+  workload_name: switch.production_default_web_app
 
 # Stop multiple workloads
 service: kubernetes.stop_workload
 data:
   workload_names:
-    - switch.development_api
-    - switch.staging_api
+    - switch.production_development_development_api
+    - switch.production_development_staging_api
   namespace: development
 ```
 
@@ -167,15 +167,15 @@ Perform a rolling restart of one or more Kubernetes workloads. This is equivalen
 # Restart a single deployment
 service: kubernetes.restart_workload
 data:
-  workload_name: switch.web_app
+  workload_name: switch.production_default_web_app
 
 # Restart multiple workloads
 service: kubernetes.restart_workload
 data:
   workload_names:
-    - switch.web_app
-    - switch.api_server
-  namespace: production
+    - switch.production_default_web_app
+    - switch.production_default_api_server
+  namespace: default
 
 # Restart using direct workload name
 service: kubernetes.restart_workload
@@ -260,11 +260,11 @@ The services accept both entity IDs and direct workload names:
 
 **Entity IDs** (recommended for UI usage):
 ```yaml
-workload_name: switch.web_app
+workload_name: switch.production_default_web_app
 # or
 workload_names:
-  - switch.web_app
-  - switch.api_server
+  - switch.production_default_web_app
+  - switch.production_default_api_server
 ```
 
 **Direct Names** (for programmatic usage):
@@ -307,7 +307,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 ### Workload Type Detection
 
 The services automatically detect the workload type from entity attributes:
-- If an entity ID is provided (e.g., `switch.web_app`), the service reads the `workload_type` attribute
+- If an entity ID is provided (e.g., `switch.production_default_web_app`), the service reads the `workload_type` attribute
 - If a direct name is provided, the service attempts to determine the type from the entity registry
 - CronJobs are automatically handled differently (triggered instead of scaled)
 
@@ -365,10 +365,10 @@ automation:
       service: kubernetes.scale_workload
       data:
         workload_names:
-          - switch.web_app
-          - switch.api_server
+          - switch.production_default_web_app
+          - switch.production_default_api_server
         replicas: 1
-        namespace: production
+        namespace: default
 ```
 
 ### Start Workloads on Schedule
@@ -383,8 +383,8 @@ automation:
       service: kubernetes.start_workload
       data:
         workload_names:
-          - switch.web_app
-          - switch.database
+          - switch.production_default_web_app
+          - switch.production_default_database
         replicas: 3
 ```
 
@@ -399,8 +399,8 @@ automation:
     action:
       service: kubernetes.start_workload
       data:
-        workload_name: switch.backup_job
-        namespace: production
+        workload_name: switch.production_default_backup
+        namespace: default
 ```
 
 ### Scheduled Rolling Restart
@@ -419,9 +419,9 @@ automation:
       service: kubernetes.restart_workload
       data:
         workload_names:
-          - switch.web_app
-          - switch.api_server
-        namespace: production
+          - switch.production_default_web_app
+          - switch.production_default_api_server
+        namespace: default
 ```
 
 ### Stop All Workloads in Namespace
@@ -433,8 +433,8 @@ script:
       - service: kubernetes.stop_workload
         data:
           workload_names:
-            - switch.app1
-            - switch.app2
-            - switch.app3
+            - switch.production_staging_app1
+            - switch.production_staging_app2
+            - switch.production_staging_app3
           namespace: staging
 ```
