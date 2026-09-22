@@ -201,6 +201,12 @@ class KubernetesClient:
             )
             return None
 
+    def _store_token_if_present(self, token: str | None) -> None:
+        """Cache a freshly read token, if the read actually returned one."""
+        if token:
+            self._token_cache = token
+            self._token_cache_time = time.time()
+
     def _ensure_refresh_task(self) -> asyncio.Task[None]:
         """Start (or return the already in-flight) background token refresh."""
         if self._token_refresh_task is None:
@@ -214,9 +220,9 @@ class KubernetesClient:
         try:
             loop = asyncio.get_running_loop()
             token = await loop.run_in_executor(None, self._read_token_file)
-            if token:
-                self._token_cache = token
-                self._token_cache_time = time.time()
+            self._store_token_if_present(token)
+        except Exception:  # noqa: BLE001 - never let a fire-and-forget task die
+            _LOGGER.debug("In-cluster token refresh failed", exc_info=True)
         finally:
             self._token_refresh_task = None
 
@@ -224,7 +230,10 @@ class KubernetesClient:
         """Re-read the projected SA token off the event loop.
 
         Concurrent callers share one in-flight refresh instead of each
-        starting their own executor read.
+        starting their own executor read. Used by the api_token property; the
+        401 retry in _test_connection_aiohttp does its own direct read
+        instead, since joining an already-in-flight (possibly pre-rotation)
+        refresh would not guarantee a post-invalidation token.
         """
         await self._ensure_refresh_task()
 
@@ -239,9 +248,12 @@ class KubernetesClient:
         fallback.
 
         Thread-safety: the cache check-then-update is intentionally lock-free.
-        Two concurrent expirations may both read the file and write the same
-        value; the GIL makes individual attribute access safe and the worst
-        case is one redundant tmpfs read. Adding a lock here would be more
+        On the executor-thread path (no running loop) two concurrent
+        expirations may both read the file and write the same value; the GIL
+        makes individual attribute access safe and the worst case is one
+        redundant tmpfs read. On the event-loop path concurrent expirations
+        are deduped into a single background task (_ensure_refresh_task), so
+        there is no redundant read there. Adding a lock here would be more
         expensive than the race it prevents.
         """
         if not self._use_in_cluster:
@@ -260,10 +272,7 @@ class KubernetesClient:
             # No loop running (e.g. urllib3's refresh_api_key_hook, which
             # runs in the official client's executor thread) — blocking here
             # is safe.
-            token = self._read_token_file()
-            if token:
-                self._token_cache = token
-                self._token_cache_time = now
+            self._store_token_if_present(self._read_token_file())
             return self._token_cache or self._static_api_token
 
         # ponytail: a loop is running, so we must not block it. Kick off (or
@@ -492,8 +501,14 @@ class KubernetesClient:
                     # A projected ServiceAccount token may have rotated between
                     # the cached read and this request. Drop the cache and retry
                     # once so routine rotation never triggers a reauth prompt.
+                    # Read directly here rather than via async_refresh_token:
+                    # joining an already in-flight refresh could return a
+                    # token that finished reading before this invalidation,
+                    # i.e. still the pre-rotation value.
                     self.invalidate_token_cache()
-                    await self.async_refresh_token()
+                    loop = asyncio.get_running_loop()
+                    token = await loop.run_in_executor(None, self._read_token_file)
+                    self._store_token_if_present(token)
                     status = await self._probe_api(session)
                 self.auth_failed = status == 401
                 if status == 200:

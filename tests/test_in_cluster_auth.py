@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
@@ -621,6 +622,46 @@ def test_api_token_static_mode_never_touches_loop_check():
     client = _make_client(use_in_cluster=False, static_token="config-token")
     assert client.api_token == "config-token"
     assert client._token_refresh_task is None
+
+
+async def test_401_retry_rereads_token_even_if_refresh_task_already_completed():
+    """Regression: the 401 retry must not join a refresh task that already
+    finished (possibly with a pre-rotation token read before invalidation)
+    — it must always do its own fresh read."""
+    client = _make_client(use_in_cluster=True, static_token="static-fallback")
+    client._token_cache = "pre-rotation-token"
+    client._token_cache_time = time.time()
+
+    # A background refresh that already completed with the old token, before
+    # the 401 below ever happened.
+    completed = asyncio.get_running_loop().create_future()
+    completed.set_result(None)
+    client._token_refresh_task = completed  # type: ignore[assignment]
+
+    seen_headers: list[str] = []
+
+    def fake_get(_url, headers, **_kwargs):
+        seen_headers.append(headers["Authorization"])
+        response = MagicMock(status=401 if len(seen_headers) == 1 else 200)
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=response)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        return cm
+
+    with (
+        patch("aiohttp.ClientSession.get", side_effect=fake_get),
+        patch.object(client, "async_refresh_token") as mock_async_refresh_token,
+        patch(
+            "custom_components.kubernetes.kubernetes_client.open",
+            mock_open(read_data="brand-new-token"),
+        ),
+    ):
+        result = await client._test_connection_aiohttp()
+
+    assert result is True
+    assert client.auth_failed is False
+    mock_async_refresh_token.assert_not_called()
+    assert seen_headers == ["Bearer pre-rotation-token", "Bearer brand-new-token"]
 
 
 # ---------------------------------------------------------------------------
