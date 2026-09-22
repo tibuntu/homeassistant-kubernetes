@@ -97,12 +97,12 @@ CronJobs can be suspended or resumed using the switch entities, or with the **Su
 # Suspend a CronJob (turn switch OFF)
 service: switch.turn_off
 target:
-  entity_id: switch.backup_job
+  entity_id: switch.production_default_backup
 
 # Resume a CronJob (turn switch ON)
 service: switch.turn_on
 target:
-  entity_id: switch.backup_job
+  entity_id: switch.production_default_backup
 ```
 
 **Using Entity IDs in Automations**:
@@ -117,8 +117,8 @@ automation:
       - service: switch.turn_off
         target:
           entity_id:
-            - switch.backup_job
-            - switch.cleanup_job
+            - switch.production_default_backup
+            - switch.production_default_cleanup
 ```
 
 ### Services That Don't Affect CronJobs
@@ -171,9 +171,9 @@ Use switches to suspend CronJobs during maintenance windows:
 service: switch.turn_off
 target:
   entity_id:
-    - switch.daily_backup
-    - switch.hourly_backup
-    - switch.weekly_backup
+    - switch.production_default_daily_backup
+    - switch.production_default_hourly_backup
+    - switch.production_default_weekly_backup
 ```
 
 ### 2. Manual Job Execution
@@ -184,7 +184,7 @@ Trigger jobs manually when needed:
 # Manually trigger a backup job
 service: kubernetes.start_workload
 data:
-  workload_name: switch.backup_job
+  workload_name: switch.production_default_backup
 ```
 
 ### 3. Conditional Job Execution
@@ -202,8 +202,8 @@ automation:
       service: switch.turn_off
       target:
         entity_id:
-          - switch.non_critical_job
-          - switch.maintenance_job
+          - switch.production_default_non_critical_job
+          - switch.production_default_maintenance_job
 
   - alias: "Resume CronJobs on Normal Load"
     trigger:
@@ -214,8 +214,8 @@ automation:
       service: switch.turn_on
       target:
         entity_id:
-          - switch.non_critical_job
-          - switch.maintenance_job
+          - switch.production_default_non_critical_job
+          - switch.production_default_maintenance_job
 ```
 
 ### 4. UI Integration
@@ -231,11 +231,11 @@ views:
       - type: entities
         title: "CronJob Controls"
         entities:
-          - entity: switch.backup_job
+          - entity: switch.production_default_backup
             name: "Daily Backup"
-          - entity: switch.cleanup_job
+          - entity: switch.production_default_cleanup
             name: "Cleanup Job"
-          - entity: switch.maintenance_job
+          - entity: switch.production_default_maintenance_job
             name: "Maintenance Job"
 ```
 
@@ -253,8 +253,8 @@ automation:
     action:
       service: kubernetes.start_workload
       data:
-        workload_name: switch.database_backup
-        namespace: production
+        workload_name: switch.production_default_database_backup
+        namespace: default
 ```
 
 ### 6. Monitoring CronJob Health
@@ -266,7 +266,7 @@ automation:
   - alias: "Alert on CronJob Failure"
     trigger:
       platform: state
-      entity_id: switch.backup_job
+      entity_id: switch.production_default_backup
       to: "off"
     condition:
       condition: template
@@ -301,7 +301,7 @@ If you were using the legacy CronJob services (`suspend_cronjob`, `resume_cronjo
 1. **Use `kubernetes.start_workload`**: For triggering CronJobs, use `kubernetes.start_workload` instead of `create_cronjob_job`
 2. **Use Switch Entities**: For suspending/resuming CronJobs, use the switch entities (`switch.turn_on`/`switch.turn_off`) instead of the old services
 3. **Update Automations**: Review and update any automations that used the old service names
-4. **Entity IDs**: The new services accept entity IDs (e.g., `switch.backup_job`) which makes them easier to use in the UI
+4. **Entity IDs**: The new services accept entity IDs (e.g., `switch.production_default_backup`) which makes them easier to use in the UI
 
 ## Troubleshooting
 

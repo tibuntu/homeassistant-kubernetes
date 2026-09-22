@@ -85,8 +85,8 @@ automation:
     action:
       - service: kubernetes.scale_workload
         data:
-          workload_name: switch.web_app
-          namespace: "production"
+          workload_name: switch.production_default_web_app
+          namespace: "default"
           replicas: 5
 ```
 
@@ -494,8 +494,8 @@ automation:
             sequence:
               - service: kubernetes.scale_workload
                 data:
-                  workload_name: switch.business_app
-                  namespace: "production"
+                  workload_name: switch.production_default_business_app
+                  namespace: "default"
                   replicas: 5
           - conditions:
               - condition: time
@@ -505,8 +505,8 @@ automation:
             sequence:
               - service: kubernetes.scale_workload
                 data:
-                  workload_name: switch.business_app
-                  namespace: "production"
+                  workload_name: switch.production_default_business_app
+                  namespace: "default"
                   replicas: 2
 ```
 
