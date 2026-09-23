@@ -237,16 +237,17 @@ class TestMutations:
         assert result is True
 
     async def test_scale_deployment_and_restore(self, k8s_client):
-        assert await k8s_client.scale_deployment("test-nginx", 2, "default") is True
+        try:
+            assert await k8s_client.scale_deployment("test-nginx", 2, "default") is True
 
-        async def _scaled_up():
-            deployments = await k8s_client.get_deployments()
-            dep = next(d for d in deployments if d["name"] == "test-nginx")
-            return dep["replicas"] == 2
+            async def _scaled_up():
+                deployments = await k8s_client.get_deployments()
+                dep = next(d for d in deployments if d["name"] == "test-nginx")
+                return dep["replicas"] == 2
 
-        await _poll_until(_scaled_up)
-
-        assert await k8s_client.scale_deployment("test-nginx", 1, "default") is True
+            await _poll_until(_scaled_up)
+        finally:
+            await k8s_client.scale_deployment("test-nginx", 1, "default")
 
         async def _scaled_back():
             deployments = await k8s_client.get_deployments()
@@ -256,20 +257,20 @@ class TestMutations:
         await _poll_until(_scaled_back, timeout=60)
 
     async def test_scale_statefulset_and_restore(self, k8s_client):
-        assert (
-            await k8s_client.scale_statefulset("test-statefulset", 2, "default") is True
-        )
+        try:
+            assert (
+                await k8s_client.scale_statefulset("test-statefulset", 2, "default")
+                is True
+            )
 
-        async def _scaled_up():
-            statefulsets = await k8s_client.get_statefulsets()
-            sts = next(s for s in statefulsets if s["name"] == "test-statefulset")
-            return sts["replicas"] == 2
+            async def _scaled_up():
+                statefulsets = await k8s_client.get_statefulsets()
+                sts = next(s for s in statefulsets if s["name"] == "test-statefulset")
+                return sts["replicas"] == 2
 
-        await _poll_until(_scaled_up)
-
-        assert (
-            await k8s_client.scale_statefulset("test-statefulset", 1, "default") is True
-        )
+            await _poll_until(_scaled_up)
+        finally:
+            await k8s_client.scale_statefulset("test-statefulset", 1, "default")
 
         async def _scaled_back():
             statefulsets = await k8s_client.get_statefulsets()
@@ -279,16 +280,17 @@ class TestMutations:
         await _poll_until(_scaled_back, timeout=60)
 
     async def test_stop_start_deployment_restores_replicas(self, k8s_client):
-        assert await k8s_client.stop_deployment("test-nginx", "default") is True
+        try:
+            assert await k8s_client.stop_deployment("test-nginx", "default") is True
 
-        async def _scaled_to_zero():
-            deployments = await k8s_client.get_deployments()
-            dep = next(d for d in deployments if d["name"] == "test-nginx")
-            return dep["replicas"] == 0
+            async def _scaled_to_zero():
+                deployments = await k8s_client.get_deployments()
+                dep = next(d for d in deployments if d["name"] == "test-nginx")
+                return dep["replicas"] == 0
 
-        await _poll_until(_scaled_to_zero)
-
-        assert await k8s_client.start_deployment("test-nginx", 1, "default") is True
+            await _poll_until(_scaled_to_zero)
+        finally:
+            await k8s_client.start_deployment("test-nginx", 1, "default")
 
         async def _scaled_back_up():
             deployments = await k8s_client.get_deployments()
@@ -318,13 +320,15 @@ class TestMutations:
         assert result["success"] is True
         job_name = result["job_name"]
 
-        async def _job_exists():
-            jobs = await k8s_client.get_jobs()
-            return any(j["name"] == job_name for j in jobs)
+        try:
 
-        await _poll_until(_job_exists)
+            async def _job_exists():
+                jobs = await k8s_client.get_jobs()
+                return any(j["name"] == job_name for j in jobs)
 
-        assert await k8s_client.delete_job(job_name, "default") is True
+            await _poll_until(_job_exists)
+        finally:
+            await k8s_client.delete_job(job_name, "default")
 
     async def test_get_pod_metrics_no_crash(self, k8s_client):
         """Metrics API may or may not be available — must not raise."""
