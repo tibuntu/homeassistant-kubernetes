@@ -11,5 +11,14 @@ export default defineConfig({
       fileName: () => "kubernetes-panel.js",
     },
     sourcemap: false,
+    rolldownOptions: {
+      output: {
+        minify: {
+          compress: true,
+          mangle: true,
+          codegen: { removeWhitespace: true },
+        },
+      },
+    },
   },
 });
