@@ -17,7 +17,9 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 
 from .const import (
     ATTR_WORKLOAD_TYPE,
+    CONF_SCALE_COOLDOWN,
     CONF_SCALE_VERIFICATION_TIMEOUT,
+    DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DEPLOYMENT,
@@ -288,6 +290,12 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         self._attr_icon = "mdi:kubernetes"
         self._is_on = False
         self._replicas = 0
+        # Coordinator refreshes inside this window (after a scale call) do not
+        # overwrite the switch's optimistic state — see _handle_coordinator_update.
+        self._last_scale_time = 0.0
+        self._scale_cooldown = config_entry.data.get(
+            CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN
+        )
         self._scale_verification_timeout = config_entry.data.get(
             CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
         )
@@ -341,6 +349,16 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        remaining = self._scale_cooldown - (time.time() - self._last_scale_time)
+        if remaining > 0:
+            _LOGGER.debug(
+                "Skipping state update for %s (scaled recently, cooldown: %.1fs remaining)",
+                self.workload_name,
+                remaining,
+            )
+            self.async_write_ha_state()
+            return
+
         workload_data = self._get_workload_data()
         if workload_data:
             self._replicas = workload_data.get("replicas", 0)
@@ -380,6 +398,7 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         if success:
             self._is_on = True
             self._replicas = 1
+            self._last_scale_time = time.time()
             self._last_scale_attempt_failed = False
             self.async_write_ha_state()
             _LOGGER.info(
@@ -405,6 +424,7 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         if success:
             self._is_on = False
             self._replicas = 0
+            self._last_scale_time = time.time()
             self._last_scale_attempt_failed = False
             self.async_write_ha_state()
             _LOGGER.info(

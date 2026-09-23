@@ -750,6 +750,53 @@ class TestKubernetesDeploymentSwitch:
         assert deployment_switch._cpu_usage == 200.0
         assert deployment_switch._memory_usage == 512.0
 
+    def test_handle_coordinator_update_skips_sync_in_cooldown(
+        self, deployment_switch, deployment_coordinator
+    ):
+        """Inside the scale cooldown the listener keeps the optimistic state."""
+        deployment_switch.async_write_ha_state = MagicMock()
+        deployment_switch._scale_cooldown = 100
+        deployment_switch._is_on = False
+        deployment_switch._replicas = 0
+        with patch("custom_components.kubernetes.switch.time.time") as mock_time:
+            mock_time.return_value = 1_000.0
+            deployment_switch._last_scale_time = 1_000.0 - 50
+            deployment_switch._handle_coordinator_update()
+        # Coordinator still says replicas=2/running, but nothing is overwritten
+        assert deployment_switch._replicas == 0
+        assert deployment_switch._is_on is False
+        deployment_switch.async_write_ha_state.assert_called_once()
+
+    def test_handle_coordinator_update_syncs_after_cooldown(
+        self, deployment_switch, deployment_coordinator
+    ):
+        """Once the cooldown has elapsed the listener syncs again."""
+        deployment_switch.async_write_ha_state = MagicMock()
+        deployment_switch._scale_cooldown = 100
+        deployment_switch._is_on = False
+        deployment_switch._replicas = 0
+        with patch("custom_components.kubernetes.switch.time.time") as mock_time:
+            mock_time.return_value = 1_000.0
+            deployment_switch._last_scale_time = 1_000.0 - 100
+            deployment_switch._handle_coordinator_update()
+        assert deployment_switch._replicas == 2
+        assert deployment_switch._is_on is True
+        deployment_switch.async_write_ha_state.assert_called_once()
+
+    async def test_turn_on_and_off_stamp_last_scale_time(
+        self, deployment_switch, deployment_coordinator
+    ):
+        """Successful scale calls start the cooldown window."""
+        deployment_switch.async_write_ha_state = MagicMock()
+        deployment_switch._verify_scaling = AsyncMock()
+        with patch("custom_components.kubernetes.switch.time.time") as mock_time:
+            mock_time.return_value = 1_000.0
+            await deployment_switch.async_turn_on()
+            assert deployment_switch._last_scale_time == 1_000.0
+            mock_time.return_value = 2_000.0
+            await deployment_switch.async_turn_off()
+            assert deployment_switch._last_scale_time == 2_000.0
+
     async def test_async_turn_on_success(
         self, deployment_switch, deployment_coordinator
     ):
