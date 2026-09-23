@@ -30,10 +30,9 @@ from custom_components.kubernetes.kubernetes_client import ResourceVersionExpire
 
 
 @pytest.fixture
-def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
+def mock_config_entry(make_config_entry) -> MockConfigEntry:
     """Create a mock config entry and add it to hass."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
+    return make_config_entry(
         entry_id="test-entry-id",
         data={
             "cluster_name": "test-cluster",
@@ -41,12 +40,8 @@ def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
             "port": 6443,
             "api_token": "test-token",
             "namespace": "default",
-            "verify_ssl": True,
         },
-        options={},
     )
-    entry.add_to_hass(hass)
-    return entry
 
 
 @pytest.fixture
@@ -1036,41 +1031,6 @@ class TestWatchSupport:
     """Tests for the Kubernetes watch API support."""
 
     @pytest.fixture
-    def mock_config_entry_watch_disabled(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with watch explicitly disabled."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-                "switch_update_interval": DEFAULT_SWITCH_UPDATE_INTERVAL,
-            },
-            options={CONF_ENABLE_WATCH: False},
-        )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
-    def mock_config_entry_watch_enabled(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with watch enabled."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-            },
-            options={CONF_ENABLE_WATCH: True},
-        )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
     def mock_client(self):
         """Mock Kubernetes client for watch tests."""
         client = MagicMock()
@@ -1108,23 +1068,40 @@ class TestWatchSupport:
 
     @pytest.fixture
     def coordinator_watch_disabled(
-        self, hass: HomeAssistant, mock_config_entry_watch_disabled, mock_client
+        self, hass: HomeAssistant, make_config_entry, mock_client
     ):
         """Coordinator with watch disabled."""
+        entry = make_config_entry(
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+                "switch_update_interval": DEFAULT_SWITCH_UPDATE_INTERVAL,
+            },
+            options={CONF_ENABLE_WATCH: False},
+        )
         with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(
-                hass, mock_config_entry_watch_disabled, mock_client
-            )
+            return KubernetesDataCoordinator(hass, entry, mock_client)
 
     @pytest.fixture
     def coordinator_watch_enabled(
-        self, hass: HomeAssistant, mock_config_entry_watch_enabled, mock_client
+        self, hass: HomeAssistant, make_config_entry, mock_client
     ):
         """Coordinator with watch enabled."""
+        entry = make_config_entry(
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "Test Cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_WATCH: True},
+        )
         with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(
-                hass, mock_config_entry_watch_enabled, mock_client
-            )
+            return KubernetesDataCoordinator(hass, entry, mock_client)
 
     # ------------------------------------------------------------------
     # Poll interval tests
@@ -1504,27 +1481,15 @@ class TestPopulateFromList:
         return client
 
     @pytest.fixture
-    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with watch enabled."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
+    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
+        """Create coordinator for populate tests."""
+        entry = make_config_entry(
             entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-            },
+            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
             options={CONF_ENABLE_WATCH: True},
         )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
-        """Create coordinator for populate tests."""
         with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+            return KubernetesDataCoordinator(hass, entry, mock_client)
 
     async def test_returns_early_when_data_is_none(self, coord, mock_client):
         """_populate_from_list should return early if coordinator.data is None."""
@@ -1664,27 +1629,15 @@ class TestApplyWatchEventExtended:
         return client
 
     @pytest.fixture
-    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with watch enabled."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
+    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
+        """Create coordinator for apply_watch_event tests."""
+        entry = make_config_entry(
             entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-            },
+            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
             options={CONF_ENABLE_WATCH: True},
         )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
-        """Create coordinator for apply_watch_event tests."""
         with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+            return KubernetesDataCoordinator(hass, entry, mock_client)
 
     async def test_unknown_event_type_ignored(self, coord, mock_client):
         """Unknown event types should return early without modifying data."""
@@ -1875,27 +1828,15 @@ class TestRunWatchLoopExtended:
         return client
 
     @pytest.fixture
-    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with watch enabled."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
+    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
+        """Create coordinator for watch loop tests."""
+        entry = make_config_entry(
             entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-            },
+            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
             options={CONF_ENABLE_WATCH: True},
         )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
-        """Create coordinator for watch loop tests."""
         with patch("homeassistant.helpers.frame.report_usage"):
-            c = KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+            c = KubernetesDataCoordinator(hass, entry, mock_client)
         c.data = {
             "pods": {},
             "pods_count": 0,
@@ -2388,27 +2329,15 @@ class TestBuildWatchConfigs:
         return client
 
     @pytest.fixture
-    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with watch enabled."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
+    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
+        """Create coordinator for build_watch_configs tests."""
+        entry = make_config_entry(
             entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-            },
+            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
             options={CONF_ENABLE_WATCH: True},
         )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
-        """Create coordinator for build_watch_configs tests."""
         with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+            return KubernetesDataCoordinator(hass, entry, mock_client)
 
     async def test_cluster_scoped_configs_when_monitor_all(self, coord, mock_client):
         """When monitor_all_namespaces=True, should return cluster-wide URLs."""
@@ -2656,27 +2585,15 @@ class TestStartStopWatchTasksExtended:
         return client
 
     @pytest.fixture
-    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with watch enabled."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
+    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
+        """Create coordinator for start/stop tests."""
+        entry = make_config_entry(
             entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-            },
+            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
             options={CONF_ENABLE_WATCH: True},
         )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, mock_config_entry, mock_client):
-        """Create coordinator for start/stop tests."""
         with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
+            return KubernetesDataCoordinator(hass, entry, mock_client)
 
     async def test_start_creates_task_per_watch_config(self, hass, coord, mock_client):
         """async_start_watch_tasks should create one task per config entry."""
@@ -2759,54 +2676,28 @@ class TestEventWatchLoop:
         return client
 
     @pytest.fixture
-    def mock_config_entry_warning(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with event_types=warning (default)."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
+    def coord_warning(self, hass: HomeAssistant, make_config_entry, mock_client):
+        """Coordinator with event_types=warning."""
+        entry = make_config_entry(
             entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-            },
+            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
             options={CONF_ENABLE_EVENTS: True, CONF_EVENT_TYPES: EVENT_TYPES_WARNING},
         )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
-    def mock_config_entry_all(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Mock config entry with event_types=all."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test-entry-id",
-            data={
-                "cluster_name": "Test Cluster",
-                "host": "test-cluster.example.com",
-                "port": 6443,
-                "api_token": "test-token",
-            },
-            options={CONF_ENABLE_EVENTS: True, CONF_EVENT_TYPES: EVENT_TYPES_ALL},
-        )
-        entry.add_to_hass(hass)
-        return entry
-
-    @pytest.fixture
-    def coord_warning(
-        self, hass: HomeAssistant, mock_config_entry_warning, mock_client
-    ):
-        """Coordinator with event_types=warning."""
         with patch("homeassistant.helpers.frame.report_usage"):
-            c = KubernetesDataCoordinator(hass, mock_config_entry_warning, mock_client)
+            c = KubernetesDataCoordinator(hass, entry, mock_client)
         c.async_update_listeners = MagicMock()
         return c
 
     @pytest.fixture
-    def coord_all(self, hass: HomeAssistant, mock_config_entry_all, mock_client):
+    def coord_all(self, hass: HomeAssistant, make_config_entry, mock_client):
         """Coordinator with event_types=all."""
+        entry = make_config_entry(
+            entry_id="test-entry-id",
+            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
+            options={CONF_ENABLE_EVENTS: True, CONF_EVENT_TYPES: EVENT_TYPES_ALL},
+        )
         with patch("homeassistant.helpers.frame.report_usage"):
-            c = KubernetesDataCoordinator(hass, mock_config_entry_all, mock_client)
+            c = KubernetesDataCoordinator(hass, entry, mock_client)
         c.async_update_listeners = MagicMock()
         return c
 

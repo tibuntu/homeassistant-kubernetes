@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.sensor import SensorStateClass
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -40,23 +39,6 @@ from custom_components.kubernetes.sensor import (
     _discover_new_workload_status_sensors,
     _discover_simple,
 )
-
-
-@pytest.fixture
-def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Mock config entry."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        entry_id="test_entry_id",
-        data={
-            CONF_HOST: "https://kubernetes.example.com",
-            CONF_PORT: 443,
-            CONF_VERIFY_SSL: True,
-            "cluster_name": "test-cluster",
-        },
-    )
-    entry.add_to_hass(hass)
-    return entry
 
 
 @pytest.fixture

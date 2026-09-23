@@ -3,7 +3,12 @@
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
+from homeassistant.config_entries import ConfigEntryState
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.coordinator import KubernetesEntryData
 
 
 @pytest.fixture(autouse=True)
@@ -50,37 +55,99 @@ def mock_hass():
 
 
 @pytest.fixture
-def mock_config_entry():
-    """Mock config entry."""
-    entry = MagicMock()
-    entry.entry_id = "test_entry_id"
-    entry.unique_id = "test_unique_id"
-    entry.data = {
-        "name": "Test Cluster",
-        "host": "test-cluster.example.com",
-        "port": 6443,
-        "api_token": "test-token",
-        "cluster_name": "test-cluster",
-        "namespace": "default",
-        "verify_ssl": True,
-    }
-    entry.options = {}
-    return entry
+def make_config_entry(hass):
+    """Factory for a real ``MockConfigEntry`` with the common cluster shape.
+
+    ``_make(**overrides)`` accepts ``entry_id``, ``data`` (merged over the
+    common shape), ``options``, and any other ``MockConfigEntry`` kwarg (e.g.
+    ``state``). The entry is added to ``hass`` before being returned.
+    """
+
+    def _make(
+        *, entry_id="test_entry_id", data=None, options=None, **kwargs
+    ) -> MockConfigEntry:
+        merged_data = {
+            "host": "https://kubernetes.example.com",
+            "port": 443,
+            "verify_ssl": True,
+            "cluster_name": "test-cluster",
+        }
+        merged_data.update(data or {})
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id=entry_id,
+            data=merged_data,
+            options=options or {},
+            **kwargs,
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    return _make
 
 
 @pytest.fixture
-def mock_kubernetes_client():
-    """Mock Kubernetes client."""
-    client = MagicMock()
-    client._core_api = MagicMock()
-    client._apps_api = MagicMock()
-    client._core_api.list_namespaced_pod = AsyncMock()
-    client._core_api.list_node = AsyncMock()
-    client._apps_api.list_namespaced_deployment = AsyncMock()
-    client._apps_api.list_namespaced_stateful_set = AsyncMock()
-    client._apps_api.patch_namespaced_deployment = AsyncMock()
-    client._apps_api.patch_namespaced_stateful_set = AsyncMock()
-    return client
+def mock_config_entry(make_config_entry) -> MockConfigEntry:
+    """Common config entry shape shared by switch/sensor/binary_sensor/device tests."""
+    return make_config_entry()
+
+
+@pytest.fixture
+def add_loaded_entry(hass):
+    """Factory: add a config entry in the LOADED state with runtime_data attached.
+
+    ``_add(entry_id="entry_1", *, config=None, options=None, client=None,
+    coordinator=None)`` builds a real ``MockConfigEntry`` with the given raw
+    ``data``/``options`` (no common-shape merging — callers pass exactly the
+    data they need), adds it to hass, and attaches a ``KubernetesEntryData``
+    runtime_data wrapping ``client``/``coordinator`` (each defaulting to a
+    bare ``MagicMock`` when not given).
+    """
+
+    def _add(
+        entry_id="entry_1",
+        *,
+        config=None,
+        options=None,
+        client=None,
+        coordinator=None,
+    ) -> MockConfigEntry:
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id=entry_id,
+            data=config or {},
+            options=options or {},
+            state=ConfigEntryState.LOADED,
+        )
+        entry.add_to_hass(hass)
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data,
+            client=client if client is not None else MagicMock(),
+            coordinator=coordinator if coordinator is not None else MagicMock(),
+        )
+        return entry
+
+    return _add
+
+
+@pytest.fixture
+def make_coordinator():
+    """Factory for a static ``MagicMock`` coordinator.
+
+    ``_make(data=None, last_update_success=True, **attrs)`` sets ``.data`` and
+    ``.last_update_success`` and applies any extra attrs (e.g.
+    ``update_interval``, ``_watch_tasks``, ``client``) via ``setattr``.
+    """
+
+    def _make(data=None, last_update_success=True, **attrs) -> MagicMock:
+        coordinator = MagicMock()
+        coordinator.data = data
+        coordinator.last_update_success = last_update_success
+        for key, value in attrs.items():
+            setattr(coordinator, key, value)
+        return coordinator
+
+    return _make
 
 
 @pytest.fixture
@@ -116,27 +183,3 @@ def mock_coordinator():
     )
     coordinator.get_node_data = MagicMock(return_value=None)
     return coordinator
-
-
-@pytest.fixture
-def mock_kubernetes_api():
-    """Mock Kubernetes API responses."""
-    from unittest.mock import patch
-
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.k8s_client"
-    ) as mock_client:
-        mock_core_api = MagicMock()
-        mock_core_api.list_namespaced_pod = AsyncMock()
-        mock_core_api.list_node = AsyncMock()
-
-        mock_apps_api = MagicMock()
-        mock_apps_api.list_namespaced_deployment = AsyncMock()
-        mock_apps_api.list_namespaced_stateful_set = AsyncMock()
-        mock_apps_api.patch_namespaced_deployment = AsyncMock()
-        mock_apps_api.patch_namespaced_stateful_set = AsyncMock()
-
-        mock_client.CoreV1Api.return_value = mock_core_api
-        mock_client.AppsV1Api.return_value = mock_apps_api
-
-        yield mock_client

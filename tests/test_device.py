@@ -2,8 +2,6 @@
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
-import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.const import DOMAIN
 from custom_components.kubernetes.device import (
@@ -17,17 +15,8 @@ from custom_components.kubernetes.device import (
     get_or_create_namespace_device,
 )
 
-
-@pytest.fixture
-def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Create a mock config entry and add it to hass."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        data={"cluster_name": "test-cluster"},
-        entry_id="test_entry_id",
-    )
-    entry.add_to_hass(hass)
-    return entry
+# `mock_config_entry` (cluster_name="test-cluster", entry_id="test_entry_id")
+# comes from tests/conftest.py's `mock_config_entry` fixture.
 
 
 class TestDeviceIdentifiers:

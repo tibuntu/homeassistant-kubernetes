@@ -19,44 +19,22 @@ from custom_components.kubernetes.event import (
 )
 
 
-@pytest.fixture
-def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Create a mock config entry with events disabled (default)."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        entry_id="test_event_entry_id",
-        data={"host": "https://kubernetes.example.com", "port": 6443},
-        options={},
-    )
-    entry.add_to_hass(hass)
-    return entry
-
-
-@pytest.fixture
-def mock_config_entry_events_enabled(hass: HomeAssistant) -> MockConfigEntry:
-    """Create a mock config entry with events enabled."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        entry_id="test_event_entry_id_enabled",
-        data={"host": "https://kubernetes.example.com", "port": 6443},
-        options={CONF_ENABLE_EVENTS: True},
-    )
-    entry.add_to_hass(hass)
-    return entry
-
-
 class TestKubernetesEventSetup:
     """Test event platform setup."""
 
     async def test_setup_skipped_when_events_disabled(
         self,
         hass: HomeAssistant,
-        mock_config_entry,
+        make_config_entry,
     ):
         """Setup must be a no-op when CONF_ENABLE_EVENTS is False (default)."""
+        entry = make_config_entry(
+            entry_id="test_event_entry_id",
+            data={"host": "https://kubernetes.example.com", "port": 6443},
+        )
         mock_add_entities = MagicMock()
 
-        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+        await async_setup_entry(hass, entry, mock_add_entities)
 
         mock_add_entities.assert_not_called()
 
@@ -81,24 +59,24 @@ class TestKubernetesEventSetup:
     async def test_setup_adds_entity_when_enabled(
         self,
         hass: HomeAssistant,
-        mock_config_entry_events_enabled,
+        make_config_entry,
     ):
         """Setup adds one KubernetesClusterEventEntity when events are enabled."""
+        entry = make_config_entry(
+            entry_id="test_event_entry_id_enabled",
+            data={"host": "https://kubernetes.example.com", "port": 6443},
+            options={CONF_ENABLE_EVENTS: True},
+        )
         mock_add_entities = MagicMock()
 
-        await async_setup_entry(
-            hass, mock_config_entry_events_enabled, mock_add_entities
-        )
+        await async_setup_entry(hass, entry, mock_add_entities)
 
         mock_add_entities.assert_called_once()
         added_entities = mock_add_entities.call_args[0][0]
         assert len(added_entities) == 1
         entity = added_entities[0]
         assert isinstance(entity, KubernetesClusterEventEntity)
-        assert (
-            entity.unique_id
-            == f"{mock_config_entry_events_enabled.entry_id}_cluster_events"
-        )
+        assert entity.unique_id == f"{entry.entry_id}_cluster_events"
         assert "OOMKilling" in entity._attr_event_types
         assert EVENT_TYPE_OTHER in entity._attr_event_types
 

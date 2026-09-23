@@ -36,18 +36,8 @@ def _make_client() -> MagicMock:
     return client
 
 
-def _make_coordinator(data: dict | None) -> MagicMock:
-    """Build a mock coordinator with the given .data payload."""
-    coordinator = MagicMock()
-    coordinator.data = data
-    coordinator.last_update_success = True
-    coordinator.update_interval = timedelta(seconds=60)
-    coordinator._watch_tasks = []
-    return coordinator
-
-
 @pytest.fixture
-def populated_entry(hass: HomeAssistant) -> MockConfigEntry:
+def populated_entry(hass: HomeAssistant, make_coordinator) -> MockConfigEntry:
     """Create a config entry with realistic data + a populated coordinator."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -66,8 +56,8 @@ def populated_entry(hass: HomeAssistant) -> MockConfigEntry:
     )
     entry.add_to_hass(hass)
 
-    coordinator = _make_coordinator(
-        {
+    coordinator = make_coordinator(
+        data={
             "deployments": {"a": {}, "b": {}},
             "statefulsets": {"x": {}},
             "daemonsets": {},
@@ -78,7 +68,9 @@ def populated_entry(hass: HomeAssistant) -> MockConfigEntry:
             "pods_count": 2,
             "nodes_count": 3,
             "last_update": 1_700_000_000.0,
-        }
+        },
+        update_interval=timedelta(seconds=60),
+        _watch_tasks=[],
     )
     entry.runtime_data = KubernetesEntryData(
         config=entry.data, client=_make_client(), coordinator=coordinator
@@ -145,7 +137,9 @@ async def test_diagnostics_redacts_secrets(
     assert "BEGIN CERTIFICATE" not in repr(result)
 
 
-async def test_diagnostics_handles_empty_coordinator(hass: HomeAssistant):
+async def test_diagnostics_handles_empty_coordinator(
+    hass: HomeAssistant, make_coordinator
+):
     """When the coordinator has no data yet, diagnostics still succeeds."""
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -157,8 +151,7 @@ async def test_diagnostics_handles_empty_coordinator(hass: HomeAssistant):
     )
     entry.add_to_hass(hass)
 
-    coordinator = _make_coordinator(None)
-    coordinator.last_update_success = False
+    coordinator = make_coordinator(data=None, last_update_success=False)
 
     client = _make_client()
     client.ca_cert = None

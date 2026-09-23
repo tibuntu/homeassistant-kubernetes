@@ -3,14 +3,11 @@
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.const import (
     ATTR_WORKLOAD_TYPE,
-    DOMAIN,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
@@ -28,23 +25,8 @@ from custom_components.kubernetes.switch import (
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Create a MockConfigEntry and add it to hass."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        entry_id="test_entry_id",
-        data={
-            CONF_HOST: "https://kubernetes.example.com",
-            CONF_PORT: 443,
-            CONF_VERIFY_SSL: True,
-            "cluster_name": "test-cluster",
-        },
-    )
-    entry.add_to_hass(hass)
-    return entry
+# `mock_config_entry` (host/port/verify_ssl/cluster_name shape) comes from
+# tests/conftest.py's `mock_config_entry` fixture.
 
 
 @pytest.fixture
@@ -1699,22 +1681,8 @@ class TestCronJobOperations:
     """Tests for CronJob suspend/resume operations, state updates, and coordinator updates."""
 
     # -- Fixtures local to this class --
-
-    @pytest.fixture
-    def mock_config_entry(self, hass: HomeAssistant) -> MockConfigEntry:
-        """Create a MockConfigEntry and add it to hass."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test_entry_id",
-            data={
-                "host": "https://kubernetes.example.com",
-                "port": 443,
-                "verify_ssl": True,
-                "cluster_name": "test-cluster",
-            },
-        )
-        entry.add_to_hass(hass)
-        return entry
+    # `mock_config_entry` is identical to conftest's shape, so this class
+    # inherits it instead of redefining it.
 
     @pytest.fixture
     def mock_coordinator(self):

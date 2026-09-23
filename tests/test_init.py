@@ -2,7 +2,6 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -23,48 +22,21 @@ from custom_components.kubernetes import (
 )
 from custom_components.kubernetes.coordinator import KubernetesEntryData
 
-
-def _add_loaded_entry(
-    hass: HomeAssistant,
-    entry_id: str,
-    *,
-    options: dict | None = None,
-    coordinator=None,
-) -> MockConfigEntry:
-    """Add a config entry in the LOADED state with runtime data attached."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        entry_id=entry_id,
-        data={"host": "test"},
-        options=options or {},
-        state=ConfigEntryState.LOADED,
-    )
-    entry.add_to_hass(hass)
-    entry.runtime_data = KubernetesEntryData(
-        config=entry.data,
-        client=MagicMock(),
-        coordinator=coordinator if coordinator is not None else MagicMock(),
-    )
-    return entry
+# `add_loaded_entry` (LOADED-state entry + KubernetesEntryData runtime_data)
+# comes from tests/conftest.py's `add_loaded_entry` factory fixture.
 
 
 @pytest.fixture
-def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
+def mock_config_entry(make_config_entry) -> MockConfigEntry:
     """Create a mock config entry and add it to hass."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        entry_id="test_entry_id",
+    return make_config_entry(
         data={
             "host": "test-cluster.example.com",
             "port": 6443,
             "api_token": "test-token",
             "namespace": "default",
-            "verify_ssl": True,
-        },
-        options={},
+        }
     )
-    entry.add_to_hass(hass)
-    return entry
 
 
 async def test_async_setup(hass: HomeAssistant):
@@ -194,11 +166,11 @@ async def test_async_setup_entry_kubernetes_not_available(
 
 
 async def test_async_setup_entry_second_entry(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, add_loaded_entry
 ):
     """Test async_setup_entry for a second config entry alongside an existing one."""
     # Pre-populate with an existing loaded entry
-    existing_entry = _add_loaded_entry(hass, "existing_entry")
+    existing_entry = add_loaded_entry("existing_entry")
 
     with (
         patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
@@ -287,7 +259,7 @@ async def test_async_unload_entry_removes_panel(
 
 
 async def test_async_unload_entry_multiple_entries(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, add_loaded_entry
 ):
     """Test async_unload_entry when multiple entries exist."""
     mock_coordinator = MagicMock()
@@ -297,7 +269,7 @@ async def test_async_unload_entry_multiple_entries(
     )
     hass.data[DOMAIN] = {"panel_registered": True}
     # A second entry stays loaded and still wants the panel
-    _add_loaded_entry(hass, "another_entry")
+    add_loaded_entry("another_entry")
 
     with (
         patch("custom_components.kubernetes.async_remove_panel") as mock_remove_panel,
@@ -360,19 +332,19 @@ class TestLoadedEntriesExcept:
         """Test with no loaded entries."""
         assert _loaded_entries_except(hass) == []
 
-    def test_returns_loaded_entries(self, hass: HomeAssistant):
+    def test_returns_loaded_entries(self, hass: HomeAssistant, add_loaded_entry):
         """Test all loaded entries are returned."""
-        _add_loaded_entry(hass, "entry_1")
-        _add_loaded_entry(hass, "entry_2")
+        add_loaded_entry("entry_1")
+        add_loaded_entry("entry_2")
         assert {e.entry_id for e in _loaded_entries_except(hass)} == {
             "entry_1",
             "entry_2",
         }
 
-    def test_excludes_entry_id(self, hass: HomeAssistant):
+    def test_excludes_entry_id(self, hass: HomeAssistant, add_loaded_entry):
         """Test the excluded entry_id is filtered out."""
-        _add_loaded_entry(hass, "entry_1")
-        _add_loaded_entry(hass, "entry_2")
+        add_loaded_entry("entry_1")
+        add_loaded_entry("entry_2")
         remaining = _loaded_entries_except(hass, "entry_1")
         assert [e.entry_id for e in remaining] == ["entry_2"]
 
@@ -449,24 +421,30 @@ class TestPanelRegistration:
 class TestAnyEntryWantsPanel:
     """Tests for _any_entry_wants_panel helper."""
 
-    def test_returns_true_when_entry_has_panel_enabled(self, hass: HomeAssistant):
+    def test_returns_true_when_entry_has_panel_enabled(
+        self, hass: HomeAssistant, add_loaded_entry
+    ):
         """Test returns True when an entry has enable_panel=True."""
-        _add_loaded_entry(hass, "entry_1", options={"enable_panel": True})
+        add_loaded_entry("entry_1", options={"enable_panel": True})
         assert _any_entry_wants_panel(hass) is True
 
-    def test_returns_true_with_default_options(self, hass: HomeAssistant):
+    def test_returns_true_with_default_options(
+        self, hass: HomeAssistant, add_loaded_entry
+    ):
         """Test returns True when entry has no panel option (defaults to True)."""
-        _add_loaded_entry(hass, "entry_1")
+        add_loaded_entry("entry_1")
         assert _any_entry_wants_panel(hass) is True
 
-    def test_returns_false_when_all_disabled(self, hass: HomeAssistant):
+    def test_returns_false_when_all_disabled(
+        self, hass: HomeAssistant, add_loaded_entry
+    ):
         """Test returns False when all entries have enable_panel=False."""
-        _add_loaded_entry(hass, "entry_1", options={"enable_panel": False})
+        add_loaded_entry("entry_1", options={"enable_panel": False})
         assert _any_entry_wants_panel(hass) is False
 
-    def test_excludes_entry_id(self, hass: HomeAssistant):
+    def test_excludes_entry_id(self, hass: HomeAssistant, add_loaded_entry):
         """Test excludes the specified entry_id from the check."""
-        _add_loaded_entry(hass, "entry_1", options={"enable_panel": True})
+        add_loaded_entry("entry_1", options={"enable_panel": True})
         assert _any_entry_wants_panel(hass, exclude_entry_id="entry_1") is False
 
     def test_returns_false_without_entries(self, hass: HomeAssistant):
@@ -900,7 +878,10 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
     """Tests for panel removal logic when other entries remain."""
 
     async def test_panel_removed_when_no_remaining_entry_wants_it(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        add_loaded_entry,
     ):
         """Test panel is removed when remaining entries don't want it."""
         mock_coordinator = MagicMock()
@@ -912,7 +893,7 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
             coordinator=mock_coordinator,
         )
         # Another entry stays loaded but does not want the panel
-        _add_loaded_entry(hass, "other_entry", options={"enable_panel": False})
+        add_loaded_entry("other_entry", options={"enable_panel": False})
         hass.data[DOMAIN] = {"panel_registered": True}
 
         with (
@@ -933,7 +914,10 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
             mock_remove_panel.assert_called_once_with(hass, DOMAIN)
 
     async def test_panel_not_removed_when_remaining_entry_wants_it(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        add_loaded_entry,
     ):
         """Test panel is kept when a remaining entry still wants it."""
         mock_coordinator = MagicMock()
@@ -945,7 +929,7 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
             coordinator=mock_coordinator,
         )
         # Another entry stays loaded and wants the panel
-        _add_loaded_entry(hass, "other_entry", options={"enable_panel": True})
+        add_loaded_entry("other_entry", options={"enable_panel": True})
         hass.data[DOMAIN] = {"panel_registered": True}
 
         with (
@@ -1005,11 +989,6 @@ class TestAsyncSetupEntryUpdateListener:
 class TestMigrateUniqueIds:
     """Tests for _async_migrate_unique_ids (namespace-aware unique_id migration)."""
 
-    def _make_coordinator(self, data: dict) -> MagicMock:
-        coordinator = MagicMock()
-        coordinator.data = data
-        return coordinator
-
     def _register(self, hass, entry, domain: str, unique_id: str):
         registry = async_get_entity_registry(hass)
         return registry.async_get_or_create(
@@ -1017,7 +996,10 @@ class TestMigrateUniqueIds:
         )
 
     async def test_migrates_deployment_switch_and_sensors(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        make_coordinator,
     ):
         """Old name-only unique_ids get the namespace inserted."""
         eid = mock_config_entry.entry_id
@@ -1036,8 +1018,8 @@ class TestMigrateUniqueIds:
             for domain, uids in old_ids.items()
             for uid in uids
         ]
-        coordinator = self._make_coordinator(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {
                     "prod_web": {"name": "web", "namespace": "prod"},
                 },
@@ -1063,7 +1045,10 @@ class TestMigrateUniqueIds:
         }
 
     async def test_ambiguous_name_not_migrated(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        make_coordinator,
     ):
         """A name present in multiple namespaces cannot be resolved and is skipped."""
         eid = mock_config_entry.entry_id
@@ -1071,8 +1056,8 @@ class TestMigrateUniqueIds:
         entity_id = self._register(
             hass, mock_config_entry, "switch", f"{eid}_bot_statefulset"
         ).entity_id
-        coordinator = self._make_coordinator(
-            {
+        coordinator = make_coordinator(
+            data={
                 "statefulsets": {
                     "c3po_bot": {"name": "bot", "namespace": "c3po"},
                     "toothless_bot": {"name": "bot", "namespace": "toothless"},
@@ -1085,7 +1070,10 @@ class TestMigrateUniqueIds:
         assert registry.async_get(entity_id).unique_id == f"{eid}_bot_statefulset"
 
     async def test_new_format_and_unrelated_ids_untouched(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        make_coordinator,
     ):
         """Already-namespaced and non-workload unique_ids stay as they are."""
         eid = mock_config_entry.entry_id
@@ -1100,8 +1088,8 @@ class TestMigrateUniqueIds:
             self._register(hass, mock_config_entry, domain, uid).entity_id
             for domain, uid in untouched
         ]
-        coordinator = self._make_coordinator(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {"prod_web": {"name": "web", "namespace": "prod"}},
             }
         )
@@ -1113,7 +1101,10 @@ class TestMigrateUniqueIds:
         ]
 
     async def test_collision_with_existing_new_id_skipped(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        make_coordinator,
     ):
         """If the target unique_id already exists, the old entity is left alone."""
         eid = mock_config_entry.entry_id
@@ -1122,8 +1113,8 @@ class TestMigrateUniqueIds:
         old_entity_id = self._register(
             hass, mock_config_entry, "switch", f"{eid}_web_deployment"
         ).entity_id
-        coordinator = self._make_coordinator(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {"prod_web": {"name": "web", "namespace": "prod"}},
             }
         )
@@ -1133,7 +1124,10 @@ class TestMigrateUniqueIds:
         assert registry.async_get(old_entity_id).unique_id == f"{eid}_web_deployment"
 
     async def test_no_coordinator_data(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        make_coordinator,
     ):
         """No data (first refresh failed) leaves the registry untouched."""
         eid = mock_config_entry.entry_id
@@ -1141,7 +1135,7 @@ class TestMigrateUniqueIds:
         entity_id = self._register(
             hass, mock_config_entry, "switch", f"{eid}_web_deployment"
         ).entity_id
-        coordinator = self._make_coordinator(None)
+        coordinator = make_coordinator(data=None)
 
         _async_migrate_unique_ids(hass, mock_config_entry, coordinator)
 
