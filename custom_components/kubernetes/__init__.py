@@ -264,8 +264,9 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         return
 
     # Static paths persist in HA's HTTP server across panel remove/register
-    # cycles and across config entry reloads. Attempting to re-register the
-    # same path raises, so we catch and ignore.
+    # cycles and across config entry reloads. Re-registering the same path
+    # may raise RuntimeError (frozen router / duplicate GET route), so we
+    # catch and ignore.
     try:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(PANEL_URL, str(panel_dir), False)]
