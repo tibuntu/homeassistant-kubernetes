@@ -2,26 +2,26 @@
 
 ## [1.12.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.11.0...v1.12.0) (2026-09-23)
 
+A hardening release from a repository-wide audit: two real bugs fixed, documentation corrected to match the code, and about 7,400 net lines of duplication removed with no change to entities, services or panel features. Three behaviour changes are listed under *Upgrading*.
 
-### Bug Fixes
+### Fixes & improvements
 
-* **client:** drop dead async_refresh_token, document retry-at-start behaviour ([fb5db69](https://github.com/tibuntu/homeassistant-kubernetes/commit/fb5db6917727ec0a3d83f87a2f9fd20a94a02c39))
-* **client:** guarantee a fresh token read on the 401 retry ([fc5bfda](https://github.com/tibuntu/homeassistant-kubernetes/commit/fc5bfdac853f0c440da904d8a61010128c6c66d1))
-* **client:** raise on API failures so outages never prune entities ([85fcbd2](https://github.com/tibuntu/homeassistant-kubernetes/commit/85fcbd2234c4c224fee72517a02085e394b0ab2e))
-* **client:** read the in-cluster token off the event loop ([69d4d20](https://github.com/tibuntu/homeassistant-kubernetes/commit/69d4d2093a2d1f51c67f7081da65641f292cdfc9))
-* **frontend:** copy before sort, track reload timers, keyboard access for clickable rows ([83b1bc1](https://github.com/tibuntu/homeassistant-kubernetes/commit/83b1bc104454a652d55ac35e0f86b487ab33129d))
-* **frontend:** focus confirm overlays so Escape closes them ([b2aca1f](https://github.com/tibuntu/homeassistant-kubernetes/commit/b2aca1f5a676e52b5c55867213ec232e28c20f3c))
-* **frontend:** only focus overlay when focus is outside it; strip bundle whitespace ([e8463c8](https://github.com/tibuntu/homeassistant-kubernetes/commit/e8463c8a5f7919aca8147b0b18a55202cb843ffc))
-* **services:** expose entry_id on workload services, fix translations and stale docs claims ([413e639](https://github.com/tibuntu/homeassistant-kubernetes/commit/413e639bbf4e6be18a00e04c0ca4e52ef8e81776))
-* stop entity polling from forcing coordinator refreshes every 30 s ([ea0a710](https://github.com/tibuntu/homeassistant-kubernetes/commit/ea0a710f49f8a7cd822c7fca1438554e932e359f))
-* **switch:** build initial switches from coordinator data, not the client ([51335a9](https://github.com/tibuntu/homeassistant-kubernetes/commit/51335a9a1d9a48e9a46e658f130f94518914b5b0))
-* **switch:** honour scale_cooldown in the coordinator listener ([b114eb3](https://github.com/tibuntu/homeassistant-kubernetes/commit/b114eb3c4bf85fd7e27d5a14d504eaf99d1b3892))
-* **switch:** sync replica switch state on add; align scale_cooldown translations ([4831ba9](https://github.com/tibuntu/homeassistant-kubernetes/commit/4831ba9620dd686d67f6e6be5d4d8e9c57a9b09c))
+* **An unreachable cluster no longer deletes your entities.** API failures used to look like an empty cluster, and the orphan cleanup removed every entity and namespace device (losing renames, areas and assistant exposure). Entities now become *unavailable* instead.
+* **Entities no longer force coordinator refreshes.** Home Assistant polled every sensor and switch every 30 s, and each poll triggered a refresh, so the configured 300 s / 60 s interval was never respected. Entities now update only from coordinator data; the CronJob switch follows cluster-side changes the same way, and `scale_cooldown` now really protects a freshly scaled switch from being overwritten.
+* **In-cluster token reads** run off the event loop, and the 401 retry re-reads the token file directly.
+* **`entry_id`** is selectable in the UI for `scale_workload`, `start_workload`, `stop_workload` and `restart_workload`.
+* **Panel:** keyboard-operable tabs, rows and sort headers; dialogs close with Escape; the Pods table no longer re-sorts its data in place; a failed pod deletion shows a dismissible banner.
+* **Docs:** entity IDs now use the real `sensor.<cluster>_…` / `switch.<cluster>_<namespace>_<name>` form; switch attributes and the RBAC matrix match the code; the example `configuration.yaml` drops its non-functional YAML block; the README states the actual minimum Home Assistant version (2025.7); the manifest declares `local_push`.
 
+### Under the hood
 
-### Other
+Shared base class, styles and helpers for the six panel views (bundle 158 KB → 116 KB, TypeScript type checking in CI); one implementation for the nine count sensors, one request loop and one scale path in the Kubernetes client, table-driven watch configs and WebSocket handlers; shared test fixtures and a wider real-cluster compatibility suite.
 
-* release 1.12.0 ([93fed64](https://github.com/tibuntu/homeassistant-kubernetes/commit/93fed643d3c59395c00266908c9fb0482fc9aca6))
+> **Upgrading:**
+>
+> * A failing list call (missing RBAC for one resource, or one unreadable namespace) now makes **all** entities unavailable until fixed or the resource is disabled under **Configure → Disable data collection for**. The chart's `full` and `minimal` modes are unaffected.
+> * Entity state now updates at the coordinator cadence: live via the Watch API plus a 300 s fallback, or every 60 s with the Watch API off. The cluster-health sensor keeps its own 30 s probe.
+> * A cluster unreachable at Home Assistant start now shows *Retrying setup* instead of loading empty entities.
 
 ## [1.11.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.10.2...v1.11.0) (2026-09-20)
 
