@@ -34,7 +34,6 @@ DEFAULT_USE_IN_CLUSTER = False
 DEFAULT_DEVICE_GROUPING_MODE = DEVICE_GROUPING_MODE_NAMESPACE
 
 # Update intervals
-DEFAULT_SCAN_INTERVAL = 30
 DEFAULT_SWITCH_UPDATE_INTERVAL = 60  # Default polling interval for switches
 DEFAULT_SCALE_VERIFICATION_TIMEOUT = 30  # Timeout for verifying scaling operations
 DEFAULT_SCALE_COOLDOWN = 10  # Cooldown period after scaling operations
@@ -124,26 +123,6 @@ DISABLABLE_RESOURCES = (
 )
 
 
-# Sensor types
-SENSOR_TYPE_PODS = "pods"
-SENSOR_TYPE_POD = "pod"
-SENSOR_TYPE_NODES = "nodes"
-SENSOR_TYPE_DEPLOYMENTS = "deployments"
-SENSOR_TYPE_STATEFULSETS = "statefulsets"
-SENSOR_TYPE_CRONJOB = "cronjob"
-SENSOR_TYPE_CRONJOBS = "cronjobs"
-SENSOR_TYPE_JOB = "job"
-SENSOR_TYPE_JOBS = "jobs"
-SENSOR_TYPE_INGRESSES = "ingresses"
-
-# Binary sensor types
-BINARY_SENSOR_TYPE_CLUSTER_HEALTH = "cluster_health"
-
-# Switch types
-SWITCH_TYPE_DEPLOYMENT = "deployment"
-SWITCH_TYPE_STATEFULSET = "statefulset"
-SWITCH_TYPE_CRONJOB = "cronjob"
-
 # Workload types
 WORKLOAD_TYPE_DEPLOYMENT = "Deployment"
 WORKLOAD_TYPE_STATEFULSET = "StatefulSet"
@@ -170,8 +149,6 @@ ATTR_JOB_NAME = "job_name"
 ATTR_JOB_NAMES = "job_names"
 ATTR_NODE_NAME = "node_name"
 ATTR_NODE_NAMES = "node_names"
-ATTR_SUSPEND_TIME = "suspend_time"
-ATTR_RESUME_TIME = "resume_time"
 
 # Workload attributes
 ATTR_WORKLOAD_TYPE = "workload_type"

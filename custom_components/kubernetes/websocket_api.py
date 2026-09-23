@@ -38,6 +38,23 @@ from .coordinator import KubernetesDataCoordinator, get_loaded_entries
 
 _LOGGER = logging.getLogger(__name__)
 
+# Resource buckets that are keyed "{namespace}_{name}" in coordinator.data and
+# broken down per-namespace in the cluster overview. Order matches the
+# previous hand-written counts dicts.
+_NAMESPACED_KEYS: tuple[str, ...] = (
+    "pods",
+    "deployments",
+    "statefulsets",
+    "daemonsets",
+    "cronjobs",
+    "jobs",
+    "ingresses",
+    "services",
+)
+# All resource buckets counted in the cluster-wide overview (nodes are
+# cluster-scoped, so they're not part of the namespace breakdown above).
+_COUNT_KEYS: tuple[str, ...] = ("pods", "nodes", *_NAMESPACED_KEYS[1:])
+
 
 def _get_coordinator(
     hass: HomeAssistant, entry_id: str
@@ -85,7 +102,7 @@ async def websocket_nodes_list(
     msg: dict[str, Any],
 ) -> None:
     """Return all nodes from all config entries."""
-    result = _get_nodes_list_data(hass)
+    result = _list_data(hass, "nodes")
     connection.send_result(msg["id"], result)
 
 
@@ -97,7 +114,7 @@ async def websocket_pods_list(
     msg: dict[str, Any],
 ) -> None:
     """Return all pods from all config entries."""
-    result = _get_pods_list_data(hass)
+    result = _list_data(hass, "pods")
     connection.send_result(msg["id"], result)
 
 
@@ -121,7 +138,7 @@ async def websocket_ingresses_list(
     msg: dict[str, Any],
 ) -> None:
     """Return all ingresses from all config entries."""
-    result = _get_ingresses_list_data(hass)
+    result = _list_data(hass, "ingresses")
     connection.send_result(msg["id"], result)
 
 
@@ -133,7 +150,7 @@ async def websocket_services_list(
     msg: dict[str, Any],
 ) -> None:
     """Return all services from all config entries."""
-    result = _get_services_list_data(hass)
+    result = _list_data(hass, "services")
     connection.send_result(msg["id"], result)
 
 
@@ -172,17 +189,7 @@ def _build_cluster_overview(
             "alerts": _empty_alerts(),
         }
 
-    counts = {
-        "pods": len(data.get("pods", {})),
-        "nodes": len(data.get("nodes", {})),
-        "deployments": len(data.get("deployments", {})),
-        "statefulsets": len(data.get("statefulsets", {})),
-        "daemonsets": len(data.get("daemonsets", {})),
-        "cronjobs": len(data.get("cronjobs", {})),
-        "jobs": len(data.get("jobs", {})),
-        "ingresses": len(data.get("ingresses", {})),
-        "services": len(data.get("services", {})),
-    }
+    counts = {key: len(data.get(key, {})) for key in _COUNT_KEYS}
 
     namespaces = _build_namespace_breakdown(data)
     alerts = _build_alerts(data)
@@ -202,45 +209,11 @@ def _build_namespace_breakdown(data: dict[str, Any]) -> dict[str, dict[str, int]
     """Build per-namespace resource counts."""
     ns_counts: dict[str, dict[str, int]] = {}
 
-    for pod in data.get("pods", {}).values():
-        ns = pod.get("namespace", "unknown")
-        ns_counts.setdefault(ns, _empty_ns_counts())
-        ns_counts[ns]["pods"] += 1
-
-    for deploy in data.get("deployments", {}).values():
-        ns = deploy.get("namespace", "unknown")
-        ns_counts.setdefault(ns, _empty_ns_counts())
-        ns_counts[ns]["deployments"] += 1
-
-    for sts in data.get("statefulsets", {}).values():
-        ns = sts.get("namespace", "unknown")
-        ns_counts.setdefault(ns, _empty_ns_counts())
-        ns_counts[ns]["statefulsets"] += 1
-
-    for ds in data.get("daemonsets", {}).values():
-        ns = ds.get("namespace", "unknown")
-        ns_counts.setdefault(ns, _empty_ns_counts())
-        ns_counts[ns]["daemonsets"] += 1
-
-    for cj in data.get("cronjobs", {}).values():
-        ns = cj.get("namespace", "unknown")
-        ns_counts.setdefault(ns, _empty_ns_counts())
-        ns_counts[ns]["cronjobs"] += 1
-
-    for job in data.get("jobs", {}).values():
-        ns = job.get("namespace", "unknown")
-        ns_counts.setdefault(ns, _empty_ns_counts())
-        ns_counts[ns]["jobs"] += 1
-
-    for ingress in data.get("ingresses", {}).values():
-        ns = ingress.get("namespace", "unknown")
-        ns_counts.setdefault(ns, _empty_ns_counts())
-        ns_counts[ns]["ingresses"] += 1
-
-    for svc in data.get("services", {}).values():
-        ns = svc.get("namespace", "unknown")
-        ns_counts.setdefault(ns, _empty_ns_counts())
-        ns_counts[ns]["services"] += 1
+    for key in _NAMESPACED_KEYS:
+        for item in data.get(key, {}).values():
+            ns = item.get("namespace", "unknown")
+            ns_counts.setdefault(ns, _empty_ns_counts())
+            ns_counts[ns][key] += 1
 
     return ns_counts
 
@@ -329,31 +302,12 @@ def _build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
 
 def _empty_counts() -> dict[str, int]:
     """Return empty resource counts."""
-    return {
-        "pods": 0,
-        "nodes": 0,
-        "deployments": 0,
-        "statefulsets": 0,
-        "daemonsets": 0,
-        "cronjobs": 0,
-        "jobs": 0,
-        "ingresses": 0,
-        "services": 0,
-    }
+    return dict.fromkeys(_COUNT_KEYS, 0)
 
 
 def _empty_ns_counts() -> dict[str, int]:
     """Return empty per-namespace counts."""
-    return {
-        "pods": 0,
-        "deployments": 0,
-        "statefulsets": 0,
-        "daemonsets": 0,
-        "cronjobs": 0,
-        "jobs": 0,
-        "ingresses": 0,
-        "services": 0,
-    }
+    return dict.fromkeys(_NAMESPACED_KEYS, 0)
 
 
 def _empty_alerts() -> dict[str, list]:
@@ -365,52 +319,22 @@ def _empty_alerts() -> dict[str, list]:
     }
 
 
-def _get_nodes_list_data(hass: HomeAssistant) -> dict[str, Any]:
-    """Gather node data from all config entries."""
+def _list_data(hass: HomeAssistant, key: str) -> dict[str, Any]:
+    """Gather a single resource list (nodes/pods/ingresses/services) from all
+    config entries, keyed the same as the coordinator's data bucket."""
     clusters: list[dict[str, Any]] = []
 
     for entry in get_loaded_entries(hass):
-        entry_id = entry.entry_id
         entry_data = entry.runtime_data
-        coordinator = entry_data.coordinator
-        config = entry_data.config
-
-        data = coordinator.data
-        nodes_list: list[dict[str, Any]] = []
-        if data:
-            nodes_list = list(data.get("nodes", {}).values())
+        data = entry_data.coordinator.data
 
         clusters.append(
             {
-                "entry_id": entry_id,
-                "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
-                "nodes": nodes_list,
-            }
-        )
-
-    return {"clusters": clusters}
-
-
-def _get_pods_list_data(hass: HomeAssistant) -> dict[str, Any]:
-    """Gather pod data from all config entries."""
-    clusters: list[dict[str, Any]] = []
-
-    for entry in get_loaded_entries(hass):
-        entry_id = entry.entry_id
-        entry_data = entry.runtime_data
-        coordinator = entry_data.coordinator
-        config = entry_data.config
-
-        data = coordinator.data
-        pods_list: list[dict[str, Any]] = []
-        if data:
-            pods_list = list(data.get("pods", {}).values())
-
-        clusters.append(
-            {
-                "entry_id": entry_id,
-                "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
-                "pods": pods_list,
+                "entry_id": entry.entry_id,
+                "cluster_name": entry_data.config.get(
+                    CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME
+                ),
+                key: list(data.get(key, {}).values()) if data else [],
             }
         )
 
@@ -457,56 +381,6 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
     return {"clusters": clusters}
 
 
-def _get_ingresses_list_data(hass: HomeAssistant) -> dict[str, Any]:
-    """Gather ingress data from all config entries."""
-    clusters: list[dict[str, Any]] = []
-
-    for entry in get_loaded_entries(hass):
-        entry_id = entry.entry_id
-        entry_data = entry.runtime_data
-        coordinator = entry_data.coordinator
-        config = entry_data.config
-
-        data = coordinator.data
-        ingresses_list: list[dict[str, Any]] = []
-        if data:
-            ingresses_list = list(data.get("ingresses", {}).values())
-
-        clusters.append(
-            {
-                "entry_id": entry_id,
-                "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
-                "ingresses": ingresses_list,
-            }
-        )
-
-    return {"clusters": clusters}
-
-
-def _get_services_list_data(hass: HomeAssistant) -> dict[str, Any]:
-    """Gather service data from all config entries."""
-    clusters: list[dict[str, Any]] = []
-
-    for entry in get_loaded_entries(hass):
-        entry_data = entry.runtime_data
-        data = entry_data.coordinator.data
-        services_list: list[dict[str, Any]] = []
-        if data:
-            services_list = list(data.get("services", {}).values())
-
-        clusters.append(
-            {
-                "entry_id": entry.entry_id,
-                "cluster_name": entry_data.config.get(
-                    CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME
-                ),
-                "services": services_list,
-            }
-        )
-
-    return {"clusters": clusters}
-
-
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
@@ -523,15 +397,6 @@ async def websocket_delete_pod(
     msg: dict[str, Any],
 ) -> None:
     """Delete a pod."""
-    await _handle_delete_pod(hass, connection, msg)
-
-
-async def _handle_delete_pod(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Handle pod deletion logic."""
     entry_id = msg["entry_id"]
     pod_name = msg["pod_name"]
     namespace = msg["namespace"]
@@ -572,15 +437,6 @@ async def websocket_delete_job(
     msg: dict[str, Any],
 ) -> None:
     """Delete a job."""
-    await _handle_delete_job(hass, connection, msg)
-
-
-async def _handle_delete_job(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Handle job deletion logic."""
     entry_id = msg["entry_id"]
     job_name = msg["job_name"]
     namespace = msg["namespace"]
@@ -683,16 +539,7 @@ async def websocket_suspend_cronjob(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Suspend (``suspend: true``) or resume (``suspend: false``) a CronJob."""
-    await _handle_suspend_cronjob(hass, connection, msg)
-
-
-async def _handle_suspend_cronjob(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Handle CronJob suspend/resume logic.
+    """Suspend (``suspend: true``) or resume (``suspend: false``) a CronJob.
 
     The panel goes through WebSocket here because the dedicated
     ``suspend_cronjob``/``resume_cronjob`` services were retired in favor of
@@ -733,16 +580,6 @@ def websocket_subscribe_updates(
     msg: dict[str, Any],
 ) -> None:
     """Push a lightweight event whenever any cluster coordinator updates."""
-    _handle_subscribe_updates(hass, connection, msg)
-
-
-@callback
-def _handle_subscribe_updates(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Subscribe the connection to coordinator update pings."""
 
     @callback
     def _push_update() -> None:
