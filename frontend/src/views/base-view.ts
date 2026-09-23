@@ -169,9 +169,19 @@ export abstract class K8sDataView<T> extends LitElement {
    * a trigger button, well past the document's one-shot autofocus window —
    * so focus (and therefore the Escape keydown) needs to be requested
    * explicitly. Pair with `tabindex="-1"` on the same element.
+   *
+   * The `:focus-within` guard matters: `ref()` re-invokes its callback on
+   * every render (each call to this method returns a fresh closure), and
+   * these overlays re-render on every keystroke in their form fields, every
+   * 1 s subscription push, and every 60 s poll. Without the guard, focus
+   * would be yanked back to the overlay from whatever's focused inside the
+   * dialog (e.g. the scale input) after each of those.
    */
   protected _autofocusOverlay() {
-    return ref((el?: Element) => (el as HTMLElement | undefined)?.focus());
+    return ref((el?: Element) => {
+      const host = el as HTMLElement | undefined;
+      if (host && !host.matches(":focus-within")) host.focus({ preventScroll: true });
+    });
   }
 
   /**
