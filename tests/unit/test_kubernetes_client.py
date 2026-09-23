@@ -1188,28 +1188,19 @@ async def test_is_cluster_healthy_connection_failure(mock_client):
 
 
 @pytest.mark.parametrize(
-    ("method_name", "args", "replicas"),
+    ("method_name", "args"),
     [
-        ("scale_deployment", ("nginx-deployment", 5, "default"), 3),
-        ("start_deployment", ("nginx-deployment", 1, "default"), 0),
-        ("stop_deployment", ("nginx-deployment", "default"), 3),
-        ("scale_statefulset", ("redis-statefulset", 5, "default"), 3),
-        ("start_statefulset", ("redis-statefulset", 1, "default"), 0),
-        ("stop_statefulset", ("redis-statefulset", "default"), 3),
+        ("scale_deployment", ("nginx-deployment", 5, "default")),
+        ("start_deployment", ("nginx-deployment", 1, "default")),
+        ("stop_deployment", ("nginx-deployment", "default")),
+        ("scale_statefulset", ("redis-statefulset", 5, "default")),
+        ("start_statefulset", ("redis-statefulset", 1, "default")),
+        ("stop_statefulset", ("redis-statefulset", "default")),
     ],
 )
-async def test_scale_workload_success(mock_client, method_name, args, replicas):
-    """scale/start/stop deployment & statefulset succeed via GET-then-PATCH."""
-    mock_session = mock_aiohttp_session(
-        get=_mock_response(
-            200,
-            json_data={
-                "spec": {"replicas": replicas},
-                "status": {"availableReplicas": replicas},
-            },
-        ),
-        patch=200,
-    )
+async def test_scale_workload_success(mock_client, method_name, args):
+    """scale/start/stop deployment & statefulset succeed via a PATCH on /scale."""
+    mock_session = mock_aiohttp_session(patch=200)
 
     with patch("aiohttp.ClientSession", return_value=mock_session):
         result = await getattr(mock_client, method_name)(*args)

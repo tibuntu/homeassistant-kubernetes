@@ -59,13 +59,11 @@ def make_config_entry(hass):
     """Factory for a real ``MockConfigEntry`` with the common cluster shape.
 
     ``_make(**overrides)`` accepts ``entry_id``, ``data`` (merged over the
-    common shape), ``options``, and any other ``MockConfigEntry`` kwarg (e.g.
-    ``state``). The entry is added to ``hass`` before being returned.
+    common shape) and ``options``. The entry is added to ``hass`` before being
+    returned.
     """
 
-    def _make(
-        *, entry_id="test_entry_id", data=None, options=None, **kwargs
-    ) -> MockConfigEntry:
+    def _make(*, entry_id="test_entry_id", data=None, options=None) -> MockConfigEntry:
         merged_data = {
             "host": "https://kubernetes.example.com",
             "port": 443,
@@ -78,7 +76,6 @@ def make_config_entry(hass):
             entry_id=entry_id,
             data=merged_data,
             options=options or {},
-            **kwargs,
         )
         entry.add_to_hass(hass)
         return entry
