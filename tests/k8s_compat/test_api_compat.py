@@ -16,6 +16,13 @@ import pytest
 pytestmark = pytest.mark.k8s_compat
 
 
+async def _poll_until(check, timeout: int = 30, interval: int = 1) -> None:
+    """Poll an async predicate until it's True, bounded by a timeout."""
+    async with asyncio.timeout(timeout):
+        while not await check():
+            await asyncio.sleep(interval)
+
+
 class TestClusterHealth:
     async def test_is_cluster_healthy(self, k8s_client):
         assert await k8s_client.is_cluster_healthy() is True
@@ -228,3 +235,98 @@ class TestMutations:
     async def test_delete_job(self, k8s_client):
         result = await k8s_client.delete_job("test-job", "default")
         assert result is True
+
+    async def test_scale_deployment_and_restore(self, k8s_client):
+        assert await k8s_client.scale_deployment("test-nginx", 2, "default") is True
+
+        async def _scaled_up():
+            deployments = await k8s_client.get_deployments()
+            dep = next(d for d in deployments if d["name"] == "test-nginx")
+            return dep["replicas"] == 2
+
+        await _poll_until(_scaled_up)
+
+        assert await k8s_client.scale_deployment("test-nginx", 1, "default") is True
+
+        async def _scaled_back():
+            deployments = await k8s_client.get_deployments()
+            dep = next(d for d in deployments if d["name"] == "test-nginx")
+            return dep["replicas"] == 1
+
+        await _poll_until(_scaled_back, timeout=60)
+
+    async def test_scale_statefulset_and_restore(self, k8s_client):
+        assert (
+            await k8s_client.scale_statefulset("test-statefulset", 2, "default") is True
+        )
+
+        async def _scaled_up():
+            statefulsets = await k8s_client.get_statefulsets()
+            sts = next(s for s in statefulsets if s["name"] == "test-statefulset")
+            return sts["replicas"] == 2
+
+        await _poll_until(_scaled_up)
+
+        assert (
+            await k8s_client.scale_statefulset("test-statefulset", 1, "default") is True
+        )
+
+        async def _scaled_back():
+            statefulsets = await k8s_client.get_statefulsets()
+            sts = next(s for s in statefulsets if s["name"] == "test-statefulset")
+            return sts["replicas"] == 1
+
+        await _poll_until(_scaled_back, timeout=60)
+
+    async def test_stop_start_deployment_restores_replicas(self, k8s_client):
+        assert await k8s_client.stop_deployment("test-nginx", "default") is True
+
+        async def _scaled_to_zero():
+            deployments = await k8s_client.get_deployments()
+            dep = next(d for d in deployments if d["name"] == "test-nginx")
+            return dep["replicas"] == 0
+
+        await _poll_until(_scaled_to_zero)
+
+        assert await k8s_client.start_deployment("test-nginx", 1, "default") is True
+
+        async def _scaled_back_up():
+            deployments = await k8s_client.get_deployments()
+            dep = next(d for d in deployments if d["name"] == "test-nginx")
+            return dep["replicas"] == 1 and dep["available_replicas"] == 1
+
+        await _poll_until(_scaled_back_up, timeout=60)
+
+    async def test_delete_pod_recreated(self, k8s_client):
+        pods = await k8s_client.get_pods()
+        pod = next(
+            p
+            for p in pods
+            if p["namespace"] == "default" and p["name"].startswith("test-nginx-")
+        )
+        assert await k8s_client.delete_pod(pod["name"], "default") is True
+
+        async def _replacement_ready():
+            deployments = await k8s_client.get_deployments()
+            dep = next(d for d in deployments if d["name"] == "test-nginx")
+            return dep["available_replicas"] == 1
+
+        await _poll_until(_replacement_ready, timeout=60)
+
+    async def test_trigger_cronjob_creates_and_cleans_up_job(self, k8s_client):
+        result = await k8s_client.trigger_cronjob("test-cronjob", "default")
+        assert result["success"] is True
+        job_name = result["job_name"]
+
+        async def _job_exists():
+            jobs = await k8s_client.get_jobs()
+            return any(j["name"] == job_name for j in jobs)
+
+        await _poll_until(_job_exists)
+
+        assert await k8s_client.delete_job(job_name, "default") is True
+
+    async def test_get_pod_metrics_no_crash(self, k8s_client):
+        """Metrics API may or may not be available — must not raise."""
+        metrics = await k8s_client.get_pod_metrics()
+        assert isinstance(metrics, dict)
