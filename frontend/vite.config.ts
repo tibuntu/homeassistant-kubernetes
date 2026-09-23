@@ -10,8 +10,6 @@ export default defineConfig({
       formats: ["es"],
       fileName: () => "kubernetes-panel.js",
     },
-    codeSplitting: false,
     sourcemap: false,
-    minify: false,
   },
 });

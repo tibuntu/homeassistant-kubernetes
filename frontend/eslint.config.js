@@ -19,7 +19,7 @@ export default [
     rules: {
       ...tsPlugin.configs.recommended.rules,
       ...litPlugin.configs.recommended.rules,
-      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_" },
@@ -27,6 +27,6 @@ export default [
     },
   },
   {
-    ignores: ["dist/", "node_modules/"],
+    ignores: ["node_modules/"],
   },
 ];

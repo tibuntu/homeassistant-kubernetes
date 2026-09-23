@@ -42,6 +42,7 @@ kubeconfig
 # Node.js
 node_modules/
 frontend/dist/
+.vite-dev/
 
 # AI
 .claude/

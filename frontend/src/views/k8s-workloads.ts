@@ -195,7 +195,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
 
   private _callService(
     service: string,
-    data: Record<string, any>,
+    data: Record<string, unknown>,
     actionKey: string,
   ): Promise<void> {
     return this._runAction(actionKey, async () => {
