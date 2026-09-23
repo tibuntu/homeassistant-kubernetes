@@ -207,6 +207,18 @@ The workflow pins the Helm version (`azure/setup-helm`) so the rendered output i
 
 The chart version is bumped by release-please alongside the integration version, and the release workflow pushes it to `oci://ghcr.io/tibuntu/charts` on every release.
 
+## Releases
+
+Releases are cut by [release-please](https://github.com/googleapis/release-please) from conventional-commit subjects on `main`: `fix:` bumps the patch version, `feat:` the minor version; `refactor:`, `test:`, `build:`, `docs:` and `chore:` do not trigger a release or appear in the changelog. When a release contains more than its `fix:` commits express — a large refactor, a behaviour change shipped under `fix:` — force the version with a `Release-As` footer:
+
+```bash
+git commit -m "chore: release 1.12.0" -m "Release-As: 1.12.0"
+```
+
+The commit must not be empty: pull requests are rebase-merged, and a rebase silently drops empty commits, so the footer never reaches `main` (this happened with #404). Attach the footer to a small real change instead — a documentation note, for example.
+
+For minor releases the generated changelog section is rewritten as end-user prose on the `release-please--branches--main` branch before the release PR is merged (intro paragraph, `### New features` / `### Fixes & improvements`, an `> **Upgrading**` note for behaviour changes), and the release PR body is replaced with the same text.
+
 ## Frontend Development
 
 The sidebar panel is built with [Lit](https://lit.dev/) 3 (TypeScript) and bundled with [Vite](https://vite.dev/) (rolldown) into a single ES module. The bundle is minified via `build.rolldownOptions.output.minify` (`compress` + `mangle` + `codegen.removeWhitespace`) — property/class names used by Lit's tagged template literals and the custom-element contract are not mangled, so this is safe. The committed `custom_components/kubernetes/frontend/kubernetes-panel.js` (~116 KB) is diffed byte-for-byte against a fresh build in CI (see below), so always rebuild after editing `.ts` source.
