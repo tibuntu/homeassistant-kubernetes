@@ -11,11 +11,14 @@ import "./views/k8s-settings";
 
 type Tab = "overview" | "nodes" | "workloads" | "pods" | "network" | "settings";
 
-interface TabDef {
-  id: Tab;
-  label: string;
-  icon: string;
-}
+const TABS = [
+  { id: "overview", label: "Overview", icon: "mdi:view-dashboard" },
+  { id: "nodes", label: "Nodes", icon: "mdi:server" },
+  { id: "workloads", label: "Workloads", icon: "mdi:application-cog" },
+  { id: "pods", label: "Pods", icon: "mdi:cube-outline" },
+  { id: "network", label: "Network", icon: "mdi:lan" },
+  { id: "settings", label: "Settings", icon: "mdi:cog" },
+] as const satisfies { id: Tab; label: string; icon: string }[];
 
 @customElement("kubernetes-panel")
 export class KubernetesPanel extends LitElement {
@@ -25,15 +28,6 @@ export class KubernetesPanel extends LitElement {
   @property({ attribute: false }) public panel!: Record<string, unknown>;
 
   @state() private _activeTab: Tab = "overview";
-
-  private _tabs: TabDef[] = [
-    { id: "overview", label: "Overview", icon: "mdi:view-dashboard" },
-    { id: "nodes", label: "Nodes", icon: "mdi:server" },
-    { id: "workloads", label: "Workloads", icon: "mdi:application-cog" },
-    { id: "pods", label: "Pods", icon: "mdi:cube-outline" },
-    { id: "network", label: "Network", icon: "mdi:lan" },
-    { id: "settings", label: "Settings", icon: "mdi:cog" },
-  ];
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     loadHaElements();
@@ -153,7 +147,7 @@ export class KubernetesPanel extends LitElement {
         <h1>Kubernetes</h1>
       </div>
       <div class="tab-bar">
-        ${this._tabs.map(
+        ${TABS.map(
           (tab) => html`
             <div
               class="tab"

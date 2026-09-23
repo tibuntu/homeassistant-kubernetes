@@ -86,6 +86,11 @@ jobs:
         run: npm run format:check
         working-directory: frontend
 
+      - name: Typecheck
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm run typecheck
+        working-directory: frontend
+
       - name: Build
         if: steps.changes.outputs.frontend == 'true'
         run: npm run build
