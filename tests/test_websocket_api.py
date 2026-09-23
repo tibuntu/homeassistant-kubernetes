@@ -1134,6 +1134,10 @@ class TestReadCommandsEndToEnd:
         """The command succeeds and returns its documented top-level key."""
         client = MagicMock()
         coordinator = add_loaded_client_entry(client)
+        # `_build_cluster_overview`/`_get_config_list_data` embed this in the
+        # result; a bare MagicMock is not JSON-serialisable and the command
+        # would come back `success: False`.
+        coordinator.last_update_success = True
         coordinator.data = {
             "nodes": {},
             "pods": {},
