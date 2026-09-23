@@ -6,7 +6,6 @@ import { formatAge, errorMessage } from "../utils/format";
 
 interface IngressRule {
   host: string;
-  path: string;
   service_name: string;
 }
 
@@ -31,7 +30,6 @@ interface IngressesResponse {
 }
 
 interface ServicePort {
-  name: string | null;
   port: number;
   target_port: number | string | null;
   node_port: number | null;
@@ -327,7 +325,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
           : nothing
       }
       ${
-        this._typeFilter === "all" || this._typeFilter !== "Ingress"
+        this._typeFilter !== "Ingress"
           ? html`
               <h2 class="section-title">Services</h2>
               ${

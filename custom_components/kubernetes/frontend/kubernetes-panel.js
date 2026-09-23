@@ -853,6 +853,18 @@ var K8sDataView = class extends i {
 		}
 	}
 	/**
+	* Escape-to-close handler for a `.confirm-overlay`. Pass the same
+	* `onClose`-or-`nothing` value the overlay's `@click` ternary already
+	* uses to gate click-to-cancel while an action is in flight. Give the
+	* overlay `tabindex="-1"` and the `autofocus` attribute so it receives
+	* the keydown once rendered.
+	*/
+	_onOverlayKeydown(onClose) {
+		return (e) => {
+			if (e.key === "Escape" && onClose !== A) onClose();
+		};
+	}
+	/**
 	* Loading spinner, error card or empty message, or `nothing` when the view
 	* should render its data. `empty` is the view's own "no items" test.
 	*/
@@ -2175,6 +2187,7 @@ var K8sPodsTable = class K8sPodsTable extends K8sDataView {
 		this._deleting = false;
 		this._visibleColumns = loadColumnPrefs();
 		this._columnMenuOpen = false;
+		this._actionError = null;
 		this.loadErrorFallback = "Failed to load pods data";
 		this._boundCloseMenu = () => {
 			this._columnMenuOpen = false;
@@ -2258,7 +2271,7 @@ var K8sPodsTable = class K8sPodsTable extends K8sDataView {
 			this._deleteConfirm = null;
 			await this._loadData();
 		} catch (err) {
-			this._error = errorMessage(err, "Failed to delete pod");
+			this._actionError = errorMessage(err, "Failed to delete pod");
 			this._deleteConfirm = null;
 		} finally {
 			this._deleting = false;
@@ -2270,6 +2283,7 @@ var K8sPodsTable = class K8sPodsTable extends K8sDataView {
 	}
 	static {
 		this.styles = [
+			actionStyles,
 			stateStyles,
 			filterStyles,
 			badgeStyles,
@@ -2442,6 +2456,20 @@ var K8sPodsTable = class K8sPodsTable extends K8sDataView {
 		const state = this.renderState(!this._data?.clusters.length);
 		if (state !== A) return state;
 		return b`
+      ${this._actionError ? b`
+              <div class="action-error">
+                <span>${this._actionError}</span>
+                <button
+                  class="dismiss-btn"
+                  @click=${() => {
+			this._actionError = null;
+		}}
+                  title="Dismiss"
+                >
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>
+              </div>
+            ` : A}
       ${this._data.clusters.map((c) => this._renderCluster(c))}
       ${this._deleteConfirm ? this._renderDeleteDialog() : A}
     `;
@@ -2653,7 +2681,10 @@ var K8sPodsTable = class K8sPodsTable extends K8sDataView {
 		return b`
       <div
         class="confirm-overlay"
+        tabindex="-1"
+        autofocus
         @click=${this._deleting ? A : this._cancelDelete}
+        @keydown=${this._onOverlayKeydown(this._deleting ? A : this._cancelDelete)}
       >
         <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
           <h3>Delete Pod</h3>
@@ -2688,6 +2719,7 @@ __decorate([r()], K8sPodsTable.prototype, "_deleteConfirm", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_deleting", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_visibleColumns", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_columnMenuOpen", void 0);
+__decorate([r()], K8sPodsTable.prototype, "_actionError", void 0);
 K8sPodsTable = __decorate([t("k8s-pods-table")], K8sPodsTable);
 //#endregion
 //#region src/views/k8s-network.ts
@@ -2895,7 +2927,7 @@ var K8sNetwork = class K8sNetwork extends K8sDataView {
               <h2 class="section-title">Ingresses</h2>
               ${this._ingressError ? this._renderInlineError(this._ingressError) : hasIngresses ? ingressClusters.map((cluster) => this._renderCluster(cluster)) : b`<div class="empty">No ingresses found.</div>`}
             ` : A}
-      ${this._typeFilter === "all" || this._typeFilter !== "Ingress" ? b`
+      ${this._typeFilter !== "Ingress" ? b`
               <h2 class="section-title">Services</h2>
               ${this._servicesError ? this._renderInlineError(this._servicesError) : hasServices ? serviceClusters.map((cluster) => this._renderServiceCluster(cluster)) : b`<div class="empty">No services found.</div>`}
             ` : A}
@@ -3028,6 +3060,38 @@ __decorate([r()], K8sNetwork.prototype, "_typeFilter", void 0);
 K8sNetwork = __decorate([t("k8s-network")], K8sNetwork);
 //#endregion
 //#region src/views/k8s-workloads.ts
+var STATUS_META = {
+	healthy: {
+		badgeClass: "badge-healthy",
+		label: "Healthy"
+	},
+	degraded: {
+		badgeClass: "badge-degraded",
+		label: "Degraded"
+	},
+	stopped: {
+		badgeClass: "badge-stopped",
+		label: "Stopped"
+	}
+};
+var REPLICA_KIND_META = {
+	deployment: {
+		category: "deployments",
+		icon: "mdi:rocket-launch",
+		label: "Deployments",
+		emptyLabel: "deployments",
+		readyField: "available_replicas",
+		actionPrefix: "deploy_"
+	},
+	statefulset: {
+		category: "statefulsets",
+		icon: "mdi:database",
+		label: "StatefulSets",
+		emptyLabel: "statefulsets",
+		readyField: "ready_replicas",
+		actionPrefix: "sts_"
+	}
+};
 var K8sWorkloads = class K8sWorkloads extends K8sDataView {
 	constructor(..._args) {
 		super(..._args);
@@ -3411,8 +3475,8 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
             `)}
         </div>
 
-        ${this._shouldShowCategory("deployments") ? this._renderDeployments(cluster.deployments, cluster.entry_id) : A}
-        ${this._shouldShowCategory("statefulsets") ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id) : A}
+        ${this._shouldShowCategory("deployments") ? this._renderReplicaCategory("deployment", cluster.deployments, cluster.entry_id) : A}
+        ${this._shouldShowCategory("statefulsets") ? this._renderReplicaCategory("statefulset", cluster.statefulsets, cluster.entry_id) : A}
         ${this._shouldShowCategory("daemonsets") ? this._renderDaemonSets(cluster.daemonsets, cluster.entry_id) : A}
         ${this._shouldShowCategory("cronjobs") ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id) : A}
         ${this._shouldShowCategory("jobs") ? this._renderJobs(cluster.entry_id, cluster.jobs) : A}
@@ -3422,14 +3486,9 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
 	_shouldShowCategory(category) {
 		return this._categoryFilter === "all" || this._categoryFilter === category;
 	}
-	_getDeploymentStatus(d) {
-		if (d.replicas === 0) return "stopped";
-		if ((d.available_replicas || 0) < d.replicas) return "degraded";
-		return "healthy";
-	}
-	_getStatefulSetStatus(s) {
-		if (s.replicas === 0) return "stopped";
-		if ((s.ready_replicas || 0) < s.replicas) return "degraded";
+	_getReplicaStatus(item, kind) {
+		if (item.replicas === 0) return "stopped";
+		if ((item[REPLICA_KIND_META[kind].readyField] || 0) < item.replicas) return "degraded";
 		return "healthy";
 	}
 	_getDaemonSetStatus(ds) {
@@ -3440,25 +3499,10 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
 	_matchesStatusFilter(status) {
 		return this._statusFilter === "all" || this._statusFilter === status;
 	}
-	_statusBadgeClass(status) {
-		return {
-			all: "",
-			healthy: "badge-healthy",
-			degraded: "badge-degraded",
-			stopped: "badge-stopped"
-		}[status] || "";
-	}
-	_statusLabel(status) {
-		return {
-			all: "",
-			healthy: "Healthy",
-			degraded: "Degraded",
-			stopped: "Stopped"
-		}[status] || "";
-	}
-	_renderDeployments(deployments, entryId) {
-		const filtered = deployments.filter((d) => this._matchesNamespace(d.namespace) && this._matchesSearch(d.name) && this._matchesStatusFilter(this._getDeploymentStatus(d)));
-		if (filtered.length === 0 && this._categoryFilter !== "all") return b`<div class="empty">No deployments match your filters.</div>`;
+	_renderReplicaCategory(kind, items, entryId) {
+		const meta = REPLICA_KIND_META[kind];
+		const filtered = items.filter((item) => this._matchesNamespace(item.namespace) && this._matchesSearch(item.name) && this._matchesStatusFilter(this._getReplicaStatus(item, kind)));
+		if (filtered.length === 0 && this._categoryFilter !== "all") return b`<div class="empty">No ${meta.emptyLabel} match your filters.</div>`;
 		if (filtered.length === 0) return A;
 		return b`
       <div class="category-section">
@@ -3466,60 +3510,62 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
           class="category-header"
           role="button"
           tabindex="0"
-          @click=${() => this._toggleCategory("deployments")}
-          @keydown=${(e) => this._handleCategoryKeydown(e, "deployments")}
+          @click=${() => this._toggleCategory(meta.category)}
+          @keydown=${(e) => this._handleCategoryKeydown(e, meta.category)}
         >
-          <ha-icon icon="mdi:rocket-launch"></ha-icon>
-          Deployments
+          <ha-icon icon=${meta.icon}></ha-icon>
+          ${meta.label}
           <span class="category-count">(${filtered.length})</span>
           <ha-icon
             class="category-chevron"
             icon="mdi:chevron-down"
-            ?data-collapsed=${this._collapsedCategories.has("deployments")}
+            ?data-collapsed=${this._collapsedCategories.has(meta.category)}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has("deployments") ? A : filtered.map((d) => this._renderDeploymentCard(d, entryId))}
+        ${this._collapsedCategories.has(meta.category) ? A : filtered.map((item) => this._renderReplicaCard(kind, item, entryId))}
       </div>
     `;
 	}
-	_renderDeploymentCard(d, entryId) {
-		const status = this._getDeploymentStatus(d);
-		const actionKey = `deploy_${d.namespace}_${d.name}`;
+	_renderReplicaCard(kind, item, entryId) {
+		const meta = REPLICA_KIND_META[kind];
+		const status = this._getReplicaStatus(item, kind);
+		const actionKey = `${meta.actionPrefix}${item.namespace}_${item.name}`;
 		const busy = this._actionInProgress.has(actionKey);
+		const ready = item[meta.readyField] ?? 0;
 		return b`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
-            <div class="workload-name">${d.name}</div>
-            <div class="workload-namespace">${d.namespace}</div>
+            <div class="workload-name">${item.name}</div>
+            <div class="workload-namespace">${item.namespace}</div>
           </div>
           <span
             class="replica-info scalable"
             role="button"
             tabindex="0"
             title="Click to scale"
-            @click=${() => this._openScaleDialog(entryId, d.name, d.namespace, d.replicas)}
+            @click=${() => this._openScaleDialog(entryId, item.name, item.namespace, item.replicas)}
             @keydown=${(e) => {
 			if (e.key === "Enter" || e.key === " ") {
 				e.preventDefault();
-				this._openScaleDialog(entryId, d.name, d.namespace, d.replicas);
+				this._openScaleDialog(entryId, item.name, item.namespace, item.replicas);
 			}
 		}}
           >
-            ${d.available_replicas ?? 0}/${d.replicas} ready
+            ${ready}/${item.replicas} ready
           </span>
-          <span class="badge ${this._statusBadgeClass(status)}">
-            ${this._statusLabel(status)}
+          <span class="badge ${STATUS_META[status].badgeClass}">
+            ${STATUS_META[status].label}
           </span>
           <div class="workload-actions">
-            ${d.replicas === 0 ? b`
+            ${item.replicas === 0 ? b`
                     <button
                       class="action-btn start"
                       title="Start (scale to 1)"
                       ?disabled=${busy}
                       @click=${() => this._callService("start_workload", {
-			workload_name: d.name,
-			namespace: d.namespace,
+			workload_name: item.name,
+			namespace: item.namespace,
 			entry_id: entryId
 		}, actionKey)}
                     >
@@ -3531,8 +3577,8 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
                       title="Stop (scale to 0)"
                       ?disabled=${busy}
                       @click=${() => this._callService("stop_workload", {
-			workload_name: d.name,
-			namespace: d.namespace,
+			workload_name: item.name,
+			namespace: item.namespace,
 			entry_id: entryId
 		}, actionKey)}
                     >
@@ -3544,108 +3590,8 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
               title="Rolling restart"
               ?disabled=${busy}
               @click=${() => this._callService("restart_workload", {
-			workload_name: d.name,
-			namespace: d.namespace,
-			entry_id: entryId
-		}, actionKey)}
-            >
-              <ha-icon icon="mdi:restart"></ha-icon>
-            </button>
-          </div>
-        </div>
-      </ha-card>
-    `;
-	}
-	_renderStatefulSets(statefulsets, entryId) {
-		const filtered = statefulsets.filter((s) => this._matchesNamespace(s.namespace) && this._matchesSearch(s.name) && this._matchesStatusFilter(this._getStatefulSetStatus(s)));
-		if (filtered.length === 0 && this._categoryFilter !== "all") return b`<div class="empty">No statefulsets match your filters.</div>`;
-		if (filtered.length === 0) return A;
-		return b`
-      <div class="category-section">
-        <div
-          class="category-header"
-          role="button"
-          tabindex="0"
-          @click=${() => this._toggleCategory("statefulsets")}
-          @keydown=${(e) => this._handleCategoryKeydown(e, "statefulsets")}
-        >
-          <ha-icon icon="mdi:database"></ha-icon>
-          StatefulSets
-          <span class="category-count">(${filtered.length})</span>
-          <ha-icon
-            class="category-chevron"
-            icon="mdi:chevron-down"
-            ?data-collapsed=${this._collapsedCategories.has("statefulsets")}
-          ></ha-icon>
-        </div>
-        ${this._collapsedCategories.has("statefulsets") ? A : filtered.map((s) => this._renderStatefulSetCard(s, entryId))}
-      </div>
-    `;
-	}
-	_renderStatefulSetCard(s, entryId) {
-		const status = this._getStatefulSetStatus(s);
-		const actionKey = `sts_${s.namespace}_${s.name}`;
-		const busy = this._actionInProgress.has(actionKey);
-		return b`
-      <ha-card class="workload-card">
-        <div class="workload-row">
-          <div class="workload-info">
-            <div class="workload-name">${s.name}</div>
-            <div class="workload-namespace">${s.namespace}</div>
-          </div>
-          <span
-            class="replica-info scalable"
-            role="button"
-            tabindex="0"
-            title="Click to scale"
-            @click=${() => this._openScaleDialog(entryId, s.name, s.namespace, s.replicas)}
-            @keydown=${(e) => {
-			if (e.key === "Enter" || e.key === " ") {
-				e.preventDefault();
-				this._openScaleDialog(entryId, s.name, s.namespace, s.replicas);
-			}
-		}}
-          >
-            ${s.ready_replicas ?? 0}/${s.replicas} ready
-          </span>
-          <span class="badge ${this._statusBadgeClass(status)}">
-            ${this._statusLabel(status)}
-          </span>
-          <div class="workload-actions">
-            ${s.replicas === 0 ? b`
-                    <button
-                      class="action-btn start"
-                      title="Start (scale to 1)"
-                      ?disabled=${busy}
-                      @click=${() => this._callService("start_workload", {
-			workload_name: s.name,
-			namespace: s.namespace,
-			entry_id: entryId
-		}, actionKey)}
-                    >
-                      <ha-icon icon="mdi:play"></ha-icon>
-                    </button>
-                  ` : b`
-                    <button
-                      class="action-btn stop"
-                      title="Stop (scale to 0)"
-                      ?disabled=${busy}
-                      @click=${() => this._callService("stop_workload", {
-			workload_name: s.name,
-			namespace: s.namespace,
-			entry_id: entryId
-		}, actionKey)}
-                    >
-                      <ha-icon icon="mdi:stop"></ha-icon>
-                    </button>
-                  `}
-            <button
-              class="action-btn restart"
-              title="Rolling restart"
-              ?disabled=${busy}
-              @click=${() => this._callService("restart_workload", {
-			workload_name: s.name,
-			namespace: s.namespace,
+			workload_name: item.name,
+			namespace: item.namespace,
 			entry_id: entryId
 		}, actionKey)}
             >
@@ -3696,8 +3642,8 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
           <span class="replica-info">
             ${ds.number_available ?? 0}/${ds.desired_number_scheduled} available
           </span>
-          <span class="badge ${this._statusBadgeClass(status)}">
-            ${this._statusLabel(status)}
+          <span class="badge ${STATUS_META[status].badgeClass}">
+            ${STATUS_META[status].label}
           </span>
           <div class="workload-actions">
             <button
@@ -3893,7 +3839,10 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
 		return b`
       <div
         class="confirm-overlay"
+        tabindex="-1"
+        autofocus
         @click=${this._scaling ? A : this._cancelScale}
+        @keydown=${this._onOverlayKeydown(this._scaling ? A : this._cancelScale)}
       >
         <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
           <h3>Scale Workload</h3>
@@ -3977,7 +3926,10 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
 		return b`
       <div
         class="confirm-overlay"
+        tabindex="-1"
+        autofocus
         @click=${this._deletingJob ? A : this._cancelJobDelete}
+        @keydown=${this._onOverlayKeydown(this._deletingJob ? A : this._cancelJobDelete)}
       >
         <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
           <h3>Delete Job</h3>

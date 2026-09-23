@@ -5,32 +5,24 @@ import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
 import { formatAge, errorMessage } from "../utils/format";
 
-interface DeploymentData {
+/** Shape shared by Deployments and StatefulSets; they differ only in which
+ * field reports ready replicas (see `REPLICA_KIND_META`). */
+interface ReplicaWorkloadData {
   name: string;
   namespace: string;
   replicas: number;
   available_replicas: number;
   ready_replicas: number;
-  is_running: boolean;
 }
 
-interface StatefulSetData {
-  name: string;
-  namespace: string;
-  replicas: number;
-  available_replicas: number;
-  ready_replicas: number;
-  is_running: boolean;
-}
+type DeploymentData = ReplicaWorkloadData;
+type StatefulSetData = ReplicaWorkloadData;
 
 interface DaemonSetData {
   name: string;
   namespace: string;
   desired_number_scheduled: number;
-  current_number_scheduled: number;
-  number_ready: number;
   number_available: number;
-  is_running: boolean;
 }
 
 interface CronJobData {
@@ -40,7 +32,6 @@ interface CronJobData {
   suspend: boolean;
   last_schedule_time: string | null;
   active_jobs_count: number;
-  concurrency_policy: string;
 }
 
 interface JobData {
@@ -51,7 +42,6 @@ interface JobData {
   failed: number;
   active: number;
   start_time: string | null;
-  completion_time: string | null;
 }
 
 interface ClusterWorkloads {
@@ -70,7 +60,45 @@ interface WorkloadsResponse {
 
 type WorkloadCategory =
   "all" | "deployments" | "statefulsets" | "daemonsets" | "cronjobs" | "jobs";
-type StatusFilter = "all" | "healthy" | "degraded" | "stopped";
+type WorkloadStatus = "healthy" | "degraded" | "stopped";
+type StatusFilter = "all" | WorkloadStatus;
+
+const STATUS_META: Record<WorkloadStatus, { badgeClass: string; label: string }> = {
+  healthy: { badgeClass: "badge-healthy", label: "Healthy" },
+  degraded: { badgeClass: "badge-degraded", label: "Degraded" },
+  stopped: { badgeClass: "badge-stopped", label: "Stopped" },
+};
+
+type ReplicaKind = "deployment" | "statefulset";
+
+const REPLICA_KIND_META: Record<
+  ReplicaKind,
+  {
+    category: Extract<WorkloadCategory, "deployments" | "statefulsets">;
+    icon: string;
+    label: string;
+    emptyLabel: string;
+    readyField: "available_replicas" | "ready_replicas";
+    actionPrefix: string;
+  }
+> = {
+  deployment: {
+    category: "deployments",
+    icon: "mdi:rocket-launch",
+    label: "Deployments",
+    emptyLabel: "deployments",
+    readyField: "available_replicas",
+    actionPrefix: "deploy_",
+  },
+  statefulset: {
+    category: "statefulsets",
+    icon: "mdi:database",
+    label: "StatefulSets",
+    emptyLabel: "statefulsets",
+    readyField: "ready_replicas",
+    actionPrefix: "sts_",
+  },
+};
 
 @customElement("k8s-workloads")
 export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
@@ -500,12 +528,20 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
 
         ${
           this._shouldShowCategory("deployments")
-            ? this._renderDeployments(cluster.deployments, cluster.entry_id)
+            ? this._renderReplicaCategory(
+                "deployment",
+                cluster.deployments,
+                cluster.entry_id,
+              )
             : nothing
         }
         ${
           this._shouldShowCategory("statefulsets")
-            ? this._renderStatefulSets(cluster.statefulsets, cluster.entry_id)
+            ? this._renderReplicaCategory(
+                "statefulset",
+                cluster.statefulsets,
+                cluster.entry_id,
+              )
             : nothing
         }
         ${
@@ -527,58 +563,41 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     return this._categoryFilter === "all" || this._categoryFilter === category;
   }
 
-  private _getDeploymentStatus(d: DeploymentData): StatusFilter {
-    if (d.replicas === 0) return "stopped";
-    if ((d.available_replicas || 0) < d.replicas) return "degraded";
+  private _getReplicaStatus(
+    item: ReplicaWorkloadData,
+    kind: ReplicaKind,
+  ): WorkloadStatus {
+    if (item.replicas === 0) return "stopped";
+    const ready = item[REPLICA_KIND_META[kind].readyField] || 0;
+    if (ready < item.replicas) return "degraded";
     return "healthy";
   }
 
-  private _getStatefulSetStatus(s: StatefulSetData): StatusFilter {
-    if (s.replicas === 0) return "stopped";
-    if ((s.ready_replicas || 0) < s.replicas) return "degraded";
-    return "healthy";
-  }
-
-  private _getDaemonSetStatus(ds: DaemonSetData): StatusFilter {
+  private _getDaemonSetStatus(ds: DaemonSetData): WorkloadStatus {
     if (ds.desired_number_scheduled === 0) return "stopped";
     if ((ds.number_available || 0) < ds.desired_number_scheduled) return "degraded";
     return "healthy";
   }
 
-  private _matchesStatusFilter(status: StatusFilter): boolean {
+  private _matchesStatusFilter(status: WorkloadStatus): boolean {
     return this._statusFilter === "all" || this._statusFilter === status;
   }
 
-  private _statusBadgeClass(status: StatusFilter): string {
-    const map: Record<StatusFilter, string> = {
-      all: "",
-      healthy: "badge-healthy",
-      degraded: "badge-degraded",
-      stopped: "badge-stopped",
-    };
-    return map[status] || "";
-  }
-
-  private _statusLabel(status: StatusFilter): string {
-    const map: Record<StatusFilter, string> = {
-      all: "",
-      healthy: "Healthy",
-      degraded: "Degraded",
-      stopped: "Stopped",
-    };
-    return map[status] || "";
-  }
-
-  private _renderDeployments(deployments: DeploymentData[], entryId: string) {
-    const filtered = deployments.filter(
-      (d) =>
-        this._matchesNamespace(d.namespace) &&
-        this._matchesSearch(d.name) &&
-        this._matchesStatusFilter(this._getDeploymentStatus(d)),
+  private _renderReplicaCategory(
+    kind: ReplicaKind,
+    items: ReplicaWorkloadData[],
+    entryId: string,
+  ) {
+    const meta = REPLICA_KIND_META[kind];
+    const filtered = items.filter(
+      (item) =>
+        this._matchesNamespace(item.namespace) &&
+        this._matchesSearch(item.name) &&
+        this._matchesStatusFilter(this._getReplicaStatus(item, kind)),
     );
 
     if (filtered.length === 0 && this._categoryFilter !== "all") {
-      return html`<div class="empty">No deployments match your filters.</div>`;
+      return html`<div class="empty">No ${meta.emptyLabel} match your filters.</div>`;
     }
     if (filtered.length === 0) return nothing;
 
@@ -588,56 +607,72 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           class="category-header"
           role="button"
           tabindex="0"
-          @click=${() => this._toggleCategory("deployments")}
-          @keydown=${(e: KeyboardEvent) => this._handleCategoryKeydown(e, "deployments")}
+          @click=${() => this._toggleCategory(meta.category)}
+          @keydown=${(e: KeyboardEvent) => this._handleCategoryKeydown(e, meta.category)}
         >
-          <ha-icon icon="mdi:rocket-launch"></ha-icon>
-          Deployments
+          <ha-icon icon=${meta.icon}></ha-icon>
+          ${meta.label}
           <span class="category-count">(${filtered.length})</span>
           <ha-icon
             class="category-chevron"
             icon="mdi:chevron-down"
-            ?data-collapsed=${this._collapsedCategories.has("deployments")}
+            ?data-collapsed=${this._collapsedCategories.has(meta.category)}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has("deployments") ? nothing : filtered.map((d) => this._renderDeploymentCard(d, entryId))}
+        ${
+          this._collapsedCategories.has(meta.category)
+            ? nothing
+            : filtered.map((item) => this._renderReplicaCard(kind, item, entryId))
+        }
       </div>
     `;
   }
 
-  private _renderDeploymentCard(d: DeploymentData, entryId: string) {
-    const status = this._getDeploymentStatus(d);
-    const actionKey = `deploy_${d.namespace}_${d.name}`;
+  private _renderReplicaCard(
+    kind: ReplicaKind,
+    item: ReplicaWorkloadData,
+    entryId: string,
+  ) {
+    const meta = REPLICA_KIND_META[kind];
+    const status = this._getReplicaStatus(item, kind);
+    const actionKey = `${meta.actionPrefix}${item.namespace}_${item.name}`;
     const busy = this._actionInProgress.has(actionKey);
+    const ready = item[meta.readyField] ?? 0;
 
     return html`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
-            <div class="workload-name">${d.name}</div>
-            <div class="workload-namespace">${d.namespace}</div>
+            <div class="workload-name">${item.name}</div>
+            <div class="workload-namespace">${item.namespace}</div>
           </div>
           <span
             class="replica-info scalable"
             role="button"
             tabindex="0"
             title="Click to scale"
-            @click=${() => this._openScaleDialog(entryId, d.name, d.namespace, d.replicas)}
+            @click=${() =>
+              this._openScaleDialog(entryId, item.name, item.namespace, item.replicas)}
             @keydown=${(e: KeyboardEvent) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                this._openScaleDialog(entryId, d.name, d.namespace, d.replicas);
+                this._openScaleDialog(
+                  entryId,
+                  item.name,
+                  item.namespace,
+                  item.replicas,
+                );
               }
             }}
           >
-            ${d.available_replicas ?? 0}/${d.replicas} ready
+            ${ready}/${item.replicas} ready
           </span>
-          <span class="badge ${this._statusBadgeClass(status)}">
-            ${this._statusLabel(status)}
+          <span class="badge ${STATUS_META[status].badgeClass}">
+            ${STATUS_META[status].label}
           </span>
           <div class="workload-actions">
             ${
-              d.replicas === 0
+              item.replicas === 0
                 ? html`
                     <button
                       class="action-btn start"
@@ -647,8 +682,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                         this._callService(
                           "start_workload",
                           {
-                            workload_name: d.name,
-                            namespace: d.namespace,
+                            workload_name: item.name,
+                            namespace: item.namespace,
                             entry_id: entryId,
                           },
                           actionKey,
@@ -666,8 +701,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                         this._callService(
                           "stop_workload",
                           {
-                            workload_name: d.name,
-                            namespace: d.namespace,
+                            workload_name: item.name,
+                            namespace: item.namespace,
                             entry_id: entryId,
                           },
                           actionKey,
@@ -685,139 +720,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                 this._callService(
                   "restart_workload",
                   {
-                    workload_name: d.name,
-                    namespace: d.namespace,
-                    entry_id: entryId,
-                  },
-                  actionKey,
-                )}
-            >
-              <ha-icon icon="mdi:restart"></ha-icon>
-            </button>
-          </div>
-        </div>
-      </ha-card>
-    `;
-  }
-
-  private _renderStatefulSets(statefulsets: StatefulSetData[], entryId: string) {
-    const filtered = statefulsets.filter(
-      (s) =>
-        this._matchesNamespace(s.namespace) &&
-        this._matchesSearch(s.name) &&
-        this._matchesStatusFilter(this._getStatefulSetStatus(s)),
-    );
-
-    if (filtered.length === 0 && this._categoryFilter !== "all") {
-      return html`<div class="empty">No statefulsets match your filters.</div>`;
-    }
-    if (filtered.length === 0) return nothing;
-
-    return html`
-      <div class="category-section">
-        <div
-          class="category-header"
-          role="button"
-          tabindex="0"
-          @click=${() => this._toggleCategory("statefulsets")}
-          @keydown=${(e: KeyboardEvent) => this._handleCategoryKeydown(e, "statefulsets")}
-        >
-          <ha-icon icon="mdi:database"></ha-icon>
-          StatefulSets
-          <span class="category-count">(${filtered.length})</span>
-          <ha-icon
-            class="category-chevron"
-            icon="mdi:chevron-down"
-            ?data-collapsed=${this._collapsedCategories.has("statefulsets")}
-          ></ha-icon>
-        </div>
-        ${this._collapsedCategories.has("statefulsets") ? nothing : filtered.map((s) => this._renderStatefulSetCard(s, entryId))}
-      </div>
-    `;
-  }
-
-  private _renderStatefulSetCard(s: StatefulSetData, entryId: string) {
-    const status = this._getStatefulSetStatus(s);
-    const actionKey = `sts_${s.namespace}_${s.name}`;
-    const busy = this._actionInProgress.has(actionKey);
-
-    return html`
-      <ha-card class="workload-card">
-        <div class="workload-row">
-          <div class="workload-info">
-            <div class="workload-name">${s.name}</div>
-            <div class="workload-namespace">${s.namespace}</div>
-          </div>
-          <span
-            class="replica-info scalable"
-            role="button"
-            tabindex="0"
-            title="Click to scale"
-            @click=${() => this._openScaleDialog(entryId, s.name, s.namespace, s.replicas)}
-            @keydown=${(e: KeyboardEvent) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                this._openScaleDialog(entryId, s.name, s.namespace, s.replicas);
-              }
-            }}
-          >
-            ${s.ready_replicas ?? 0}/${s.replicas} ready
-          </span>
-          <span class="badge ${this._statusBadgeClass(status)}">
-            ${this._statusLabel(status)}
-          </span>
-          <div class="workload-actions">
-            ${
-              s.replicas === 0
-                ? html`
-                    <button
-                      class="action-btn start"
-                      title="Start (scale to 1)"
-                      ?disabled=${busy}
-                      @click=${() =>
-                        this._callService(
-                          "start_workload",
-                          {
-                            workload_name: s.name,
-                            namespace: s.namespace,
-                            entry_id: entryId,
-                          },
-                          actionKey,
-                        )}
-                    >
-                      <ha-icon icon="mdi:play"></ha-icon>
-                    </button>
-                  `
-                : html`
-                    <button
-                      class="action-btn stop"
-                      title="Stop (scale to 0)"
-                      ?disabled=${busy}
-                      @click=${() =>
-                        this._callService(
-                          "stop_workload",
-                          {
-                            workload_name: s.name,
-                            namespace: s.namespace,
-                            entry_id: entryId,
-                          },
-                          actionKey,
-                        )}
-                    >
-                      <ha-icon icon="mdi:stop"></ha-icon>
-                    </button>
-                  `
-            }
-            <button
-              class="action-btn restart"
-              title="Rolling restart"
-              ?disabled=${busy}
-              @click=${() =>
-                this._callService(
-                  "restart_workload",
-                  {
-                    workload_name: s.name,
-                    namespace: s.namespace,
+                    workload_name: item.name,
+                    namespace: item.namespace,
                     entry_id: entryId,
                   },
                   actionKey,
@@ -882,8 +786,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           <span class="replica-info">
             ${ds.number_available ?? 0}/${ds.desired_number_scheduled} available
           </span>
-          <span class="badge ${this._statusBadgeClass(status)}">
-            ${this._statusLabel(status)}
+          <span class="badge ${STATUS_META[status].badgeClass}">
+            ${STATUS_META[status].label}
           </span>
           <div class="workload-actions">
             <button
@@ -1156,7 +1060,10 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     return html`
       <div
         class="confirm-overlay"
+        tabindex="-1"
+        autofocus
         @click=${this._scaling ? nothing : this._cancelScale}
+        @keydown=${this._onOverlayKeydown(this._scaling ? nothing : this._cancelScale)}
       >
         <div class="confirm-dialog" @click=${(e: Event) => e.stopPropagation()}>
           <h3>Scale Workload</h3>
@@ -1244,7 +1151,10 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     return html`
       <div
         class="confirm-overlay"
+        tabindex="-1"
+        autofocus
         @click=${this._deletingJob ? nothing : this._cancelJobDelete}
+        @keydown=${this._onOverlayKeydown(this._deletingJob ? nothing : this._cancelJobDelete)}
       >
         <div class="confirm-dialog" @click=${(e: Event) => e.stopPropagation()}>
           <h3>Delete Job</h3>

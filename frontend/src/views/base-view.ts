@@ -149,6 +149,19 @@ export abstract class K8sDataView<T> extends LitElement {
   }
 
   /**
+   * Escape-to-close handler for a `.confirm-overlay`. Pass the same
+   * `onClose`-or-`nothing` value the overlay's `@click` ternary already
+   * uses to gate click-to-cancel while an action is in flight. Give the
+   * overlay `tabindex="-1"` and the `autofocus` attribute so it receives
+   * the keydown once rendered.
+   */
+  protected _onOverlayKeydown(onClose: (() => void) | typeof nothing) {
+    return (e: KeyboardEvent): void => {
+      if (e.key === "Escape" && onClose !== nothing) onClose();
+    };
+  }
+
+  /**
    * Loading spinner, error card or empty message, or `nothing` when the view
    * should render its data. `empty` is the view's own "no items" test.
    */
