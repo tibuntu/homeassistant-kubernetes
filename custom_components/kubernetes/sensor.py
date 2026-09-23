@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
-from typing import Any
+from typing import Any, NamedTuple
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -233,72 +234,46 @@ async def async_setup_entry(
         raise
 
 
-def _discover_new_node_sensors(
+class _DiscoverySpec(NamedTuple):
+    """One-bucket discovery: which bucket, which entity, which constructor args."""
+
+    bucket: str
+    entity_cls: type[KubernetesBaseSensor]
+    # (bucket key, bucket item) -> positional args after (coordinator, client, entry)
+    args: Callable[[str, dict[str, Any]], tuple[Any, ...]]
+    disabled_key: str | None = None
+
+
+def _name_and_namespace(_key: str, item: dict[str, Any]) -> tuple[str, str]:
+    """Constructor args for the per-resource sensors that take (name, namespace)."""
+    return item.get("name", ""), item.get("namespace", "default")
+
+
+def _discover_simple(
     coordinator: KubernetesDataCoordinator,
     client: Any,
     config_entry: ConfigEntry,
     existing_unique_ids: set[str],
-) -> list[KubernetesNodeSensor]:
-    """Discover new node sensors."""
-    new_entities: list[KubernetesNodeSensor] = []
-    if "nodes" in disabled_resources(config_entry):
+    spec: _DiscoverySpec,
+) -> list[KubernetesBaseSensor]:
+    """Discover new per-resource sensors for one coordinator bucket.
+
+    The entity is built first and its own ``unique_id`` decides whether it is
+    new, so the id format lives in exactly one place (the entity class).
+    """
+    new_entities: list[KubernetesBaseSensor] = []
+    if spec.disabled_key and spec.disabled_key in disabled_resources(config_entry):
         return new_entities
-    if coordinator.data and "nodes" in coordinator.data:
-        for node_name in coordinator.data["nodes"]:
-            unique_id = f"{config_entry.entry_id}_node_{node_name}"
-            if unique_id not in existing_unique_ids:
-                _LOGGER.info("Adding new node sensor for: %s", node_name)
-                new_entities.append(
-                    KubernetesNodeSensor(coordinator, client, config_entry, node_name)
-                )
-    return new_entities
-
-
-def _discover_new_pod_sensors(
-    coordinator: KubernetesDataCoordinator,
-    client: Any,
-    config_entry: ConfigEntry,
-    existing_unique_ids: set[str],
-) -> list[KubernetesPodSensor]:
-    """Discover new pod sensors."""
-    new_entities = []
-    if coordinator.data and "pods" in coordinator.data:
-        for _pod_key, pod_data in coordinator.data["pods"].items():
-            namespace = pod_data.get("namespace", "default")
-            pod_name = pod_data.get("name", "unknown")
-            unique_id = f"{config_entry.entry_id}_pod_{namespace}_{pod_name}"
-            if unique_id not in existing_unique_ids:
-                _LOGGER.info("Adding new pod sensor for: %s/%s", namespace, pod_name)
-                new_entities.append(
-                    KubernetesPodSensor(
-                        coordinator, client, config_entry, namespace, pod_name
-                    )
-                )
-    return new_entities
-
-
-def _discover_new_daemonset_sensors(
-    coordinator: KubernetesDataCoordinator,
-    client: Any,
-    config_entry: ConfigEntry,
-    existing_unique_ids: set[str],
-) -> list[KubernetesDaemonSetSensor]:
-    """Discover new individual DaemonSet sensors."""
-    new_entities = []
-    if coordinator.data and "daemonsets" in coordinator.data:
-        for daemonset_data in coordinator.data["daemonsets"].values():
-            daemonset_name = daemonset_data.get("name", "")
-            namespace = daemonset_data.get("namespace", "default")
-            unique_id = (
-                f"{config_entry.entry_id}_daemonset_{namespace}_{daemonset_name}"
-            )
-            if unique_id not in existing_unique_ids:
-                _LOGGER.info("Adding new daemonset sensor for: %s", daemonset_name)
-                new_entities.append(
-                    KubernetesDaemonSetSensor(
-                        coordinator, client, config_entry, daemonset_name, namespace
-                    )
-                )
+    if not coordinator.data or spec.bucket not in coordinator.data:
+        return new_entities
+    for key, item in coordinator.data[spec.bucket].items():
+        entity = spec.entity_cls(
+            coordinator, client, config_entry, *spec.args(key, item)
+        )
+        if entity.unique_id in existing_unique_ids:
+            continue
+        _LOGGER.info("Adding new %s sensor: %s", spec.bucket, entity.unique_id)
+        new_entities.append(entity)
     return new_entities
 
 
@@ -381,54 +356,6 @@ def _discover_new_workload_metric_sensors(
     return new_entities
 
 
-def _discover_new_cronjob_sensors(
-    coordinator: KubernetesDataCoordinator,
-    client: Any,
-    config_entry: ConfigEntry,
-    existing_unique_ids: set[str],
-) -> list[KubernetesCronJobSensor]:
-    """Discover new individual CronJob sensors."""
-    new_entities: list[KubernetesCronJobSensor] = []
-    if "cronjobs" in disabled_resources(config_entry):
-        return new_entities
-    if coordinator.data and "cronjobs" in coordinator.data:
-        for cronjob_data in coordinator.data["cronjobs"].values():
-            cronjob_name = cronjob_data.get("name", "")
-            namespace = cronjob_data.get("namespace", "default")
-            unique_id = f"{config_entry.entry_id}_cronjob_{namespace}_{cronjob_name}"
-            if unique_id not in existing_unique_ids:
-                _LOGGER.info("Adding new cronjob sensor for: %s", cronjob_name)
-                new_entities.append(
-                    KubernetesCronJobSensor(
-                        coordinator, client, config_entry, cronjob_name, namespace
-                    )
-                )
-    return new_entities
-
-
-def _discover_new_job_sensors(
-    coordinator: KubernetesDataCoordinator,
-    client: Any,
-    config_entry: ConfigEntry,
-    existing_unique_ids: set[str],
-) -> list[KubernetesJobSensor]:
-    """Discover new individual Job sensors."""
-    new_entities = []
-    if coordinator.data and "jobs" in coordinator.data:
-        for job_data in coordinator.data["jobs"].values():
-            job_name = job_data.get("name", "")
-            namespace = job_data.get("namespace", "default")
-            unique_id = f"{config_entry.entry_id}_job_{namespace}_{job_name}"
-            if unique_id not in existing_unique_ids:
-                _LOGGER.info("Adding new job sensor for: %s", job_name)
-                new_entities.append(
-                    KubernetesJobSensor(
-                        coordinator, client, config_entry, job_name, namespace
-                    )
-                )
-    return new_entities
-
-
 async def _async_discover_and_add_new_sensors(
     hass: HomeAssistant,
     config_entry: KubernetesConfigEntry,
@@ -466,66 +393,23 @@ async def _async_discover_and_add_new_sensors(
 
         await get_or_create_cluster_device(hass, config_entry)
 
-        # Discover new sensors
-        new_entities: list[KubernetesBaseSensor] = []
-        new_entities.extend(
-            _discover_new_node_sensors(
-                coordinator, client, config_entry, existing_unique_ids
-            )
-        )
-        pod_sensors = _discover_new_pod_sensors(
-            coordinator, client, config_entry, existing_unique_ids
-        )
-        # Ensure namespace devices exist for new pod sensors
-        pod_namespaces = {sensor.namespace for sensor in pod_sensors}
-        for namespace in pod_namespaces:
-            await get_or_create_namespace_device(hass, config_entry, namespace)
-        new_entities.extend(pod_sensors)
+        # Discover new sensors (same order as the original per-type blocks)
+        args = (coordinator, client, config_entry, existing_unique_ids)
+        new_entities: list[KubernetesBaseSensor] = [
+            *_discover_simple(*args, _SIMPLE_DISCOVERY["node"]),
+            *_discover_simple(*args, _SIMPLE_DISCOVERY["pod"]),
+            *_discover_new_workload_status_sensors(*args),
+            *_discover_simple(*args, _SIMPLE_DISCOVERY["daemonset"]),
+            *_discover_new_workload_metric_sensors(*args),
+            *_discover_simple(*args, _SIMPLE_DISCOVERY["cronjob"]),
+            *_discover_simple(*args, _SIMPLE_DISCOVERY["job"]),
+        ]
 
-        # Discover new workload status sensors
-        status_sensors = _discover_new_workload_status_sensors(
-            coordinator, client, config_entry, existing_unique_ids
-        )
-        status_namespaces = {s.namespace for s in status_sensors}
-        for namespace in status_namespaces:
+        # Ensure namespace devices exist for every namespaced new sensor
+        # (node sensors have no namespace and hang off the cluster device).
+        namespaces = {getattr(e, "namespace", None) for e in new_entities}
+        for namespace in namespaces - {None}:
             await get_or_create_namespace_device(hass, config_entry, namespace)
-        new_entities.extend(status_sensors)
-
-        # Discover new daemonset sensors
-        daemonset_sensors = _discover_new_daemonset_sensors(
-            coordinator, client, config_entry, existing_unique_ids
-        )
-        daemonset_namespaces = {s.namespace for s in daemonset_sensors}
-        for namespace in daemonset_namespaces:
-            await get_or_create_namespace_device(hass, config_entry, namespace)
-        new_entities.extend(daemonset_sensors)
-
-        # Discover new workload metric sensors
-        metric_sensors = _discover_new_workload_metric_sensors(
-            coordinator, client, config_entry, existing_unique_ids
-        )
-        metric_namespaces = {s.namespace for s in metric_sensors}
-        for namespace in metric_namespaces:
-            await get_or_create_namespace_device(hass, config_entry, namespace)
-        new_entities.extend(metric_sensors)
-
-        # Discover new cronjob sensors
-        cronjob_sensors = _discover_new_cronjob_sensors(
-            coordinator, client, config_entry, existing_unique_ids
-        )
-        cronjob_namespaces = {s.namespace for s in cronjob_sensors}
-        for namespace in cronjob_namespaces:
-            await get_or_create_namespace_device(hass, config_entry, namespace)
-        new_entities.extend(cronjob_sensors)
-
-        # Discover new job sensors
-        job_sensors = _discover_new_job_sensors(
-            coordinator, client, config_entry, existing_unique_ids
-        )
-        job_namespaces = {s.namespace for s in job_sensors}
-        for namespace in job_namespaces:
-            await get_or_create_namespace_device(hass, config_entry, namespace)
-        new_entities.extend(job_sensors)
 
         # Add new entities if any were found
         if new_entities:
@@ -583,363 +467,128 @@ class KubernetesBaseSensor(SensorEntity):
             _LOGGER.error("Failed to update sensor %s: %s", self.name, ex)
 
 
-class KubernetesPodsSensor(KubernetesBaseSensor):
+class KubernetesCountSensor(KubernetesBaseSensor):
+    """Cluster-wide resource count; subclasses only set the class attributes.
+
+    ``native_value`` reads the coordinator in this order: ``_count_key`` (a
+    precomputed count the coordinator stores) when present, else ``len()`` of
+    ``_bucket`` when present, else 0. Pods/nodes set only ``_count_key`` and
+    deployments/statefulsets/cronjobs only ``_bucket``; the fully-disableable
+    types set both because the bucket is empty when the type is off.
+    """
+
+    _unique_suffix: str
+    _count_key: str | None = None
+    _bucket: str | None = None
+
+    def __init__(
+        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
+    ) -> None:
+        """Initialize the count sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._unique_suffix}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    @property
+    def native_value(self) -> int:
+        """Return the native value of the sensor."""
+        data = self.coordinator.data
+        if not data:
+            return 0
+        if self._count_key is not None and self._count_key in data:
+            return data[self._count_key]
+        if self._bucket is not None and self._bucket in data:
+            return len(data[self._bucket])
+        return 0
+
+
+class KubernetesPodsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes pods count."""
 
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the pods sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "Pods Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_pods_count"
-        self._attr_native_unit_of_measurement = "pods"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor."""
-        if not self.coordinator.data:
-            return 0
-
-        # Get pods count from coordinator data if available, otherwise call client
-        if "pods_count" in self.coordinator.data:
-            return self.coordinator.data["pods_count"]
-
-        # Fallback to calling client directly if not in coordinator data
-        return 0
-
-    async def async_update(self) -> None:
-        """Update the pods sensor state."""
-        try:
-            await super().async_update()
-            # If coordinator data is not available, try to get data directly from client
-            if not self.coordinator.data or "pods_count" not in self.coordinator.data:
-                if hasattr(self.client, "get_pods_count"):
-                    count = await self.client.get_pods_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update pods sensor: %s", ex)
-            self._attr_native_value = 0
+    _attr_name = "Pods Count"
+    _attr_native_unit_of_measurement = "pods"
+    _unique_suffix = "pods_count"
+    _count_key = "pods_count"
 
 
-class KubernetesNodesSensor(KubernetesBaseSensor):
+class KubernetesNodesSensor(KubernetesCountSensor):
     """Sensor for Kubernetes nodes count."""
 
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the nodes sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "Nodes Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_nodes_count"
-        self._attr_native_unit_of_measurement = "nodes"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor."""
-        if not self.coordinator.data:
-            return 0
-
-        # Get nodes count from coordinator data if available, otherwise call client
-        if "nodes_count" in self.coordinator.data:
-            return self.coordinator.data["nodes_count"]
-
-        # Fallback to calling client directly if not in coordinator data
-        return 0
-
-    async def async_update(self) -> None:
-        """Update the nodes sensor state."""
-        try:
-            await super().async_update()
-            # If coordinator data is not available, try to get data directly from client
-            if not self.coordinator.data or "nodes_count" not in self.coordinator.data:
-                if hasattr(self.client, "get_nodes_count"):
-                    count = await self.client.get_nodes_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update nodes sensor: %s", ex)
-            self._attr_native_value = 0
+    _attr_name = "Nodes Count"
+    _attr_native_unit_of_measurement = "nodes"
+    _unique_suffix = "nodes_count"
+    _count_key = "nodes_count"
 
 
-class KubernetesDeploymentsSensor(KubernetesBaseSensor):
+class KubernetesDeploymentsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes deployments count."""
 
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the deployments sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "Deployments Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_deployments_count"
-        self._attr_native_unit_of_measurement = "deployments"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor."""
-        if not self.coordinator.data:
-            return 0
-
-        # Get deployments count from coordinator data
-        if "deployments" in self.coordinator.data:
-            return len(self.coordinator.data["deployments"])
-
-        # Fallback to calling client directly if not in coordinator data
-        return 0
-
-    async def async_update(self) -> None:
-        """Update the deployments sensor state."""
-        try:
-            await super().async_update()
-            # If coordinator data is not available, try to get data directly from client
-            if not self.coordinator.data or "deployments" not in self.coordinator.data:
-                if hasattr(self.client, "get_deployments_count"):
-                    count = await self.client.get_deployments_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update deployments sensor: %s", ex)
-            self._attr_native_value = 0
+    _attr_name = "Deployments Count"
+    _attr_native_unit_of_measurement = "deployments"
+    _unique_suffix = "deployments_count"
+    _bucket = "deployments"
 
 
-class KubernetesStatefulSetsSensor(KubernetesBaseSensor):
+class KubernetesStatefulSetsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes StatefulSets count."""
 
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the StatefulSets sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "StatefulSets Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_statefulsets_count"
-        self._attr_native_unit_of_measurement = "statefulsets"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor."""
-        if not self.coordinator.data:
-            return 0
-
-        # Get statefulsets count from coordinator data
-        if "statefulsets" in self.coordinator.data:
-            return len(self.coordinator.data["statefulsets"])
-
-        # Fallback to calling client directly if not in coordinator data
-        return 0
-
-    async def async_update(self) -> None:
-        """Update the statefulsets sensor state."""
-        try:
-            await super().async_update()
-            # If coordinator data is not available, try to get data directly from client
-            if not self.coordinator.data or "statefulsets" not in self.coordinator.data:
-                if hasattr(self.client, "get_statefulsets_count"):
-                    count = await self.client.get_statefulsets_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update statefulsets sensor: %s", ex)
-            self._attr_native_value = 0
+    _attr_name = "StatefulSets Count"
+    _attr_native_unit_of_measurement = "statefulsets"
+    _unique_suffix = "statefulsets_count"
+    _bucket = "statefulsets"
 
 
-class KubernetesDaemonSetsSensor(KubernetesBaseSensor):
+class KubernetesDaemonSetsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes DaemonSets count."""
 
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the DaemonSets sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "DaemonSets Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_daemonsets_count"
-        self._attr_native_unit_of_measurement = "daemonsets"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor."""
-        if not self.coordinator.data:
-            return 0
-
-        # Fully-off daemonsets leave the bucket empty; the coordinator then
-        # provides the count from the cheap count endpoint instead.
-        if "daemonsets_count" in self.coordinator.data:
-            return self.coordinator.data["daemonsets_count"]
-        if "daemonsets" in self.coordinator.data:
-            return len(self.coordinator.data["daemonsets"])
-
-        # Fallback to calling client directly if not in coordinator data
-        return 0
-
-    async def async_update(self) -> None:
-        """Update the daemonsets sensor state."""
-        try:
-            await super().async_update()
-            # If coordinator data is not available, try to get data directly from client
-            if not self.coordinator.data or "daemonsets" not in self.coordinator.data:
-                if hasattr(self.client, "get_daemonsets_count"):
-                    count = await self.client.get_daemonsets_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update daemonsets sensor: %s", ex)
-            self._attr_native_value = 0
+    _attr_name = "DaemonSets Count"
+    _attr_native_unit_of_measurement = "daemonsets"
+    _unique_suffix = "daemonsets_count"
+    _count_key = "daemonsets_count"
+    _bucket = "daemonsets"
 
 
-class KubernetesCronJobsSensor(KubernetesBaseSensor):
+class KubernetesCronJobsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes CronJobs count."""
 
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the CronJobs sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "CronJobs Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_cronjobs_count"
-        self._attr_native_unit_of_measurement = "cronjobs"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor."""
-        if not self.coordinator.data:
-            return 0
-
-        # Get cronjobs count from coordinator data
-        if "cronjobs" in self.coordinator.data:
-            return len(self.coordinator.data["cronjobs"])
-
-        # Fallback to calling client directly if not in coordinator data
-        return 0
-
-    async def async_update(self) -> None:
-        """Update the cronjobs sensor state."""
-        try:
-            await super().async_update()
-            # If coordinator data is not available, try to get data directly from client
-            if not self.coordinator.data or "cronjobs" not in self.coordinator.data:
-                if hasattr(self.client, "get_cronjobs_count"):
-                    count = await self.client.get_cronjobs_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update cronjobs sensor: %s", ex)
-            self._attr_native_value = 0
+    _attr_name = "CronJobs Count"
+    _attr_native_unit_of_measurement = "cronjobs"
+    _unique_suffix = "cronjobs_count"
+    _bucket = "cronjobs"
 
 
-class KubernetesIngressesSensor(KubernetesBaseSensor):
+class KubernetesJobsSensor(KubernetesCountSensor):
+    """Sensor for Kubernetes Jobs count."""
+
+    _attr_name = "Jobs Count"
+    _attr_native_unit_of_measurement = "jobs"
+    _unique_suffix = "jobs_count"
+    _count_key = "jobs_count"
+    _bucket = "jobs"
+
+
+class KubernetesIngressesSensor(KubernetesCountSensor):
     """Sensor for Kubernetes Ingresses count."""
 
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the Ingresses sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "Ingresses Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_ingresses_count"
-        self._attr_native_unit_of_measurement = "ingresses"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor."""
-        if not self.coordinator.data:
-            return 0
-
-        # Fully-off ingresses leave the bucket empty; the coordinator then
-        # provides the count from the cheap count endpoint instead.
-        if "ingresses_count" in self.coordinator.data:
-            return self.coordinator.data["ingresses_count"]
-        if "ingresses" in self.coordinator.data:
-            return len(self.coordinator.data["ingresses"])
-
-        # Fallback to calling client directly if not in coordinator data
-        return 0
-
-    async def async_update(self) -> None:
-        """Update the ingresses sensor state."""
-        try:
-            await super().async_update()
-            # If coordinator data is not available, try to get data directly from client
-            if not self.coordinator.data or "ingresses" not in self.coordinator.data:
-                if hasattr(self.client, "get_ingresses_count"):
-                    count = await self.client.get_ingresses_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update ingresses sensor: %s", ex)
-            self._attr_native_value = 0
+    _attr_name = "Ingresses Count"
+    _attr_native_unit_of_measurement = "ingresses"
+    _unique_suffix = "ingresses_count"
+    _count_key = "ingresses_count"
+    _bucket = "ingresses"
 
 
-class KubernetesServicesSensor(KubernetesBaseSensor):
+class KubernetesServicesSensor(KubernetesCountSensor):
     """Sensor for Kubernetes Services count."""
 
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the Services sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "Services Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_services_count"
-        self._attr_native_unit_of_measurement = "services"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the native value of the sensor."""
-        if not self.coordinator.data:
-            return 0
-
-        # Fully-off services leave the bucket empty; the coordinator then
-        # provides the count from the cheap count endpoint instead.
-        if "services_count" in self.coordinator.data:
-            return self.coordinator.data["services_count"]
-        if "services" in self.coordinator.data:
-            return len(self.coordinator.data["services"])
-
-        return 0
-
-    async def async_update(self) -> None:
-        """Update the services sensor state."""
-        try:
-            await super().async_update()
-            if not self.coordinator.data or "services" not in self.coordinator.data:
-                if hasattr(self.client, "get_services_count"):
-                    count = await self.client.get_services_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update services sensor: %s", ex)
-            self._attr_native_value = 0
+    _attr_name = "Services Count"
+    _attr_native_unit_of_measurement = "services"
+    _unique_suffix = "services_count"
+    _count_key = "services_count"
+    _bucket = "services"
 
 
 class KubernetesNodeSensor(KubernetesBaseSensor):
@@ -1000,14 +649,6 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
         }
 
         return attributes
-
-    async def async_update(self) -> None:
-        """Update the node sensor state."""
-        try:
-            await super().async_update()
-            # The base class handles coordinator updates
-        except Exception as ex:
-            _LOGGER.error("Failed to update node sensor %s: %s", self.node_name, ex)
 
 
 class KubernetesPodSensor(KubernetesBaseSensor):
@@ -1084,19 +725,6 @@ class KubernetesPodSensor(KubernetesBaseSensor):
         }
 
         return attributes
-
-    async def async_update(self) -> None:
-        """Update the pod sensor state."""
-        try:
-            await super().async_update()
-            # The base class handles coordinator updates
-        except Exception as ex:
-            _LOGGER.error(
-                "Failed to update pod sensor %s/%s: %s",
-                self.namespace,
-                self.pod_name,
-                ex,
-            )
 
 
 class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
@@ -1363,47 +991,6 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
         }
 
 
-class KubernetesJobsSensor(KubernetesBaseSensor):
-    """Sensor for Kubernetes Jobs count."""
-
-    def __init__(
-        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
-    ) -> None:
-        """Initialize the Jobs sensor."""
-        super().__init__(coordinator, client, config_entry)
-        self._attr_name = "Jobs Count"
-        self._attr_unique_id = f"{config_entry.entry_id}_jobs_count"
-        self._attr_native_unit_of_measurement = "jobs"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device information."""
-        return get_cluster_device_info(self.config_entry)
-
-    @property
-    def native_value(self) -> int:
-        """Return the number of jobs."""
-        if not self.coordinator.data:
-            return 0
-        # Fully-off jobs leave the bucket empty; the coordinator then provides
-        # the count from the cheap count endpoint instead.
-        if "jobs_count" in self.coordinator.data:
-            return self.coordinator.data["jobs_count"]
-        return len(self.coordinator.data.get("jobs", {}))
-
-    async def async_update(self) -> None:
-        """Update the jobs sensor state."""
-        try:
-            await super().async_update()
-            if not self.coordinator.data or "jobs" not in self.coordinator.data:
-                if hasattr(self.client, "get_jobs_count"):
-                    count = await self.client.get_jobs_count()
-                    self._attr_native_value = count
-        except Exception as ex:
-            _LOGGER.error("Failed to update jobs sensor: %s", ex)
-            self._attr_native_value = 0
-
-
 class KubernetesJobSensor(KubernetesBaseSensor):
     """Sensor for an individual Kubernetes Job."""
 
@@ -1467,3 +1054,28 @@ class KubernetesJobSensor(KubernetesBaseSensor):
             "completion_time": job_data.get("completion_time"),
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_JOB,
         }
+
+
+# Per-resource sensors discovered by _discover_simple, in one place. Only nodes
+# and cronjobs are gated by disabled_resources here; pods/daemonsets/jobs are
+# fully-disableable types whose bucket is simply empty when they are off.
+_SIMPLE_DISCOVERY: dict[str, _DiscoverySpec] = {
+    "node": _DiscoverySpec(
+        "nodes", KubernetesNodeSensor, lambda key, _item: (key,), "nodes"
+    ),
+    "pod": _DiscoverySpec(
+        "pods",
+        KubernetesPodSensor,
+        lambda _key, item: (
+            item.get("namespace", "default"),
+            item.get("name", "unknown"),
+        ),
+    ),
+    "daemonset": _DiscoverySpec(
+        "daemonsets", KubernetesDaemonSetSensor, _name_and_namespace
+    ),
+    "cronjob": _DiscoverySpec(
+        "cronjobs", KubernetesCronJobSensor, _name_and_namespace, "cronjobs"
+    ),
+    "job": _DiscoverySpec("jobs", KubernetesJobSensor, _name_and_namespace),
+}
