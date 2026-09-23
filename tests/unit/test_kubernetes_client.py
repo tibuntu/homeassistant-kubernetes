@@ -2,6 +2,7 @@
 
 import ipaddress
 import ssl
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import aiohttp
@@ -147,6 +148,68 @@ def _make_client(config):
         return KubernetesClient(config)
 
 
+def _mock_response(status: int = 200, **awaitable_attrs: Any) -> MagicMock:
+    """Build a mock aiohttp response usable as ``async with session.x() as r``.
+
+    Keyword args become attributes returning ``AsyncMock(return_value=...)``
+    (e.g. ``json_data={"items": []}`` -> ``await response.json()`` returns
+    that dict; ``text="body"`` -> ``await response.text()`` returns it).
+    """
+    response = MagicMock()
+    response.status = status
+    for name, value in awaitable_attrs.items():
+        attr = "json" if name == "json_data" else name
+        setattr(response, attr, AsyncMock(return_value=value))
+    response.__aenter__ = AsyncMock(return_value=response)
+    response.__aexit__ = AsyncMock(return_value=None)
+    return response
+
+
+def mock_aiohttp_session(**methods: Any) -> MagicMock:
+    """Build a mock aiohttp ``ClientSession`` (usable as an async context manager).
+
+    Each keyword names an HTTP method (``get``/``patch``/``delete``/``post``);
+    its value drives what ``session.<method>(...)`` does:
+
+    - ``int`` -> a response shaped by that status code (via ``_mock_response``).
+    - an already-built response ``MagicMock`` -> used as-is; its
+      ``__aenter__``/``__aexit__`` are (re)wired to return itself.
+    - an exception (instance or class) -> the call raises it.
+    - a ``list`` of any of the above -> resolved/raised on successive calls
+      (``unittest.mock``'s ``side_effect`` list semantics).
+    """
+
+    def _as_response(value):
+        if isinstance(value, int):
+            value = _mock_response(value)
+        value.__aenter__ = AsyncMock(return_value=value)
+        value.__aexit__ = AsyncMock(return_value=None)
+        return value
+
+    def _is_exception(value):
+        return isinstance(value, BaseException) or (
+            isinstance(value, type) and issubclass(value, BaseException)
+        )
+
+    session = MagicMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=None)
+
+    for method, value in methods.items():
+        mock_method = MagicMock()
+        if isinstance(value, list):
+            mock_method.side_effect = [
+                v if _is_exception(v) else _as_response(v) for v in value
+            ]
+        elif _is_exception(value):
+            mock_method.side_effect = value
+        else:
+            mock_method.return_value = _as_response(value)
+        setattr(session, method, mock_method)
+
+    return session
+
+
 class TestBuildSslParam:
     """The module-level helper shared by the runtime client and the config flow."""
 
@@ -259,12 +322,7 @@ class TestSslParam:
         client = _make_client(mock_config)
         sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = AsyncMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(get=200)
 
         with (
             patch(
@@ -286,12 +344,7 @@ class TestSslParam:
         client = _make_client(mock_config)
         sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = AsyncMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=200)
 
         with (
             patch(
@@ -334,10 +387,7 @@ async def test_get_pods_count_empty(mock_client):
 async def test_get_pods_count_api_exception(mock_client):
     """A failed connection probe raises instead of reporting zero pods."""
     # Mock aiohttp session to simulate connection failure
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = AsyncMock(side_effect=Exception("Connection failed"))
+    mock_session = mock_aiohttp_session(get=Exception("Connection failed"))
 
     with (
         patch(
@@ -1137,170 +1187,32 @@ async def test_is_cluster_healthy_connection_failure(mock_client):
     assert is_healthy is False
 
 
-async def test_scale_deployment_success(mock_client):
-    """Test successful deployment scaling."""
-    # Mock aiohttp session for connection test
-    mock_conn_response = MagicMock()
-    mock_conn_response.status = 200
-
-    # Mock aiohttp session for deployment API calls
-    mock_deployment_response = MagicMock()
-    mock_deployment_response.status = 200
-    mock_deployment_response.json = AsyncMock(
-        return_value={"spec": {"replicas": 3}, "status": {"availableReplicas": 3}}
+@pytest.mark.parametrize(
+    ("method_name", "args", "replicas"),
+    [
+        ("scale_deployment", ("nginx-deployment", 5, "default"), 3),
+        ("start_deployment", ("nginx-deployment", 1, "default"), 0),
+        ("stop_deployment", ("nginx-deployment", "default"), 3),
+        ("scale_statefulset", ("redis-statefulset", 5, "default"), 3),
+        ("start_statefulset", ("redis-statefulset", 1, "default"), 0),
+        ("stop_statefulset", ("redis-statefulset", "default"), 3),
+    ],
+)
+async def test_scale_workload_success(mock_client, method_name, args, replicas):
+    """scale/start/stop deployment & statefulset succeed via GET-then-PATCH."""
+    mock_session = mock_aiohttp_session(
+        get=_mock_response(
+            200,
+            json_data={
+                "spec": {"replicas": replicas},
+                "status": {"availableReplicas": replicas},
+            },
+        ),
+        patch=200,
     )
 
-    mock_patch_response = MagicMock()
-    mock_patch_response.status = 200
-
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = AsyncMock(return_value=mock_deployment_response)
-    mock_session.patch = AsyncMock(return_value=mock_patch_response)
-
     with patch("aiohttp.ClientSession", return_value=mock_session):
-        result = await mock_client.scale_deployment("nginx-deployment", 5, "default")
-
-    assert result is True
-
-
-async def test_start_deployment_success(mock_client):
-    """Test successful deployment start."""
-    # Mock aiohttp session for connection test
-    mock_conn_response = MagicMock()
-    mock_conn_response.status = 200
-
-    # Mock aiohttp session for deployment API calls
-    mock_deployment_response = MagicMock()
-    mock_deployment_response.status = 200
-    mock_deployment_response.json = AsyncMock(
-        return_value={"spec": {"replicas": 0}, "status": {"availableReplicas": 0}}
-    )
-
-    mock_patch_response = MagicMock()
-    mock_patch_response.status = 200
-
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = AsyncMock(return_value=mock_deployment_response)
-    mock_session.patch = AsyncMock(return_value=mock_patch_response)
-
-    with patch("aiohttp.ClientSession", return_value=mock_session):
-        result = await mock_client.start_deployment("nginx-deployment", 1, "default")
-
-    assert result is True
-
-
-async def test_stop_deployment_success(mock_client):
-    """Test successful deployment stop."""
-    # Mock aiohttp session for connection test
-    mock_conn_response = MagicMock()
-    mock_conn_response.status = 200
-
-    # Mock aiohttp session for deployment API calls
-    mock_deployment_response = MagicMock()
-    mock_deployment_response.status = 200
-    mock_deployment_response.json = AsyncMock(
-        return_value={"spec": {"replicas": 3}, "status": {"availableReplicas": 3}}
-    )
-
-    mock_patch_response = MagicMock()
-    mock_patch_response.status = 200
-
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = AsyncMock(return_value=mock_deployment_response)
-    mock_session.patch = AsyncMock(return_value=mock_patch_response)
-
-    with patch("aiohttp.ClientSession", return_value=mock_session):
-        result = await mock_client.stop_deployment("nginx-deployment", "default")
-
-    assert result is True
-
-
-async def test_scale_statefulset_success(mock_client):
-    """Test successful statefulset scaling."""
-    # Mock aiohttp session for connection test
-    mock_conn_response = MagicMock()
-    mock_conn_response.status = 200
-
-    # Mock aiohttp session for statefulset API calls
-    mock_statefulset_response = MagicMock()
-    mock_statefulset_response.status = 200
-    mock_statefulset_response.json = AsyncMock(
-        return_value={"spec": {"replicas": 3}, "status": {"availableReplicas": 3}}
-    )
-
-    mock_patch_response = MagicMock()
-    mock_patch_response.status = 200
-
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = AsyncMock(return_value=mock_statefulset_response)
-    mock_session.patch = AsyncMock(return_value=mock_patch_response)
-
-    with patch("aiohttp.ClientSession", return_value=mock_session):
-        result = await mock_client.scale_statefulset("redis-statefulset", 5, "default")
-
-    assert result is True
-
-
-async def test_start_statefulset_success(mock_client):
-    """Test successful statefulset start."""
-    # Mock aiohttp session for connection test
-    mock_conn_response = MagicMock()
-    mock_conn_response.status = 200
-
-    # Mock aiohttp session for statefulset API calls
-    mock_statefulset_response = MagicMock()
-    mock_statefulset_response.status = 200
-    mock_statefulset_response.json = AsyncMock(
-        return_value={"spec": {"replicas": 0}, "status": {"availableReplicas": 0}}
-    )
-
-    mock_patch_response = MagicMock()
-    mock_patch_response.status = 200
-
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = AsyncMock(return_value=mock_statefulset_response)
-    mock_session.patch = AsyncMock(return_value=mock_patch_response)
-
-    with patch("aiohttp.ClientSession", return_value=mock_session):
-        result = await mock_client.start_statefulset("redis-statefulset", 1, "default")
-
-    assert result is True
-
-
-async def test_stop_statefulset_success(mock_client):
-    """Test successful statefulset stop."""
-    # Mock aiohttp session for connection test
-    mock_conn_response = MagicMock()
-    mock_conn_response.status = 200
-
-    # Mock aiohttp session for statefulset API calls
-    mock_statefulset_response = MagicMock()
-    mock_statefulset_response.status = 200
-    mock_statefulset_response.json = AsyncMock(
-        return_value={"spec": {"replicas": 3}, "status": {"availableReplicas": 3}}
-    )
-
-    mock_patch_response = MagicMock()
-    mock_patch_response.status = 200
-
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = AsyncMock(return_value=mock_statefulset_response)
-    mock_session.patch = AsyncMock(return_value=mock_patch_response)
-
-    with patch("aiohttp.ClientSession", return_value=mock_session):
-        result = await mock_client.stop_statefulset("redis-statefulset", "default")
+        result = await getattr(mock_client, method_name)(*args)
 
     assert result is True
 
@@ -2032,33 +1944,27 @@ async def test_get_node_metrics(mock_client):
 
 async def test_get_node_metrics_aiohttp_success(mock_client):
     """Test _get_node_metrics_aiohttp parses API response correctly."""
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.json = AsyncMock(
-        return_value={
-            "items": [
-                {
-                    "metadata": {"name": "node1"},
-                    "usage": {"cpu": "410m", "memory": "2063352Ki"},
-                },
-                {
-                    "metadata": {"name": "node2"},
-                    "usage": {"cpu": "1200000000n", "memory": "3Gi"},
-                },
-                {
-                    "metadata": {},
-                    "usage": {"cpu": "100m", "memory": "512Mi"},
-                },
-            ]
-        }
+    mock_session = mock_aiohttp_session(
+        get=_mock_response(
+            200,
+            json_data={
+                "items": [
+                    {
+                        "metadata": {"name": "node1"},
+                        "usage": {"cpu": "410m", "memory": "2063352Ki"},
+                    },
+                    {
+                        "metadata": {"name": "node2"},
+                        "usage": {"cpu": "1200000000n", "memory": "3Gi"},
+                    },
+                    {
+                        "metadata": {},
+                        "usage": {"cpu": "100m", "memory": "512Mi"},
+                    },
+                ]
+            },
+        )
     )
-    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_response.__aexit__ = AsyncMock(return_value=None)
-
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = MagicMock(return_value=mock_response)
 
     with (
         patch("aiohttp.TCPConnector"),
@@ -2077,15 +1983,7 @@ async def test_get_node_metrics_aiohttp_success(mock_client):
 
 async def test_get_node_metrics_aiohttp_403(mock_client):
     """Test _get_node_metrics_aiohttp returns empty on 403."""
-    mock_response = MagicMock()
-    mock_response.status = 403
-    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_response.__aexit__ = AsyncMock(return_value=None)
-
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = MagicMock(return_value=mock_response)
+    mock_session = mock_aiohttp_session(get=403)
 
     with (
         patch("aiohttp.TCPConnector"),
@@ -2098,10 +1996,7 @@ async def test_get_node_metrics_aiohttp_403(mock_client):
 
 async def test_get_node_metrics_aiohttp_exception(mock_client):
     """Test _get_node_metrics_aiohttp returns empty on exception."""
-    mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-    mock_session.get = MagicMock(side_effect=Exception("Connection refused"))
+    mock_session = mock_aiohttp_session(get=Exception("Connection refused"))
 
     with (
         patch("aiohttp.TCPConnector"),
@@ -2487,23 +2382,17 @@ class TestFetchResourceCount:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={
-                "items": [
-                    {"metadata": {"name": "r1"}},
-                    {"metadata": {"name": "r2"}},
-                ]
-            }
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(
+                200,
+                json_data={
+                    "items": [
+                        {"metadata": {"name": "r1"}},
+                        {"metadata": {"name": "r2"}},
+                    ]
+                },
+            )
         )
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2519,24 +2408,18 @@ class TestFetchResourceCount:
         """Test counting resources across all namespaces."""
         mock_client.monitor_all_namespaces = True
 
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={
-                "items": [
-                    {"metadata": {"name": "r1"}},
-                    {"metadata": {"name": "r2"}},
-                    {"metadata": {"name": "r3"}},
-                ]
-            }
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(
+                200,
+                json_data={
+                    "items": [
+                        {"metadata": {"name": "r1"}},
+                        {"metadata": {"name": "r2"}},
+                        {"metadata": {"name": "r3"}},
+                    ]
+                },
+            )
         )
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2553,15 +2436,7 @@ class TestFetchResourceCount:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(get=403)
 
         with (
             patch(
@@ -2581,10 +2456,7 @@ class TestFetchResourceCount:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+        mock_session = mock_aiohttp_session(get=Exception("Network error"))
 
         with (
             patch(
@@ -2599,18 +2471,11 @@ class TestFetchResourceCount:
         """Test counting cluster-scoped resources (like nodes)."""
         mock_client.monitor_all_namespaces = False
 
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={"items": [{"metadata": {"name": "node1"}}]}
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(
+                200, json_data={"items": [{"metadata": {"name": "node1"}}]}
+            )
         )
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2627,40 +2492,22 @@ class TestFetchResourceCount:
         mock_client.namespaces = ["default", "production"]
         mock_client.monitor_all_namespaces = False
 
-        mock_response_1 = MagicMock()
-        mock_response_1.status = 200
-        mock_response_1.json = AsyncMock(
-            return_value={"items": [{"metadata": {"name": "r1"}}]}
+        mock_session = mock_aiohttp_session(
+            get=[
+                _mock_response(
+                    200, json_data={"items": [{"metadata": {"name": "r1"}}]}
+                ),
+                _mock_response(
+                    200,
+                    json_data={
+                        "items": [
+                            {"metadata": {"name": "r2"}},
+                            {"metadata": {"name": "r3"}},
+                        ]
+                    },
+                ),
+            ]
         )
-        mock_response_1.__aenter__ = AsyncMock(return_value=mock_response_1)
-        mock_response_1.__aexit__ = AsyncMock(return_value=None)
-
-        mock_response_2 = MagicMock()
-        mock_response_2.status = 200
-        mock_response_2.json = AsyncMock(
-            return_value={
-                "items": [
-                    {"metadata": {"name": "r2"}},
-                    {"metadata": {"name": "r3"}},
-                ]
-            }
-        )
-        mock_response_2.__aenter__ = AsyncMock(return_value=mock_response_2)
-        mock_response_2.__aexit__ = AsyncMock(return_value=None)
-
-        call_count = 0
-
-        def make_get(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_response_1
-            return mock_response_2
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=make_get)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2691,16 +2538,9 @@ class TestFetchResourceList:
                 "status": {"availableReplicas": 3, "readyReplicas": 3},
             },
         ]
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"items": items_data})
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": items_data})
+        )
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2731,16 +2571,9 @@ class TestFetchResourceList:
                 "status": {},
             },
         ]
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"items": items_data})
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": items_data})
+        )
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2759,15 +2592,7 @@ class TestFetchResourceList:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(get=403)
 
         with (
             patch(
@@ -2791,10 +2616,7 @@ class TestFetchResourceList:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+        mock_session = mock_aiohttp_session(get=Exception("Network error"))
 
         with (
             patch(
@@ -2818,16 +2640,9 @@ class TestFetchResourceList:
             {"metadata": {"name": "r1"}},
             {"metadata": {"name": "r2"}},
         ]
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"items": items_data})
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": items_data})
+        )
 
         call_count = 0
 
@@ -2856,16 +2671,9 @@ class TestFetchResourceList:
             {"metadata": {"name": "r1"}},
             {"metadata": {"name": "r2"}},
         ]
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"items": items_data})
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": items_data})
+        )
 
         call_count = 0
 
@@ -2912,23 +2720,10 @@ class TestTriggerCronjobAiohttp:
             }
         }
 
-        get_response = MagicMock()
-        get_response.status = 200
-        get_response.json = AsyncMock(return_value=cronjob_data)
-        get_response.__aenter__ = AsyncMock(return_value=get_response)
-        get_response.__aexit__ = AsyncMock(return_value=None)
-
-        post_response = MagicMock()
-        post_response.status = 201
-        post_response.json = AsyncMock(return_value=job_result)
-        post_response.__aenter__ = AsyncMock(return_value=post_response)
-        post_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=get_response)
-        mock_session.post = MagicMock(return_value=post_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data=cronjob_data),
+            post=_mock_response(201, json_data=job_result),
+        )
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2943,15 +2738,7 @@ class TestTriggerCronjobAiohttp:
 
     async def test_trigger_cronjob_get_fails(self, mock_client):
         """Test _trigger_cronjob_aiohttp when GET cronjob returns non-200."""
-        get_response = MagicMock()
-        get_response.status = 404
-        get_response.__aenter__ = AsyncMock(return_value=get_response)
-        get_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=get_response)
+        mock_session = mock_aiohttp_session(get=404)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2968,16 +2755,9 @@ class TestTriggerCronjobAiohttp:
         """Test _trigger_cronjob_aiohttp when cronjob has no job template."""
         cronjob_data = {"spec": {}}  # No jobTemplate
 
-        get_response = MagicMock()
-        get_response.status = 200
-        get_response.json = AsyncMock(return_value=cronjob_data)
-        get_response.__aenter__ = AsyncMock(return_value=get_response)
-        get_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=get_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data=cronjob_data)
+        )
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -2996,22 +2776,10 @@ class TestTriggerCronjobAiohttp:
             }
         }
 
-        get_response = MagicMock()
-        get_response.status = 200
-        get_response.json = AsyncMock(return_value=cronjob_data)
-        get_response.__aenter__ = AsyncMock(return_value=get_response)
-        get_response.__aexit__ = AsyncMock(return_value=None)
-
-        post_response = MagicMock()
-        post_response.status = 409  # Conflict
-        post_response.__aenter__ = AsyncMock(return_value=post_response)
-        post_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=get_response)
-        mock_session.post = MagicMock(return_value=post_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data=cronjob_data),
+            post=409,  # Conflict
+        )
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3024,10 +2792,7 @@ class TestTriggerCronjobAiohttp:
 
     async def test_trigger_cronjob_exception(self, mock_client):
         """Test _trigger_cronjob_aiohttp handles exceptions."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=Exception("Network error"))
+        mock_session = mock_aiohttp_session(get=Exception("Network error"))
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3046,9 +2811,7 @@ class TestTriggerCronjobAiohttp:
 
 def _make_aiohttp_stream_mock(lines: list[bytes], status: int = 200):
     """Return a mock aiohttp ClientSession that streams the given byte lines."""
-    mock_response = MagicMock()
-    mock_response.status = status
-    mock_response.raise_for_status = MagicMock()
+    mock_response = _mock_response(status)
 
     async def _async_iter_lines(self):
         for line in lines:
@@ -3056,16 +2819,7 @@ def _make_aiohttp_stream_mock(lines: list[bytes], status: int = 200):
 
     mock_response.content.__aiter__ = _async_iter_lines
 
-    mock_cm = MagicMock()
-    mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_cm.__aexit__ = AsyncMock(return_value=None)
-
-    mock_session = MagicMock()
-    mock_session.get = MagicMock(return_value=mock_cm)
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
-
-    return mock_session
+    return mock_aiohttp_session(get=mock_response)
 
 
 class TestListResourceWithVersion:
@@ -3078,19 +2832,7 @@ class TestListResourceWithVersion:
             "items": [{"metadata": {"name": "pod1"}}, {"metadata": {"name": "pod2"}}],
         }
 
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json = AsyncMock(return_value=payload)
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_cm)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3108,18 +2850,7 @@ class TestListResourceWithVersion:
         """If metadata.resourceVersion is absent, '0' should be returned."""
         payload = {"metadata": {}, "items": []}
 
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json = AsyncMock(return_value=payload)
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_cm)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3164,17 +2895,7 @@ class TestWatchStream:
 
     async def test_watch_stream_raises_on_410(self, mock_client):
         """watch_stream should raise ResourceVersionExpired when the server returns 410."""
-        mock_response = MagicMock()
-        mock_response.status = 410
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_cm)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = mock_aiohttp_session(get=410)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3743,8 +3464,7 @@ class TestWatchStreamExtended:
 
     async def test_watch_stream_non_200_non_410_raises(self, mock_client):
         """watch_stream should raise on non-200/non-410 HTTP status."""
-        mock_response = MagicMock()
-        mock_response.status = 503
+        mock_response = _mock_response(503)
         mock_response.raise_for_status = MagicMock(
             side_effect=aiohttp.ClientResponseError(
                 request_info=MagicMock(),
@@ -3753,15 +3473,7 @@ class TestWatchStreamExtended:
                 message="Service Unavailable",
             )
         )
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_cm)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = mock_aiohttp_session(get=mock_response)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3843,7 +3555,7 @@ class TestListResourceWithVersionExtended:
 
     async def test_raise_for_status_on_error(self, mock_client):
         """list_resource_with_version should raise on non-2xx responses."""
-        mock_response = MagicMock()
+        mock_response = _mock_response()
         mock_response.raise_for_status = MagicMock(
             side_effect=aiohttp.ClientResponseError(
                 request_info=MagicMock(),
@@ -3852,15 +3564,7 @@ class TestListResourceWithVersionExtended:
                 message="Forbidden",
             )
         )
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_cm)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = mock_aiohttp_session(get=mock_response)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3871,12 +3575,9 @@ class TestListResourceWithVersionExtended:
 
     async def test_connection_error(self, mock_client):
         """list_resource_with_version should propagate connection errors."""
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(
-            side_effect=aiohttp.ClientError("Connection refused")
+        mock_session = mock_aiohttp_session(
+            get=aiohttp.ClientError("Connection refused")
         )
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3889,18 +3590,7 @@ class TestListResourceWithVersionExtended:
         """list_resource_with_version should default to '0' when resourceVersion is None."""
         payload = {"metadata": {"resourceVersion": None}, "items": [{"data": "x"}]}
 
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json = AsyncMock(return_value=payload)
-
-        mock_cm = MagicMock()
-        mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_cm.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.get = MagicMock(return_value=mock_cm)
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -3922,11 +3612,8 @@ class TestFetchResourceCountExtended:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(
-            side_effect=aiohttp.ClientSSLError(
+        mock_session = mock_aiohttp_session(
+            get=aiohttp.ClientSSLError(
                 connection_key=MagicMock(), os_error=OSError("SSL handshake failed")
             )
         )
@@ -3945,10 +3632,7 @@ class TestFetchResourceCountExtended:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=TimeoutError())
+        mock_session = mock_aiohttp_session(get=TimeoutError())
 
         with (
             patch(
@@ -3964,42 +3648,23 @@ class TestFetchResourceCountExtended:
         mock_client.namespaces = ["default", "broken", "prod"]
         mock_client.monitor_all_namespaces = False
 
-        mock_response_ok = MagicMock()
-        mock_response_ok.status = 200
-        mock_response_ok.json = AsyncMock(
-            return_value={"items": [{"metadata": {"name": "r1"}}]}
+        mock_session = mock_aiohttp_session(
+            get=[
+                _mock_response(
+                    200, json_data={"items": [{"metadata": {"name": "r1"}}]}
+                ),
+                Exception("Network error for broken namespace"),
+                _mock_response(
+                    200,
+                    json_data={
+                        "items": [
+                            {"metadata": {"name": "r2"}},
+                            {"metadata": {"name": "r3"}},
+                        ]
+                    },
+                ),
+            ]
         )
-        mock_response_ok.__aenter__ = AsyncMock(return_value=mock_response_ok)
-        mock_response_ok.__aexit__ = AsyncMock(return_value=None)
-
-        mock_response_prod = MagicMock()
-        mock_response_prod.status = 200
-        mock_response_prod.json = AsyncMock(
-            return_value={
-                "items": [
-                    {"metadata": {"name": "r2"}},
-                    {"metadata": {"name": "r3"}},
-                ]
-            }
-        )
-        mock_response_prod.__aenter__ = AsyncMock(return_value=mock_response_prod)
-        mock_response_prod.__aexit__ = AsyncMock(return_value=None)
-
-        call_count = 0
-
-        def make_get(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_response_ok
-            elif call_count == 2:
-                raise Exception("Network error for broken namespace")
-            return mock_response_prod
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=make_get)
 
         with (
             patch(
@@ -4011,21 +3676,13 @@ class TestFetchResourceCountExtended:
             await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
         # The loop stops at the broken namespace; prod is never requested.
-        assert call_count == 2
+        assert mock_session.get.call_count == 2
 
     async def test_non_200_all_namespaces(self, mock_client):
         """_fetch_resource_count raises on non-200 in all-namespaces mode."""
         mock_client.monitor_all_namespaces = True
 
-        mock_response = MagicMock()
-        mock_response.status = 500
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(get=500)
 
         with (
             patch(
@@ -4048,11 +3705,8 @@ class TestFetchResourceListExtended:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(
-            side_effect=aiohttp.ClientSSLError(
+        mock_session = mock_aiohttp_session(
+            get=aiohttp.ClientSSLError(
                 connection_key=MagicMock(), os_error=OSError("cert verify failed")
             )
         )
@@ -4081,16 +3735,9 @@ class TestFetchResourceListExtended:
                 "status": {},
             },
         ]
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"items": items_data})
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": items_data})
+        )
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -4117,25 +3764,12 @@ class TestFetchResourceListExtended:
                 "status": {"availableReplicas": 1, "readyReplicas": 1},
             },
         ]
-        mock_response_ok = MagicMock()
-        mock_response_ok.status = 200
-        mock_response_ok.json = AsyncMock(return_value={"items": items_data})
-        mock_response_ok.__aenter__ = AsyncMock(return_value=mock_response_ok)
-        mock_response_ok.__aexit__ = AsyncMock(return_value=None)
-
-        call_count = 0
-
-        def make_get(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_response_ok
-            raise Exception("Namespace not accessible")
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=make_get)
+        mock_session = mock_aiohttp_session(
+            get=[
+                _mock_response(200, json_data={"items": items_data}),
+                Exception("Namespace not accessible"),
+            ]
+        )
 
         with (
             patch(
@@ -4155,15 +3789,7 @@ class TestFetchResourceListExtended:
         mock_client.namespaces = ["default"]
         mock_client.monitor_all_namespaces = False
 
-        mock_response = MagicMock()
-        mock_response.status = 404
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(get=404)
 
         with (
             patch(
@@ -4182,15 +3808,7 @@ class TestFetchResourceListExtended:
         """_fetch_resource_list raises on non-200 in all-namespaces mode."""
         mock_client.monitor_all_namespaces = True
 
-        mock_response = MagicMock()
-        mock_response.status = 500
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(get=500)
 
         with (
             patch(
@@ -4214,16 +3832,9 @@ class TestScaleDeploymentExtended:
     async def test_scale_deployment_aiohttp_non_200(self, mock_client):
         """scale_deployment returns False when aiohttp PATCH returns non-200."""
         # Make aiohttp fail
-        mock_patch_response = MagicMock()
-        mock_patch_response.status = 422
-        mock_patch_response.text = AsyncMock(return_value="Unprocessable Entity")
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_patch_response)
-        mock_patch_response.__aenter__ = AsyncMock(return_value=mock_patch_response)
-        mock_patch_response.__aexit__ = AsyncMock(return_value=None)
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(422, text="Unprocessable Entity")
+        )
 
         # Also make the k8s client fallback fail
         mock_client.apps_v1.read_namespaced_deployment = MagicMock(
@@ -4237,10 +3848,7 @@ class TestScaleDeploymentExtended:
 
     async def test_scale_deployment_aiohttp_exception(self, mock_client):
         """scale_deployment returns False when aiohttp raises an exception."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(side_effect=Exception("Connection timeout"))
+        mock_session = mock_aiohttp_session(patch=Exception("Connection timeout"))
 
         # Also make the k8s client fallback fail
         mock_client.apps_v1.read_namespaced_deployment = MagicMock(
@@ -4256,16 +3864,7 @@ class TestScaleDeploymentExtended:
         self, mock_client
     ):
         """When the aiohttp PATCH fails, the official read/replace path scales."""
-        mock_patch_response = MagicMock()
-        mock_patch_response.status = 500
-        mock_patch_response.text = AsyncMock(return_value="boom")
-        mock_patch_response.__aenter__ = AsyncMock(return_value=mock_patch_response)
-        mock_patch_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_patch_response)
+        mock_session = mock_aiohttp_session(patch=_mock_response(500, text="boom"))
 
         deployment = MagicMock()
         mock_client.apps_v1.read_namespaced_deployment = MagicMock(
@@ -4284,15 +3883,7 @@ class TestScaleDeploymentExtended:
 
     async def test_scale_workload_aiohttp_builds_scale_url(self, mock_client):
         """_scale_workload_aiohttp PATCHes the /scale subresource of the given type."""
-        mock_patch_response = MagicMock()
-        mock_patch_response.status = 200
-        mock_patch_response.__aenter__ = AsyncMock(return_value=mock_patch_response)
-        mock_patch_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_patch_response)
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             assert (
@@ -4312,16 +3903,7 @@ class TestScaleStatefulsetExtended:
 
     async def test_scale_statefulset_aiohttp_non_200(self, mock_client):
         """scale_statefulset returns False when aiohttp PATCH returns non-200."""
-        mock_patch_response = MagicMock()
-        mock_patch_response.status = 403
-        mock_patch_response.text = AsyncMock(return_value="Forbidden")
-        mock_patch_response.__aenter__ = AsyncMock(return_value=mock_patch_response)
-        mock_patch_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_patch_response)
+        mock_session = mock_aiohttp_session(patch=_mock_response(403, text="Forbidden"))
 
         # Also make the k8s client fallback fail
         mock_client.apps_v1.read_namespaced_stateful_set = MagicMock(
@@ -4335,10 +3917,7 @@ class TestScaleStatefulsetExtended:
 
     async def test_scale_statefulset_aiohttp_exception(self, mock_client):
         """scale_statefulset returns False when aiohttp raises an exception."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(side_effect=Exception("Network failure"))
+        mock_session = mock_aiohttp_session(patch=Exception("Network failure"))
 
         mock_client.apps_v1.read_namespaced_stateful_set = MagicMock(
             side_effect=ApiException(status=404, reason="Not Found")
@@ -4992,34 +4571,28 @@ class TestGetPodMetricsAiohttp:
 
     async def test_successful_fetch(self, mock_client):
         """Test successful pod metrics fetch returning cpu/memory."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={
-                "items": [
-                    {
-                        "metadata": {"name": "pod1", "namespace": "default"},
-                        "containers": [
-                            {"usage": {"cpu": "250m", "memory": "128Mi"}},
-                            {"usage": {"cpu": "100m", "memory": "64Mi"}},
-                        ],
-                    },
-                    {
-                        "metadata": {"name": "pod2", "namespace": "prod"},
-                        "containers": [
-                            {"usage": {"cpu": "500m", "memory": "256Mi"}},
-                        ],
-                    },
-                ]
-            }
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(
+                200,
+                json_data={
+                    "items": [
+                        {
+                            "metadata": {"name": "pod1", "namespace": "default"},
+                            "containers": [
+                                {"usage": {"cpu": "250m", "memory": "128Mi"}},
+                                {"usage": {"cpu": "100m", "memory": "64Mi"}},
+                            ],
+                        },
+                        {
+                            "metadata": {"name": "pod2", "namespace": "prod"},
+                            "containers": [
+                                {"usage": {"cpu": "500m", "memory": "256Mi"}},
+                            ],
+                        },
+                    ]
+                },
+            )
         )
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
 
         with (
             patch("aiohttp.TCPConnector"),
@@ -5043,15 +4616,7 @@ class TestGetPodMetricsAiohttp:
 
     async def test_http_403(self, mock_client):
         """Test _get_pod_metrics_aiohttp returns empty on 403 Forbidden."""
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(get=403)
 
         with (
             patch("aiohttp.TCPConnector"),
@@ -5066,15 +4631,7 @@ class TestGetPodMetricsAiohttp:
 
     async def test_http_non_200_non_403(self, mock_client):
         """Test _get_pod_metrics_aiohttp returns empty on other non-200 status."""
-        mock_response = MagicMock()
-        mock_response.status = 500
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(get=500)
 
         with (
             patch("aiohttp.TCPConnector"),
@@ -5089,10 +4646,7 @@ class TestGetPodMetricsAiohttp:
 
     async def test_exception_handling(self, mock_client):
         """Test _get_pod_metrics_aiohttp returns empty on exception."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=Exception("Connection refused"))
+        mock_session = mock_aiohttp_session(get=Exception("Connection refused"))
 
         with (
             patch("aiohttp.TCPConnector"),
@@ -5109,16 +4663,9 @@ class TestGetPodMetricsAiohttp:
         """Test _get_pod_metrics_aiohttp uses all-namespaces URL when configured."""
         mock_client.monitor_all_namespaces = True
 
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={"items": []})
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": []})
+        )
 
         with (
             patch("aiohttp.TCPConnector"),
@@ -5141,15 +4688,7 @@ class TestSuspendCronjobAiohttp:
 
     async def test_successful_suspend(self, mock_client):
         """Test successful CronJob suspension via aiohttp."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -5163,15 +4702,7 @@ class TestSuspendCronjobAiohttp:
 
     async def test_non_200_response(self, mock_client):
         """Test suspend_cronjob (aiohttp path) with non-200 response."""
-        mock_response = MagicMock()
-        mock_response.status = 404
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=404)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -5185,10 +4716,7 @@ class TestSuspendCronjobAiohttp:
 
     async def test_exception(self, mock_client):
         """Test suspend_cronjob (aiohttp path) with exception."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(side_effect=Exception("Connection refused"))
+        mock_session = mock_aiohttp_session(patch=Exception("Connection refused"))
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -5206,15 +4734,7 @@ class TestResumeCronjobAiohttp:
 
     async def test_successful_resume(self, mock_client):
         """Test successful CronJob resume via aiohttp."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -5228,15 +4748,7 @@ class TestResumeCronjobAiohttp:
 
     async def test_non_200_response(self, mock_client):
         """Test resume_cronjob (aiohttp path) with non-200 response."""
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=403)
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -5250,10 +4762,7 @@ class TestResumeCronjobAiohttp:
 
     async def test_exception(self, mock_client):
         """Test resume_cronjob (aiohttp path) with exception."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(side_effect=Exception("Timeout"))
+        mock_session = mock_aiohttp_session(patch=Exception("Timeout"))
 
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
@@ -5624,15 +5133,7 @@ class TestDeletePod:
 
     async def test_delete_pod_aiohttp_success(self, mock_client):
         """delete_pod returns True when aiohttp DELETE returns 200."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.delete = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(delete=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.delete_pod("test-pod", "default")
@@ -5641,15 +5142,7 @@ class TestDeletePod:
 
     async def test_delete_pod_aiohttp_202_accepted(self, mock_client):
         """delete_pod returns True when aiohttp DELETE returns 202."""
-        mock_response = MagicMock()
-        mock_response.status = 202
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.delete = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(delete=202)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.delete_pod("test-pod", "default")
@@ -5660,16 +5153,9 @@ class TestDeletePod:
         self, mock_client
     ):
         """delete_pod falls back to official client when aiohttp fails."""
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.text = AsyncMock(return_value="Forbidden")
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.delete = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            delete=_mock_response(403, text="Forbidden")
+        )
 
         # Official client succeeds
         mock_client.core_v1.delete_namespaced_pod = MagicMock(return_value=None)
@@ -5681,16 +5167,9 @@ class TestDeletePod:
 
     async def test_delete_pod_both_methods_fail(self, mock_client):
         """delete_pod returns False when both aiohttp and official client fail."""
-        mock_response = MagicMock()
-        mock_response.status = 500
-        mock_response.text = AsyncMock(return_value="Server Error")
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.delete = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            delete=_mock_response(500, text="Server Error")
+        )
 
         mock_client.core_v1.delete_namespaced_pod = MagicMock(
             side_effect=ApiException(status=404, reason="Not Found")
@@ -5703,15 +5182,7 @@ class TestDeletePod:
 
     async def test_delete_pod_uses_default_namespace(self, mock_client):
         """delete_pod uses client's default namespace when none specified."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.delete = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(delete=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.delete_pod("test-pod")
@@ -5722,11 +5193,8 @@ class TestDeletePod:
         self, mock_client
     ):
         """delete_pod falls back to official client when aiohttp raises exception."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.delete = MagicMock(
-            side_effect=aiohttp.ClientError("Connection refused")
+        mock_session = mock_aiohttp_session(
+            delete=aiohttp.ClientError("Connection refused")
         )
 
         mock_client.core_v1.delete_namespaced_pod = MagicMock(return_value=None)
@@ -5738,11 +5206,8 @@ class TestDeletePod:
 
     async def test_delete_pod_aiohttp_exception_both_fail(self, mock_client):
         """delete_pod returns False when both aiohttp exception and official client fail."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.delete = MagicMock(
-            side_effect=aiohttp.ClientError("Connection refused")
+        mock_session = mock_aiohttp_session(
+            delete=aiohttp.ClientError("Connection refused")
         )
 
         mock_client.core_v1.delete_namespaced_pod = MagicMock(
@@ -5759,14 +5224,7 @@ class TestDeleteJob:
     """Tests for the delete_job client method."""
 
     async def test_delete_job_aiohttp_success(self, mock_client):
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=None)
-        sess = MagicMock()
-        sess.__aenter__ = AsyncMock(return_value=sess)
-        sess.__aexit__ = AsyncMock(return_value=None)
-        sess.delete = MagicMock(return_value=mock_resp)
+        sess = mock_aiohttp_session(delete=200)
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=sess,
@@ -5787,15 +5245,7 @@ class TestDeleteJob:
         assert kwargs.get("propagation_policy") == "Background"
 
     async def test_delete_job_aiohttp_non_200_returns_false(self, mock_client):
-        mock_resp = MagicMock()
-        mock_resp.status = 404
-        mock_resp.text = AsyncMock(return_value="not found")
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=None)
-        sess = MagicMock()
-        sess.__aenter__ = AsyncMock(return_value=sess)
-        sess.__aexit__ = AsyncMock(return_value=None)
-        sess.delete = MagicMock(return_value=mock_resp)
+        sess = mock_aiohttp_session(delete=_mock_response(404, text="not found"))
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=sess,
@@ -5826,15 +5276,7 @@ class TestRolloutRestart:
 
     async def test_rollout_restart_deployment_aiohttp_success(self, mock_client):
         """rollout_restart_deployment returns True when aiohttp PATCH returns 200."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.rollout_restart_deployment("nginx", "default")
@@ -5843,15 +5285,7 @@ class TestRolloutRestart:
 
     async def test_rollout_restart_statefulset_aiohttp_success(self, mock_client):
         """rollout_restart_statefulset returns True when aiohttp PATCH returns 200."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.rollout_restart_statefulset(
@@ -5862,15 +5296,7 @@ class TestRolloutRestart:
 
     async def test_rollout_restart_daemonset_aiohttp_success(self, mock_client):
         """rollout_restart_daemonset returns True when aiohttp PATCH returns 200."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.rollout_restart_daemonset(
@@ -5883,16 +5309,7 @@ class TestRolloutRestart:
         self, mock_client
     ):
         """rollout_restart falls back to official client when aiohttp fails."""
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.text = AsyncMock(return_value="Forbidden")
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=_mock_response(403, text="Forbidden"))
 
         # Official client: mock patch
         mock_client.apps_v1.patch_namespaced_deployment = MagicMock(return_value=None)
@@ -5905,11 +5322,8 @@ class TestRolloutRestart:
 
     async def test_rollout_restart_aiohttp_exception_falls_back(self, mock_client):
         """rollout_restart falls back when aiohttp raises exception."""
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(
-            side_effect=aiohttp.ClientError("Connection refused")
+        mock_session = mock_aiohttp_session(
+            patch=aiohttp.ClientError("Connection refused")
         )
 
         # Official client: mock patch
@@ -5925,16 +5339,9 @@ class TestRolloutRestart:
 
     async def test_rollout_restart_both_methods_fail(self, mock_client):
         """rollout_restart returns False when both aiohttp and official client fail."""
-        mock_response = MagicMock()
-        mock_response.status = 500
-        mock_response.text = AsyncMock(return_value="Internal Server Error")
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(500, text="Internal Server Error")
+        )
 
         mock_client.apps_v1.patch_namespaced_deployment = MagicMock(
             side_effect=ApiException(status=404, reason="Not Found")
@@ -5947,16 +5354,7 @@ class TestRolloutRestart:
 
     async def test_rollout_restart_kubernetes_patch_body(self, mock_client):
         """rollout_restart_kubernetes sends correct patch body with restartedAt."""
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.text = AsyncMock(return_value="Forbidden")
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=_mock_response(403, text="Forbidden"))
 
         mock_client.apps_v1.patch_namespaced_daemon_set = MagicMock(return_value=None)
 
@@ -5975,15 +5373,7 @@ class TestRolloutRestart:
 
     async def test_rollout_restart_aiohttp_status_201(self, mock_client):
         """rollout_restart returns True when aiohttp PATCH returns 201."""
-        mock_response = MagicMock()
-        mock_response.status = 201
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=201)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.rollout_restart_deployment("nginx", "default")
@@ -5992,15 +5382,7 @@ class TestRolloutRestart:
 
     async def test_rollout_restart_uses_default_namespace(self, mock_client):
         """rollout_restart uses self.namespace when namespace is None."""
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.patch = MagicMock(return_value=mock_response)
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.rollout_restart_deployment("nginx")
@@ -6260,23 +5642,11 @@ class TestParsePodContainerState:
 class TestNodeCordon:
     """Tests for cordon_node / uncordon_node."""
 
-    def _mock_session(self, status: int = 200) -> MagicMock:
-        """Build a mock aiohttp session whose PATCH returns *status*."""
-        response = MagicMock()
-        response.status = status
-        response.text = AsyncMock(return_value="error body")
-        response.__aenter__ = AsyncMock(return_value=response)
-        response.__aexit__ = AsyncMock(return_value=None)
-
-        session = MagicMock()
-        session.__aenter__ = AsyncMock(return_value=session)
-        session.__aexit__ = AsyncMock(return_value=None)
-        session.patch = MagicMock(return_value=response)
-        return session
-
     async def test_cordon_node_aiohttp_success(self, mock_client):
         """Test cordon_node patches spec.unschedulable=true via aiohttp."""
-        mock_session = self._mock_session(200)
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(200, text="error body")
+        )
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
@@ -6290,7 +5660,9 @@ class TestNodeCordon:
 
     async def test_uncordon_node_aiohttp_success(self, mock_client):
         """Test uncordon_node patches spec.unschedulable=false via aiohttp."""
-        mock_session = self._mock_session(200)
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(200, text="error body")
+        )
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
@@ -6304,7 +5676,9 @@ class TestNodeCordon:
 
     async def test_cordon_node_falls_back_to_official_client(self, mock_client):
         """Test cordon_node falls back to the official client when aiohttp fails."""
-        mock_session = self._mock_session(500)
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(500, text="error body")
+        )
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
@@ -6329,7 +5703,9 @@ class TestNodeCordon:
 
     async def test_uncordon_node_falls_back_to_official_client(self, mock_client):
         """Test uncordon_node falls back to the official client when aiohttp fails."""
-        mock_session = self._mock_session(500)
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(500, text="error body")
+        )
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
