@@ -19,7 +19,7 @@ Never add yourself as a git co-author. Do not include `Co-Authored-By` trailers 
 pip install -e ".[dev]"
 
 # Install frontend dependencies and build
-cd frontend && npm install && npm run build
+cd frontend && npm ci && npm run build
 
 # Run all tests (includes coverage)
 pytest
@@ -157,7 +157,7 @@ When adding features, check the current rule set at the link above before implem
 
 ## CI
 
-GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + build (ESLint, Prettier, Vite), Helm chart lint + `manifests/` drift check (`.github/workflows/helm.yaml`), Kubernetes API compatibility tests (`.github/workflows/k8s-compat.yaml`), and CodeQL (`.github/workflows/codeql.yml`). The frontend workflow also verifies the committed `kubernetes-panel.js` bundle matches a fresh build — if a developer edits `.ts` source without rebuilding, CI will fail. Releases automated via release-please.
+GitHub Actions runs: pytest + ruff + mypy + bandit (Python 3.14), HACS validation, hassfest (HA manifest validation), mkdocs build, frontend lint + typecheck + build (ESLint, Prettier, tsc, Vite), Helm chart lint + `manifests/` drift check (`.github/workflows/helm.yaml`), Kubernetes API compatibility tests (`.github/workflows/k8s-compat.yaml`), and CodeQL (`.github/workflows/codeql.yml`). The frontend workflow also verifies the committed `kubernetes-panel.js` bundle matches a fresh build — if a developer edits `.ts` source without rebuilding, CI will fail. Releases automated via release-please.
 
 The **k8s-compat workflow** spins up real kind clusters (Kubernetes N, N-1, N-2 — currently 1.35, 1.36, 1.37) and runs the `tests/k8s_compat/` suite against each. It deploys the chart in `full` mode for real RBAC, creates test workloads, and exercises every `get_*`/`get_*_count` fetch method, `watch_stream`, `list_resource_with_version`, `is_cluster_healthy`, the node cordon/uncordon and rollout-restart mutations, and CronJob suspend/resume and `delete_job` — but not `scale_deployment`/`scale_statefulset`/`start_*`/`stop_*` (workload scaling), `delete_pod`, `trigger_cronjob`, or `get_pod_metrics`. The latest stable k8s version is pinned as `K8S_LATEST` in the workflow's `env:` block, tracked by Renovate via a custom regex manager (`kubernetes/kubernetes` github-releases datasource). When a new k8s stable release is tagged, Renovate opens a PR that bumps the pin; `postUpgradeTasks` runs `scripts/update-k8s-support-range.sh` to update the version range in README.md and docs/SETUP.md automatically. Triggers: path-filtered PRs (integration code, tests, chart, pyproject.toml, the workflow), weekly Monday schedule, and manual dispatch.
 
