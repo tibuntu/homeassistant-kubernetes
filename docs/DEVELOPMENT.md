@@ -151,14 +151,19 @@ homeassistant-kubernetes/
 │   └── src/
 │       ├── kubernetes-panel.ts      # Root panel element with tab navigation
 │       ├── views/
+│       │   ├── base-view.ts         # K8sDataView: shared load/poll/subscribe lifecycle
 │       │   ├── k8s-overview.ts      # Overview tab
 │       │   ├── k8s-nodes-table.ts   # Nodes tab
 │       │   ├── k8s-workloads.ts     # Workloads tab
 │       │   ├── k8s-pods-table.ts    # Pods tab
 │       │   ├── k8s-network.ts       # Network tab
 │       │   └── k8s-settings.ts      # Settings tab
+│       ├── styles/
+│       │   ├── shared.ts            # Loading/error/empty state + filter styles
+│       │   └── actions.ts           # Round action-button + action-error banner styles
 │       └── utils/
-│           └── load-ha-elements.ts  # HA element lazy loader
+│           ├── load-ha-elements.ts  # HA element lazy loader
+│           └── format.ts            # Pure formatting helpers (age, relative time, errors)
 ├── chart/                            # Helm chart for the ServiceAccount + RBAC
 │   ├── Chart.yaml
 │   ├── values.yaml
@@ -204,13 +209,13 @@ The chart version is bumped by release-please alongside the integration version,
 
 ## Frontend Development
 
-The sidebar panel is built with [Lit](https://lit.dev/) 3 (TypeScript) and bundled with [Vite](https://vite.dev/) into a single ES module. Minification is disabled because esbuild's variable mangling breaks Lit's tagged template literals.
+The sidebar panel is built with [Lit](https://lit.dev/) 3 (TypeScript) and bundled with [Vite](https://vite.dev/) (rolldown) into a single ES module. The bundle is minified via `build.rolldownOptions.output.minify` (`compress` + `mangle` + `codegen.removeWhitespace`) — property/class names used by Lit's tagged template literals and the custom-element contract are not mangled, so this is safe. The committed `custom_components/kubernetes/frontend/kubernetes-panel.js` (~116 KB) is diffed byte-for-byte against a fresh build in CI (see below), so always rebuild after editing `.ts` source.
 
 ### Setup
 
 ```bash
 cd frontend
-npm install
+npm ci
 ```
 
 ### Build
@@ -229,7 +234,10 @@ npm run lint          # ESLint check
 npm run lint:fix      # ESLint auto-fix
 npm run format:check  # Prettier check
 npm run format        # Prettier auto-fix
+npm run typecheck     # tsc --noEmit
 ```
+
+`npm run typecheck` is enforced by CI (`.github/workflows/frontend.yaml`) and by the `frontend-typecheck` pre-commit hook.
 
 ## Testing
 
