@@ -141,6 +141,12 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     return name.toLowerCase().includes(this._searchQuery.toLowerCase());
   }
 
+  /** `formatAge` with the visible " ago" suffix, omitted for the "N/A" case. */
+  private _formatAgo(timestamp: string | null): string {
+    const age = formatAge(timestamp);
+    return age === "N/A" ? age : `${age} ago`;
+  }
+
   /** Run an action with per-card busy state; failures land in the error banner. */
   private async _runAction(actionKey: string, run: () => Promise<void>): Promise<void> {
     const updated = new Set(this._actionInProgress);
@@ -973,7 +979,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           ${
             cj.last_schedule_time
               ? html`<span class="last-schedule"
-                  >Last: ${formatAge(cj.last_schedule_time)} ago</span
+                  >Last: ${this._formatAgo(cj.last_schedule_time)}</span
                 >`
               : nothing
           }
@@ -1087,7 +1093,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           ${
             j.start_time
               ? html`<span class="last-schedule"
-                  >Started: ${formatAge(j.start_time)} ago</span
+                  >Started: ${this._formatAgo(j.start_time)}</span
                 >`
               : nothing
           }

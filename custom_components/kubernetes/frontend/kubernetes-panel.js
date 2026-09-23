@@ -2702,6 +2702,7 @@ var K8sNetwork = class K8sNetwork extends K8sDataView {
 	constructor(..._args) {
 		super(..._args);
 		this._services = null;
+		this._ingressError = null;
 		this._servicesError = null;
 		this._searchQuery = "";
 		this._typeFilter = "all";
@@ -2714,8 +2715,8 @@ var K8sNetwork = class K8sNetwork extends K8sDataView {
 		const [ingresses, services] = await Promise.allSettled([this.hass.callWS({ type: "kubernetes/ingresses/list" }), this.hass.callWS({ type: "kubernetes/services/list" })]);
 		if (ingresses.status === "fulfilled") {
 			this._data = ingresses.value;
-			this._error = null;
-		} else this._error = errorMessage(ingresses.reason, "Failed to load ingress data");
+			this._ingressError = null;
+		} else this._ingressError = errorMessage(ingresses.reason, "Failed to load ingress data");
 		if (services.status === "fulfilled") {
 			this._services = services.value;
 			this._servicesError = null;
@@ -2855,11 +2856,11 @@ var K8sNetwork = class K8sNetwork extends K8sDataView {
 		if (this._loading) return b`<div class="loading">
         <ha-circular-progress indeterminate></ha-circular-progress>
       </div>`;
-		if (this._error && this._servicesError) return b`
+		if (this._ingressError && this._servicesError) return b`
         <ha-card>
           <div class="error-card">
             <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
+            <p>${this._ingressError}</p>
             <button class="retry-btn" @click=${() => this._loadData()}>Retry</button>
           </div>
         </ha-card>
@@ -2868,7 +2869,7 @@ var K8sNetwork = class K8sNetwork extends K8sDataView {
 		const serviceClusters = this._services?.clusters ?? [];
 		const hasIngresses = ingressClusters.some((c) => c.ingresses.length > 0);
 		const hasServices = serviceClusters.some((c) => c.services.length > 0);
-		if (!this._error && !this._servicesError && !hasIngresses && !hasServices) return b`<div class="empty">No ingresses or services found.</div>`;
+		if (!this._ingressError && !this._servicesError && !hasIngresses && !hasServices) return b`<div class="empty">No ingresses or services found.</div>`;
 		return b`
       <div class="filters">
         <input
@@ -2892,7 +2893,7 @@ var K8sNetwork = class K8sNetwork extends K8sDataView {
 
       ${this._typeFilter === "all" || this._typeFilter === "Ingress" ? b`
               <h2 class="section-title">Ingresses</h2>
-              ${this._error ? this._renderInlineError(this._error) : hasIngresses ? ingressClusters.map((cluster) => this._renderCluster(cluster)) : b`<div class="empty">No ingresses found.</div>`}
+              ${this._ingressError ? this._renderInlineError(this._ingressError) : hasIngresses ? ingressClusters.map((cluster) => this._renderCluster(cluster)) : b`<div class="empty">No ingresses found.</div>`}
             ` : A}
       ${this._typeFilter === "all" || this._typeFilter !== "Ingress" ? b`
               <h2 class="section-title">Services</h2>
@@ -3020,6 +3021,7 @@ var K8sNetwork = class K8sNetwork extends K8sDataView {
 	}
 };
 __decorate([r()], K8sNetwork.prototype, "_services", void 0);
+__decorate([r()], K8sNetwork.prototype, "_ingressError", void 0);
 __decorate([r()], K8sNetwork.prototype, "_servicesError", void 0);
 __decorate([r()], K8sNetwork.prototype, "_searchQuery", void 0);
 __decorate([r()], K8sNetwork.prototype, "_typeFilter", void 0);
@@ -3074,6 +3076,11 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
 	_matchesSearch(name) {
 		if (!this._searchQuery) return true;
 		return name.toLowerCase().includes(this._searchQuery.toLowerCase());
+	}
+	/** `formatAge` with the visible " ago" suffix, omitted for the "N/A" case. */
+	_formatAgo(timestamp) {
+		const age = formatAge(timestamp);
+		return age === "N/A" ? age : `${age} ago`;
 	}
 	/** Run an action with per-card busy state; failures land in the error banner. */
 	async _runAction(actionKey, run) {
@@ -3757,7 +3764,7 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
                 >` : A}
           ${cj.suspend ? b`<span class="badge badge-suspended">Suspended</span>` : b`<span class="badge badge-healthy">Active</span>`}
           ${cj.last_schedule_time ? b`<span class="last-schedule"
-                  >Last: ${formatAge(cj.last_schedule_time)} ago</span
+                  >Last: ${this._formatAgo(cj.last_schedule_time)}</span
                 >` : A}
           <div class="workload-actions">
             <button
@@ -3834,7 +3841,7 @@ var K8sWorkloads = class K8sWorkloads extends K8sDataView {
           ${hasFailed ? b`<span class="badge badge-failed">${j.failed} failed</span>` : A}
           ${isComplete ? b`<span class="badge badge-complete">Complete</span>` : A}
           ${j.start_time ? b`<span class="last-schedule"
-                  >Started: ${formatAge(j.start_time)} ago</span
+                  >Started: ${this._formatAgo(j.start_time)}</span
                 >` : A}
           <div class="workload-actions">
             <button
