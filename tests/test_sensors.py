@@ -3061,7 +3061,7 @@ class TestKubernetesJobSensor:
 
 
 class TestDiscoverJobSensors:
-    """Test the _discover_new_job_sensors function."""
+    """Test _discover_simple with the job spec."""
 
     def test_discovers_sensor_for_new_job(
         self, mock_config_entry, mock_client, mock_coordinator
