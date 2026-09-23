@@ -18,6 +18,8 @@ from custom_components.kubernetes.const import (
 )
 from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.sensor import (
+    _SIMPLE_DISCOVERY,
+    KubernetesCountSensor,
     KubernetesCronJobSensor,
     KubernetesCronJobsSensor,
     KubernetesDaemonSetSensor,
@@ -34,12 +36,9 @@ from custom_components.kubernetes.sensor import (
     KubernetesStatefulSetsSensor,
     KubernetesWorkloadMetricSensor,
     KubernetesWorkloadStatusSensor,
-    _discover_new_cronjob_sensors,
-    _discover_new_daemonset_sensors,
-    _discover_new_job_sensors,
-    _discover_new_pod_sensors,
     _discover_new_workload_metric_sensors,
     _discover_new_workload_status_sensors,
+    _discover_simple,
 )
 
 
@@ -64,11 +63,6 @@ def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
 def mock_client():
     """Mock Kubernetes client."""
     client = MagicMock()
-    client.get_pods_count = AsyncMock(return_value=5)
-    client.get_nodes_count = AsyncMock(return_value=3)
-    client.get_deployments_count = AsyncMock(return_value=2)
-    client.get_statefulsets_count = AsyncMock(return_value=1)
-    client.get_daemonsets_count = AsyncMock(return_value=1)
     client.is_cluster_healthy = AsyncMock(return_value=True)
     return client
 
@@ -105,20 +99,6 @@ class TestKubernetesPodsSensor:
         # The sensor should read from coordinator data
         assert sensor.native_value == 5
 
-    async def test_sensor_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor update failure."""
-        mock_client.get_pods_count.side_effect = Exception("API Error")
-
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-
-        # Should handle exception gracefully
-        await sensor.async_update()
-
-        # Value should be 0 on error
-        assert sensor.native_value == 0
-
 
 class TestKubernetesNodesSensor:
     """Test Kubernetes nodes sensor."""
@@ -152,20 +132,6 @@ class TestKubernetesNodesSensor:
         # The sensor should read from coordinator data
         assert sensor.native_value == 3
 
-    async def test_sensor_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor update failure."""
-        mock_client.get_nodes_count.side_effect = Exception("API Error")
-
-        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
-
-        # Should handle exception gracefully
-        await sensor.async_update()
-
-        # Value should be 0 on error
-        assert sensor.native_value == 0
-
 
 class TestKubernetesDeploymentsSensor:
     """Test Kubernetes deployments sensor."""
@@ -195,22 +161,6 @@ class TestKubernetesDeploymentsSensor:
 
         # The sensor should read from coordinator data
         assert sensor.native_value == 2
-
-    async def test_sensor_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor update failure."""
-        mock_client.get_deployments_count.side_effect = Exception("API Error")
-
-        sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # Should handle exception gracefully
-        await sensor.async_update()
-
-        # Value should be 0 on error
-        assert sensor.native_value == 0
 
 
 class TestKubernetesStatefulSetsSensor:
@@ -242,22 +192,6 @@ class TestKubernetesStatefulSetsSensor:
         # The sensor should read from coordinator data
         assert sensor.native_value == 1
 
-    async def test_sensor_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor update failure."""
-        mock_client.get_statefulsets_count.side_effect = Exception("API Error")
-
-        sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # Should handle exception gracefully
-        await sensor.async_update()
-
-        # Value should be 0 on error
-        assert sensor.native_value == 0
-
 
 class TestKubernetesDaemonSetsSensor:
     """Test Kubernetes daemonsets sensor."""
@@ -287,22 +221,6 @@ class TestKubernetesDaemonSetsSensor:
 
         # The sensor should read from coordinator data
         assert sensor.native_value == 1
-
-    async def test_sensor_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor update failure."""
-        mock_client.get_daemonsets_count.side_effect = Exception("API Error")
-
-        sensor = KubernetesDaemonSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # Should handle exception gracefully
-        await sensor.async_update()
-
-        # Value should be 0 on error
-        assert sensor.native_value == 0
 
 
 class TestKubernetesIngressesSensor:
@@ -359,22 +277,6 @@ class TestKubernetesIngressesSensor:
         )
 
         # The sensor should return 0 when coordinator data is None
-        assert sensor.native_value == 0
-
-    async def test_sensor_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor update failure."""
-        mock_client.get_ingresses_count.side_effect = Exception("API Error")
-
-        sensor = KubernetesIngressesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # Should handle exception gracefully
-        await sensor.async_update()
-
-        # Value should be 0 on error
         assert sensor.native_value == 0
 
 
@@ -442,49 +344,6 @@ class TestKubernetesServicesSensor:
             mock_coordinator, mock_client, mock_config_entry
         )
         assert sensor.native_value == 0
-
-    async def test_async_update_falls_back_to_client(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Without a bucket, async_update asks the client for the count."""
-        mock_coordinator.data = {}
-        mock_client.get_services_count = AsyncMock(return_value=4)
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        await sensor.async_update()
-
-        assert sensor._attr_native_value == 4
-
-    async def test_async_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """An exception while updating resets the value to 0."""
-        mock_coordinator.data = {}
-        mock_client.get_services_count = AsyncMock(side_effect=Exception("boom"))
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        await sensor.async_update()
-
-        assert sensor._attr_native_value == 0
-
-    async def test_async_update_bucket_present(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """When bucket is present, client fallback is not called."""
-        mock_coordinator.data = {"services": {"default_web": {}}}
-        mock_client.get_services_count = AsyncMock(return_value=99)
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        await sensor.async_update()
-
-        mock_client.get_services_count.assert_not_called()
-        assert getattr(sensor, "_attr_native_value", None) != 99
 
 
 class TestKubernetesClusterHealthSensor:
@@ -724,13 +583,13 @@ class TestDisabledResourceGating:
         self, hass: HomeAssistant, mock_client, mock_coordinator
     ):
         """Node sensor discovery returns nothing when nodes are disabled."""
-        from custom_components.kubernetes.sensor import _discover_new_node_sensors
-
         mock_coordinator.data = {"nodes": {"n1": {"name": "n1"}}}
         entry = self._entry(hass, ["nodes"])
 
         assert (
-            _discover_new_node_sensors(mock_coordinator, mock_client, entry, set())
+            _discover_simple(
+                mock_coordinator, mock_client, entry, set(), _SIMPLE_DISCOVERY["node"]
+            )
             == []
         )
 
@@ -798,7 +657,13 @@ class TestDisabledResourceGating:
         entry = self._entry(hass, ["cronjobs"])
 
         assert (
-            _discover_new_cronjob_sensors(mock_coordinator, mock_client, entry, set())
+            _discover_simple(
+                mock_coordinator,
+                mock_client,
+                entry,
+                set(),
+                _SIMPLE_DISCOVERY["cronjob"],
+            )
             == []
         )
 
@@ -993,45 +858,6 @@ class TestCronJobsSensor:
         )
 
         assert sensor.native_value == 0
-
-    async def test_cronjobs_sensor_async_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobs sensor async update when client call succeeds."""
-        # Mock coordinator with no data
-        mock_coordinator.data = None
-
-        # Mock client method
-        mock_client.get_cronjobs_count = AsyncMock(return_value=5)
-
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        await sensor.async_update()
-
-        mock_client.get_cronjobs_count.assert_called_once()
-
-    async def test_cronjobs_sensor_async_update_exception(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobs sensor async update when client call fails."""
-        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
-
-        # Mock coordinator with no data
-        mock_coordinator.data = None
-
-        # Mock client method to raise exception
-        mock_client.get_cronjobs_count = AsyncMock(side_effect=Exception("API Error"))
-
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        await sensor.async_update()
-
-        # Should handle exception gracefully and set value to 0
-        assert sensor._attr_native_value == 0
 
     def test_cronjobs_sensor_available(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -1637,24 +1463,6 @@ class TestKubernetesPodSensor:
         attributes = sensor.extra_state_attributes
         assert attributes["phase"] == "Succeeded"
         assert sensor.native_value == "Succeeded"
-
-    async def test_pod_sensor_async_update(
-        self, mock_config_entry, mock_coordinator, mock_client
-    ):
-        """Test pod sensor async update."""
-        namespace = "default"
-        pod_name = "test-pod"
-
-        sensor = KubernetesPodSensor(
-            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
-        )
-
-        # Mock the parent class async_update method
-        with patch.object(
-            sensor.__class__.__bases__[0], "async_update"
-        ) as mock_parent_update:
-            await sensor.async_update()
-            mock_parent_update.assert_called_once()
 
     def test_pod_sensor_device_info(
         self, hass, mock_config_entry, mock_coordinator, mock_client
@@ -2292,7 +2100,7 @@ class TestKubernetesDaemonSetSensor:
 
 
 class TestDiscoverDaemonSetSensors:
-    """Tests for the _discover_new_daemonset_sensors helper."""
+    """Tests for _discover_simple with the daemonset spec."""
 
     def test_discovers_sensor_for_new_daemonset(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -2303,8 +2111,12 @@ class TestDiscoverDaemonSetSensors:
                 "kube-system_fluentd": {"name": "fluentd", "namespace": "kube-system"}
             }
         }
-        new_sensors = _discover_new_daemonset_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["daemonset"],
         )
 
         assert len(new_sensors) == 1
@@ -2326,8 +2138,12 @@ class TestDiscoverDaemonSetSensors:
             }
         }
         existing_ids = {"test_entry_id_daemonset_kube-system_fluentd"}
-        new_sensors = _discover_new_daemonset_sensors(
-            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            existing_ids,
+            _SIMPLE_DISCOVERY["daemonset"],
         )
 
         assert len(new_sensors) == 1
@@ -2347,8 +2163,12 @@ class TestDiscoverDaemonSetSensors:
                 "kube-system_calico": {"name": "calico", "namespace": "kube-system"},
             }
         }
-        new_sensors = _discover_new_daemonset_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["daemonset"],
         )
 
         assert len(new_sensors) == 3
@@ -2360,8 +2180,12 @@ class TestDiscoverDaemonSetSensors:
     ):
         """Test that an empty list is returned when coordinator has no data."""
         mock_coordinator.data = None
-        new_sensors = _discover_new_daemonset_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["daemonset"],
         )
         assert new_sensors == []
 
@@ -2375,8 +2199,12 @@ class TestDiscoverDaemonSetSensors:
             }
         }
         existing_ids = {"test_entry_id_daemonset_kube-system_fluentd"}
-        new_sensors = _discover_new_daemonset_sensors(
-            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            existing_ids,
+            _SIMPLE_DISCOVERY["daemonset"],
         )
         assert new_sensors == []
 
@@ -2893,7 +2721,7 @@ class TestKubernetesCronJobSensor:
 
 
 class TestDiscoverCronJobSensors:
-    """Tests for the _discover_new_cronjob_sensors helper."""
+    """Tests for _discover_simple with the cronjob spec."""
 
     def test_discovers_sensor_for_new_cronjob(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -2912,8 +2740,12 @@ class TestDiscoverCronJobSensors:
                 }
             }
         }
-        new_sensors = _discover_new_cronjob_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["cronjob"],
         )
 
         assert len(new_sensors) == 1
@@ -2940,8 +2772,12 @@ class TestDiscoverCronJobSensors:
             }
         }
         existing_ids = {"test_entry_id_cronjob_default_nightly-backup"}
-        new_sensors = _discover_new_cronjob_sensors(
-            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            existing_ids,
+            _SIMPLE_DISCOVERY["cronjob"],
         )
         assert new_sensors == []
 
@@ -2971,8 +2807,12 @@ class TestDiscoverCronJobSensors:
                 },
             }
         }
-        new_sensors = _discover_new_cronjob_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["cronjob"],
         )
         assert len(new_sensors) == 2
 
@@ -2981,8 +2821,12 @@ class TestDiscoverCronJobSensors:
     ):
         """Test that an empty list is returned when coordinator has no data."""
         mock_coordinator.data = None
-        new_sensors = _discover_new_cronjob_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["cronjob"],
         )
         assert new_sensors == []
 
@@ -2991,8 +2835,12 @@ class TestDiscoverCronJobSensors:
     ):
         """Test that an empty list is returned when there are no cronjobs."""
         mock_coordinator.data = {"cronjobs": {}}
-        new_sensors = _discover_new_cronjob_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["cronjob"],
         )
         assert new_sensors == []
 
@@ -3233,8 +3081,12 @@ class TestDiscoverJobSensors:
                 }
             }
         }
-        new_sensors = _discover_new_job_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["job"],
         )
         assert len(new_sensors) == 1
         assert isinstance(new_sensors[0], KubernetesJobSensor)
@@ -3260,8 +3112,12 @@ class TestDiscoverJobSensors:
             }
         }
         existing_uid = "test_entry_id_job_default_backup-job"
-        new_sensors = _discover_new_job_sensors(
-            mock_coordinator, mock_client, mock_config_entry, {existing_uid}
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            {existing_uid},
+            _SIMPLE_DISCOVERY["job"],
         )
         assert new_sensors == []
 
@@ -3293,8 +3149,12 @@ class TestDiscoverJobSensors:
                 },
             }
         }
-        new_sensors = _discover_new_job_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["job"],
         )
         assert len(new_sensors) == 2
 
@@ -3303,8 +3163,12 @@ class TestDiscoverJobSensors:
     ):
         """Test that an empty list is returned when coordinator has no data."""
         mock_coordinator.data = None
-        new_sensors = _discover_new_job_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["job"],
         )
         assert new_sensors == []
 
@@ -3313,14 +3177,18 @@ class TestDiscoverJobSensors:
     ):
         """Test that an empty list is returned when there are no jobs."""
         mock_coordinator.data = {"jobs": {}}
-        new_sensors = _discover_new_job_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["job"],
         )
         assert new_sensors == []
 
 
 class TestDiscoverPodSensors:
-    """Tests for the _discover_new_pod_sensors helper."""
+    """Tests for _discover_simple with the pod spec."""
 
     def test_discovers_sensor_for_new_pod(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -3335,8 +3203,12 @@ class TestDiscoverPodSensors:
                 }
             }
         }
-        new_sensors = _discover_new_pod_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["pod"],
         )
 
         assert len(new_sensors) == 1
@@ -3359,8 +3231,12 @@ class TestDiscoverPodSensors:
             }
         }
         existing_ids = {"test_entry_id_pod_default_nginx-abc123"}
-        new_sensors = _discover_new_pod_sensors(
-            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            existing_ids,
+            _SIMPLE_DISCOVERY["pod"],
         )
         assert new_sensors == []
 
@@ -3387,8 +3263,12 @@ class TestDiscoverPodSensors:
                 },
             }
         }
-        new_sensors = _discover_new_pod_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["pod"],
         )
         assert len(new_sensors) == 3
         names = {s.pod_name for s in new_sensors}
@@ -3413,8 +3293,12 @@ class TestDiscoverPodSensors:
             }
         }
         existing_ids = {"test_entry_id_pod_default_nginx-abc123"}
-        new_sensors = _discover_new_pod_sensors(
-            mock_coordinator, mock_client, mock_config_entry, existing_ids
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            existing_ids,
+            _SIMPLE_DISCOVERY["pod"],
         )
         assert len(new_sensors) == 1
         assert new_sensors[0].pod_name == "redis-xyz789"
@@ -3424,8 +3308,12 @@ class TestDiscoverPodSensors:
     ):
         """Test that an empty list is returned when coordinator has no data."""
         mock_coordinator.data = None
-        new_sensors = _discover_new_pod_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["pod"],
         )
         assert new_sensors == []
 
@@ -3434,8 +3322,12 @@ class TestDiscoverPodSensors:
     ):
         """Test that an empty list is returned when there are no pods."""
         mock_coordinator.data = {"pods": {}}
-        new_sensors = _discover_new_pod_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["pod"],
         )
         assert new_sensors == []
 
@@ -3450,8 +3342,12 @@ class TestDiscoverPodSensors:
                 }
             }
         }
-        new_sensors = _discover_new_pod_sensors(
-            mock_coordinator, mock_client, mock_config_entry, set()
+        new_sensors = _discover_simple(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            set(),
+            _SIMPLE_DISCOVERY["pod"],
         )
         assert len(new_sensors) == 1
         assert new_sensors[0].namespace == "default"
@@ -3459,7 +3355,7 @@ class TestDiscoverPodSensors:
 
 
 class TestKubernetesJobsSensorExtended:
-    """Extended tests for KubernetesJobsSensor covering async_update and availability."""
+    """Extended tests for KubernetesJobsSensor covering availability and edge cases."""
 
     def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
         return KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
@@ -3501,32 +3397,6 @@ class TestKubernetesJobsSensorExtended:
 
         await sensor.async_update()
         mock_coordinator.async_request_refresh.assert_called_once()
-
-    async def test_async_update_fallback_to_client(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test async update falls back to client when coordinator has no jobs data."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_jobs_count = AsyncMock(return_value=5)
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-
-        await sensor.async_update()
-        mock_client.get_jobs_count.assert_called_once()
-        assert sensor._attr_native_value == 5
-
-    async def test_async_update_exception_sets_zero(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test async update sets value to 0 on exception."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock(
-            side_effect=Exception("API Error")
-        )
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-
-        await sensor.async_update()
-        assert sensor._attr_native_value == 0
 
 
 class TestKubernetesJobSensorExtended:
@@ -3907,128 +3777,6 @@ class TestAsyncSetupEntryWithResources:
         assert len(pending) == 0
 
 
-class TestAggregateSensorFallbackPaths:
-    """Test aggregate sensor async_update fallback paths when coordinator.data is None."""
-
-    async def test_pods_sensor_fallback(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test PodsSensor falls back to client.get_pods_count when data is None."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_pods_count = AsyncMock(return_value=10)
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-        await sensor.async_update()
-        mock_client.get_pods_count.assert_called_once()
-        assert sensor._attr_native_value == 10
-
-    async def test_nodes_sensor_fallback(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test NodesSensor falls back to client.get_nodes_count when data is None."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_nodes_count = AsyncMock(return_value=7)
-        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
-        await sensor.async_update()
-        mock_client.get_nodes_count.assert_called_once()
-        assert sensor._attr_native_value == 7
-
-    async def test_deployments_sensor_fallback(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test DeploymentsSensor falls back to client.get_deployments_count when data is None."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_deployments_count = AsyncMock(return_value=4)
-        sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        mock_client.get_deployments_count.assert_called_once()
-        assert sensor._attr_native_value == 4
-
-    async def test_statefulsets_sensor_fallback(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test StatefulSetsSensor falls back to client.get_statefulsets_count when data is None."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_statefulsets_count = AsyncMock(return_value=3)
-        sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        mock_client.get_statefulsets_count.assert_called_once()
-        assert sensor._attr_native_value == 3
-
-    async def test_daemonsets_sensor_fallback(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test DaemonSetsSensor falls back to client.get_daemonsets_count when data is None."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_daemonsets_count = AsyncMock(return_value=2)
-        sensor = KubernetesDaemonSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        mock_client.get_daemonsets_count.assert_called_once()
-        assert sensor._attr_native_value == 2
-
-    async def test_cronjobs_sensor_fallback(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobsSensor falls back to client.get_cronjobs_count when data is None."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_cronjobs_count = AsyncMock(return_value=6)
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        mock_client.get_cronjobs_count.assert_called_once()
-        assert sensor._attr_native_value == 6
-
-    async def test_jobs_sensor_fallback(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test JobsSensor falls back to client.get_jobs_count when data is None."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_jobs_count = AsyncMock(return_value=8)
-        sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
-        await sensor.async_update()
-        mock_client.get_jobs_count.assert_called_once()
-        assert sensor._attr_native_value == 8
-
-    async def test_pods_sensor_fallback_missing_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test PodsSensor fallback when data exists but pods_count key is missing."""
-        mock_coordinator.data = {"deployments": {}}
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_pods_count = AsyncMock(return_value=3)
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-        await sensor.async_update()
-        mock_client.get_pods_count.assert_called_once()
-        assert sensor._attr_native_value == 3
-
-    async def test_deployments_sensor_fallback_missing_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test DeploymentsSensor fallback when data exists but deployments key is missing."""
-        mock_coordinator.data = {"pods_count": 5}
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_deployments_count = AsyncMock(return_value=2)
-        sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        mock_client.get_deployments_count.assert_called_once()
-        assert sensor._attr_native_value == 2
-
-
 class TestDiscoverAndAddNewSensorsDeviceCreation:
     """Test _async_discover_and_add_new_sensors namespace device creation."""
 
@@ -4284,70 +4032,6 @@ class TestAggregateSensorDeviceInfo:
         assert device_info["name"] == "test-cluster"
 
 
-class TestNodeSensorAsyncUpdateException:
-    """Test KubernetesNodeSensor.async_update exception path."""
-
-    async def test_node_sensor_update_exception_is_caught(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test that exceptions in node sensor async_update are handled gracefully."""
-        mock_coordinator.async_request_refresh = AsyncMock(
-            side_effect=Exception("Refresh failed")
-        )
-        sensor = KubernetesNodeSensor(
-            mock_coordinator, mock_client, mock_config_entry, "broken-node"
-        )
-        # Should not raise
-        await sensor.async_update()
-
-    async def test_node_sensor_update_logs_error(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test that node sensor update logs error on exception."""
-        mock_coordinator.async_request_refresh = AsyncMock(
-            side_effect=RuntimeError("Connection lost")
-        )
-        sensor = KubernetesNodeSensor(
-            mock_coordinator, mock_client, mock_config_entry, "flaky-node"
-        )
-        # Should handle gracefully without raising
-        await sensor.async_update()
-
-
-class TestPodSensorAsyncUpdateException:
-    """Test KubernetesPodSensor.async_update exception path."""
-
-    async def test_pod_sensor_update_exception_is_caught(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test that exceptions in pod sensor async_update are handled gracefully."""
-        mock_coordinator.async_request_refresh = AsyncMock(
-            side_effect=Exception("Coordinator error")
-        )
-        sensor = KubernetesPodSensor(
-            mock_coordinator, mock_client, mock_config_entry, "default", "broken-pod"
-        )
-        # Should not raise
-        await sensor.async_update()
-
-    async def test_pod_sensor_update_logs_error(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test that pod sensor update handles RuntimeError."""
-        mock_coordinator.async_request_refresh = AsyncMock(
-            side_effect=RuntimeError("Timeout")
-        )
-        sensor = KubernetesPodSensor(
-            mock_coordinator,
-            mock_client,
-            mock_config_entry,
-            "production",
-            "flaky-pod",
-        )
-        # Should handle gracefully without raising
-        await sensor.async_update()
-
-
 class TestDaemonSetSensorEmptyData:
     """Test KubernetesDaemonSetSensor extra_state_attributes with empty/missing daemonset data."""
 
@@ -4491,99 +4175,6 @@ class TestCronJobSensorSuspendEdgeCases:
         assert sensor.native_value == "Scheduled"
 
 
-class TestAggregateSensorFallbackExceptions:
-    """Test aggregate sensor async_update exception handling in fallback path."""
-
-    async def test_pods_sensor_fallback_exception(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test PodsSensor sets value to 0 when fallback client call raises."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_pods_count = AsyncMock(
-            side_effect=Exception("Connection refused")
-        )
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-        await sensor.async_update()
-        assert sensor._attr_native_value == 0
-
-    async def test_nodes_sensor_fallback_exception(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test NodesSensor sets value to 0 when fallback client call raises."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_nodes_count = AsyncMock(
-            side_effect=Exception("Connection refused")
-        )
-        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
-        await sensor.async_update()
-        assert sensor._attr_native_value == 0
-
-    async def test_deployments_sensor_fallback_exception(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test DeploymentsSensor sets value to 0 when fallback raises."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_deployments_count = AsyncMock(side_effect=Exception("Timeout"))
-        sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        assert sensor._attr_native_value == 0
-
-    async def test_statefulsets_sensor_fallback_exception(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test StatefulSetsSensor sets value to 0 when fallback raises."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_statefulsets_count = AsyncMock(side_effect=Exception("Timeout"))
-        sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        assert sensor._attr_native_value == 0
-
-    async def test_daemonsets_sensor_fallback_exception(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test DaemonSetsSensor sets value to 0 when fallback raises."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_daemonsets_count = AsyncMock(side_effect=Exception("Timeout"))
-        sensor = KubernetesDaemonSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        assert sensor._attr_native_value == 0
-
-    async def test_cronjobs_sensor_fallback_exception(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobsSensor sets value to 0 when fallback raises."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_cronjobs_count = AsyncMock(side_effect=Exception("Timeout"))
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        await sensor.async_update()
-        assert sensor._attr_native_value == 0
-
-    async def test_jobs_sensor_fallback_exception(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test JobsSensor sets value to 0 when fallback raises."""
-        mock_coordinator.data = None
-        mock_coordinator.async_request_refresh = AsyncMock()
-        mock_client.get_jobs_count = AsyncMock(side_effect=Exception("Timeout"))
-        sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
-        await sensor.async_update()
-        assert sensor._attr_native_value == 0
-
-
 class TestSameNameDifferentNamespace:
     """Regression tests for issue #302: same-named workloads in different
     namespaces must not collide (coordinator data is keyed by namespace_name)."""
@@ -4707,3 +4298,154 @@ class TestSameNameDifferentNamespace:
         assert c3po_sensor.unique_id != toothless_sensor.unique_id
         assert c3po_sensor.native_value == "Ready"
         assert toothless_sensor.native_value == "Not Ready"
+
+
+# One coordinator payload that exercises all three count read strategies:
+# pods/nodes read only their *_count key, deployments/statefulsets/cronjobs
+# read len(bucket), and the fully-disableable types prefer *_count over len().
+_COUNT_DATA = {
+    "pods_count": 5,
+    "pods": {"a": {}},  # ignored: pods never falls back to len(bucket)
+    "nodes_count": 3,
+    "deployments": {"a": {}, "b": {}},
+    "statefulsets": {"a": {}},
+    "daemonsets": {"a": {}},
+    "daemonsets_count": 9,  # preferred over len(bucket)
+    "cronjobs": {"a": {}},
+    "jobs": {"a": {}, "b": {}},  # no jobs_count -> len(bucket)
+    "ingresses": {"a": {}},
+    "ingresses_count": 4,
+    "services": {"a": {}, "b": {}, "c": {}},
+}
+
+_COUNT_SENSORS = [
+    (KubernetesPodsSensor, "Pods Count", "pods_count", "pods", 5),
+    (KubernetesNodesSensor, "Nodes Count", "nodes_count", "nodes", 3),
+    (
+        KubernetesDeploymentsSensor,
+        "Deployments Count",
+        "deployments_count",
+        "deployments",
+        2,
+    ),
+    (
+        KubernetesStatefulSetsSensor,
+        "StatefulSets Count",
+        "statefulsets_count",
+        "statefulsets",
+        1,
+    ),
+    (
+        KubernetesDaemonSetsSensor,
+        "DaemonSets Count",
+        "daemonsets_count",
+        "daemonsets",
+        9,
+    ),
+    (KubernetesCronJobsSensor, "CronJobs Count", "cronjobs_count", "cronjobs", 1),
+    (KubernetesJobsSensor, "Jobs Count", "jobs_count", "jobs", 2),
+    (KubernetesIngressesSensor, "Ingresses Count", "ingresses_count", "ingresses", 4),
+    (KubernetesServicesSensor, "Services Count", "services_count", "services", 3),
+]
+
+
+class TestCountSensorTable:
+    """The nine count sensors share KubernetesCountSensor; pin their identity."""
+
+    @pytest.mark.parametrize(
+        ("cls", "name", "suffix", "unit", "expected"), _COUNT_SENSORS
+    )
+    def test_identity_and_value(
+        self,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        cls,
+        name,
+        suffix,
+        unit,
+        expected,
+    ):
+        """Name, unique_id suffix, unit, device and value match the old classes."""
+        mock_coordinator.data = dict(_COUNT_DATA)
+        sensor = cls(mock_coordinator, mock_client, mock_config_entry)
+
+        assert isinstance(sensor, KubernetesCountSensor)
+        assert sensor.name == name
+        assert sensor.unique_id == f"test_entry_id_{suffix}"
+        assert sensor.native_unit_of_measurement == unit
+        assert sensor.state_class == SensorStateClass.MEASUREMENT
+        assert sensor.device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_cluster")
+        }
+        assert sensor.native_value == expected
+
+    @pytest.mark.parametrize("cls", [row[0] for row in _COUNT_SENSORS])
+    def test_zero_without_data(
+        self, mock_config_entry, mock_client, mock_coordinator, cls
+    ):
+        """None and empty coordinator data both read as 0."""
+        sensor = cls(mock_coordinator, mock_client, mock_config_entry)
+        mock_coordinator.data = None
+        assert sensor.native_value == 0
+        mock_coordinator.data = {}
+        assert sensor.native_value == 0
+
+    @pytest.mark.parametrize("cls", [KubernetesPodsSensor, KubernetesNodesSensor])
+    def test_pods_and_nodes_never_count_the_bucket(
+        self, mock_config_entry, mock_client, mock_coordinator, cls
+    ):
+        """Pods/nodes read only their *_count key; a bare bucket does not count."""
+        mock_coordinator.data = {"pods": {"a": {}}, "nodes": {"n": {}}}
+        sensor = cls(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == 0
+
+
+class TestDiscoverSimple:
+    """The table-driven per-resource discovery helper."""
+
+    def test_table_covers_the_five_simple_types(self):
+        """Bucket, entity class and disabled-key gating stay as they were."""
+        assert {
+            key: (spec.bucket, spec.entity_cls, spec.disabled_key)
+            for key, spec in _SIMPLE_DISCOVERY.items()
+        } == {
+            "node": ("nodes", KubernetesNodeSensor, "nodes"),
+            "pod": ("pods", KubernetesPodSensor, None),
+            "daemonset": ("daemonsets", KubernetesDaemonSetSensor, None),
+            "cronjob": ("cronjobs", KubernetesCronJobSensor, "cronjobs"),
+            "job": ("jobs", KubernetesJobSensor, None),
+        }
+
+    def test_skips_disabled_key_and_existing_ids(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """A disabled type yields nothing; a known unique_id is not re-created."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_entry_id",
+            data={"cluster_name": "test-cluster"},
+            options={CONF_DISABLED_RESOURCES: ["nodes"]},
+        )
+        entry.add_to_hass(hass)
+        mock_coordinator.data = {
+            "nodes": {"n1": {}, "n2": {}},
+            "jobs": {
+                "default_a": {"name": "a", "namespace": "default"},
+                "ops_b": {"name": "b", "namespace": "ops"},
+            },
+        }
+
+        assert (
+            _discover_simple(
+                mock_coordinator, mock_client, entry, set(), _SIMPLE_DISCOVERY["node"]
+            )
+            == []
+        )
+
+        existing = {"test_entry_id_job_default_a"}
+        new = _discover_simple(
+            mock_coordinator, mock_client, entry, existing, _SIMPLE_DISCOVERY["job"]
+        )
+        assert [s.unique_id for s in new] == ["test_entry_id_job_ops_b"]
+        assert new[0].namespace == "ops"
