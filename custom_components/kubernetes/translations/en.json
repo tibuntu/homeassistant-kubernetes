@@ -29,7 +29,7 @@
           "monitor_all_namespaces": "When enabled, the integration will monitor all namespaces in your cluster. When disabled, you will be prompted to select specific namespaces to monitor. Requires cluster-wide permissions when enabled.",
           "switch_update_interval": "How often (in seconds) the integration polls the Kubernetes API to update switch states. Lower values provide more responsive switches but increase API load.",
           "scale_verification_timeout": "Maximum time (in seconds) to wait for scaling operations to complete before timing out. Increase this value for slow clusters or large deployments.",
-          "scale_cooldown": "Cooldown period (in seconds) after scaling operations before allowing another scale operation. This prevents rapid successive scaling requests.",
+          "scale_cooldown": "Seconds after a scaling operation during which cluster refreshes do not overwrite the switch's new state, so it does not flicker back before the cluster has caught up.",
           "device_grouping_mode": "Choose how entities are organized in Home Assistant. Group by Namespace creates a device for each namespace, while Group by Cluster creates a single device containing all nodes, sensors, and entities."
         }
       },
@@ -76,7 +76,7 @@
           "monitor_all_namespaces": "When enabled, the integration will monitor all namespaces in your cluster. When disabled, you will be prompted to select specific namespaces to monitor.",
           "switch_update_interval": "How often (in seconds) the integration polls the Kubernetes API to update switch states.",
           "scale_verification_timeout": "Maximum time (in seconds) to wait for scaling operations to complete before timing out.",
-          "scale_cooldown": "Cooldown period (in seconds) after scaling operations before allowing another scale operation.",
+          "scale_cooldown": "Seconds after a scaling operation during which cluster refreshes do not overwrite the switch's new state.",
           "device_grouping_mode": "Choose how entities are organized in Home Assistant."
         }
       },
