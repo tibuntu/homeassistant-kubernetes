@@ -15,7 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, issue_registry as ir
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
-from .config_flow import KubernetesConfigFlow  # noqa: F401
+from .config_flow import KubernetesConfigFlow
 from .const import (
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
@@ -71,7 +71,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
 
     # Check if kubernetes package is available before creating client
     try:
-        import kubernetes.client  # noqa: F401
+        import kubernetes.client
 
         _LOGGER.debug("Kubernetes package is available")
         ir.async_delete_issue(hass, DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
@@ -270,7 +270,7 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         await hass.http.async_register_static_paths(
             [StaticPathConfig(PANEL_URL, str(panel_dir), False)]
         )
-    except Exception:  # noqa: BLE001
+    except RuntimeError:
         _LOGGER.debug("Static path %s already registered, skipping", PANEL_URL)
 
     async_register_built_in_panel(

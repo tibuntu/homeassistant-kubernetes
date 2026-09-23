@@ -123,7 +123,7 @@ async def async_setup_entry(
     coordinator.async_add_listener(_async_add_new_entities)
 
 
-async def _async_discover_and_add_new_entities(  # noqa: C901
+async def _async_discover_and_add_new_entities(
     hass: HomeAssistant,
     config_entry: KubernetesConfigEntry,
     coordinator: KubernetesDataCoordinator,
