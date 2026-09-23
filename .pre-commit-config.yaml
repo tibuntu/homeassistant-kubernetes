@@ -11,6 +11,7 @@ repos:
         exclude: ^custom_components/kubernetes/frontend/
       - id: end-of-file-fixer
         name: Ensure files end with newline
+        exclude: ^custom_components/kubernetes/frontend/
       - id: check-yaml
         name: Validate YAML files
         args: [--unsafe] # Allow custom YAML tags
