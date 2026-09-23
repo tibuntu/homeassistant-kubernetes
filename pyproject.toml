@@ -132,6 +132,7 @@ asyncio_default_fixture_loop_scope = "function"
 pythonpath = ["."]
 markers = [
     "k8s_compat: Kubernetes API compatibility tests (require a real cluster)",
+    "kubernetes_unavailable: opt out of the config-flow kubernetes_available autouse fixture",
 ]
 filterwarnings = [
     "error",

@@ -52,16 +52,6 @@ def mock_client():
 class TestKubernetesPodsSensor:
     """Test Kubernetes pods sensor."""
 
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization."""
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-
-        assert sensor.name == "Pods Count"
-        assert sensor.unique_id == "test_entry_id_pods_count"
-        assert sensor.native_unit_of_measurement == "pods"
-
     def test_sensor_device_info(self, mock_config_entry, mock_client, mock_coordinator):
         """Test sensor device info."""
         sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
@@ -84,16 +74,6 @@ class TestKubernetesPodsSensor:
 
 class TestKubernetesNodesSensor:
     """Test Kubernetes nodes sensor."""
-
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization."""
-        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
-
-        assert sensor.name == "Nodes Count"
-        assert sensor.unique_id == "test_entry_id_nodes_count"
-        assert sensor.native_unit_of_measurement == "nodes"
 
     def test_sensor_device_info(self, mock_config_entry, mock_client, mock_coordinator):
         """Test sensor device info."""
@@ -118,18 +98,6 @@ class TestKubernetesNodesSensor:
 class TestKubernetesDeploymentsSensor:
     """Test Kubernetes deployments sensor."""
 
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization."""
-        sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.name == "Deployments Count"
-        assert sensor.unique_id == "test_entry_id_deployments_count"
-        assert sensor.native_unit_of_measurement == "deployments"
-
     async def test_sensor_update_success(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -147,18 +115,6 @@ class TestKubernetesDeploymentsSensor:
 
 class TestKubernetesStatefulSetsSensor:
     """Test Kubernetes statefulsets sensor."""
-
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization."""
-        sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.name == "StatefulSets Count"
-        assert sensor.unique_id == "test_entry_id_statefulsets_count"
-        assert sensor.native_unit_of_measurement == "statefulsets"
 
     async def test_sensor_update_success(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -178,18 +134,6 @@ class TestKubernetesStatefulSetsSensor:
 class TestKubernetesDaemonSetsSensor:
     """Test Kubernetes daemonsets sensor."""
 
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization."""
-        sensor = KubernetesDaemonSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.name == "DaemonSets Count"
-        assert sensor.unique_id == "test_entry_id_daemonsets_count"
-        assert sensor.native_unit_of_measurement == "daemonsets"
-
     async def test_sensor_update_success(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -207,18 +151,6 @@ class TestKubernetesDaemonSetsSensor:
 
 class TestKubernetesIngressesSensor:
     """Test Kubernetes ingresses sensor."""
-
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization."""
-        sensor = KubernetesIngressesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.name == "Ingresses Count"
-        assert sensor.unique_id == "test_entry_id_ingresses_count"
-        assert sensor.native_unit_of_measurement == "ingresses"
 
     async def test_sensor_update_success(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -264,18 +196,6 @@ class TestKubernetesIngressesSensor:
 
 class TestKubernetesServicesSensor:
     """Test Kubernetes services count sensor."""
-
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Name, unique_id and unit follow the other count sensors."""
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.name == "Services Count"
-        assert sensor.unique_id == "test_entry_id_services_count"
-        assert sensor.native_unit_of_measurement == "services"
 
     def test_value_from_bucket(self, mock_config_entry, mock_client, mock_coordinator):
         """Without a count key the value is the bucket length."""
@@ -766,20 +686,6 @@ class TestSensorProperties:
 class TestCronJobsSensor:
     """Test CronJobs sensor."""
 
-    def test_cronjobs_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobs sensor initialization."""
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.name == "CronJobs Count"
-        assert sensor.unique_id == f"{mock_config_entry.entry_id}_cronjobs_count"
-        assert sensor.native_unit_of_measurement == "cronjobs"
-        assert sensor.has_entity_name is True
-        assert sensor.state_class == SensorStateClass.MEASUREMENT
-
     def test_cronjobs_sensor_native_value_with_data(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -862,20 +768,6 @@ class TestCronJobsSensor:
 
 class TestKubernetesNodeSensor:
     """Test Kubernetes individual node sensor."""
-
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization."""
-        node_name = "worker-node-1"
-        sensor = KubernetesNodeSensor(
-            mock_coordinator, mock_client, mock_config_entry, node_name
-        )
-
-        assert sensor.name == node_name
-        assert sensor.unique_id == f"test_entry_id_node_{node_name}"
-        assert sensor.native_unit_of_measurement is None
-        assert sensor._attr_icon == "mdi:server"
 
     def test_node_sensor_device_info(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -1250,26 +1142,15 @@ class TestDynamicNodeSensorDiscovery:
 class TestKubernetesPodSensor:
     """Test cases for KubernetesPodSensor."""
 
-    def test_pod_sensor_initialization(
+    def test_pod_sensor_exposes_namespace_and_name(
         self, mock_config_entry, mock_coordinator, mock_client
     ):
-        """Test pod sensor initialization."""
-        namespace = "default"
-        pod_name = "test-pod"
-
+        """The pod sensor exposes its namespace/pod_name as plain attributes."""
         sensor = KubernetesPodSensor(
-            mock_coordinator, mock_client, mock_config_entry, namespace, pod_name
+            mock_coordinator, mock_client, mock_config_entry, "default", "test-pod"
         )
-
-        assert sensor.namespace == namespace
-        assert sensor.pod_name == pod_name
-        assert sensor.name == pod_name
-        assert (
-            sensor.unique_id
-            == f"{mock_config_entry.entry_id}_pod_{namespace}_{pod_name}"
-        )
-        assert sensor.icon == "mdi:kubernetes"
-        assert sensor.state_class is None
+        assert sensor.namespace == "default"
+        assert sensor.pod_name == "test-pod"
 
     def test_pod_sensor_native_value_with_data(
         self, mock_config_entry, mock_coordinator, mock_client
@@ -1533,45 +1414,6 @@ class TestKubernetesPodSensor:
 
 class TestKubernetesWorkloadMetricSensor:
     """Test CPU/memory metric sensors for deployments and statefulsets."""
-
-    def test_cpu_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CPU metric sensor initialization for a deployment."""
-        sensor = KubernetesWorkloadMetricSensor(
-            mock_coordinator,
-            mock_client,
-            mock_config_entry,
-            workload_name="my-app",
-            namespace="default",
-            workload_type="deployment",
-            metric="cpu",
-        )
-
-        assert sensor.name == "my-app CPU Usage"
-        assert sensor.unique_id == "test_entry_id_default_my-app_deployment_cpu"
-        assert sensor.native_unit_of_measurement == "m"
-        assert sensor.icon == "mdi:cpu-64-bit"
-        assert sensor.state_class == SensorStateClass.MEASUREMENT
-
-    def test_memory_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test memory metric sensor initialization for a statefulset."""
-        sensor = KubernetesWorkloadMetricSensor(
-            mock_coordinator,
-            mock_client,
-            mock_config_entry,
-            workload_name="my-db",
-            namespace="production",
-            workload_type="statefulset",
-            metric="memory",
-        )
-
-        assert sensor.name == "my-db Memory Usage"
-        assert sensor.unique_id == "test_entry_id_production_my-db_statefulset_memory"
-        assert sensor.native_unit_of_measurement == "MiB"
-        assert sensor.icon == "mdi:memory"
 
     def test_unique_ids_are_distinct(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -1915,20 +1757,6 @@ class TestDiscoverWorkloadMetricSensors:
 class TestKubernetesDaemonSetSensor:
     """Test individual DaemonSet status sensor."""
 
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization."""
-        sensor = KubernetesDaemonSetSensor(
-            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
-        )
-
-        assert sensor.name == "fluentd"
-        assert sensor.unique_id == "test_entry_id_daemonset_kube-system_fluentd"
-        assert sensor.native_unit_of_measurement is None
-        assert sensor.icon == "mdi:layers"
-        assert sensor.state_class is None
-
     def test_device_info_uses_namespace_device(
         self, hass, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -2193,25 +2021,6 @@ class TestDiscoverDaemonSetSensors:
 
 class TestKubernetesWorkloadStatusSensor:
     """Test readiness status sensors for deployments and statefulsets."""
-
-    def test_deployment_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor initialization for a deployment."""
-        sensor = KubernetesWorkloadStatusSensor(
-            mock_coordinator,
-            mock_client,
-            mock_config_entry,
-            "my-app",
-            "default",
-            "deployment",
-        )
-
-        assert sensor.name == "my-app"
-        assert sensor.unique_id == "test_entry_id_default_my-app_deployment_status"
-        assert sensor.native_unit_of_measurement is None
-        assert sensor.icon == "mdi:kubernetes"
-        assert sensor.state_class is None
 
     def test_statefulset_sensor_unique_id(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -2552,18 +2361,6 @@ class TestKubernetesCronJobSensor:
             "default",
         )
 
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor name, unique_id, icon, and state class."""
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-
-        assert sensor.name == "nightly-backup"
-        assert sensor.unique_id == "test_entry_id_cronjob_default_nightly-backup"
-        assert sensor.native_unit_of_measurement is None
-        assert sensor.icon == "mdi:clock-outline"
-        assert sensor.state_class is None
-
     def test_device_info_uses_namespace_device(
         self, hass, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -2833,16 +2630,6 @@ class TestKubernetesJobsSensor:
     def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
         return KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
 
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor name, unique_id, and unit of measurement."""
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-
-        assert sensor.name == "Jobs Count"
-        assert sensor.unique_id == "test_entry_id_jobs_count"
-        assert sensor.native_unit_of_measurement == "jobs"
-
     def test_native_value_returns_count(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -2884,18 +2671,6 @@ class TestKubernetesJobSensor:
             "backup-job",
             "default",
         )
-
-    def test_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor name, unique_id, icon, and state class."""
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-
-        assert sensor.name == "backup-job"
-        assert sensor.unique_id == "test_entry_id_job_default_backup-job"
-        assert sensor.native_unit_of_measurement is None
-        assert sensor.icon == "mdi:briefcase-outline"
-        assert sensor.state_class is None
 
     def test_device_info_uses_namespace_device(
         self, hass, mock_config_entry, mock_client, mock_coordinator
@@ -4353,6 +4128,7 @@ class TestCountSensorTable:
         sensor = cls(mock_coordinator, mock_client, mock_config_entry)
 
         assert isinstance(sensor, KubernetesCountSensor)
+        assert sensor.has_entity_name is True
         assert sensor.name == name
         assert sensor.unique_id == f"test_entry_id_{suffix}"
         assert sensor.native_unit_of_measurement == unit
@@ -4381,6 +4157,114 @@ class TestCountSensorTable:
         mock_coordinator.data = {"pods": {"a": {}}, "nodes": {"n": {}}}
         sensor = cls(mock_coordinator, mock_client, mock_config_entry)
         assert sensor.native_value == 0
+
+
+# Per-item detail/metric sensors: (cls, extra ctor args, name, unique_id, unit, icon,
+# state_class). All take (coordinator, client, entry, *extra_args).
+_ITEM_SENSORS = [
+    (
+        KubernetesNodeSensor,
+        ("worker-node-1",),
+        "worker-node-1",
+        "test_entry_id_node_worker-node-1",
+        None,
+        "mdi:server",
+        None,
+    ),
+    (
+        KubernetesPodSensor,
+        ("default", "test-pod"),
+        "test-pod",
+        "test_entry_id_pod_default_test-pod",
+        None,
+        "mdi:kubernetes",
+        None,
+    ),
+    (
+        KubernetesDaemonSetSensor,
+        ("fluentd", "kube-system"),
+        "fluentd",
+        "test_entry_id_daemonset_kube-system_fluentd",
+        None,
+        "mdi:layers",
+        None,
+    ),
+    (
+        KubernetesWorkloadStatusSensor,
+        ("my-app", "default", "deployment"),
+        "my-app",
+        "test_entry_id_default_my-app_deployment_status",
+        None,
+        "mdi:kubernetes",
+        None,
+    ),
+    (
+        KubernetesCronJobSensor,
+        ("nightly-backup", "default"),
+        "nightly-backup",
+        "test_entry_id_cronjob_default_nightly-backup",
+        None,
+        "mdi:clock-outline",
+        None,
+    ),
+    (
+        KubernetesJobSensor,
+        ("backup-job", "default"),
+        "backup-job",
+        "test_entry_id_job_default_backup-job",
+        None,
+        "mdi:briefcase-outline",
+        None,
+    ),
+    (
+        KubernetesWorkloadMetricSensor,
+        ("my-app", "default", "deployment", "cpu"),
+        "my-app CPU Usage",
+        "test_entry_id_default_my-app_deployment_cpu",
+        "m",
+        "mdi:cpu-64-bit",
+        SensorStateClass.MEASUREMENT,
+    ),
+    (
+        KubernetesWorkloadMetricSensor,
+        ("my-db", "production", "statefulset", "memory"),
+        "my-db Memory Usage",
+        "test_entry_id_production_my-db_statefulset_memory",
+        "MiB",
+        "mdi:memory",
+        SensorStateClass.MEASUREMENT,
+    ),
+]
+
+
+class TestItemSensorIdentityTable:
+    """Name/unique_id/unit/icon/state_class for the per-item detail sensors."""
+
+    @pytest.mark.parametrize(
+        ("cls", "extra_args", "name", "unique_id", "unit", "icon", "state_class"),
+        _ITEM_SENSORS,
+    )
+    def test_identity(
+        self,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        cls,
+        extra_args,
+        name,
+        unique_id,
+        unit,
+        icon,
+        state_class,
+    ):
+        """Name, unique_id, unit, icon and state_class match the old per-class tests."""
+        sensor = cls(mock_coordinator, mock_client, mock_config_entry, *extra_args)
+
+        assert sensor.name == name
+        assert sensor.unique_id == unique_id
+        assert sensor.native_unit_of_measurement == unit
+        assert sensor.icon == icon
+        assert sensor.state_class == state_class
 
 
 class TestDiscoverSimple:
