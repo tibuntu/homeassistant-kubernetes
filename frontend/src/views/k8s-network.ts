@@ -71,6 +71,7 @@ type NetworkTypeFilter = "all" | (typeof NETWORK_TYPES)[number];
 @customElement("k8s-network")
 export class K8sNetwork extends K8sDataView<IngressesResponse> {
   @state() private _services: ServicesResponse | null = null;
+  @state() private _ingressError: string | null = null;
   @state() private _servicesError: string | null = null;
   @state() private _searchQuery: string = "";
   @state() private _typeFilter: NetworkTypeFilter = "all";
@@ -90,9 +91,12 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
     ]);
     if (ingresses.status === "fulfilled") {
       this._data = ingresses.value;
-      this._error = null;
+      this._ingressError = null;
     } else {
-      this._error = errorMessage(ingresses.reason, "Failed to load ingress data");
+      this._ingressError = errorMessage(
+        ingresses.reason,
+        "Failed to load ingress data",
+      );
     }
     if (services.status === "fulfilled") {
       this._services = services.value;
@@ -265,12 +269,12 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
       </div>`;
     }
 
-    if (this._error && this._servicesError) {
+    if (this._ingressError && this._servicesError) {
       return html`
         <ha-card>
           <div class="error-card">
             <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
+            <p>${this._ingressError}</p>
             <button class="retry-btn" @click=${() => this._loadData()}>Retry</button>
           </div>
         </ha-card>
@@ -281,7 +285,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
     const serviceClusters = this._services?.clusters ?? [];
     const hasIngresses = ingressClusters.some((c) => c.ingresses.length > 0);
     const hasServices = serviceClusters.some((c) => c.services.length > 0);
-    if (!this._error && !this._servicesError && !hasIngresses && !hasServices) {
+    if (!this._ingressError && !this._servicesError && !hasIngresses && !hasServices) {
       return html`<div class="empty">No ingresses or services found.</div>`;
     }
 
@@ -313,8 +317,8 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
           ? html`
               <h2 class="section-title">Ingresses</h2>
               ${
-                this._error
-                  ? this._renderInlineError(this._error)
+                this._ingressError
+                  ? this._renderInlineError(this._ingressError)
                   : hasIngresses
                     ? ingressClusters.map((cluster) => this._renderCluster(cluster))
                     : html`<div class="empty">No ingresses found.</div>`
