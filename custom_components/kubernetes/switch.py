@@ -17,9 +17,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 
 from .const import (
     ATTR_WORKLOAD_TYPE,
-    CONF_SCALE_COOLDOWN,
     CONF_SCALE_VERIFICATION_TIMEOUT,
-    DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DEPLOYMENT,
@@ -253,6 +251,9 @@ async def _async_discover_and_add_new_entities(
 class KubernetesReplicaWorkloadSwitch(SwitchEntity):
     """Base switch for replica-based Kubernetes workloads (Deployments, StatefulSets)."""
 
+    # Coordinator-driven: state is synced in _handle_coordinator_update.
+    _attr_should_poll = False
+
     def __init__(
         self,
         coordinator: KubernetesDataCoordinator,
@@ -287,10 +288,6 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         self._attr_icon = "mdi:kubernetes"
         self._is_on = False
         self._replicas = 0
-        self._last_scale_time = 0.0
-        self._scale_cooldown = config_entry.data.get(
-            CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN
-        )
         self._scale_verification_timeout = config_entry.data.get(
             CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
         )
@@ -383,7 +380,6 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         if success:
             self._is_on = True
             self._replicas = 1
-            self._last_scale_time = time.time()
             self._last_scale_attempt_failed = False
             self.async_write_ha_state()
             _LOGGER.info(
@@ -409,7 +405,6 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         if success:
             self._is_on = False
             self._replicas = 0
-            self._last_scale_time = time.time()
             self._last_scale_attempt_failed = False
             self.async_write_ha_state()
             _LOGGER.info(
@@ -423,59 +418,6 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
             self._last_scale_attempt_failed = True
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
-
-    async def async_update(self) -> None:
-        """Update the switch state from coordinator data."""
-        if time.time() - self._last_scale_time < self._scale_cooldown:
-            _LOGGER.debug(
-                "Skipping state update for %s (scaled recently, cooldown: %.1fs remaining)",
-                self.workload_name,
-                self._scale_cooldown - (time.time() - self._last_scale_time),
-            )
-            return
-
-        workload_data = self._get_workload_data()
-
-        if workload_data is None:
-            _LOGGER.warning(
-                "%s %s not found in coordinator data",
-                self._log_label,
-                self.workload_name,
-            )
-            return
-
-        old_replicas = self._replicas
-        old_state = self._is_on
-
-        self._replicas = workload_data["replicas"]
-        self._is_on = workload_data["is_running"]
-        self._cpu_usage = workload_data.get("cpu_usage", 0.0)
-        self._memory_usage = workload_data.get("memory_usage", 0.0)
-
-        if old_replicas != self._replicas:
-            _LOGGER.info(
-                "%s %s replicas changed: %d -> %d",
-                self._log_label,
-                self.workload_name,
-                old_replicas,
-                self._replicas,
-            )
-        if old_state != self._is_on:
-            _LOGGER.info(
-                "%s %s state changed: %s -> %s",
-                self._log_label,
-                self.workload_name,
-                old_state,
-                self._is_on,
-            )
-        else:
-            _LOGGER.debug(
-                "%s %s state unchanged: replicas=%d, is_running=%s",
-                self._log_label,
-                self.workload_name,
-                self._replicas,
-                self._is_on,
-            )
 
     async def _verify_scaling(self, target_replicas: int) -> None:
         """Verify that scaling actually took effect."""
@@ -585,6 +527,9 @@ class KubernetesStatefulSetSwitch(KubernetesReplicaWorkloadSwitch):
 class KubernetesCronJobSwitch(SwitchEntity):
     """Switch for controlling a Kubernetes CronJob suspension state."""
 
+    # Coordinator-driven: state is synced in _handle_coordinator_update.
+    _attr_should_poll = False
+
     def __init__(
         self,
         coordinator: KubernetesDataCoordinator,
@@ -650,10 +595,13 @@ class KubernetesCronJobSwitch(SwitchEntity):
         self.async_on_remove(
             self.coordinator.async_add_listener(self._handle_coordinator_update)
         )
+        # Populate the initial state without waiting for the next refresh.
+        self._sync_from_coordinator()
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
+        self._sync_from_coordinator()
         self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -716,9 +664,8 @@ class KubernetesCronJobSwitch(SwitchEntity):
             _LOGGER.error("Failed to suspend CronJob %s: %s", self.cronjob_name, ex)
             raise
 
-    async def async_update(self) -> None:
-        """Update the switch state from coordinator data."""
-        # Get data from coordinator
+    def _sync_from_coordinator(self) -> None:
+        """Sync the switch state from coordinator data."""
         cronjob_data = self.coordinator.get_cronjob_data(
             self.namespace, self.cronjob_name
         )

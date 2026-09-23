@@ -274,7 +274,7 @@ The integration automatically creates switches for controlling Kubernetes worklo
 - **Real-time State**: Switches automatically reflect the actual Kubernetes state through the Watch API (default) or interval polling
 - **Error Recovery**: If scaling operations fail, switches automatically recover the correct state
 - **State Verification**: Verifies that scaling operations actually took effect
-- **Configurable Polling**: Adjust update intervals to balance responsiveness and API load
+- **Configurable Polling**: Adjust the coordinator's update interval to balance responsiveness and API load — switches are not polled individually, they update from the shared coordinator data
 - **Failure Indication**: Shows when the last scaling attempt failed via entity attributes
 
 ### Switch Attributes

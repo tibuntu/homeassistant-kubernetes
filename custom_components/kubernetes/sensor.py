@@ -428,6 +428,10 @@ async def _async_discover_and_add_new_sensors(
 class KubernetesBaseSensor(SensorEntity):
     """Base class for Kubernetes sensors."""
 
+    # Coordinator-driven: HA's 30 s entity poll would only request another
+    # coordinator refresh, defeating the configured update interval.
+    _attr_should_poll = False
+
     def __init__(
         self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
     ) -> None:
@@ -455,16 +459,6 @@ class KubernetesBaseSensor(SensorEntity):
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         self.async_write_ha_state()
-
-    async def async_update(self) -> None:
-        """Update the sensor state."""
-        # This method is called by tests and can be used for direct updates
-        # In normal operation, the coordinator handles updates
-        try:
-            # Trigger coordinator update if needed
-            await self.coordinator.async_request_refresh()
-        except Exception as ex:
-            _LOGGER.error("Failed to update sensor %s: %s", self.name, ex)
 
 
 class KubernetesCountSensor(KubernetesBaseSensor):

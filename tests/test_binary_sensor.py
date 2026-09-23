@@ -195,6 +195,8 @@ class TestKubernetesClusterHealthSensor:
         assert sensor.unique_id == "test_entry_id_cluster_health"
         assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
         assert sensor._attr_has_entity_name is True
+        # The one deliberately polled entity: HA's 30 s poll is its live probe.
+        assert sensor.should_poll is True
 
     async def test_sensor_update_success(self, mock_config_entry, mock_client):
         """Test successful sensor update."""
@@ -335,6 +337,8 @@ class TestKubernetesNodeConditionBinarySensor:
         assert sensor.unique_id == "test_entry_id_node_node-1_memory_pressure"
         assert sensor.device_class == BinarySensorDeviceClass.PROBLEM
         assert sensor._attr_has_entity_name is True
+        # Listener-driven; only the cluster health sensor is polled.
+        assert sensor.should_poll is False
 
     def test_unique_ids_are_distinct_per_condition(
         self, mock_coordinator, mock_config_entry
