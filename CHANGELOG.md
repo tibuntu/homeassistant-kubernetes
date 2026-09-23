@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.12.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.11.0...v1.12.0) (2026-09-23)
+
+
+### Bug Fixes
+
+* **client:** drop dead async_refresh_token, document retry-at-start behaviour ([fb5db69](https://github.com/tibuntu/homeassistant-kubernetes/commit/fb5db6917727ec0a3d83f87a2f9fd20a94a02c39))
+* **client:** guarantee a fresh token read on the 401 retry ([fc5bfda](https://github.com/tibuntu/homeassistant-kubernetes/commit/fc5bfdac853f0c440da904d8a61010128c6c66d1))
+* **client:** raise on API failures so outages never prune entities ([85fcbd2](https://github.com/tibuntu/homeassistant-kubernetes/commit/85fcbd2234c4c224fee72517a02085e394b0ab2e))
+* **client:** read the in-cluster token off the event loop ([69d4d20](https://github.com/tibuntu/homeassistant-kubernetes/commit/69d4d2093a2d1f51c67f7081da65641f292cdfc9))
+* **frontend:** copy before sort, track reload timers, keyboard access for clickable rows ([83b1bc1](https://github.com/tibuntu/homeassistant-kubernetes/commit/83b1bc104454a652d55ac35e0f86b487ab33129d))
+* **frontend:** focus confirm overlays so Escape closes them ([b2aca1f](https://github.com/tibuntu/homeassistant-kubernetes/commit/b2aca1f5a676e52b5c55867213ec232e28c20f3c))
+* **frontend:** only focus overlay when focus is outside it; strip bundle whitespace ([e8463c8](https://github.com/tibuntu/homeassistant-kubernetes/commit/e8463c8a5f7919aca8147b0b18a55202cb843ffc))
+* **services:** expose entry_id on workload services, fix translations and stale docs claims ([413e639](https://github.com/tibuntu/homeassistant-kubernetes/commit/413e639bbf4e6be18a00e04c0ca4e52ef8e81776))
+* stop entity polling from forcing coordinator refreshes every 30 s ([ea0a710](https://github.com/tibuntu/homeassistant-kubernetes/commit/ea0a710f49f8a7cd822c7fca1438554e932e359f))
+* **switch:** build initial switches from coordinator data, not the client ([51335a9](https://github.com/tibuntu/homeassistant-kubernetes/commit/51335a9a1d9a48e9a46e658f130f94518914b5b0))
+* **switch:** honour scale_cooldown in the coordinator listener ([b114eb3](https://github.com/tibuntu/homeassistant-kubernetes/commit/b114eb3c4bf85fd7e27d5a14d504eaf99d1b3892))
+* **switch:** sync replica switch state on add; align scale_cooldown translations ([4831ba9](https://github.com/tibuntu/homeassistant-kubernetes/commit/4831ba9620dd686d67f6e6be5d4d8e9c57a9b09c))
+
+
+### Other
+
+* release 1.12.0 ([93fed64](https://github.com/tibuntu/homeassistant-kubernetes/commit/93fed643d3c59395c00266908c9fb0482fc9aca6))
+
 ## [1.11.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.10.2...v1.11.0) (2026-09-20)
 
 A panel-focused release that brings the sidebar closer to a real dashboard: **scale workloads from the UI**, **choose which columns the Pods table shows**, and a visual consistency pass across every tab.
