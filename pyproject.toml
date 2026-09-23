@@ -141,9 +141,12 @@ markers = [
     "kubernetes_unavailable: opt out of the config-flow kubernetes_available autouse fixture",
 ]
 filterwarnings = [
-    # HA deprecation warnings are already caught by the autouse
-    # fail_on_ha_deprecations fixture (tests/conftest.py); "error" here plus
-    # blanket ignores for User/DeprecationWarning canceled each other out.
+    # Warnings are errors (catches un-awaited coroutines via RuntimeWarning,
+    # unclosed resources via ResourceWarning, etc.) except User/Deprecation
+    # warnings; HA-specific deprecations are separately caught by the
+    # autouse fail_on_ha_deprecations fixture (tests/conftest.py).
+    "error",
+    "ignore::UserWarning",
     "ignore::DeprecationWarning",
 ]
 
