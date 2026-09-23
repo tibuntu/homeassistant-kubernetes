@@ -303,50 +303,9 @@ class TestSslParam:
                 return_value=sentinel_ctx,
             ),
         ):
-            await client._scale_deployment_aiohttp("nginx", 3, "default")
+            await client._scale_workload_aiohttp("deployments", "nginx", 3, "default")
 
         assert mock_session.patch.call_args.kwargs["ssl"] is sentinel_ctx
-
-    async def test_test_authentication_fallback_passes_ssl_context(self, mock_config):
-        """test_authentication's aiohttp fallback honors the SSLContext (not ssl=False).
-
-        Otherwise a ca_cert-configured cluster would get a misleading auth result
-        from a fallback that talks TLS differently than the real client.
-        """
-        mock_config["ca_cert"] = "/path/ca.crt"
-        client = _make_client(mock_config)
-        client.core_v1 = MagicMock()
-        sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        # Pre-seed so _get_ssl_param() returns the context without the executor
-        # (which we patch below to fail the official-client path).
-        client._ssl_context = sentinel_ctx
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
-
-        import asyncio
-
-        loop = asyncio.get_running_loop()
-
-        with (
-            patch.object(
-                loop, "run_in_executor", new=AsyncMock(side_effect=Exception("k8s"))
-            ),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            await client.test_authentication()
-
-        assert mock_session.get.call_args.kwargs["ssl"] is sentinel_ctx
 
 
 async def test_get_pods_count_success(mock_client):
@@ -1632,7 +1591,7 @@ class TestKubernetesClientCronJobOperations:
     async def test_suspend_cronjob_success(self, mock_client):
         """Test successful CronJob suspension."""
         # Mock the aiohttp method since we now use it first
-        mock_client._suspend_cronjob_aiohttp = AsyncMock(
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": True,
                 "cronjob_name": "test-cronjob",
@@ -1649,8 +1608,8 @@ class TestKubernetesClientCronJobOperations:
         assert result["namespace"] == "default"
 
         # Verify the aiohttp method was called
-        mock_client._suspend_cronjob_aiohttp.assert_called_once_with(
-            "test-cronjob", "default"
+        mock_client._patch_cronjob_aiohttp.assert_called_once_with(
+            "test-cronjob", "default", {"spec": {"suspend": True}}, "suspend"
         )
 
     async def test_suspend_cronjob_namespace_permission_error(self, mock_client):
@@ -1669,7 +1628,7 @@ class TestKubernetesClientCronJobOperations:
     async def test_suspend_cronjob_api_exception(self, mock_client):
         """Test CronJob suspension with API exception."""
         # Mock the aiohttp method to fail
-        mock_client._suspend_cronjob_aiohttp = AsyncMock(
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": False,
                 "cronjob_name": "test-cronjob",
@@ -1689,7 +1648,7 @@ class TestKubernetesClientCronJobOperations:
     async def test_suspend_cronjob_general_exception(self, mock_client):
         """Test CronJob suspension with general exception."""
         # Mock the aiohttp method to fail
-        mock_client._suspend_cronjob_aiohttp = AsyncMock(
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": False,
                 "cronjob_name": "test-cronjob",
@@ -1709,7 +1668,7 @@ class TestKubernetesClientCronJobOperations:
     async def test_suspend_cronjob_default_namespace(self, mock_client):
         """Test CronJob suspension with default namespace."""
         # Mock the aiohttp method since we now use it first
-        mock_client._suspend_cronjob_aiohttp = AsyncMock(
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": True,
                 "cronjob_name": "test-cronjob",
@@ -1725,14 +1684,14 @@ class TestKubernetesClientCronJobOperations:
         assert result["namespace"] == "default"
 
         # Verify the aiohttp method was called with default namespace
-        mock_client._suspend_cronjob_aiohttp.assert_called_once_with(
-            "test-cronjob", "default"
+        mock_client._patch_cronjob_aiohttp.assert_called_once_with(
+            "test-cronjob", "default", {"spec": {"suspend": True}}, "suspend"
         )
 
     async def test_resume_cronjob_success(self, mock_client):
         """Test successful CronJob resume."""
         # Mock the aiohttp method since we now use it first
-        mock_client._resume_cronjob_aiohttp = AsyncMock(
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": True,
                 "cronjob_name": "test-cronjob",
@@ -1749,8 +1708,8 @@ class TestKubernetesClientCronJobOperations:
         assert result["namespace"] == "default"
 
         # Verify the aiohttp method was called
-        mock_client._resume_cronjob_aiohttp.assert_called_once_with(
-            "test-cronjob", "default"
+        mock_client._patch_cronjob_aiohttp.assert_called_once_with(
+            "test-cronjob", "default", {"spec": {"suspend": False}}, "resume"
         )
 
     async def test_resume_cronjob_namespace_permission_error(self, mock_client):
@@ -1809,7 +1768,7 @@ class TestKubernetesClientCronJobOperations:
     async def test_resume_cronjob_api_exception(self, mock_client):
         """Test CronJob resume with API exception."""
         # Mock the aiohttp method to fail
-        mock_client._resume_cronjob_aiohttp = AsyncMock(
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": False,
                 "cronjob_name": "test-cronjob",
@@ -1829,7 +1788,7 @@ class TestKubernetesClientCronJobOperations:
     async def test_resume_cronjob_general_exception(self, mock_client):
         """Test CronJob resume with general exception."""
         # Mock the aiohttp method to fail
-        mock_client._resume_cronjob_aiohttp = AsyncMock(
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": False,
                 "cronjob_name": "test-cronjob",
@@ -1849,7 +1808,7 @@ class TestKubernetesClientCronJobOperations:
     async def test_resume_cronjob_default_namespace(self, mock_client):
         """Test CronJob resume with default namespace."""
         # Mock the aiohttp method since we now use it first
-        mock_client._resume_cronjob_aiohttp = AsyncMock(
+        mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": True,
                 "cronjob_name": "test-cronjob",
@@ -1865,8 +1824,8 @@ class TestKubernetesClientCronJobOperations:
         assert result["namespace"] == "default"
 
         # Verify the aiohttp method was called with default namespace
-        mock_client._resume_cronjob_aiohttp.assert_called_once_with(
-            "test-cronjob", "default"
+        mock_client._patch_cronjob_aiohttp.assert_called_once_with(
+            "test-cronjob", "default", {"spec": {"suspend": False}}, "resume"
         )
 
     async def test_suspend_cronjob_with_monitor_all_namespaces(self, mock_config):
@@ -1891,7 +1850,7 @@ class TestKubernetesClientCronJobOperations:
                 client.batch_v1 = mock_batch_v1
 
                 # Mock the aiohttp method since we now use it first
-                client._suspend_cronjob_aiohttp = AsyncMock(
+                client._patch_cronjob_aiohttp = AsyncMock(
                     return_value={
                         "success": True,
                         "cronjob_name": "test-cronjob",
@@ -1907,8 +1866,11 @@ class TestKubernetesClientCronJobOperations:
                 assert result["namespace"] == "other-namespace"
 
                 # Verify the aiohttp method was called with the specified namespace
-                client._suspend_cronjob_aiohttp.assert_called_once_with(
-                    "test-cronjob", "other-namespace"
+                client._patch_cronjob_aiohttp.assert_called_once_with(
+                    "test-cronjob",
+                    "other-namespace",
+                    {"spec": {"suspend": True}},
+                    "suspend",
                 )
 
     async def test_resume_cronjob_with_monitor_all_namespaces(self, mock_config):
@@ -1933,7 +1895,7 @@ class TestKubernetesClientCronJobOperations:
                 client.batch_v1 = mock_batch_v1
 
                 # Mock the aiohttp method since we now use it first
-                client._resume_cronjob_aiohttp = AsyncMock(
+                client._patch_cronjob_aiohttp = AsyncMock(
                     return_value={
                         "success": True,
                         "cronjob_name": "test-cronjob",
@@ -1949,8 +1911,11 @@ class TestKubernetesClientCronJobOperations:
                 assert result["namespace"] == "other-namespace"
 
                 # Verify the aiohttp method was called with the specified namespace
-                client._resume_cronjob_aiohttp.assert_called_once_with(
-                    "test-cronjob", "other-namespace"
+                client._patch_cronjob_aiohttp.assert_called_once_with(
+                    "test-cronjob",
+                    "other-namespace",
+                    {"spec": {"suspend": False}},
+                    "resume",
                 )
 
 
@@ -2920,326 +2885,6 @@ class TestFetchResourceList:
             )
 
         assert result == [{"parsed": True}]
-
-
-class TestCompareAuthenticationMethods:
-    """Test compare_authentication_methods method."""
-
-    async def test_compare_both_succeed(self, mock_client):
-        """Test compare_authentication_methods when both methods succeed."""
-        mock_client.api_token = "test-token-longer-than-10"
-        mock_client.ca_cert = None
-
-        # Mock the kubernetes client call
-        mock_executor = AsyncMock(return_value=None)
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.compare_authentication_methods()
-
-        assert result["kubernetes_client"]["success"] is True
-        assert result["aiohttp_fallback"]["success"] is True
-        assert "token_info" in result
-
-    async def test_compare_k8s_fails_aiohttp_succeeds(self, mock_client):
-        """Test compare_authentication_methods when k8s client fails."""
-        mock_client.api_token = "short"
-        mock_client.ca_cert = "some-cert"
-
-        mock_executor = AsyncMock(side_effect=Exception("K8s client error"))
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.compare_authentication_methods()
-
-        assert result["kubernetes_client"]["success"] is False
-        assert result["aiohttp_fallback"]["success"] is True
-        assert result["kubernetes_client"]["ca_cert"] == "provided"
-
-    async def test_compare_both_fail(self, mock_client):
-        """Test compare_authentication_methods when both methods fail."""
-        mock_client.api_token = "test-token-longer-than-10"
-        mock_client.ca_cert = None
-
-        mock_executor = AsyncMock(side_effect=Exception("K8s error"))
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=Exception("Network error"))
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.compare_authentication_methods()
-
-        assert result["kubernetes_client"]["success"] is False
-        assert result["aiohttp_fallback"]["success"] is False
-
-    async def test_compare_aiohttp_non_200(self, mock_client):
-        """Test compare_authentication_methods when aiohttp returns non-200."""
-        mock_client.api_token = "test-token-longer"
-        mock_client.ca_cert = None
-
-        mock_executor = AsyncMock(return_value=None)
-
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.compare_authentication_methods()
-
-        assert result["kubernetes_client"]["success"] is True
-        assert result["aiohttp_fallback"]["success"] is False
-        assert result["aiohttp_fallback"]["status_code"] == 403
-
-    async def test_token_info_short_token(self, mock_client):
-        """Test compare_authentication_methods token_info for short token."""
-        mock_client.api_token = "short"
-        mock_client.ca_cert = None
-
-        mock_executor = AsyncMock(return_value=None)
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.compare_authentication_methods()
-
-        assert result["token_info"]["length"] == 5
-        assert (
-            result["kubernetes_client"]["headers"]["authorization"] == "Bearer [token]"
-        )
-
-
-class TestTestAuthentication:
-    """Test test_authentication method."""
-
-    async def test_authentication_via_k8s_client_success(self, mock_client):
-        """Test test_authentication succeeds via kubernetes client."""
-        mock_executor = AsyncMock(return_value=MagicMock())
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(loop, "run_in_executor", new=mock_executor):
-            result = await mock_client.test_authentication()
-
-        assert result["authenticated"] is True
-        assert result["method"] == "kubernetes_client"
-        assert result["error"] is None
-
-    async def test_authentication_via_api_exception_aiohttp_success(self, mock_client):
-        """Test test_authentication falls back to aiohttp on ApiException."""
-        from kubernetes.client import ApiException
-
-        api_exc = ApiException(status=401, reason="Unauthorized")
-
-        mock_executor = AsyncMock(side_effect=api_exc)
-        # Pre-seed the SSL context so _get_ssl_param() doesn't route through the
-        # patched run_in_executor (which is mocked to raise for the k8s client).
-        mock_client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.test_authentication()
-
-        assert result["authenticated"] is True
-        assert result["method"] == "aiohttp_fallback"
-        assert result["error"] is None
-
-    async def test_authentication_via_generic_exception_aiohttp_success(
-        self, mock_client
-    ):
-        """Test test_authentication falls back to aiohttp on generic exception."""
-        mock_executor = AsyncMock(side_effect=Exception("SSL error"))
-        mock_client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
-        mock_response = MagicMock()
-        mock_response.status = 200
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.test_authentication()
-
-        assert result["authenticated"] is True
-        assert result["method"] == "aiohttp_fallback"
-
-    async def test_authentication_both_fail(self, mock_client):
-        """Test test_authentication when both methods fail."""
-        mock_executor = AsyncMock(side_effect=Exception("K8s error"))
-        mock_client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(side_effect=Exception("Network error"))
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.test_authentication()
-
-        assert result["authenticated"] is False
-        assert result["error"] is not None
-
-    async def test_authentication_aiohttp_non_200(self, mock_client):
-        """Test test_authentication when aiohttp returns non-200."""
-        from kubernetes.client import ApiException
-
-        api_exc = ApiException(status=403, reason="Forbidden")
-        mock_executor = AsyncMock(side_effect=api_exc)
-        mock_client._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
-        mock_response = MagicMock()
-        mock_response.status = 403
-        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
-        mock_response.__aexit__ = AsyncMock(return_value=None)
-
-        mock_session = MagicMock()
-        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock(return_value=None)
-        mock_session.get = MagicMock(return_value=mock_response)
-
-        import asyncio
-
-        loop = asyncio.get_event_loop()
-
-        with (
-            patch.object(loop, "run_in_executor", new=mock_executor),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
-        ):
-            result = await mock_client.test_authentication()
-
-        assert result["authenticated"] is False
-        assert "403" in result["error"] or result["error"] is not None
 
 
 class TestTriggerCronjobAiohttp:
@@ -4607,6 +4252,60 @@ class TestScaleDeploymentExtended:
 
         assert result is False
 
+    async def test_scale_deployment_official_client_fallback_succeeds(
+        self, mock_client
+    ):
+        """When the aiohttp PATCH fails, the official read/replace path scales."""
+        mock_patch_response = MagicMock()
+        mock_patch_response.status = 500
+        mock_patch_response.text = AsyncMock(return_value="boom")
+        mock_patch_response.__aenter__ = AsyncMock(return_value=mock_patch_response)
+        mock_patch_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_patch_response)
+
+        deployment = MagicMock()
+        mock_client.apps_v1.read_namespaced_deployment = MagicMock(
+            return_value=deployment
+        )
+        mock_client.apps_v1.replace_namespaced_deployment = MagicMock()
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            result = await mock_client.scale_deployment("test-deploy", 4, "default")
+
+        assert result is True
+        assert deployment.spec.replicas == 4
+        mock_client.apps_v1.replace_namespaced_deployment.assert_called_once_with(
+            "test-deploy", "default", deployment
+        )
+
+    async def test_scale_workload_aiohttp_builds_scale_url(self, mock_client):
+        """_scale_workload_aiohttp PATCHes the /scale subresource of the given type."""
+        mock_patch_response = MagicMock()
+        mock_patch_response.status = 200
+        mock_patch_response.__aenter__ = AsyncMock(return_value=mock_patch_response)
+        mock_patch_response.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=None)
+        mock_session.patch = MagicMock(return_value=mock_patch_response)
+
+        with patch("aiohttp.ClientSession", return_value=mock_session):
+            assert (
+                await mock_client._scale_workload_aiohttp(
+                    "statefulsets", "db", 2, "prod"
+                )
+                is True
+            )
+
+        url = mock_session.patch.call_args[0][0]
+        assert url.endswith("/apis/apps/v1/namespaces/prod/statefulsets/db/scale")
+        assert mock_session.patch.call_args.kwargs["json"] == {"spec": {"replicas": 2}}
+
 
 class TestScaleStatefulsetExtended:
     """Extended tests for scale/start/stop statefulset methods."""
@@ -5127,96 +4826,6 @@ class TestGetJobsCount:
         assert count == 0
 
 
-class TestFormatCronjob:
-    """Tests for _format_cronjob (object-based, not dict-based)."""
-
-    def test_full_cronjob_object(self, mock_client):
-        """_format_cronjob formats a complete cronjob object."""
-        cronjob = MagicMock()
-        cronjob.metadata.name = "nightly-backup"
-        cronjob.metadata.namespace = "prod"
-        cronjob.metadata.uid = "cj-uid-1"
-        cronjob.metadata.creation_timestamp.isoformat.return_value = (
-            "2024-01-15T10:00:00Z"
-        )
-        cronjob.spec.schedule = "0 2 * * *"
-        cronjob.spec.suspend = True
-        cronjob.spec.successful_jobs_history_limit = 5
-        cronjob.spec.failed_jobs_history_limit = 2
-        cronjob.spec.concurrency_policy = "Forbid"
-        cronjob.status.last_schedule_time.isoformat.return_value = (
-            "2024-06-01T02:00:00Z"
-        )
-        cronjob.status.next_schedule_time.isoformat.return_value = (
-            "2024-06-02T02:00:00Z"
-        )
-        cronjob.status.active = [MagicMock(), MagicMock()]
-
-        result = mock_client._format_cronjob(cronjob)
-
-        assert result["name"] == "nightly-backup"
-        assert result["namespace"] == "prod"
-        assert result["schedule"] == "0 2 * * *"
-        assert result["suspend"] is True
-        assert result["last_schedule_time"] == "2024-06-01T02:00:00Z"
-        assert result["next_schedule_time"] == "2024-06-02T02:00:00Z"
-        assert result["active_jobs_count"] == 2
-        assert result["successful_jobs_history_limit"] == 5
-        assert result["failed_jobs_history_limit"] == 2
-        assert result["concurrency_policy"] == "Forbid"
-        assert result["uid"] == "cj-uid-1"
-        assert result["creation_timestamp"] == "2024-01-15T10:00:00Z"
-
-    def test_cronjob_with_none_timestamps(self, mock_client):
-        """_format_cronjob handles None timestamps."""
-        cronjob = MagicMock()
-        cronjob.metadata.name = "cleanup"
-        cronjob.metadata.namespace = "default"
-        cronjob.metadata.uid = "cj-uid-2"
-        cronjob.metadata.creation_timestamp = None
-        cronjob.spec.schedule = "*/5 * * * *"
-        cronjob.spec.suspend = False
-        cronjob.spec.successful_jobs_history_limit = None
-        cronjob.spec.failed_jobs_history_limit = None
-        cronjob.spec.concurrency_policy = None
-        cronjob.status.last_schedule_time = None
-        cronjob.status.next_schedule_time = None
-        cronjob.status.active = None
-
-        result = mock_client._format_cronjob(cronjob)
-
-        assert result["name"] == "cleanup"
-        assert result["last_schedule_time"] is None
-        assert result["next_schedule_time"] is None
-        assert result["creation_timestamp"] is None
-        assert result["active_jobs_count"] == 0
-        assert result["successful_jobs_history_limit"] == 3
-        assert result["failed_jobs_history_limit"] == 1
-        assert result["concurrency_policy"] == "Allow"
-
-    def test_cronjob_with_empty_schedule(self, mock_client):
-        """_format_cronjob handles empty/None schedule."""
-        cronjob = MagicMock()
-        cronjob.metadata.name = "no-schedule"
-        cronjob.metadata.namespace = "default"
-        cronjob.metadata.uid = "cj-uid-3"
-        cronjob.metadata.creation_timestamp = None
-        cronjob.spec.schedule = None
-        cronjob.spec.suspend = None
-        cronjob.spec.successful_jobs_history_limit = 3
-        cronjob.spec.failed_jobs_history_limit = 1
-        cronjob.spec.concurrency_policy = "Allow"
-        cronjob.status.last_schedule_time = None
-        cronjob.status.next_schedule_time = None
-        cronjob.status.active = []
-
-        result = mock_client._format_cronjob(cronjob)
-
-        assert result["schedule"] == ""
-        assert result["suspend"] is False
-        assert result["active_jobs_count"] == 0
-
-
 class TestCalculateResourceUsage:
     """Tests for _calculate_resource_usage method."""
 
@@ -5528,7 +5137,7 @@ class TestGetPodMetricsAiohttp:
 
 
 class TestSuspendCronjobAiohttp:
-    """Tests for _suspend_cronjob_aiohttp method."""
+    """Tests for suspend_cronjob (aiohttp path) method."""
 
     async def test_successful_suspend(self, mock_client):
         """Test successful CronJob suspension via aiohttp."""
@@ -5546,16 +5155,14 @@ class TestSuspendCronjobAiohttp:
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
         ):
-            result = await mock_client._suspend_cronjob_aiohttp(
-                "test-cronjob", "default"
-            )
+            result = await mock_client.suspend_cronjob("test-cronjob", "default")
 
         assert result["success"] is True
         assert result["cronjob_name"] == "test-cronjob"
         assert result["namespace"] == "default"
 
     async def test_non_200_response(self, mock_client):
-        """Test _suspend_cronjob_aiohttp with non-200 response."""
+        """Test suspend_cronjob (aiohttp path) with non-200 response."""
         mock_response = MagicMock()
         mock_response.status = 404
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
@@ -5570,16 +5177,14 @@ class TestSuspendCronjobAiohttp:
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
         ):
-            result = await mock_client._suspend_cronjob_aiohttp(
-                "test-cronjob", "default"
-            )
+            result = await mock_client.suspend_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
         assert "404" in result["error"]
         assert result["cronjob_name"] == "test-cronjob"
 
     async def test_exception(self, mock_client):
-        """Test _suspend_cronjob_aiohttp with exception."""
+        """Test suspend_cronjob (aiohttp path) with exception."""
         mock_session = MagicMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
@@ -5589,9 +5194,7 @@ class TestSuspendCronjobAiohttp:
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
         ):
-            result = await mock_client._suspend_cronjob_aiohttp(
-                "test-cronjob", "default"
-            )
+            result = await mock_client.suspend_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
         assert "Connection refused" in result["error"]
@@ -5599,7 +5202,7 @@ class TestSuspendCronjobAiohttp:
 
 
 class TestResumeCronjobAiohttp:
-    """Tests for _resume_cronjob_aiohttp method."""
+    """Tests for resume_cronjob (aiohttp path) method."""
 
     async def test_successful_resume(self, mock_client):
         """Test successful CronJob resume via aiohttp."""
@@ -5617,16 +5220,14 @@ class TestResumeCronjobAiohttp:
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
         ):
-            result = await mock_client._resume_cronjob_aiohttp(
-                "test-cronjob", "default"
-            )
+            result = await mock_client.resume_cronjob("test-cronjob", "default")
 
         assert result["success"] is True
         assert result["cronjob_name"] == "test-cronjob"
         assert result["namespace"] == "default"
 
     async def test_non_200_response(self, mock_client):
-        """Test _resume_cronjob_aiohttp with non-200 response."""
+        """Test resume_cronjob (aiohttp path) with non-200 response."""
         mock_response = MagicMock()
         mock_response.status = 403
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
@@ -5641,16 +5242,14 @@ class TestResumeCronjobAiohttp:
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
         ):
-            result = await mock_client._resume_cronjob_aiohttp(
-                "test-cronjob", "default"
-            )
+            result = await mock_client.resume_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
         assert "403" in result["error"]
         assert result["cronjob_name"] == "test-cronjob"
 
     async def test_exception(self, mock_client):
-        """Test _resume_cronjob_aiohttp with exception."""
+        """Test resume_cronjob (aiohttp path) with exception."""
         mock_session = MagicMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
         mock_session.__aexit__ = AsyncMock(return_value=None)
@@ -5660,221 +5259,11 @@ class TestResumeCronjobAiohttp:
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
         ):
-            result = await mock_client._resume_cronjob_aiohttp(
-                "test-cronjob", "default"
-            )
+            result = await mock_client.resume_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
         assert "Timeout" in result["error"]
         assert result["cronjob_name"] == "test-cronjob"
-
-
-class TestTriggerCronjobFallback:
-    """Tests for trigger_cronjob fallback path when aiohttp raises."""
-
-    async def test_fallback_success(self, mock_client):
-        """Test trigger_cronjob falls back to k8s client successfully."""
-        import asyncio
-
-        # Make aiohttp method raise an exception to trigger fallback
-        mock_client._trigger_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        # Mock the k8s client fallback
-        mock_cronjob = MagicMock()
-        mock_cronjob.spec.job_template.spec = MagicMock()
-
-        mock_created_job = MagicMock()
-        mock_created_job.metadata.uid = "fallback-uid-123"
-
-        loop = asyncio.get_event_loop()
-        call_count = 0
-
-        async def mock_executor(executor, fn, *args):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return mock_cronjob
-            return mock_created_job
-
-        with patch.object(loop, "run_in_executor", side_effect=mock_executor):
-            result = await mock_client.trigger_cronjob("backup-job", "default")
-
-        assert result["success"] is True
-        assert result["cronjob_name"] == "backup-job"
-        assert result["namespace"] == "default"
-        assert result["job_uid"] == "fallback-uid-123"
-
-    async def test_fallback_api_exception(self, mock_client):
-        """Test trigger_cronjob fallback fails with ApiException."""
-        import asyncio
-
-        mock_client._trigger_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(
-            loop,
-            "run_in_executor",
-            new=AsyncMock(side_effect=ApiException(status=404, reason="Not Found")),
-        ):
-            result = await mock_client.trigger_cronjob("missing-job", "default")
-
-        assert result["success"] is False
-        assert "404" in result["error"]
-
-    async def test_fallback_general_exception(self, mock_client):
-        """Test trigger_cronjob fallback fails with general exception."""
-        import asyncio
-
-        mock_client._trigger_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(
-            loop,
-            "run_in_executor",
-            new=AsyncMock(side_effect=Exception("K8s client error")),
-        ):
-            result = await mock_client.trigger_cronjob("broken-job", "default")
-
-        assert result["success"] is False
-        assert "K8s client error" in result["error"]
-
-
-class TestSuspendCronjobFallback:
-    """Tests for suspend_cronjob fallback path when aiohttp raises."""
-
-    async def test_fallback_success(self, mock_client):
-        """Test suspend_cronjob falls back to k8s client successfully."""
-        import asyncio
-
-        mock_client._suspend_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(
-            loop,
-            "run_in_executor",
-            new=AsyncMock(return_value=None),
-        ):
-            result = await mock_client.suspend_cronjob("test-cronjob", "default")
-
-        assert result["success"] is True
-        assert result["cronjob_name"] == "test-cronjob"
-        assert result["namespace"] == "default"
-
-    async def test_fallback_api_exception(self, mock_client):
-        """Test suspend_cronjob fallback fails with ApiException."""
-        import asyncio
-
-        mock_client._suspend_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(
-            loop,
-            "run_in_executor",
-            new=AsyncMock(side_effect=ApiException(status=403, reason="Forbidden")),
-        ):
-            result = await mock_client.suspend_cronjob("test-cronjob", "default")
-
-        assert result["success"] is False
-        assert "403" in result["error"]
-
-    async def test_fallback_general_exception(self, mock_client):
-        """Test suspend_cronjob fallback fails with general exception."""
-        import asyncio
-
-        mock_client._suspend_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(
-            loop,
-            "run_in_executor",
-            new=AsyncMock(side_effect=Exception("Connection lost")),
-        ):
-            result = await mock_client.suspend_cronjob("test-cronjob", "default")
-
-        assert result["success"] is False
-        assert "Connection lost" in result["error"]
-
-
-class TestResumeCronjobFallback:
-    """Tests for resume_cronjob fallback path when aiohttp raises."""
-
-    async def test_fallback_success(self, mock_client):
-        """Test resume_cronjob falls back to k8s client successfully."""
-        import asyncio
-
-        mock_client._resume_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(
-            loop,
-            "run_in_executor",
-            new=AsyncMock(return_value=None),
-        ):
-            result = await mock_client.resume_cronjob("test-cronjob", "default")
-
-        assert result["success"] is True
-        assert result["cronjob_name"] == "test-cronjob"
-        assert result["namespace"] == "default"
-
-    async def test_fallback_api_exception(self, mock_client):
-        """Test resume_cronjob fallback fails with ApiException."""
-        import asyncio
-
-        mock_client._resume_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(
-            loop,
-            "run_in_executor",
-            new=AsyncMock(side_effect=ApiException(status=404, reason="Not Found")),
-        ):
-            result = await mock_client.resume_cronjob("test-cronjob", "default")
-
-        assert result["success"] is False
-        assert "404" in result["error"]
-
-    async def test_fallback_general_exception(self, mock_client):
-        """Test resume_cronjob fallback fails with general exception."""
-        import asyncio
-
-        mock_client._resume_cronjob_aiohttp = AsyncMock(
-            side_effect=Exception("aiohttp failed")
-        )
-
-        loop = asyncio.get_event_loop()
-
-        with patch.object(
-            loop,
-            "run_in_executor",
-            new=AsyncMock(side_effect=Exception("Network failure")),
-        ):
-            result = await mock_client.resume_cronjob("test-cronjob", "default")
-
-        assert result["success"] is False
-        assert "Network failure" in result["error"]
 
 
 class TestInitNamespaceParsing:
@@ -6397,10 +5786,6 @@ class TestDeleteJob:
         _, kwargs = mock_client.batch_v1.delete_namespaced_job.call_args
         assert kwargs.get("propagation_policy") == "Background"
 
-    async def test_delete_job_exception_returns_false(self, mock_client):
-        mock_client._delete_job_aiohttp = AsyncMock(side_effect=Exception("boom"))
-        assert await mock_client.delete_job("j1", "default") is False
-
     async def test_delete_job_aiohttp_non_200_returns_false(self, mock_client):
         mock_resp = MagicMock()
         mock_resp.status = 404
@@ -6623,15 +6008,16 @@ class TestRolloutRestart:
         assert result is True
 
 
-class TestPatchCronjobConsolidation:
-    """Verify _suspend_cronjob_aiohttp and _resume_cronjob_aiohttp delegate to _patch_cronjob_aiohttp."""
+class TestSetCronjobSuspend:
+    """suspend_cronjob/resume_cronjob share _set_cronjob_suspend -> _patch_cronjob_aiohttp."""
 
     async def test_suspend_uses_shared_patch_helper(self, mock_client):
         """suspend must delegate to the shared patch helper with suspend=True."""
         mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={"success": True, "cronjob_name": "cj", "namespace": "default"}
         )
-        await mock_client._suspend_cronjob_aiohttp("cj", "default")
+        result = await mock_client.suspend_cronjob("cj", "default")
+        assert result["success"] is True
         mock_client._patch_cronjob_aiohttp.assert_called_once_with(
             "cj", "default", {"spec": {"suspend": True}}, "suspend"
         )
@@ -6641,10 +6027,19 @@ class TestPatchCronjobConsolidation:
         mock_client._patch_cronjob_aiohttp = AsyncMock(
             return_value={"success": True, "cronjob_name": "cj", "namespace": "default"}
         )
-        await mock_client._resume_cronjob_aiohttp("cj", "default")
+        result = await mock_client.resume_cronjob("cj", "default")
+        assert result["success"] is True
         mock_client._patch_cronjob_aiohttp.assert_called_once_with(
             "cj", "default", {"spec": {"suspend": False}}, "resume"
         )
+
+    async def test_namespace_check_runs_before_patch(self, mock_client):
+        """A non-monitored namespace is rejected without touching the API."""
+        mock_client._patch_cronjob_aiohttp = AsyncMock()
+        result = await mock_client._set_cronjob_suspend("cj", "other", True)
+        assert result["success"] is False
+        assert "Cannot suspend CronJob 'cj' in namespace 'other'" in result["error"]
+        mock_client._patch_cronjob_aiohttp.assert_not_called()
 
 
 class TestParsePodContainerState:
