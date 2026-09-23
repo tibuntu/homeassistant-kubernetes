@@ -750,7 +750,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 )
                 return
             else:
-                raise ValueError(f"Connection test failed: {str(ex)}") from ex
+                raise ValueError(f"Connection test failed: {ex!s}") from ex
 
     @staticmethod
     async def _ssl_param(user_input: dict[str, Any]) -> Any:

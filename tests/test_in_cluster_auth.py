@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from homeassistant import config_entries
@@ -431,7 +431,7 @@ def test_refresh_api_key_hook_updates_configuration():
     client = _make_client(use_in_cluster=True)
 
     class _Cfg:
-        api_key: dict[str, str] = {}
+        api_key: ClassVar[dict[str, str]] = {}
 
     cfg = _Cfg()
     cfg.api_key = {"authorization": "Bearer stale"}

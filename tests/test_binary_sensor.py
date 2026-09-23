@@ -114,7 +114,7 @@ class TestKubernetesBinarySensorSetup:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         added_entities = mock_add_entities.call_args[0][0]
-        # 1 cluster health + 2 nodes × 4 conditions = 9
+        # 1 cluster health + 2 nodes x 4 conditions = 9
         assert len(added_entities) == 9
         condition_sensors = [
             e

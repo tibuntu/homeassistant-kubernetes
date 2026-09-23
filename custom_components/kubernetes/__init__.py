@@ -225,10 +225,13 @@ async def _async_sync_panel(hass: HomeAssistant, entry: KubernetesConfigEntry) -
 
     if panel_wanted and not panel_registered:
         await _async_register_panel(hass)
-    elif not panel_wanted and panel_registered:
+    elif (
+        not panel_wanted
+        and panel_registered
+        and not _any_entry_wants_panel(hass, exclude_entry_id=entry.entry_id)
+    ):
         # Only remove if no other entry still wants the panel
-        if not _any_entry_wants_panel(hass, exclude_entry_id=entry.entry_id):
-            _async_remove_panel(hass)
+        _async_remove_panel(hass)
 
 
 def _loaded_entries_except(

@@ -2769,7 +2769,7 @@ class TestEventWatchLoop:
                 }
             )
             mock_send.assert_called_once()
-            _hass, signal, payload = mock_send.call_args[0]
+            _hass, _signal, payload = mock_send.call_args[0]
             assert payload["type"] == "Normal"
             assert payload["reason"] == "Started"
 
@@ -2791,7 +2791,7 @@ class TestEventWatchLoop:
                 }
             )
             mock_send.assert_called_once()
-            _hass, signal, payload = mock_send.call_args[0]
+            _hass, _signal, payload = mock_send.call_args[0]
             assert payload["type"] == "Warning"
             assert payload["reason"] == "OOMKilling"
 
@@ -2860,7 +2860,7 @@ class TestEventWatchLoop:
                 "https://test-cluster.example.com:6443/api/v1/events"
             )
             mock_send.assert_called_once()
-            _hass, signal, payload = mock_send.call_args[0]
+            _hass, _signal, payload = mock_send.call_args[0]
             assert payload["reason"] == "OOMKilling"
 
     async def test_event_watch_loop_skips_deleted_events(self, coord_all, mock_client):
@@ -3020,7 +3020,7 @@ class TestEventWatchLoop:
                 "https://test-cluster.example.com:6443/api/v1/events"
             )
             mock_send.assert_called_once()
-            _hass, signal, payload = mock_send.call_args[0]
+            _hass, _signal, payload = mock_send.call_args[0]
             assert payload["reason"] == "BackOff"
             assert payload["type"] == "Warning"
 
@@ -3186,7 +3186,7 @@ class TestEventWatchLoop:
                 }
             )
             mock_send.assert_called_once()
-            _hass, signal, payload = mock_send.call_args[0]
+            _hass, _signal, payload = mock_send.call_args[0]
             assert payload["namespace"] == "ns-from-meta"
 
 

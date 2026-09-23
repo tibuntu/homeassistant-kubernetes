@@ -21,8 +21,10 @@ pip install -e ".[dev]"
 # Install frontend dependencies and build
 cd frontend && npm ci && npm run build
 
-# Run all tests (includes coverage)
+# Run all tests (includes terminal coverage summary; --cov-fail-under=95 gate)
 pytest
+# CI additionally passes --cov-report=xml for the Codecov upload; add
+# --cov-report=html:htmlcov locally if you want a browsable report
 
 # Run a single test file or specific test
 pytest tests/test_sensors.py
@@ -56,6 +58,8 @@ helm lint chart --set mode=full && helm lint chart --set mode=minimal
 ```
 KubernetesClient (API calls) → KubernetesDataCoordinator (polling/caching) → Entities (sensors/switches/binary_sensors)
 ```
+
+`manifest.json`'s `iot_class` is `local_push` because the Watch API (push, not polling) is the default connection mode.
 
 When the **Watch API** is enabled (the default):
 ```
@@ -146,7 +150,7 @@ When adding features, check the current rule set at the link above before implem
 
 ## Code Style
 
-- **Ruff** for linting and formatting (replaces black, isort, flake8). 88-char line length.
+- **Ruff** for linting and formatting (replaces black, isort, flake8). 88-char line length. Selected rule groups: `E,W,F,I,C4,B,UP,SIM,RUF,PIE,PLE,PLW,G,TID252` (see `pyproject.toml`'s `[tool.ruff.lint]` for the per-rule ignores and their reasons).
 - Type hints encouraged but mypy is not strict (`disallow_untyped_defs = false`)
 - Prefer `aiohttp` over the blocking kubernetes client for new async HTTP calls
 - All integration code must use `async`/`await` — no blocking calls
