@@ -5,15 +5,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.kubernetes.const import DOMAIN
-
+# Importing anything from custom_components.kubernetes pulls in Home Assistant
+# via the package __init__; the k8s_compat CI job installs only the client
+# dependencies, so keep every HA-backed import optional.
 try:
     from homeassistant.config_entries import ConfigEntryState
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+    from custom_components.kubernetes.const import DOMAIN
     from custom_components.kubernetes.coordinator import KubernetesEntryData
 except ImportError:  # pragma: no cover - k8s_compat job installs no Home Assistant
     ConfigEntryState = MockConfigEntry = KubernetesEntryData = None  # type: ignore[assignment,misc]
+    DOMAIN = "kubernetes"
 
 
 @pytest.fixture(autouse=True)
