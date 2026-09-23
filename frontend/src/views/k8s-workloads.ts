@@ -15,9 +15,6 @@ interface ReplicaWorkloadData {
   ready_replicas: number;
 }
 
-type DeploymentData = ReplicaWorkloadData;
-type StatefulSetData = ReplicaWorkloadData;
-
 interface DaemonSetData {
   name: string;
   namespace: string;
@@ -47,8 +44,8 @@ interface JobData {
 interface ClusterWorkloads {
   entry_id: string;
   cluster_name: string;
-  deployments: DeploymentData[];
-  statefulsets: StatefulSetData[];
+  deployments: ReplicaWorkloadData[];
+  statefulsets: ReplicaWorkloadData[];
   daemonsets: DaemonSetData[];
   cronjobs: CronJobData[];
   jobs: JobData[];
@@ -1061,7 +1058,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
       <div
         class="confirm-overlay"
         tabindex="-1"
-        autofocus
+        ${this._autofocusOverlay()}
         @click=${this._scaling ? nothing : this._cancelScale}
         @keydown=${this._onOverlayKeydown(this._scaling ? nothing : this._cancelScale)}
       >
@@ -1152,7 +1149,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
       <div
         class="confirm-overlay"
         tabindex="-1"
-        autofocus
+        ${this._autofocusOverlay()}
         @click=${this._deletingJob ? nothing : this._cancelJobDelete}
         @keydown=${this._onOverlayKeydown(this._deletingJob ? nothing : this._cancelJobDelete)}
       >

@@ -254,34 +254,34 @@ var h = class extends HTMLElement {
 h.elementStyles = [], h.shadowRootOptions = { mode: "open" }, h[p("elementProperties")] = /* @__PURE__ */ new Map(), h[p("finalized")] = /* @__PURE__ */ new Map(), ae?.({ ReactiveElement: h }), (f.reactiveElementVersions ??= []).push("2.1.2");
 //#endregion
 //#region node_modules/lit-html/lit-html.js
-var ce = globalThis, le = (e) => e, g = ce.trustedTypes, ue = g ? g.createPolicy("lit-html", { createHTML: (e) => e }) : void 0, de = "$lit$", _ = `lit$${Math.random().toFixed(9).slice(2)}$`, fe = "?" + _, pe = `<${fe}>`, v = document, y = () => v.createComment(""), b = (e) => e === null || typeof e != "object" && typeof e != "function", x = Array.isArray, me = (e) => x(e) || typeof e?.[Symbol.iterator] == "function", S = "[ 	\n\f\r]", C = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, he = /-->/g, ge = />/g, w = RegExp(`>|${S}(?:([^\\s"'>=/]+)(${S}*=${S}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`, "g"), _e = /'/g, ve = /"/g, ye = /^(?:script|style|textarea|title)$/i, T = ((e) => (t, ...n) => ({
+var ce = globalThis, le = (e) => e, g = ce.trustedTypes, ue = g ? g.createPolicy("lit-html", { createHTML: (e) => e }) : void 0, de = "$lit$", _ = `lit$${Math.random().toFixed(9).slice(2)}$`, v = "?" + _, fe = `<${v}>`, y = document, b = () => y.createComment(""), x = (e) => e === null || typeof e != "object" && typeof e != "function", S = Array.isArray, pe = (e) => S(e) || typeof e?.[Symbol.iterator] == "function", C = "[ 	\n\f\r]", w = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, me = /-->/g, he = />/g, T = RegExp(`>|${C}(?:([^\\s"'>=/]+)(${C}*=${C}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`, "g"), ge = /'/g, _e = /"/g, ve = /^(?:script|style|textarea|title)$/i, E = ((e) => (t, ...n) => ({
 	_$litType$: e,
 	strings: t,
 	values: n
-}))(1), E = Symbol.for("lit-noChange"), D = Symbol.for("lit-nothing"), be = /* @__PURE__ */ new WeakMap(), O = v.createTreeWalker(v, 129);
-function xe(e, t) {
-	if (!x(e) || !e.hasOwnProperty("raw")) throw Error("invalid template strings array");
+}))(1), D = Symbol.for("lit-noChange"), O = Symbol.for("lit-nothing"), ye = /* @__PURE__ */ new WeakMap(), k = y.createTreeWalker(y, 129);
+function be(e, t) {
+	if (!S(e) || !e.hasOwnProperty("raw")) throw Error("invalid template strings array");
 	return ue === void 0 ? t : ue.createHTML(t);
 }
-var Se = (e, t) => {
-	let n = e.length - 1, r = [], i, a = t === 2 ? "<svg>" : t === 3 ? "<math>" : "", o = C;
+var xe = (e, t) => {
+	let n = e.length - 1, r = [], i, a = t === 2 ? "<svg>" : t === 3 ? "<math>" : "", o = w;
 	for (let t = 0; t < n; t++) {
 		let n = e[t], s, c, l = -1, u = 0;
-		for (; u < n.length && (o.lastIndex = u, c = o.exec(n), c !== null);) u = o.lastIndex, o === C ? c[1] === "!--" ? o = he : c[1] === void 0 ? c[2] === void 0 ? c[3] !== void 0 && (o = w) : (ye.test(c[2]) && (i = RegExp("</" + c[2], "g")), o = w) : o = ge : o === w ? c[0] === ">" ? (o = i ?? C, l = -1) : c[1] === void 0 ? l = -2 : (l = o.lastIndex - c[2].length, s = c[1], o = c[3] === void 0 ? w : c[3] === "\"" ? ve : _e) : o === ve || o === _e ? o = w : o === he || o === ge ? o = C : (o = w, i = void 0);
-		let d = o === w && e[t + 1].startsWith("/>") ? " " : "";
-		a += o === C ? n + pe : l >= 0 ? (r.push(s), n.slice(0, l) + de + n.slice(l) + _ + d) : n + _ + (l === -2 ? t : d);
+		for (; u < n.length && (o.lastIndex = u, c = o.exec(n), c !== null);) u = o.lastIndex, o === w ? c[1] === "!--" ? o = me : c[1] === void 0 ? c[2] === void 0 ? c[3] !== void 0 && (o = T) : (ve.test(c[2]) && (i = RegExp("</" + c[2], "g")), o = T) : o = he : o === T ? c[0] === ">" ? (o = i ?? w, l = -1) : c[1] === void 0 ? l = -2 : (l = o.lastIndex - c[2].length, s = c[1], o = c[3] === void 0 ? T : c[3] === "\"" ? _e : ge) : o === _e || o === ge ? o = T : o === me || o === he ? o = w : (o = T, i = void 0);
+		let d = o === T && e[t + 1].startsWith("/>") ? " " : "";
+		a += o === w ? n + fe : l >= 0 ? (r.push(s), n.slice(0, l) + de + n.slice(l) + _ + d) : n + _ + (l === -2 ? t : d);
 	}
-	return [xe(e, a + (e[n] || "<?>") + (t === 2 ? "</svg>" : t === 3 ? "</math>" : "")), r];
-}, k = class e {
+	return [be(e, a + (e[n] || "<?>") + (t === 2 ? "</svg>" : t === 3 ? "</math>" : "")), r];
+}, A = class e {
 	constructor({ strings: t, _$litType$: n }, r) {
 		let i;
 		this.parts = [];
-		let a = 0, o = 0, s = t.length - 1, c = this.parts, [l, u] = Se(t, n);
-		if (this.el = e.createElement(l, r), O.currentNode = this.el.content, n === 2 || n === 3) {
+		let a = 0, o = 0, s = t.length - 1, c = this.parts, [l, u] = xe(t, n);
+		if (this.el = e.createElement(l, r), k.currentNode = this.el.content, n === 2 || n === 3) {
 			let e = this.el.content.firstChild;
 			e.replaceWith(...e.childNodes);
 		}
-		for (; (i = O.nextNode()) !== null && c.length < s;) {
+		for (; (i = k.nextNode()) !== null && c.length < s;) {
 			if (i.nodeType === 1) {
 				if (i.hasAttributes()) for (let e of i.getAttributeNames()) if (e.endsWith(de)) {
 					let t = u[o++], n = i.getAttribute(e).split(_), r = /([.?@])?(.*)/.exec(t);
@@ -290,25 +290,25 @@ var Se = (e, t) => {
 						index: a,
 						name: r[2],
 						strings: n,
-						ctor: r[1] === "." ? we : r[1] === "?" ? Te : r[1] === "@" ? Ee : M
+						ctor: r[1] === "." ? Ce : r[1] === "?" ? we : r[1] === "@" ? Te : N
 					}), i.removeAttribute(e);
 				} else e.startsWith(_) && (c.push({
 					type: 6,
 					index: a
 				}), i.removeAttribute(e));
-				if (ye.test(i.tagName)) {
+				if (ve.test(i.tagName)) {
 					let e = i.textContent.split(_), t = e.length - 1;
 					if (t > 0) {
 						i.textContent = g ? g.emptyScript : "";
-						for (let n = 0; n < t; n++) i.append(e[n], y()), O.nextNode(), c.push({
+						for (let n = 0; n < t; n++) i.append(e[n], b()), k.nextNode(), c.push({
 							type: 2,
 							index: ++a
 						});
-						i.append(e[t], y());
+						i.append(e[t], b());
 					}
 				}
 			} else if (i.nodeType === 8) {
-				if (i.data === fe) c.push({
+				if (i.data === v) c.push({
 					type: 2,
 					index: a
 				});
@@ -324,16 +324,16 @@ var Se = (e, t) => {
 		}
 	}
 	static createElement(e, t) {
-		let n = v.createElement("template");
+		let n = y.createElement("template");
 		return n.innerHTML = e, n;
 	}
 };
-function A(e, t, n = e, r) {
-	if (t === E) return t;
-	let i = r === void 0 ? n._$Cl : n._$Co?.[r], a = b(t) ? void 0 : t._$litDirective$;
-	return i?.constructor !== a && (i?._$AO?.(!1), a === void 0 ? i = void 0 : (i = new a(e), i._$AT(e, n, r)), r === void 0 ? n._$Cl = i : (n._$Co ??= [])[r] = i), i !== void 0 && (t = A(e, i._$AS(e, t.values), i, r)), t;
+function j(e, t, n = e, r) {
+	if (t === D) return t;
+	let i = r === void 0 ? n._$Cl : n._$Co?.[r], a = x(t) ? void 0 : t._$litDirective$;
+	return i?.constructor !== a && (i?._$AO?.(!1), a === void 0 ? i = void 0 : (i = new a(e), i._$AT(e, n, r)), r === void 0 ? n._$Cl = i : (n._$Co ??= [])[r] = i), i !== void 0 && (t = j(e, i._$AS(e, t.values), i, r)), t;
 }
-var Ce = class {
+var Se = class {
 	constructor(e, t) {
 		this._$AV = [], this._$AN = void 0, this._$AD = e, this._$AM = t;
 	}
@@ -344,28 +344,28 @@ var Ce = class {
 		return this._$AM._$AU;
 	}
 	u(e) {
-		let { el: { content: t }, parts: n } = this._$AD, r = (e?.creationScope ?? v).importNode(t, !0);
-		O.currentNode = r;
-		let i = O.nextNode(), a = 0, o = 0, s = n[0];
+		let { el: { content: t }, parts: n } = this._$AD, r = (e?.creationScope ?? y).importNode(t, !0);
+		k.currentNode = r;
+		let i = k.nextNode(), a = 0, o = 0, s = n[0];
 		for (; s !== void 0;) {
 			if (a === s.index) {
 				let t;
-				s.type === 2 ? t = new j(i, i.nextSibling, this, e) : s.type === 1 ? t = new s.ctor(i, s.name, s.strings, this, e) : s.type === 6 && (t = new De(i, this, e)), this._$AV.push(t), s = n[++o];
+				s.type === 2 ? t = new M(i, i.nextSibling, this, e) : s.type === 1 ? t = new s.ctor(i, s.name, s.strings, this, e) : s.type === 6 && (t = new Ee(i, this, e)), this._$AV.push(t), s = n[++o];
 			}
-			a !== s?.index && (i = O.nextNode(), a++);
+			a !== s?.index && (i = k.nextNode(), a++);
 		}
-		return O.currentNode = v, r;
+		return k.currentNode = y, r;
 	}
 	p(e) {
 		let t = 0;
 		for (let n of this._$AV) n !== void 0 && (n.strings === void 0 ? n._$AI(e[t]) : (n._$AI(e, n, t), t += n.strings.length - 2)), t++;
 	}
-}, j = class e {
+}, M = class e {
 	get _$AU() {
 		return this._$AM?._$AU ?? this._$Cv;
 	}
 	constructor(e, t, n, r) {
-		this.type = 2, this._$AH = D, this._$AN = void 0, this._$AA = e, this._$AB = t, this._$AM = n, this.options = r, this._$Cv = r?.isConnected ?? !0;
+		this.type = 2, this._$AH = O, this._$AN = void 0, this._$AA = e, this._$AB = t, this._$AM = n, this.options = r, this._$Cv = r?.isConnected ?? !0;
 	}
 	get parentNode() {
 		let e = this._$AA.parentNode, t = this._$AM;
@@ -378,7 +378,7 @@ var Ce = class {
 		return this._$AB;
 	}
 	_$AI(e, t = this) {
-		e = A(this, e, t), b(e) ? e === D || e == null || e === "" ? (this._$AH !== D && this._$AR(), this._$AH = D) : e !== this._$AH && e !== E && this._(e) : e._$litType$ === void 0 ? e.nodeType === void 0 ? me(e) ? this.k(e) : this._(e) : this.T(e) : this.$(e);
+		e = j(this, e, t), x(e) ? e === O || e == null || e === "" ? (this._$AH !== O && this._$AR(), this._$AH = O) : e !== this._$AH && e !== D && this._(e) : e._$litType$ === void 0 ? e.nodeType === void 0 ? pe(e) ? this.k(e) : this._(e) : this.T(e) : this.$(e);
 	}
 	O(e) {
 		return this._$AA.parentNode.insertBefore(e, this._$AB);
@@ -387,24 +387,24 @@ var Ce = class {
 		this._$AH !== e && (this._$AR(), this._$AH = this.O(e));
 	}
 	_(e) {
-		this._$AH !== D && b(this._$AH) ? this._$AA.nextSibling.data = e : this.T(v.createTextNode(e)), this._$AH = e;
+		this._$AH !== O && x(this._$AH) ? this._$AA.nextSibling.data = e : this.T(y.createTextNode(e)), this._$AH = e;
 	}
 	$(e) {
-		let { values: t, _$litType$: n } = e, r = typeof n == "number" ? this._$AC(e) : (n.el === void 0 && (n.el = k.createElement(xe(n.h, n.h[0]), this.options)), n);
+		let { values: t, _$litType$: n } = e, r = typeof n == "number" ? this._$AC(e) : (n.el === void 0 && (n.el = A.createElement(be(n.h, n.h[0]), this.options)), n);
 		if (this._$AH?._$AD === r) this._$AH.p(t);
 		else {
-			let e = new Ce(r, this), n = e.u(this.options);
+			let e = new Se(r, this), n = e.u(this.options);
 			e.p(t), this.T(n), this._$AH = e;
 		}
 	}
 	_$AC(e) {
-		let t = be.get(e.strings);
-		return t === void 0 && be.set(e.strings, t = new k(e)), t;
+		let t = ye.get(e.strings);
+		return t === void 0 && ye.set(e.strings, t = new A(e)), t;
 	}
 	k(t) {
-		x(this._$AH) || (this._$AH = [], this._$AR());
+		S(this._$AH) || (this._$AH = [], this._$AR());
 		let n = this._$AH, r, i = 0;
-		for (let a of t) i === n.length ? n.push(r = new e(this.O(y()), this.O(y()), this, this.options)) : r = n[i], r._$AI(a), i++;
+		for (let a of t) i === n.length ? n.push(r = new e(this.O(b()), this.O(b()), this, this.options)) : r = n[i], r._$AI(a), i++;
 		i < n.length && (this._$AR(r && r._$AB.nextSibling, i), n.length = i);
 	}
 	_$AR(e = this._$AA.nextSibling, t) {
@@ -416,7 +416,7 @@ var Ce = class {
 	setConnected(e) {
 		this._$AM === void 0 && (this._$Cv = e, this._$AP?.(e));
 	}
-}, M = class {
+}, N = class {
 	get tagName() {
 		return this.element.tagName;
 	}
@@ -424,47 +424,47 @@ var Ce = class {
 		return this._$AM._$AU;
 	}
 	constructor(e, t, n, r, i) {
-		this.type = 1, this._$AH = D, this._$AN = void 0, this.element = e, this.name = t, this._$AM = r, this.options = i, n.length > 2 || n[0] !== "" || n[1] !== "" ? (this._$AH = Array(n.length - 1).fill(/* @__PURE__ */ new String()), this.strings = n) : this._$AH = D;
+		this.type = 1, this._$AH = O, this._$AN = void 0, this.element = e, this.name = t, this._$AM = r, this.options = i, n.length > 2 || n[0] !== "" || n[1] !== "" ? (this._$AH = Array(n.length - 1).fill(/* @__PURE__ */ new String()), this.strings = n) : this._$AH = O;
 	}
 	_$AI(e, t = this, n, r) {
 		let i = this.strings, a = !1;
-		if (i === void 0) e = A(this, e, t, 0), a = !b(e) || e !== this._$AH && e !== E, a && (this._$AH = e);
+		if (i === void 0) e = j(this, e, t, 0), a = !x(e) || e !== this._$AH && e !== D, a && (this._$AH = e);
 		else {
 			let r = e, o, s;
-			for (e = i[0], o = 0; o < i.length - 1; o++) s = A(this, r[n + o], t, o), s === E && (s = this._$AH[o]), a ||= !b(s) || s !== this._$AH[o], s === D ? e = D : e !== D && (e += (s ?? "") + i[o + 1]), this._$AH[o] = s;
+			for (e = i[0], o = 0; o < i.length - 1; o++) s = j(this, r[n + o], t, o), s === D && (s = this._$AH[o]), a ||= !x(s) || s !== this._$AH[o], s === O ? e = O : e !== O && (e += (s ?? "") + i[o + 1]), this._$AH[o] = s;
 		}
 		a && !r && this.j(e);
 	}
 	j(e) {
-		e === D ? this.element.removeAttribute(this.name) : this.element.setAttribute(this.name, e ?? "");
+		e === O ? this.element.removeAttribute(this.name) : this.element.setAttribute(this.name, e ?? "");
 	}
-}, we = class extends M {
+}, Ce = class extends N {
 	constructor() {
 		super(...arguments), this.type = 3;
 	}
 	j(e) {
-		this.element[this.name] = e === D ? void 0 : e;
+		this.element[this.name] = e === O ? void 0 : e;
 	}
-}, Te = class extends M {
+}, we = class extends N {
 	constructor() {
 		super(...arguments), this.type = 4;
 	}
 	j(e) {
-		this.element.toggleAttribute(this.name, !!e && e !== D);
+		this.element.toggleAttribute(this.name, !!e && e !== O);
 	}
-}, Ee = class extends M {
+}, Te = class extends N {
 	constructor(e, t, n, r, i) {
 		super(e, t, n, r, i), this.type = 5;
 	}
 	_$AI(e, t = this) {
-		if ((e = A(this, e, t, 0) ?? D) === E) return;
-		let n = this._$AH, r = e === D && n !== D || e.capture !== n.capture || e.once !== n.once || e.passive !== n.passive, i = e !== D && (n === D || r);
+		if ((e = j(this, e, t, 0) ?? O) === D) return;
+		let n = this._$AH, r = e === O && n !== O || e.capture !== n.capture || e.once !== n.once || e.passive !== n.passive, i = e !== O && (n === O || r);
 		r && this.element.removeEventListener(this.name, this, n), i && this.element.addEventListener(this.name, this, e), this._$AH = e;
 	}
 	handleEvent(e) {
 		typeof this._$AH == "function" ? this._$AH.call(this.options?.host ?? this.element, e) : this._$AH.handleEvent(e);
 	}
-}, De = class {
+}, Ee = class {
 	constructor(e, t, n) {
 		this.element = e, this.type = 6, this._$AN = void 0, this._$AM = t, this.options = n;
 	}
@@ -472,18 +472,33 @@ var Ce = class {
 		return this._$AM._$AU;
 	}
 	_$AI(e) {
-		A(this, e);
+		j(this, e);
 	}
+}, De = {
+	M: de,
+	P: _,
+	A: v,
+	C: 1,
+	L: xe,
+	R: Se,
+	D: pe,
+	V: j,
+	I: M,
+	H: N,
+	N: we,
+	U: Te,
+	B: Ce,
+	F: Ee
 }, Oe = ce.litHtmlPolyfillSupport;
-Oe?.(k, j), (ce.litHtmlVersions ??= []).push("3.3.3");
+Oe?.(A, M), (ce.litHtmlVersions ??= []).push("3.3.3");
 var ke = (e, t, n) => {
 	let r = n?.renderBefore ?? t, i = r._$litPart$;
 	if (i === void 0) {
 		let e = n?.renderBefore ?? null;
-		r._$litPart$ = i = new j(t.insertBefore(y(), e), e, void 0, n ?? {});
+		r._$litPart$ = i = new M(t.insertBefore(b(), e), e, void 0, n ?? {});
 	}
 	return i._$AI(e), i;
-}, N = globalThis, P = class extends h {
+}, P = globalThis, F = class extends h {
 	constructor() {
 		super(...arguments), this.renderOptions = { host: this }, this._$Do = void 0;
 	}
@@ -502,15 +517,15 @@ var ke = (e, t, n) => {
 		super.disconnectedCallback(), this._$Do?.setConnected(!1);
 	}
 	render() {
-		return E;
+		return D;
 	}
 };
-P._$litElement$ = !0, P.finalized = !0, N.litElementHydrateSupport?.({ LitElement: P });
-var Ae = N.litElementPolyfillSupport;
-Ae?.({ LitElement: P }), (N.litElementVersions ??= []).push("4.2.2");
+F._$litElement$ = !0, F.finalized = !0, P.litElementHydrateSupport?.({ LitElement: F });
+var Ae = P.litElementPolyfillSupport;
+Ae?.({ LitElement: F }), (P.litElementVersions ??= []).push("4.2.2");
 //#endregion
 //#region node_modules/@lit/reactive-element/decorators/custom-element.js
-var F = (e) => (t, n) => {
+var I = (e) => (t, n) => {
 	n === void 0 ? customElements.define(e, t) : n.addInitializer(() => {
 		customElements.define(e, t);
 	});
@@ -543,7 +558,7 @@ var F = (e) => (t, n) => {
 	}
 	throw Error("Unsupported decorator location: " + r);
 };
-function I(e) {
+function L(e) {
 	return (t, n) => typeof n == "object" ? Me(e, t, n) : ((e, t, n) => {
 		let r = t.hasOwnProperty(n);
 		return t.constructor.createProperty(n, e), r ? Object.getOwnPropertyDescriptor(t, n) : void 0;
@@ -551,8 +566,8 @@ function I(e) {
 }
 //#endregion
 //#region node_modules/@lit/reactive-element/decorators/state.js
-function L(e) {
-	return I({
+function R(e) {
+	return L({
 		...e,
 		state: !0,
 		attribute: !1
@@ -575,32 +590,133 @@ var Fe = async () => {
 	} catch (e) {
 		console.warn("[kubernetes-panel] Failed to load HA elements:", e);
 	}
-}, Ie = {
+}, { I: Ie } = De, Le = (e) => e.strings === void 0, Re = {
+	ATTRIBUTE: 1,
+	CHILD: 2,
+	PROPERTY: 3,
+	BOOLEAN_ATTRIBUTE: 4,
+	EVENT: 5,
+	ELEMENT: 6
+}, ze = (e) => (...t) => ({
+	_$litDirective$: e,
+	values: t
+}), Be = class {
+	constructor(e) {}
+	get _$AU() {
+		return this._$AM._$AU;
+	}
+	_$AT(e, t, n) {
+		this._$Ct = e, this._$AM = t, this._$Ci = n;
+	}
+	_$AS(e, t) {
+		return this.update(e, t);
+	}
+	update(e, t) {
+		return this.render(...t);
+	}
+}, z = (e, t) => {
+	let n = e._$AN;
+	if (n === void 0) return !1;
+	for (let e of n) e._$AO?.(t, !1), z(e, t);
+	return !0;
+}, B = (e) => {
+	let t, n;
+	do {
+		if ((t = e._$AM) === void 0) break;
+		n = t._$AN, n.delete(e), e = t;
+	} while (n?.size === 0);
+}, Ve = (e) => {
+	for (let t; t = e._$AM; e = t) {
+		let n = t._$AN;
+		if (n === void 0) t._$AN = n = /* @__PURE__ */ new Set();
+		else if (n.has(e)) break;
+		n.add(e), We(t);
+	}
+};
+function He(e) {
+	this._$AN === void 0 ? this._$AM = e : (B(this), this._$AM = e, Ve(this));
+}
+function Ue(e, t = !1, n = 0) {
+	let r = this._$AH, i = this._$AN;
+	if (i !== void 0 && i.size !== 0) {
+		if (t) {
+			if (Array.isArray(r)) for (let e = n; e < r.length; e++) z(r[e], !1), B(r[e]);
+			else r != null && (z(r, !1), B(r));
+		} else z(this, e);
+	}
+}
+var We = (e) => {
+	e.type == Re.CHILD && (e._$AP ??= Ue, e._$AQ ??= He);
+}, Ge = class extends Be {
+	constructor() {
+		super(...arguments), this._$AN = void 0;
+	}
+	_$AT(e, t, n) {
+		super._$AT(e, t, n), Ve(this), this.isConnected = e._$AU;
+	}
+	_$AO(e, t = !0) {
+		e !== this.isConnected && (this.isConnected = e, e ? this.reconnected?.() : this.disconnected?.()), t && (z(this, e), B(this));
+	}
+	setValue(e) {
+		if (Le(this._$Ct)) this._$Ct._$AI(e, this);
+		else {
+			let t = [...this._$Ct._$AH];
+			t[this._$Ci] = e, this._$Ct._$AI(t, this, 0);
+		}
+	}
+	disconnected() {}
+	reconnected() {}
+}, Ke = /* @__PURE__ */ new WeakMap(), qe = ze(class extends Ge {
+	render(e) {
+		return O;
+	}
+	update(e, [t]) {
+		let n = t !== this.G;
+		return n && this.rt(void 0), (n || this.lt !== this.ct) && (this.G = t, this.ht = e.options?.host, this.rt(this.ct = e.element)), O;
+	}
+	rt(e) {
+		if (this.G !== void 0) {
+			if (this.isConnected || (e = void 0), typeof this.G == "function") {
+				let t = this.ht ?? globalThis, n = Ke.get(t);
+				n === void 0 && (n = /* @__PURE__ */ new WeakMap(), Ke.set(t, n)), n.get(this.G) !== void 0 && this.G.call(this.ht, void 0), n.set(this.G, e), e !== void 0 && this.G.call(this.ht, e);
+			} else this.G.value = e;
+		}
+	}
+	get lt() {
+		return typeof this.G == "function" ? Ke.get(this.ht ?? globalThis)?.get(this.G) : this.G?.value;
+	}
+	disconnected() {
+		this.lt === this.ct && this.rt(void 0);
+	}
+	reconnected() {
+		this.rt(this.ct);
+	}
+}), Je = {
 	memory_pressure: "Memory Pressure",
 	disk_pressure: "Disk Pressure",
 	pid_pressure: "PID Pressure",
 	network_unavailable: "Network Unavailable"
 };
-function R(e) {
+function V(e) {
 	if (!e || e === "N/A") return "N/A";
 	let t = new Date(e).getTime(), n = Math.max(0, Math.floor((Date.now() - t) / 1e3));
 	return n < 60 ? `${n}s` : n < 3600 ? `${Math.floor(n / 60)}m` : n < 86400 ? `${Math.floor(n / 3600)}h` : `${Math.floor(n / 86400)}d`;
 }
-function Le(e) {
+function Ye(e) {
 	if (!e) return "Never";
 	let t = Date.now() / 1e3, n = Math.max(0, Math.floor(t - e));
 	return n < 60 ? `${n}s ago` : n < 3600 ? `${Math.floor(n / 60)}m ago` : n < 86400 ? `${Math.floor(n / 3600)}h ago` : `${Math.floor(n / 86400)}d ago`;
 }
-function Re(e, t) {
+function Xe(e, t) {
 	let n = new Set(e);
 	return n.has(t) ? n.delete(t) : n.add(t), n;
 }
-function z(e, t) {
+function H(e, t) {
 	return typeof e == "object" && e && "message" in e && typeof e.message == "string" && e.message ? e.message : t;
 }
 //#endregion
 //#region \0@oxc-project+runtime@0.147.0/helpers/esm/decorate.js
-function B(e, t, n, r) {
+function U(e, t, n, r) {
 	var i = arguments.length, a = i < 3 ? t : r === null ? r = Object.getOwnPropertyDescriptor(t, n) : r, o;
 	if (typeof Reflect == "object" && typeof Reflect.decorate == "function") a = Reflect.decorate(e, t, n, r);
 	else for (var s = e.length - 1; s >= 0; s--) (o = e[s]) && (a = (i < 3 ? o(a) : i > 3 ? o(t, n, a) : o(t, n)) || a);
@@ -608,7 +724,7 @@ function B(e, t, n, r) {
 }
 //#endregion
 //#region src/views/base-view.ts
-var V = class extends P {
+var W = class extends F {
 	constructor(...e) {
 		super(...e), this._data = null, this._loading = !0, this._error = null, this.pollMs = 6e4, this.subscribe = !0, this.loadErrorFallback = "Failed to load data", this.emptyMessage = "No Kubernetes clusters configured.", this._loadingInFlight = !1, this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 	}
@@ -656,7 +772,7 @@ var V = class extends P {
 			try {
 				await this.fetchData();
 			} catch (e) {
-				this._error = z(e, this.loadErrorFallback);
+				this._error = H(e, this.loadErrorFallback);
 			} finally {
 				this._loading = !1, this._loadingInFlight = !1;
 			}
@@ -664,15 +780,18 @@ var V = class extends P {
 	}
 	_onOverlayKeydown(e) {
 		return (t) => {
-			t.key === "Escape" && e !== D && e();
+			t.key === "Escape" && e !== O && e();
 		};
 	}
+	_autofocusOverlay() {
+		return qe((e) => e?.focus());
+	}
 	renderState(e) {
-		return this._loading ? T`
+		return this._loading ? E`
         <div class="loading">
           <ha-circular-progress indeterminate></ha-circular-progress>
         </div>
-      ` : this._error ? T`
+      ` : this._error ? E`
         <ha-card>
           <div class="error-card">
             <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -680,13 +799,13 @@ var V = class extends P {
             <button class="retry-btn" @click=${this._loadData}>Retry</button>
           </div>
         </ha-card>
-      ` : e ? T`<div class="empty">${this.emptyMessage}</div>` : D;
+      ` : e ? E`<div class="empty">${this.emptyMessage}</div>` : O;
 	}
 };
-B([I({ attribute: !1 })], V.prototype, "hass", void 0), B([L()], V.prototype, "_data", void 0), B([L()], V.prototype, "_loading", void 0), B([L()], V.prototype, "_error", void 0);
+U([L({ attribute: !1 })], W.prototype, "hass", void 0), U([R()], W.prototype, "_data", void 0), U([R()], W.prototype, "_loading", void 0), U([R()], W.prototype, "_error", void 0);
 //#endregion
 //#region src/styles/shared.ts
-var H = o`
+var G = o`
   :host {
     display: block;
   }
@@ -732,7 +851,7 @@ var H = o`
     color: var(--secondary-text-color);
     font-size: 16px;
   }
-`, U = o`
+`, K = o`
   .filters {
     display: flex;
     gap: 12px;
@@ -790,7 +909,7 @@ var H = o`
     border-color: var(--primary-color);
     color: var(--primary-color);
   }
-`, W = o`
+`, q = o`
   .badge {
     display: inline-flex;
     align-items: center;
@@ -841,7 +960,7 @@ var H = o`
     background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
     color: var(--info-color, #2196f3);
   }
-`, ze = o`
+`, Ze = o`
   .confirm-overlay {
     position: fixed;
     top: 0;
@@ -917,11 +1036,11 @@ var H = o`
     opacity: 0.6;
     cursor: not-allowed;
   }
-`, Be = o`
+`, Qe = o`
   .table-wrapper {
     overflow-x: auto;
   }
-`, Ve = {
+`, $e = {
 	pods: "mdi:cube-outline",
 	nodes: "mdi:server",
 	deployments: "mdi:rocket-launch",
@@ -931,7 +1050,7 @@ var H = o`
 	jobs: "mdi:briefcase-check",
 	ingresses: "mdi:earth",
 	services: "mdi:swap-horizontal"
-}, He = {
+}, et = {
 	pods: "Pods",
 	nodes: "Nodes",
 	deployments: "Deployments",
@@ -941,7 +1060,7 @@ var H = o`
 	jobs: "Jobs",
 	ingresses: "Ingresses",
 	services: "Services"
-}, G = class extends V {
+}, tt = class extends W {
 	constructor(...e) {
 		super(...e), this._expandedNamespaces = /* @__PURE__ */ new Set(), this.loadErrorFallback = "Failed to load cluster data";
 	}
@@ -950,12 +1069,12 @@ var H = o`
 		this._data = e;
 	}
 	_toggleNamespaces(e) {
-		this._expandedNamespaces = Re(this._expandedNamespaces, e);
+		this._expandedNamespaces = Xe(this._expandedNamespaces, e);
 	}
 	static {
 		this.styles = [
-			H,
-			W,
+			G,
+			q,
 			o`
       .cluster-section {
         margin-bottom: 24px;
@@ -1202,11 +1321,11 @@ var H = o`
 	}
 	render() {
 		let e = this.renderState(!this._data?.clusters.length);
-		return e === D ? T` ${this._data.clusters.map((e) => this._renderCluster(e))} ` : e;
+		return e === O ? E` ${this._data.clusters.map((e) => this._renderCluster(e))} ` : e;
 	}
 	_renderCluster(e) {
 		let t = e.alerts.nodes_with_pressure.length + e.alerts.degraded_workloads.length + e.alerts.failed_pods.length;
-		return T`
+		return E`
       <div class="cluster-section">
         <div class="cluster-header">
           <span class="cluster-name">${e.cluster_name}</span>
@@ -1216,7 +1335,7 @@ var H = o`
         <div class="meta-row">
           <div class="meta-item">
             <ha-icon icon="mdi:update"></ha-icon>
-            <span>Updated ${Le(e.last_update)}</span>
+            <span>Updated ${Ye(e.last_update)}</span>
           </div>
           <button class="refresh-btn" @click=${this._loadData} title="Refresh data">
             <ha-icon icon="mdi:refresh"></ha-icon>
@@ -1224,11 +1343,11 @@ var H = o`
         </div>
 
         <div class="counts-grid">
-          ${Object.entries(e.counts).map(([e, t]) => T`
+          ${Object.entries(e.counts).map(([e, t]) => E`
               <ha-card class="count-card">
-                <ha-icon icon=${Ve[e] || "mdi:help"}></ha-icon>
+                <ha-icon icon=${$e[e] || "mdi:help"}></ha-icon>
                 <div class="count-value">${t}</div>
-                <div class="count-label">${He[e] || e}</div>
+                <div class="count-label">${et[e] || e}</div>
               </ha-card>
             `)}
         </div>
@@ -1246,7 +1365,7 @@ var H = o`
               </div>
             </span>
           </div>
-          ${t > 0 ? this._renderAlerts(e.alerts) : T`
+          ${t > 0 ? this._renderAlerts(e.alerts) : E`
                   <div class="no-alerts">
                     <ha-icon icon="mdi:check-circle"></ha-icon>
                     <div class="no-alerts-text">
@@ -1264,13 +1383,13 @@ var H = o`
     `;
 	}
 	_renderHealthBadge(e) {
-		return e === !0 ? T`<span class="badge badge-healthy">Healthy</span>` : e === !1 ? T`<span class="badge badge-unhealthy">Unhealthy</span>` : T`<span class="badge badge-unknown">Unknown</span>`;
+		return e === !0 ? E`<span class="badge badge-healthy">Healthy</span>` : e === !1 ? E`<span class="badge badge-unhealthy">Unhealthy</span>` : E`<span class="badge badge-unknown">Unknown</span>`;
 	}
 	_renderNamespaceSection(e) {
 		let t = Object.entries(e.namespaces);
-		if (t.length === 0) return D;
+		if (t.length === 0) return O;
 		let n = this._expandedNamespaces.has(e.entry_id);
-		return T`
+		return E`
       <div
         class="section-header"
         role="button"
@@ -1283,7 +1402,7 @@ var H = o`
         <ha-icon icon=${n ? "mdi:chevron-down" : "mdi:chevron-right"}></ha-icon>
         <span>Namespaces (${t.length})</span>
       </div>
-      ${n ? this._renderNamespaceTable(t) : D}
+      ${n ? this._renderNamespaceTable(t) : O}
     `;
 	}
 	_renderNamespaceTable(e) {
@@ -1295,19 +1414,19 @@ var H = o`
 			"cronjobs",
 			"jobs"
 		];
-		return T`
+		return E`
       <table class="ns-table">
         <thead>
           <tr>
             <th>Namespace</th>
-            ${t.map((e) => T`<th>${He[e] || e}</th>`)}
+            ${t.map((e) => E`<th>${et[e] || e}</th>`)}
           </tr>
         </thead>
         <tbody>
-          ${e.sort(([e], [t]) => e.localeCompare(t)).map(([e, n]) => T`
+          ${e.sort(([e], [t]) => e.localeCompare(t)).map(([e, n]) => E`
                 <tr>
                   <td>${e}</td>
-                  ${t.map((e) => T`<td>${n[e] || 0}</td>`)}
+                  ${t.map((e) => E`<td>${n[e] || 0}</td>`)}
                 </tr>
               `)}
         </tbody>
@@ -1315,19 +1434,19 @@ var H = o`
     `;
 	}
 	_renderAlerts(e) {
-		return T`
-      ${e.nodes_with_pressure.map((e) => T`
+		return E`
+      ${e.nodes_with_pressure.map((e) => E`
           <div class="alert-card alert-warning">
             <ha-icon icon="mdi:server-network-off"></ha-icon>
             <div>
               <div class="alert-title">Node: ${e.name}</div>
               <div class="alert-detail">
-                ${e.conditions.map((e) => Ie[e] || e).join(", ")}
+                ${e.conditions.map((e) => Je[e] || e).join(", ")}
               </div>
             </div>
           </div>
         `)}
-      ${e.degraded_workloads.map((e) => T`
+      ${e.degraded_workloads.map((e) => E`
           <div class="alert-card alert-warning">
             <ha-icon icon="mdi:alert"></ha-icon>
             <div>
@@ -1336,7 +1455,7 @@ var H = o`
             </div>
           </div>
         `)}
-      ${e.failed_pods.map((e) => T`
+      ${e.failed_pods.map((e) => E`
           <div class="alert-card alert-error">
             <ha-icon icon="mdi:alert-octagon"></ha-icon>
             <div>
@@ -1348,10 +1467,10 @@ var H = o`
     `;
 	}
 };
-B([L()], G.prototype, "_expandedNamespaces", void 0), G = B([F("k8s-overview")], G);
+U([R()], tt.prototype, "_expandedNamespaces", void 0), tt = U([I("k8s-overview")], tt);
 //#endregion
 //#region src/styles/actions.ts
-var K = o`
+var nt = o`
   .action-btn {
     display: flex;
     align-items: center;
@@ -1429,7 +1548,7 @@ var K = o`
   .action-error .dismiss-btn:hover {
     background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
   }
-`, q = class extends V {
+`, J = class extends W {
 	constructor(...e) {
 		super(...e), this._expandedNodes = /* @__PURE__ */ new Set(), this._statusFilter = "all", this._searchQuery = "", this._actionInProgress = /* @__PURE__ */ new Set(), this._actionError = null, this.loadErrorFallback = "Failed to load nodes data";
 	}
@@ -1438,7 +1557,7 @@ var K = o`
 		this._data = e;
 	}
 	_toggleNode(e) {
-		this._expandedNodes = Re(this._expandedNodes, e);
+		this._expandedNodes = Xe(this._expandedNodes, e);
 	}
 	_getConditions(e) {
 		let t = [];
@@ -1461,7 +1580,7 @@ var K = o`
 				entry_id: e
 			}), await this._loadData();
 		} catch (e) {
-			let t = z(e, "Action failed");
+			let t = H(e, "Action failed");
 			this._actionError = `Action failed: ${t}`, console.error("[k8s-nodes-table] Action failed:", e);
 		} finally {
 			let e = new Set(this._actionInProgress);
@@ -1470,10 +1589,10 @@ var K = o`
 	}
 	static {
 		this.styles = [
+			nt,
+			G,
 			K,
-			H,
-			U,
-			W,
+			q,
 			o`
       .cluster-section {
         margin-bottom: 24px;
@@ -1628,8 +1747,8 @@ var K = o`
 	}
 	render() {
 		let e = this.renderState(!this._data?.clusters.length);
-		return e === D ? T`
-      ${this._actionError ? T`
+		return e === O ? E`
+      ${this._actionError ? E`
               <div class="action-error">
                 <span>${this._actionError}</span>
                 <button
@@ -1642,15 +1761,15 @@ var K = o`
                   <ha-icon icon="mdi:close"></ha-icon>
                 </button>
               </div>
-            ` : D}
+            ` : O}
       ${this._data.clusters.map((e) => this._renderCluster(e))}
     ` : e;
 	}
 	_renderCluster(e) {
 		let t = this._getFilteredNodes(e.nodes), n = e.nodes.filter((e) => e.status === "Ready").length;
-		return T`
+		return E`
       <div class="cluster-section">
-        ${this._data.clusters.length > 1 ? T`<div class="cluster-name">${e.cluster_name}</div>` : D}
+        ${this._data.clusters.length > 1 ? E`<div class="cluster-name">${e.cluster_name}</div>` : O}
 
         <div class="filters">
           <input
@@ -1666,7 +1785,7 @@ var K = o`
 			"all",
 			"ready",
 			"not-ready"
-		].map((e) => T`
+		].map((e) => E`
               <button
                 class="filter-chip"
                 ?active=${this._statusFilter === e}
@@ -1681,16 +1800,16 @@ var K = o`
 
         <div class="node-count">
           ${n}/${e.nodes.length} nodes ready
-          ${t.length === e.nodes.length ? D : T` &middot; showing ${t.length}`}
+          ${t.length === e.nodes.length ? O : E` &middot; showing ${t.length}`}
         </div>
 
-        ${t.length === 0 ? T`<div class="empty">No nodes match your filters.</div>` : t.map((t) => this._renderNode(e.entry_id, t))}
+        ${t.length === 0 ? E`<div class="empty">No nodes match your filters.</div>` : t.map((t) => this._renderNode(e.entry_id, t))}
       </div>
     `;
 	}
 	_renderNode(e, t) {
 		let n = `${e}_${t.name}`, r = this._expandedNodes.has(n), i = this._getConditions(t), a = t.cpu_usage_millicores != null && t.memory_usage_mib != null, o = t.cpu_cores * 1e3, s = a ? Math.round(t.cpu_usage_millicores / o * 100) : 0, c = a ? t.memory_usage_mib / 1024 : 0, l = a ? Math.round(c / t.memory_capacity_gib * 100) : 0;
-		return T`
+		return E`
       <ha-card class="node-card">
         <div
           class="node-row"
@@ -1706,11 +1825,11 @@ var K = o`
               icon=${r ? "mdi:chevron-down" : "mdi:chevron-right"}
             ></ha-icon>
             ${t.name}
-            ${t.schedulable ? D : T`<span class="badge badge-unschedulable">Unschedulable</span>`}
-            ${i.length > 0 ? T`<span class="badge badge-condition"
+            ${t.schedulable ? O : E`<span class="badge badge-unschedulable">Unschedulable</span>`}
+            ${i.length > 0 ? E`<span class="badge badge-condition"
                     >${i.length}
                     condition${i.length > 1 ? "s" : ""}</span
-                  >` : D}
+                  >` : O}
           </div>
           <span
             class="badge ${t.status === "Ready" ? "badge-ready" : "badge-not-ready"}"
@@ -1719,7 +1838,7 @@ var K = o`
           </span>
           <span class="node-ip">${t.internal_ip}</span>
           <div class="node-resources">
-            ${a ? T`
+            ${a ? E`
                     <div class="resource-bar-container" title="CPU usage">
                       <span class="resource-label">CPU</span>
                       <div class="resource-bar">
@@ -1740,12 +1859,12 @@ var K = o`
                       </div>
                       <span>${l}%</span>
                     </div>
-                  ` : T`<span
+                  ` : E`<span
                     >${t.cpu_cores} CPU &middot; ${t.memory_capacity_gib}
                     GiB</span
                   >`}
           </div>
-          <span class="node-age">${R(t.creation_timestamp)}</span>
+          <span class="node-age">${V(t.creation_timestamp)}</span>
           <button
             class="action-btn ${t.schedulable ? "cordon" : "uncordon"}"
             title=${t.schedulable ? "Cordon (stop scheduling new pods)" : "Uncordon"}
@@ -1759,13 +1878,13 @@ var K = o`
             ></ha-icon>
           </button>
         </div>
-        ${r ? this._renderNodeDetails(t, i) : D}
+        ${r ? this._renderNodeDetails(t, i) : O}
       </ha-card>
     `;
 	}
 	_renderNodeDetails(e, t) {
 		let n = e.cpu_usage_millicores != null && e.memory_usage_mib != null, r = n ? Math.round(e.memory_usage_mib / 1024 * 100) / 100 : null;
-		return T`
+		return E`
       <div class="node-details">
         <div class="details-grid">
           <div class="detail-item">
@@ -1780,14 +1899,14 @@ var K = o`
             <span class="detail-label">CPU Cores</span>
             <span class="detail-value">${e.cpu_cores}</span>
           </div>
-          ${n ? T`
+          ${n ? E`
                   <div class="detail-item">
                     <span class="detail-label">CPU Usage</span>
                     <span class="detail-value"
                       >${e.cpu_usage_millicores}m / ${e.cpu_cores * 1e3}m</span
                     >
                   </div>
-                ` : D}
+                ` : O}
           <div class="detail-item">
             <span class="detail-label">Memory Capacity</span>
             <span class="detail-value">${e.memory_capacity_gib} GiB</span>
@@ -1796,14 +1915,14 @@ var K = o`
             <span class="detail-label">Memory Allocatable</span>
             <span class="detail-value">${e.memory_allocatable_gib} GiB</span>
           </div>
-          ${n ? T`
+          ${n ? E`
                   <div class="detail-item">
                     <span class="detail-label">Memory Usage</span>
                     <span class="detail-value"
                       >${r} / ${e.memory_capacity_gib} GiB</span
                     >
                   </div>
-                ` : D}
+                ` : O}
           <div class="detail-item">
             <span class="detail-label">OS Image</span>
             <span class="detail-value">${e.os_image}</span>
@@ -1829,29 +1948,29 @@ var K = o`
             <span class="detail-value">${e.creation_timestamp}</span>
           </div>
         </div>
-        ${t.length > 0 ? T`
+        ${t.length > 0 ? E`
                 <div class="conditions-row">
-                  ${t.map((e) => T`
+                  ${t.map((e) => E`
                       <span class="badge badge-condition">
-                        ${Ie[e] || e}
+                        ${Je[e] || e}
                       </span>
                     `)}
                 </div>
-              ` : D}
+              ` : O}
       </div>
     `;
 	}
 };
-B([L()], q.prototype, "_expandedNodes", void 0), B([L()], q.prototype, "_statusFilter", void 0), B([L()], q.prototype, "_searchQuery", void 0), B([L()], q.prototype, "_actionInProgress", void 0), B([L()], q.prototype, "_actionError", void 0), q = B([F("k8s-nodes-table")], q);
+U([R()], J.prototype, "_expandedNodes", void 0), U([R()], J.prototype, "_statusFilter", void 0), U([R()], J.prototype, "_searchQuery", void 0), U([R()], J.prototype, "_actionInProgress", void 0), U([R()], J.prototype, "_actionError", void 0), J = U([I("k8s-nodes-table")], J);
 //#endregion
 //#region src/views/k8s-pods-table.ts
-var Ue = {
+var rt = {
 	Running: "badge-running",
 	Succeeded: "badge-succeeded",
 	Pending: "badge-pending",
 	Failed: "badge-failed",
 	Unknown: "badge-unknown"
-}, We = [
+}, it = [
 	{
 		key: "ready",
 		label: "Ready"
@@ -1876,25 +1995,25 @@ var Ue = {
 		key: "age",
 		label: "Age"
 	}
-], Ge = new Set(We.map((e) => e.key)), Ke = "k8s-pods-columns";
-function qe() {
+], at = new Set(it.map((e) => e.key)), ot = "k8s-pods-columns";
+function st() {
 	try {
-		let e = localStorage.getItem(Ke);
+		let e = localStorage.getItem(ot);
 		if (e) {
-			let t = JSON.parse(e).filter((e) => Ge.has(e));
+			let t = JSON.parse(e).filter((e) => at.has(e));
 			if (t.length) return new Set(t);
 		}
 	} catch {}
-	return new Set(Ge);
+	return new Set(at);
 }
-function Je(e) {
+function ct(e) {
 	try {
-		localStorage.setItem(Ke, JSON.stringify([...e]));
+		localStorage.setItem(ot, JSON.stringify([...e]));
 	} catch {}
 }
-var J = class extends V {
+var Y = class extends W {
 	constructor(...e) {
-		super(...e), this._searchQuery = "", this._phaseFilter = "all", this._namespaceFilter = "all", this._sortField = "name", this._sortAsc = !0, this._deleteConfirm = null, this._deleting = !1, this._visibleColumns = qe(), this._columnMenuOpen = !1, this._actionError = null, this.loadErrorFallback = "Failed to load pods data", this._boundCloseMenu = () => {
+		super(...e), this._searchQuery = "", this._phaseFilter = "all", this._namespaceFilter = "all", this._sortField = "name", this._sortAsc = !0, this._deleteConfirm = null, this._deleting = !1, this._visibleColumns = st(), this._columnMenuOpen = !1, this._actionError = null, this.loadErrorFallback = "Failed to load pods data", this._boundCloseMenu = () => {
 			this._columnMenuOpen = !1;
 		};
 	}
@@ -1951,7 +2070,7 @@ var J = class extends V {
 					namespace: this._deleteConfirm.namespace
 				}), this._deleteConfirm = null, await this._loadData();
 			} catch (e) {
-				this._actionError = z(e, "Failed to delete pod"), this._deleteConfirm = null;
+				this._actionError = H(e, "Failed to delete pod"), this._deleteConfirm = null;
 			} finally {
 				this._deleting = !1;
 			}
@@ -1962,12 +2081,12 @@ var J = class extends V {
 	}
 	static {
 		this.styles = [
+			nt,
+			G,
 			K,
-			H,
-			U,
-			W,
-			ze,
-			Be,
+			q,
+			Ze,
+			Qe,
 			o`
       .cluster-section {
         margin-bottom: 24px;
@@ -2133,8 +2252,8 @@ var J = class extends V {
 	}
 	render() {
 		let e = this.renderState(!this._data?.clusters.length);
-		return e === D ? T`
-      ${this._actionError ? T`
+		return e === O ? E`
+      ${this._actionError ? E`
               <div class="action-error">
                 <span>${this._actionError}</span>
                 <button
@@ -2147,16 +2266,16 @@ var J = class extends V {
                   <ha-icon icon="mdi:close"></ha-icon>
                 </button>
               </div>
-            ` : D}
+            ` : O}
       ${this._data.clusters.map((e) => this._renderCluster(e))}
-      ${this._deleteConfirm ? this._renderDeleteDialog() : D}
+      ${this._deleteConfirm ? this._renderDeleteDialog() : O}
     ` : e;
 	}
 	_renderCluster(e) {
 		let t = this._getFilteredPods(e.pods), n = this._getNamespaces(e.pods), r = [...new Set(e.pods.map((e) => e.phase))].sort();
-		return T`
+		return E`
       <div class="cluster-section">
-        ${this._data.clusters.length > 1 ? T`<div class="cluster-name">${e.cluster_name}</div>` : D}
+        ${this._data.clusters.length > 1 ? E`<div class="cluster-name">${e.cluster_name}</div>` : O}
 
         <div class="filters">
           <input
@@ -2177,7 +2296,7 @@ var J = class extends V {
 		}}
           >
             <option value="all">All namespaces</option>
-            ${n.map((e) => T`<option value=${e}>${e}</option>`)}
+            ${n.map((e) => E`<option value=${e}>${e}</option>`)}
           </select>
 
           <button
@@ -2189,7 +2308,7 @@ var J = class extends V {
           >
             All
           </button>
-          ${r.map((e) => T`
+          ${r.map((e) => E`
               <button
                 class="filter-chip"
                 ?active=${this._phaseFilter === e}
@@ -2205,7 +2324,7 @@ var J = class extends V {
 
         <div class="pod-count">${t.length}/${e.pods.length} pods</div>
 
-        ${t.length === 0 ? T`<div class="empty">No pods match your filters.</div>` : T`
+        ${t.length === 0 ? E`<div class="empty">No pods match your filters.</div>` : E`
                 <ha-card>
                   <div class="table-wrapper">
                     <table class="pods-table">
@@ -2218,9 +2337,9 @@ var J = class extends V {
                             @keydown=${(e) => this._handleSortKeydown(e, "namespace")}
                           >
                             Namespace
-                            ${this._sortIcon("namespace") ? T`<ha-icon
+                            ${this._sortIcon("namespace") ? E`<ha-icon
                                     icon=${this._sortIcon("namespace")}
-                                  ></ha-icon>` : D}
+                                  ></ha-icon>` : O}
                           </th>
                           <th
                             role="button"
@@ -2229,9 +2348,9 @@ var J = class extends V {
                             @keydown=${(e) => this._handleSortKeydown(e, "name")}
                           >
                             Name
-                            ${this._sortIcon("name") ? T`<ha-icon
+                            ${this._sortIcon("name") ? E`<ha-icon
                                     icon=${this._sortIcon("name")}
-                                  ></ha-icon>` : D}
+                                  ></ha-icon>` : O}
                           </th>
                           <th
                             role="button"
@@ -2240,40 +2359,40 @@ var J = class extends V {
                             @keydown=${(e) => this._handleSortKeydown(e, "phase")}
                           >
                             Phase
-                            ${this._sortIcon("phase") ? T`<ha-icon
+                            ${this._sortIcon("phase") ? E`<ha-icon
                                     icon=${this._sortIcon("phase")}
-                                  ></ha-icon>` : D}
+                                  ></ha-icon>` : O}
                           </th>
-                          ${this._colVisible("ready") ? T`<th>Ready</th>` : D}
-                          ${this._colVisible("restarts") ? T`<th
+                          ${this._colVisible("ready") ? E`<th>Ready</th>` : O}
+                          ${this._colVisible("restarts") ? E`<th
                                   role="button"
                                   tabindex="0"
                                   @click=${() => this._handleSort("restarts")}
                                   @keydown=${(e) => this._handleSortKeydown(e, "restarts")}
                                 >
                                   Restarts
-                                  ${this._sortIcon("restarts") ? T`<ha-icon icon=${this._sortIcon("restarts")}></ha-icon>` : D}
-                                </th>` : D}
-                          ${this._colVisible("node") ? T`<th
+                                  ${this._sortIcon("restarts") ? E`<ha-icon icon=${this._sortIcon("restarts")}></ha-icon>` : O}
+                                </th>` : O}
+                          ${this._colVisible("node") ? E`<th
                                   role="button"
                                   tabindex="0"
                                   @click=${() => this._handleSort("node_name")}
                                   @keydown=${(e) => this._handleSortKeydown(e, "node_name")}
                                 >
                                   Node
-                                  ${this._sortIcon("node_name") ? T`<ha-icon icon=${this._sortIcon("node_name")}></ha-icon>` : D}
-                                </th>` : D}
-                          ${this._colVisible("ip") ? T`<th>IP</th>` : D}
-                          ${this._colVisible("owner") ? T`<th>Owner</th>` : D}
-                          ${this._colVisible("age") ? T`<th
+                                  ${this._sortIcon("node_name") ? E`<ha-icon icon=${this._sortIcon("node_name")}></ha-icon>` : O}
+                                </th>` : O}
+                          ${this._colVisible("ip") ? E`<th>IP</th>` : O}
+                          ${this._colVisible("owner") ? E`<th>Owner</th>` : O}
+                          ${this._colVisible("age") ? E`<th
                                   role="button"
                                   tabindex="0"
                                   @click=${() => this._handleSort("age")}
                                   @keydown=${(e) => this._handleSortKeydown(e, "age")}
                                 >
                                   Age
-                                  ${this._sortIcon("age") ? T`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : D}
-                                </th>` : D}
+                                  ${this._sortIcon("age") ? E`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : O}
+                                </th>` : O}
                           <th class="col-actions"></th>
                         </tr>
                       </thead>
@@ -2292,10 +2411,10 @@ var J = class extends V {
 	}
 	_toggleColumn(e) {
 		let t = new Set(this._visibleColumns);
-		t.has(e) ? t.delete(e) : t.add(e), this._visibleColumns = t, Je(t);
+		t.has(e) ? t.delete(e) : t.add(e), this._visibleColumns = t, ct(t);
 	}
 	_renderColumnMenu() {
-		return T`
+		return E`
       <div class="column-menu-wrapper">
         <button
           class="column-toggle-btn"
@@ -2306,9 +2425,9 @@ var J = class extends V {
         >
           <ha-icon icon="mdi:table-column"></ha-icon>
         </button>
-        ${this._columnMenuOpen ? T`
+        ${this._columnMenuOpen ? E`
                 <div class="column-menu" @click=${(e) => e.stopPropagation()}>
-                  ${We.map((e) => T`
+                  ${it.map((e) => E`
                       <label class="column-option">
                         <input
                           type="checkbox"
@@ -2319,23 +2438,23 @@ var J = class extends V {
                       </label>
                     `)}
                 </div>
-              ` : D}
+              ` : O}
       </div>
     `;
 	}
 	_renderPodRow(e, t) {
-		let n = Ue[t.phase] || "badge-unknown";
-		return T`
+		let n = rt[t.phase] || "badge-unknown";
+		return E`
       <tr>
         <td>${t.namespace}</td>
         <td class="pod-name">${t.name}</td>
         <td><span class="badge ${n}">${t.phase}</span></td>
-        ${this._colVisible("ready") ? T`<td>${t.ready_containers}/${t.total_containers}</td>` : D}
-        ${this._colVisible("restarts") ? T`<td class=${t.restart_count > 5 ? "restart-warn" : ""}>${t.restart_count}</td>` : D}
-        ${this._colVisible("node") ? T`<td>${t.node_name}</td>` : D}
-        ${this._colVisible("ip") ? T`<td class="mono">${t.pod_ip}</td>` : D}
-        ${this._colVisible("owner") ? T`<td>${t.owner_kind === "N/A" ? T`<span class="owner-info">-</span>` : T`<span class="owner-info">${t.owner_kind}/${t.owner_name}</span>`}</td>` : D}
-        ${this._colVisible("age") ? T`<td>${R(t.creation_timestamp)}</td>` : D}
+        ${this._colVisible("ready") ? E`<td>${t.ready_containers}/${t.total_containers}</td>` : O}
+        ${this._colVisible("restarts") ? E`<td class=${t.restart_count > 5 ? "restart-warn" : ""}>${t.restart_count}</td>` : O}
+        ${this._colVisible("node") ? E`<td>${t.node_name}</td>` : O}
+        ${this._colVisible("ip") ? E`<td class="mono">${t.pod_ip}</td>` : O}
+        ${this._colVisible("owner") ? E`<td>${t.owner_kind === "N/A" ? E`<span class="owner-info">-</span>` : E`<span class="owner-info">${t.owner_kind}/${t.owner_name}</span>`}</td>` : O}
+        ${this._colVisible("age") ? E`<td>${V(t.creation_timestamp)}</td>` : O}
         <td>
           <button
             class="delete-btn"
@@ -2350,13 +2469,13 @@ var J = class extends V {
 	}
 	_renderDeleteDialog() {
 		let e = this._deleteConfirm;
-		return T`
+		return E`
       <div
         class="confirm-overlay"
         tabindex="-1"
-        autofocus
-        @click=${this._deleting ? D : this._cancelDelete}
-        @keydown=${this._onOverlayKeydown(this._deleting ? D : this._cancelDelete)}
+        ${this._autofocusOverlay()}
+        @click=${this._deleting ? O : this._cancelDelete}
+        @keydown=${this._onOverlayKeydown(this._deleting ? O : this._cancelDelete)}
       >
         <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
           <h3>Delete Pod</h3>
@@ -2382,16 +2501,16 @@ var J = class extends V {
     `;
 	}
 };
-B([L()], J.prototype, "_searchQuery", void 0), B([L()], J.prototype, "_phaseFilter", void 0), B([L()], J.prototype, "_namespaceFilter", void 0), B([L()], J.prototype, "_sortField", void 0), B([L()], J.prototype, "_sortAsc", void 0), B([L()], J.prototype, "_deleteConfirm", void 0), B([L()], J.prototype, "_deleting", void 0), B([L()], J.prototype, "_visibleColumns", void 0), B([L()], J.prototype, "_columnMenuOpen", void 0), B([L()], J.prototype, "_actionError", void 0), J = B([F("k8s-pods-table")], J);
+U([R()], Y.prototype, "_searchQuery", void 0), U([R()], Y.prototype, "_phaseFilter", void 0), U([R()], Y.prototype, "_namespaceFilter", void 0), U([R()], Y.prototype, "_sortField", void 0), U([R()], Y.prototype, "_sortAsc", void 0), U([R()], Y.prototype, "_deleteConfirm", void 0), U([R()], Y.prototype, "_deleting", void 0), U([R()], Y.prototype, "_visibleColumns", void 0), U([R()], Y.prototype, "_columnMenuOpen", void 0), U([R()], Y.prototype, "_actionError", void 0), Y = U([I("k8s-pods-table")], Y);
 //#endregion
 //#region src/views/k8s-network.ts
-var Ye = [
+var lt = [
 	"Ingress",
 	"LoadBalancer",
 	"NodePort",
 	"ClusterIP",
 	"ExternalName"
-], Y = class extends V {
+], X = class extends W {
 	constructor(...e) {
 		super(...e), this._services = null, this._ingressError = null, this._servicesError = null, this._searchQuery = "", this._typeFilter = "all", this.loadErrorFallback = "Failed to load network data";
 	}
@@ -2400,7 +2519,7 @@ var Ye = [
 	}
 	async fetchData() {
 		let [e, t] = await Promise.allSettled([this.hass.callWS({ type: "kubernetes/ingresses/list" }), this.hass.callWS({ type: "kubernetes/services/list" })]);
-		e.status === "fulfilled" ? (this._data = e.value, this._ingressError = null) : this._ingressError = z(e.reason, "Failed to load ingress data"), t.status === "fulfilled" ? (this._services = t.value, this._servicesError = null) : this._servicesError = z(t.reason, "Failed to load service data");
+		e.status === "fulfilled" ? (this._data = e.value, this._ingressError = null) : this._ingressError = H(e.reason, "Failed to load ingress data"), t.status === "fulfilled" ? (this._services = t.value, this._servicesError = null) : this._servicesError = H(t.reason, "Failed to load service data");
 	}
 	_getFilteredIngresses(e) {
 		if (!this._searchQuery) return e;
@@ -2427,10 +2546,10 @@ var Ye = [
 	}
 	static {
 		this.styles = [
-			H,
-			U,
-			W,
-			Be,
+			G,
+			K,
+			q,
+			Qe,
 			o`
       /* stateStyles' .empty is 64px padding; network uses .empty for five
        in-section messages, where that much padding doubles up. */
@@ -2531,10 +2650,10 @@ var Ye = [
 		];
 	}
 	render() {
-		if (this._loading) return T`<div class="loading">
+		if (this._loading) return E`<div class="loading">
         <ha-circular-progress indeterminate></ha-circular-progress>
       </div>`;
-		if (this._ingressError && this._servicesError) return T`
+		if (this._ingressError && this._servicesError) return E`
         <ha-card>
           <div class="error-card">
             <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -2544,7 +2663,7 @@ var Ye = [
         </ha-card>
       `;
 		let e = this._data?.clusters ?? [], t = this._services?.clusters ?? [], n = e.some((e) => e.ingresses.length > 0), r = t.some((e) => e.services.length > 0);
-		return !this._ingressError && !this._servicesError && !n && !r ? T`<div class="empty">No ingresses or services found.</div>` : T`
+		return !this._ingressError && !this._servicesError && !n && !r ? E`<div class="empty">No ingresses or services found.</div>` : E`
       <div class="filters">
         <input
           class="search-input"
@@ -2561,22 +2680,22 @@ var Ye = [
 		}}
         >
           <option value="all">All types</option>
-          ${Ye.map((e) => T`<option value=${e}>${e}</option>`)}
+          ${lt.map((e) => E`<option value=${e}>${e}</option>`)}
         </select>
       </div>
 
-      ${this._typeFilter === "all" || this._typeFilter === "Ingress" ? T`
+      ${this._typeFilter === "all" || this._typeFilter === "Ingress" ? E`
               <h2 class="section-title">Ingresses</h2>
-              ${this._ingressError ? this._renderInlineError(this._ingressError) : n ? e.map((e) => this._renderCluster(e)) : T`<div class="empty">No ingresses found.</div>`}
-            ` : D}
-      ${this._typeFilter === "Ingress" ? D : T`
+              ${this._ingressError ? this._renderInlineError(this._ingressError) : n ? e.map((e) => this._renderCluster(e)) : E`<div class="empty">No ingresses found.</div>`}
+            ` : O}
+      ${this._typeFilter === "Ingress" ? O : E`
               <h2 class="section-title">Services</h2>
-              ${this._servicesError ? this._renderInlineError(this._servicesError) : r ? t.map((e) => this._renderServiceCluster(e)) : T`<div class="empty">No services found.</div>`}
+              ${this._servicesError ? this._renderInlineError(this._servicesError) : r ? t.map((e) => this._renderServiceCluster(e)) : E`<div class="empty">No services found.</div>`}
             `}
     `;
 	}
 	_renderInlineError(e) {
-		return T`
+		return E`
       <div class="inline-error">
         <ha-icon icon="mdi:alert-circle"></ha-icon>
         <span>${e}</span>
@@ -2584,17 +2703,17 @@ var Ye = [
     `;
 	}
 	_renderCluster(e) {
-		if (!e.ingresses.length) return D;
+		if (!e.ingresses.length) return O;
 		let t = this._getFilteredIngresses(e.ingresses);
-		return T`
+		return E`
       <div class="cluster-section">
-        ${this._data.clusters.length > 1 ? T`<div class="cluster-name">${e.cluster_name}</div>` : D}
-        ${t.length === 0 ? T`<div class="empty">No ingresses match your search.</div>` : this._renderTable(t)}
+        ${this._data.clusters.length > 1 ? E`<div class="cluster-name">${e.cluster_name}</div>` : O}
+        ${t.length === 0 ? E`<div class="empty">No ingresses match your search.</div>` : this._renderTable(t)}
       </div>
     `;
 	}
 	_renderTable(e) {
-		return T`
+		return E`
       <ha-card>
         <div class="table-wrapper">
           <table class="network-table">
@@ -2610,7 +2729,7 @@ var Ye = [
               </tr>
             </thead>
             <tbody>
-              ${e.map((e) => T`
+              ${e.map((e) => E`
                   <tr>
                     <td>${e.name}</td>
                     <td>${e.namespace}</td>
@@ -2618,7 +2737,7 @@ var Ye = [
                     <td>${this._renderUrls(e.urls)}</td>
                     <td>${this._services_of(e) || "—"}</td>
                     <td>${this._renderTlsBadge(e)}</td>
-                    <td>${R(e.creation_timestamp)}</td>
+                    <td>${V(e.creation_timestamp)}</td>
                   </tr>
                 `)}
             </tbody>
@@ -2628,17 +2747,17 @@ var Ye = [
     `;
 	}
 	_renderServiceCluster(e) {
-		if (!e.services.length) return D;
+		if (!e.services.length) return O;
 		let t = this._getFilteredServices(e.services);
-		return T`
+		return E`
       <div class="cluster-section">
-        ${this._services.clusters.length > 1 ? T`<div class="cluster-name">${e.cluster_name}</div>` : D}
-        ${t.length === 0 ? T`<div class="empty">No services match your filters.</div>` : this._renderServicesTable(t)}
+        ${this._services.clusters.length > 1 ? E`<div class="cluster-name">${e.cluster_name}</div>` : O}
+        ${t.length === 0 ? E`<div class="empty">No services match your filters.</div>` : this._renderServicesTable(t)}
       </div>
     `;
 	}
 	_renderServicesTable(e) {
-		return T`
+		return E`
       <ha-card>
         <div class="table-wrapper">
           <table class="network-table">
@@ -2654,7 +2773,7 @@ var Ye = [
               </tr>
             </thead>
             <tbody>
-              ${e.map((e) => T`
+              ${e.map((e) => E`
                   <tr>
                     <td>${e.name}</td>
                     <td>${e.namespace}</td>
@@ -2666,9 +2785,9 @@ var Ye = [
                     <td class="mono">${e.cluster_ip || "—"}</td>
                     <td>${this._renderExternal(e)}</td>
                     <td class="mono">
-                      ${e.ports.length ? e.ports.map((e) => T`<div>${this._formatPort(e)}</div>`) : "—"}
+                      ${e.ports.length ? e.ports.map((e) => E`<div>${this._formatPort(e)}</div>`) : "—"}
                     </td>
-                    <td>${R(e.creation_timestamp)}</td>
+                    <td>${V(e.creation_timestamp)}</td>
                   </tr>
                 `)}
             </tbody>
@@ -2678,23 +2797,23 @@ var Ye = [
     `;
 	}
 	_renderExternal(e) {
-		return e.urls.length ? this._renderUrls(e.urls) : e.external_ips.length ? e.external_ips.map((e) => T`<div class="mono">${e}</div>`) : "—";
+		return e.urls.length ? this._renderUrls(e.urls) : e.external_ips.length ? e.external_ips.map((e) => E`<div class="mono">${e}</div>`) : "—";
 	}
 	_renderUrls(e) {
-		return e.length ? e.map((e) => T`
+		return e.length ? e.map((e) => E`
         <a class="url-link" href=${e} target="_blank" rel="noopener noreferrer"
           >${e}</a
         >
       `) : "—";
 	}
 	_renderTlsBadge(e) {
-		return this._hasTls(e) ? T`<span class="badge badge-tls">TLS</span>` : T`<span class="badge badge-plain">HTTP</span>`;
+		return this._hasTls(e) ? E`<span class="badge badge-tls">TLS</span>` : E`<span class="badge badge-plain">HTTP</span>`;
 	}
 };
-B([L()], Y.prototype, "_services", void 0), B([L()], Y.prototype, "_ingressError", void 0), B([L()], Y.prototype, "_servicesError", void 0), B([L()], Y.prototype, "_searchQuery", void 0), B([L()], Y.prototype, "_typeFilter", void 0), Y = B([F("k8s-network")], Y);
+U([R()], X.prototype, "_services", void 0), U([R()], X.prototype, "_ingressError", void 0), U([R()], X.prototype, "_servicesError", void 0), U([R()], X.prototype, "_searchQuery", void 0), U([R()], X.prototype, "_typeFilter", void 0), X = U([I("k8s-network")], X);
 //#endregion
 //#region src/views/k8s-workloads.ts
-var X = {
+var Z = {
 	healthy: {
 		badgeClass: "badge-healthy",
 		label: "Healthy"
@@ -2707,7 +2826,7 @@ var X = {
 		badgeClass: "badge-stopped",
 		label: "Stopped"
 	}
-}, Z = {
+}, ut = {
 	deployment: {
 		category: "deployments",
 		icon: "mdi:rocket-launch",
@@ -2724,7 +2843,7 @@ var X = {
 		readyField: "ready_replicas",
 		actionPrefix: "sts_"
 	}
-}, Q = class extends V {
+}, Q = class extends W {
 	constructor(...e) {
 		super(...e), this._namespaceFilter = "all", this._categoryFilter = "all", this._statusFilter = "all", this._searchQuery = "", this._actionInProgress = /* @__PURE__ */ new Set(), this._actionError = null, this._jobDeleteConfirm = null, this._deletingJob = !1, this._collapsedCategories = /* @__PURE__ */ new Set(), this._scaleTarget = null, this._scaleValue = 0, this._scaling = !1, this.loadErrorFallback = "Failed to load workloads data";
 	}
@@ -2755,7 +2874,7 @@ var X = {
 		return !this._searchQuery || e.toLowerCase().includes(this._searchQuery.toLowerCase());
 	}
 	_formatAgo(e) {
-		let t = R(e);
+		let t = V(e);
 		return t === "N/A" ? t : `${t} ago`;
 	}
 	async _runAction(e, t) {
@@ -2764,7 +2883,7 @@ var X = {
 		try {
 			await t();
 		} catch (e) {
-			let t = z(e, "Action failed");
+			let t = H(e, "Action failed");
 			this._actionError = `Action failed: ${t}`, console.error("[k8s-workloads] Action failed:", e);
 		} finally {
 			let t = new Set(this._actionInProgress);
@@ -2789,11 +2908,11 @@ var X = {
 	}
 	static {
 		this.styles = [
+			nt,
+			G,
 			K,
-			H,
-			U,
-			W,
-			ze,
+			q,
+			Ze,
 			o`
       .cluster-section {
         margin-bottom: 24px;
@@ -2999,8 +3118,8 @@ var X = {
 	}
 	render() {
 		let e = this.renderState(!this._data?.clusters.length);
-		return e === D ? T`
-      ${this._actionError ? T`
+		return e === O ? E`
+      ${this._actionError ? E`
               <div class="action-error">
                 <span>${this._actionError}</span>
                 <button
@@ -3013,17 +3132,17 @@ var X = {
                   <ha-icon icon="mdi:close"></ha-icon>
                 </button>
               </div>
-            ` : D}
+            ` : O}
       ${this._data.clusters.map((e) => this._renderCluster(e))}
-      ${this._jobDeleteConfirm ? this._renderJobDeleteDialog() : D}
-      ${this._scaleTarget ? this._renderScaleDialog() : D}
+      ${this._jobDeleteConfirm ? this._renderJobDeleteDialog() : O}
+      ${this._scaleTarget ? this._renderScaleDialog() : O}
     ` : e;
 	}
 	_renderCluster(e) {
 		let t = this._getNamespaces(e);
-		return T`
+		return E`
       <div class="cluster-section">
-        ${this._data.clusters.length > 1 ? T`<div class="cluster-name">${e.cluster_name}</div>` : D}
+        ${this._data.clusters.length > 1 ? E`<div class="cluster-name">${e.cluster_name}</div>` : O}
 
         <div class="filters">
           <input
@@ -3044,7 +3163,7 @@ var X = {
 		}}
           >
             <option value="all">All namespaces</option>
-            ${t.map((e) => T`<option value=${e}>${e}</option>`)}
+            ${t.map((e) => E`<option value=${e}>${e}</option>`)}
           </select>
 
           <select
@@ -3067,7 +3186,7 @@ var X = {
 			"healthy",
 			"degraded",
 			"stopped"
-		].map((e) => T`
+		].map((e) => E`
               <button
                 class="filter-chip"
                 ?active=${this._statusFilter === e}
@@ -3080,11 +3199,11 @@ var X = {
             `)}
         </div>
 
-        ${this._shouldShowCategory("deployments") ? this._renderReplicaCategory("deployment", e.deployments, e.entry_id) : D}
-        ${this._shouldShowCategory("statefulsets") ? this._renderReplicaCategory("statefulset", e.statefulsets, e.entry_id) : D}
-        ${this._shouldShowCategory("daemonsets") ? this._renderDaemonSets(e.daemonsets, e.entry_id) : D}
-        ${this._shouldShowCategory("cronjobs") ? this._renderCronJobs(e.cronjobs, e.entry_id) : D}
-        ${this._shouldShowCategory("jobs") ? this._renderJobs(e.entry_id, e.jobs) : D}
+        ${this._shouldShowCategory("deployments") ? this._renderReplicaCategory("deployment", e.deployments, e.entry_id) : O}
+        ${this._shouldShowCategory("statefulsets") ? this._renderReplicaCategory("statefulset", e.statefulsets, e.entry_id) : O}
+        ${this._shouldShowCategory("daemonsets") ? this._renderDaemonSets(e.daemonsets, e.entry_id) : O}
+        ${this._shouldShowCategory("cronjobs") ? this._renderCronJobs(e.cronjobs, e.entry_id) : O}
+        ${this._shouldShowCategory("jobs") ? this._renderJobs(e.entry_id, e.jobs) : O}
       </div>
     `;
 	}
@@ -3092,7 +3211,7 @@ var X = {
 		return this._categoryFilter === "all" || this._categoryFilter === e;
 	}
 	_getReplicaStatus(e, t) {
-		return e.replicas === 0 ? "stopped" : (e[Z[t].readyField] || 0) < e.replicas ? "degraded" : "healthy";
+		return e.replicas === 0 ? "stopped" : (e[ut[t].readyField] || 0) < e.replicas ? "degraded" : "healthy";
 	}
 	_getDaemonSetStatus(e) {
 		return e.desired_number_scheduled === 0 ? "stopped" : (e.number_available || 0) < e.desired_number_scheduled ? "degraded" : "healthy";
@@ -3101,8 +3220,8 @@ var X = {
 		return this._statusFilter === "all" || this._statusFilter === e;
 	}
 	_renderReplicaCategory(e, t, n) {
-		let r = Z[e], i = t.filter((t) => this._matchesNamespace(t.namespace) && this._matchesSearch(t.name) && this._matchesStatusFilter(this._getReplicaStatus(t, e)));
-		return i.length === 0 && this._categoryFilter !== "all" ? T`<div class="empty">No ${r.emptyLabel} match your filters.</div>` : i.length === 0 ? D : T`
+		let r = ut[e], i = t.filter((t) => this._matchesNamespace(t.namespace) && this._matchesSearch(t.name) && this._matchesStatusFilter(this._getReplicaStatus(t, e)));
+		return i.length === 0 && this._categoryFilter !== "all" ? E`<div class="empty">No ${r.emptyLabel} match your filters.</div>` : i.length === 0 ? O : E`
       <div class="category-section">
         <div
           class="category-header"
@@ -3120,13 +3239,13 @@ var X = {
             ?data-collapsed=${this._collapsedCategories.has(r.category)}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has(r.category) ? D : i.map((t) => this._renderReplicaCard(e, t, n))}
+        ${this._collapsedCategories.has(r.category) ? O : i.map((t) => this._renderReplicaCard(e, t, n))}
       </div>
     `;
 	}
 	_renderReplicaCard(e, t, n) {
-		let r = Z[e], i = this._getReplicaStatus(t, e), a = `${r.actionPrefix}${t.namespace}_${t.name}`, o = this._actionInProgress.has(a), s = t[r.readyField] ?? 0;
-		return T`
+		let r = ut[e], i = this._getReplicaStatus(t, e), a = `${r.actionPrefix}${t.namespace}_${t.name}`, o = this._actionInProgress.has(a), s = t[r.readyField] ?? 0;
+		return E`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
@@ -3145,11 +3264,11 @@ var X = {
           >
             ${s}/${t.replicas} ready
           </span>
-          <span class="badge ${X[i].badgeClass}">
-            ${X[i].label}
+          <span class="badge ${Z[i].badgeClass}">
+            ${Z[i].label}
           </span>
           <div class="workload-actions">
-            ${t.replicas === 0 ? T`
+            ${t.replicas === 0 ? E`
                     <button
                       class="action-btn start"
                       title="Start (scale to 1)"
@@ -3162,7 +3281,7 @@ var X = {
                     >
                       <ha-icon icon="mdi:play"></ha-icon>
                     </button>
-                  ` : T`
+                  ` : E`
                     <button
                       class="action-btn stop"
                       title="Stop (scale to 0)"
@@ -3195,7 +3314,7 @@ var X = {
 	}
 	_renderDaemonSets(e, t) {
 		let n = e.filter((e) => this._matchesNamespace(e.namespace) && this._matchesSearch(e.name) && this._matchesStatusFilter(this._getDaemonSetStatus(e)));
-		return n.length === 0 && this._categoryFilter !== "all" ? T`<div class="empty">No daemonsets match your filters.</div>` : n.length === 0 ? D : T`
+		return n.length === 0 && this._categoryFilter !== "all" ? E`<div class="empty">No daemonsets match your filters.</div>` : n.length === 0 ? O : E`
       <div class="category-section">
         <div
           class="category-header"
@@ -3213,13 +3332,13 @@ var X = {
             ?data-collapsed=${this._collapsedCategories.has("daemonsets")}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has("daemonsets") ? D : n.map((e) => this._renderDaemonSetCard(e, t))}
+        ${this._collapsedCategories.has("daemonsets") ? O : n.map((e) => this._renderDaemonSetCard(e, t))}
       </div>
     `;
 	}
 	_renderDaemonSetCard(e, t) {
 		let n = this._getDaemonSetStatus(e), r = `ds_${e.namespace}_${e.name}`, i = this._actionInProgress.has(r);
-		return T`
+		return E`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
@@ -3229,8 +3348,8 @@ var X = {
           <span class="replica-info">
             ${e.number_available ?? 0}/${e.desired_number_scheduled} available
           </span>
-          <span class="badge ${X[n].badgeClass}">
-            ${X[n].label}
+          <span class="badge ${Z[n].badgeClass}">
+            ${Z[n].label}
           </span>
           <div class="workload-actions">
             <button
@@ -3252,7 +3371,7 @@ var X = {
 	}
 	_renderCronJobs(e, t) {
 		let n = e.filter((e) => this._matchesNamespace(e.namespace) && this._matchesSearch(e.name)), r = this._statusFilter === "all" ? n : n.filter((e) => this._statusFilter === "stopped" ? e.suspend : this._statusFilter === "healthy" && !e.suspend);
-		return r.length === 0 && this._categoryFilter !== "all" ? T`<div class="empty">No cronjobs match your filters.</div>` : r.length === 0 ? D : T`
+		return r.length === 0 && this._categoryFilter !== "all" ? E`<div class="empty">No cronjobs match your filters.</div>` : r.length === 0 ? O : E`
       <div class="category-section">
         <div
           class="category-header"
@@ -3270,13 +3389,13 @@ var X = {
             ?data-collapsed=${this._collapsedCategories.has("cronjobs")}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has("cronjobs") ? D : r.map((e) => this._renderCronJobCard(e, t))}
+        ${this._collapsedCategories.has("cronjobs") ? O : r.map((e) => this._renderCronJobCard(e, t))}
       </div>
     `;
 	}
 	_renderCronJobCard(e, t) {
 		let n = `cj_${e.namespace}_${e.name}`, r = this._actionInProgress.has(n);
-		return T`
+		return E`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
@@ -3284,13 +3403,13 @@ var X = {
             <div class="workload-namespace">${e.namespace}</div>
           </div>
           <span class="schedule-info">${e.schedule}</span>
-          ${e.active_jobs_count > 0 ? T`<span class="badge badge-active"
+          ${e.active_jobs_count > 0 ? E`<span class="badge badge-active"
                   >${e.active_jobs_count} active</span
-                >` : D}
-          ${e.suspend ? T`<span class="badge badge-suspended">Suspended</span>` : T`<span class="badge badge-healthy">Active</span>`}
-          ${e.last_schedule_time ? T`<span class="last-schedule"
+                >` : O}
+          ${e.suspend ? E`<span class="badge badge-suspended">Suspended</span>` : E`<span class="badge badge-healthy">Active</span>`}
+          ${e.last_schedule_time ? E`<span class="last-schedule"
                   >Last: ${this._formatAgo(e.last_schedule_time)}</span
-                >` : D}
+                >` : O}
           <div class="workload-actions">
             <button
               class="action-btn ${e.suspend ? "start" : "suspend"}"
@@ -3321,7 +3440,7 @@ var X = {
 	}
 	_renderJobs(e, t) {
 		let n = t.filter((e) => this._matchesNamespace(e.namespace) && this._matchesSearch(e.name)), r = this._statusFilter === "all" ? n : n.filter((e) => this._statusFilter === "healthy" ? e.succeeded >= e.completions : this._statusFilter === "degraded" ? e.failed > 0 && e.succeeded < e.completions : this._statusFilter !== "stopped" || e.active === 0);
-		return r.length === 0 && this._categoryFilter !== "all" ? T`<div class="empty">No jobs match your filters.</div>` : r.length === 0 ? D : T`
+		return r.length === 0 && this._categoryFilter !== "all" ? E`<div class="empty">No jobs match your filters.</div>` : r.length === 0 ? O : E`
       <div class="category-section">
         <div
           class="category-header"
@@ -3339,13 +3458,13 @@ var X = {
             ?data-collapsed=${this._collapsedCategories.has("jobs")}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has("jobs") ? D : r.map((t) => this._renderJobCard(e, t))}
+        ${this._collapsedCategories.has("jobs") ? O : r.map((t) => this._renderJobCard(e, t))}
       </div>
     `;
 	}
 	_renderJobCard(e, t) {
 		let n = t.succeeded >= t.completions, r = t.failed > 0;
-		return T`
+		return E`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
@@ -3353,12 +3472,12 @@ var X = {
             <div class="workload-namespace">${t.namespace}</div>
           </div>
           <span class="replica-info"> ${t.succeeded}/${t.completions} completed </span>
-          ${t.active > 0 ? T`<span class="badge badge-active">${t.active} active</span>` : D}
-          ${r ? T`<span class="badge badge-failed">${t.failed} failed</span>` : D}
-          ${n ? T`<span class="badge badge-complete">Complete</span>` : D}
-          ${t.start_time ? T`<span class="last-schedule"
+          ${t.active > 0 ? E`<span class="badge badge-active">${t.active} active</span>` : O}
+          ${r ? E`<span class="badge badge-failed">${t.failed} failed</span>` : O}
+          ${n ? E`<span class="badge badge-complete">Complete</span>` : O}
+          ${t.start_time ? E`<span class="last-schedule"
                   >Started: ${this._formatAgo(t.start_time)}</span
-                >` : D}
+                >` : O}
           <div class="workload-actions">
             <button
               class="action-btn delete"
@@ -3395,7 +3514,7 @@ var X = {
 					replicas: this._scaleValue
 				}), this._scaleTarget = null, this._scheduleReload(2e3);
 			} catch (e) {
-				this._actionError = z(e, "Failed to scale workload"), this._scaleTarget = null;
+				this._actionError = H(e, "Failed to scale workload"), this._scaleTarget = null;
 			} finally {
 				this._scaling = !1;
 			}
@@ -3403,13 +3522,13 @@ var X = {
 	}
 	_renderScaleDialog() {
 		let e = this._scaleTarget;
-		return T`
+		return E`
       <div
         class="confirm-overlay"
         tabindex="-1"
-        autofocus
-        @click=${this._scaling ? D : this._cancelScale}
-        @keydown=${this._onOverlayKeydown(this._scaling ? D : this._cancelScale)}
+        ${this._autofocusOverlay()}
+        @click=${this._scaling ? O : this._cancelScale}
+        @keydown=${this._onOverlayKeydown(this._scaling ? O : this._cancelScale)}
       >
         <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
           <h3>Scale Workload</h3>
@@ -3480,7 +3599,7 @@ var X = {
 					namespace: this._jobDeleteConfirm.namespace
 				}), this._jobDeleteConfirm = null, await this._loadData();
 			} catch (e) {
-				this._actionError = z(e, "Failed to delete job"), this._jobDeleteConfirm = null;
+				this._actionError = H(e, "Failed to delete job"), this._jobDeleteConfirm = null;
 			} finally {
 				this._deletingJob = !1;
 			}
@@ -3488,13 +3607,13 @@ var X = {
 	}
 	_renderJobDeleteDialog() {
 		let e = this._jobDeleteConfirm;
-		return T`
+		return E`
       <div
         class="confirm-overlay"
         tabindex="-1"
-        autofocus
-        @click=${this._deletingJob ? D : this._cancelJobDelete}
-        @keydown=${this._onOverlayKeydown(this._deletingJob ? D : this._cancelJobDelete)}
+        ${this._autofocusOverlay()}
+        @click=${this._deletingJob ? O : this._cancelJobDelete}
+        @keydown=${this._onOverlayKeydown(this._deletingJob ? O : this._cancelJobDelete)}
       >
         <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
           <h3>Delete Job</h3>
@@ -3520,10 +3639,10 @@ var X = {
     `;
 	}
 };
-B([L()], Q.prototype, "_namespaceFilter", void 0), B([L()], Q.prototype, "_categoryFilter", void 0), B([L()], Q.prototype, "_statusFilter", void 0), B([L()], Q.prototype, "_searchQuery", void 0), B([L()], Q.prototype, "_actionInProgress", void 0), B([L()], Q.prototype, "_actionError", void 0), B([L()], Q.prototype, "_jobDeleteConfirm", void 0), B([L()], Q.prototype, "_deletingJob", void 0), B([L()], Q.prototype, "_collapsedCategories", void 0), B([L()], Q.prototype, "_scaleTarget", void 0), B([L()], Q.prototype, "_scaleValue", void 0), B([L()], Q.prototype, "_scaling", void 0), Q = B([F("k8s-workloads")], Q);
+U([R()], Q.prototype, "_namespaceFilter", void 0), U([R()], Q.prototype, "_categoryFilter", void 0), U([R()], Q.prototype, "_statusFilter", void 0), U([R()], Q.prototype, "_searchQuery", void 0), U([R()], Q.prototype, "_actionInProgress", void 0), U([R()], Q.prototype, "_actionError", void 0), U([R()], Q.prototype, "_jobDeleteConfirm", void 0), U([R()], Q.prototype, "_deletingJob", void 0), U([R()], Q.prototype, "_collapsedCategories", void 0), U([R()], Q.prototype, "_scaleTarget", void 0), U([R()], Q.prototype, "_scaleValue", void 0), U([R()], Q.prototype, "_scaling", void 0), Q = U([I("k8s-workloads")], Q);
 //#endregion
 //#region src/views/k8s-settings.ts
-var Xe = class extends V {
+var dt = class extends W {
 	constructor(...e) {
 		super(...e), this.pollMs = 0, this.subscribe = !1, this.loadErrorFallback = "Failed to load configuration", this.emptyMessage = "No Kubernetes entries configured.";
 	}
@@ -3536,8 +3655,8 @@ var Xe = class extends V {
 	}
 	static {
 		this.styles = [
-			H,
-			W,
+			G,
+			q,
 			o`
       .entry-section {
         margin-bottom: 24px;
@@ -3673,10 +3792,10 @@ var Xe = class extends V {
 	}
 	render() {
 		let e = this.renderState(!this._data?.entries.length);
-		return e === D ? T`${this._data.entries.map((e) => this._renderEntry(e))}` : e;
+		return e === O ? E`${this._data.entries.map((e) => this._renderEntry(e))}` : e;
 	}
 	_renderEntry(e) {
-		return T`
+		return E`
       <div class="entry-section">
         <div class="entry-header">
           <span class="entry-name">${e.cluster_name}</span>
@@ -3698,10 +3817,10 @@ var Xe = class extends V {
     `;
 	}
 	_renderHealthBadge(e) {
-		return e === !0 ? T`<span class="badge badge-healthy">Connected</span>` : e === !1 ? T`<span class="badge badge-unhealthy">Disconnected</span>` : T`<span class="badge badge-unknown">Unknown</span>`;
+		return e === !0 ? E`<span class="badge badge-healthy">Connected</span>` : e === !1 ? E`<span class="badge badge-unhealthy">Disconnected</span>` : E`<span class="badge badge-unknown">Unknown</span>`;
 	}
 	_renderConnectionCard(e) {
-		return T`
+		return E`
       <ha-card class="settings-card">
         <div class="card-title">
           <ha-icon icon="mdi:connection"></ha-icon>
@@ -3723,7 +3842,7 @@ var Xe = class extends V {
     `;
 	}
 	_renderNamespaceCard(e) {
-		return T`
+		return E`
       <ha-card class="settings-card">
         <div class="card-title">
           <ha-icon icon="mdi:folder-multiple"></ha-icon>
@@ -3735,16 +3854,16 @@ var Xe = class extends V {
             >${this._renderBool(e.monitor_all_namespaces)}</span
           >
         </div>
-        ${!e.monitor_all_namespaces && e.namespaces.length > 0 ? T`
+        ${!e.monitor_all_namespaces && e.namespaces.length > 0 ? E`
                 <div class="setting-row">
                   <span class="setting-label">Selected</span>
                   <span class="setting-value">
                     <div class="namespace-tags">
-                      ${e.namespaces.map((e) => T`<span class="ns-tag">${e}</span>`)}
+                      ${e.namespaces.map((e) => E`<span class="ns-tag">${e}</span>`)}
                     </div>
                   </span>
                 </div>
-              ` : D}
+              ` : O}
         <div class="setting-row">
           <span class="setting-label">Device Grouping</span>
           <span class="setting-value"
@@ -3755,7 +3874,7 @@ var Xe = class extends V {
     `;
 	}
 	_renderTimingCard(e) {
-		return T`
+		return E`
       <ha-card class="settings-card">
         <div class="card-title">
           <ha-icon icon="mdi:timer-cog"></ha-icon>
@@ -3783,7 +3902,7 @@ var Xe = class extends V {
     `;
 	}
 	_renderFeaturesCard(e) {
-		return T`
+		return E`
       <ha-card class="settings-card">
         <div class="card-title">
           <ha-icon icon="mdi:flask"></ha-icon>
@@ -3797,21 +3916,21 @@ var Xe = class extends V {
     `;
 	}
 	_renderBool(e) {
-		return e ? T`
+		return e ? E`
         <span class="setting-value-bool bool-true">
           <ha-icon icon="mdi:check-circle"></ha-icon> Enabled
         </span>
-      ` : T`
+      ` : E`
       <span class="setting-value-bool bool-false">
         <ha-icon icon="mdi:close-circle-outline"></ha-icon> Disabled
       </span>
     `;
 	}
 };
-Xe = B([F("k8s-settings")], Xe);
+dt = U([I("k8s-settings")], dt);
 //#endregion
 //#region src/kubernetes-panel.ts
-var Ze = [
+var ft = [
 	{
 		id: "overview",
 		label: "Overview",
@@ -3842,7 +3961,7 @@ var Ze = [
 		label: "Settings",
 		icon: "mdi:cog"
 	}
-], $ = class extends P {
+], $ = class extends F {
 	constructor(...e) {
 		super(...e), this.narrow = !1, this._activeTab = "overview";
 	}
@@ -3944,7 +4063,7 @@ var Ze = [
   `;
 	}
 	render() {
-		return T`
+		return E`
       <div class="toolbar">
         <div
           class="menu-btn"
@@ -3960,7 +4079,7 @@ var Ze = [
         <h1>Kubernetes</h1>
       </div>
       <div class="tab-bar">
-        ${Ze.map((e) => T`
+        ${ft.map((e) => E`
             <div
               class="tab"
               role="button"
@@ -3981,18 +4100,18 @@ var Ze = [
 	}
 	_renderActiveTab() {
 		switch (this._activeTab) {
-			case "overview": return T`<k8s-overview .hass=${this.hass}></k8s-overview>`;
-			case "nodes": return T`<k8s-nodes-table .hass=${this.hass}></k8s-nodes-table>`;
-			case "pods": return T`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
-			case "workloads": return T`<k8s-workloads .hass=${this.hass}></k8s-workloads>`;
-			case "network": return T`<k8s-network .hass=${this.hass}></k8s-network>`;
-			case "settings": return T`<k8s-settings .hass=${this.hass}></k8s-settings>`;
+			case "overview": return E`<k8s-overview .hass=${this.hass}></k8s-overview>`;
+			case "nodes": return E`<k8s-nodes-table .hass=${this.hass}></k8s-nodes-table>`;
+			case "pods": return E`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
+			case "workloads": return E`<k8s-workloads .hass=${this.hass}></k8s-workloads>`;
+			case "network": return E`<k8s-network .hass=${this.hass}></k8s-network>`;
+			case "settings": return E`<k8s-settings .hass=${this.hass}></k8s-settings>`;
 		}
 	}
 };
-B([I({ attribute: !1 })], $.prototype, "hass", void 0), B([I({
+U([L({ attribute: !1 })], $.prototype, "hass", void 0), U([L({
 	type: Boolean,
 	reflect: !0
-})], $.prototype, "narrow", void 0), B([I({ attribute: !1 })], $.prototype, "route", void 0), B([I({ attribute: !1 })], $.prototype, "panel", void 0), B([L()], $.prototype, "_activeTab", void 0), $ = B([F("kubernetes-panel")], $);
+})], $.prototype, "narrow", void 0), U([L({ attribute: !1 })], $.prototype, "route", void 0), U([L({ attribute: !1 })], $.prototype, "panel", void 0), U([R()], $.prototype, "_activeTab", void 0), $ = U([I("kubernetes-panel")], $);
 //#endregion
 export { $ as KubernetesPanel };

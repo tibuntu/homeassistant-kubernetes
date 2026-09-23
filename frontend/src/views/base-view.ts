@@ -1,5 +1,6 @@
 import { LitElement, html, nothing, PropertyValues, TemplateResult } from "lit";
 import { property, state } from "lit/decorators.js";
+import { ref } from "lit/directives/ref.js";
 import type { HomeAssistant } from "../types/homeassistant";
 import { errorMessage } from "../utils/format";
 
@@ -151,14 +152,26 @@ export abstract class K8sDataView<T> extends LitElement {
   /**
    * Escape-to-close handler for a `.confirm-overlay`. Pass the same
    * `onClose`-or-`nothing` value the overlay's `@click` ternary already
-   * uses to gate click-to-cancel while an action is in flight. Give the
-   * overlay `tabindex="-1"` and the `autofocus` attribute so it receives
-   * the keydown once rendered.
+   * uses to gate click-to-cancel while an action is in flight. Pair with
+   * `_autofocusOverlay()` below so the overlay actually holds focus and
+   * receives the keydown.
    */
   protected _onOverlayKeydown(onClose: (() => void) | typeof nothing) {
     return (e: KeyboardEvent): void => {
       if (e.key === "Escape" && onClose !== nothing) onClose();
     };
+  }
+
+  /**
+   * `ref()` directive for a `.confirm-overlay`: focuses the element as soon
+   * as it's rendered. A plain `autofocus` attribute is dropped by the
+   * browser here — the overlay is inserted after the user already clicked
+   * a trigger button, well past the document's one-shot autofocus window —
+   * so focus (and therefore the Escape keydown) needs to be requested
+   * explicitly. Pair with `tabindex="-1"` on the same element.
+   */
+  protected _autofocusOverlay() {
+    return ref((el?: Element) => (el as HTMLElement | undefined)?.focus());
   }
 
   /**
