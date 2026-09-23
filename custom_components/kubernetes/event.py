@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from homeassistant.components.event import EventEntity
 from homeassistant.config_entries import ConfigEntry
@@ -43,7 +43,7 @@ class KubernetesClusterEventEntity(EventEntity):
 
     _attr_has_entity_name = True
     _attr_name = "Cluster events"
-    _attr_event_types = [*EVENT_CURATED_REASONS, EVENT_TYPE_OTHER]
+    _attr_event_types: ClassVar[list[str]] = [*EVENT_CURATED_REASONS, EVENT_TYPE_OTHER]
 
     def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize the cluster event entity."""

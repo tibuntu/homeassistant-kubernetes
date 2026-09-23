@@ -2116,7 +2116,7 @@ class KubernetesClient:
                     }
         except Exception as ex:
             error_msg = (
-                f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: {str(ex)}"
+                f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: {ex!s}"
             )
             self._log_error(f"_{operation}_cronjob_aiohttp", ex)
             return {
@@ -2228,7 +2228,7 @@ class KubernetesClient:
 
         except Exception as ex:
             error_msg = (
-                f"Failed to trigger CronJob '{cronjob_name}' via aiohttp: {str(ex)}"
+                f"Failed to trigger CronJob '{cronjob_name}' via aiohttp: {ex!s}"
             )
             self._log_error("_trigger_cronjob_aiohttp", ex)
             return {

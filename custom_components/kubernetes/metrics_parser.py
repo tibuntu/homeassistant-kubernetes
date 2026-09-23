@@ -57,7 +57,7 @@ def parse_cpu_quantity(cpu_str: str, output_type: str = "cores") -> float:
             )
         value = nanocores / divisor
         if output_type == "cores" or output_type not in _CPU_OUTPUT_DIVISORS:
-            return int(round(value))
+            return round(value)
         return round(value, 2)
     except (ValueError, IndexError, TypeError, AttributeError):
         _LOGGER.warning("Failed to parse CPU string: %s", cpu_str)

@@ -44,7 +44,7 @@ dev = [
     "pre-commit==4.6.2",
 
     # Documentation
-    "zensical",
+    "zensical==0.0.64",
 ]
 
 [tool.setuptools.packages.find]
@@ -63,15 +63,23 @@ select = [
     "C4",  # flake8-comprehensions
     "B",   # flake8-bugbear
     "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific rules
+    "PIE", # flake8-pie
+    "PLE", # pylint errors
+    "PLW", # pylint warnings
+    "G",   # flake8-logging-format
+    "TID252", # relative imports (replaces the deleted python-import-check hook)
 ]
 ignore = [
-    "E501",  # line too long, handled by formatter
-    "B008",  # do not perform function calls in argument defaults
+    "E501",    # line too long, handled by formatter
+    "B008",    # do not perform function calls in argument defaults
+    "SIM117",  # 27 hits across 6 files; merging nested `with` blocks (mocks/patches) is not a mechanical local fix
+    "PLW0603", # config_flow's lazy kubernetes-import cache intentionally rebinds module globals
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"tests/*" = ["S101"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["custom_components"]
@@ -123,8 +131,6 @@ addopts = [
     "--cov=custom_components.kubernetes",
     "--cov-branch",
     "--cov-report=term-missing:skip-covered",
-    "--cov-report=html:htmlcov",
-    "--cov-report=xml",
     "--cov-fail-under=95",
 ]
 asyncio_mode = "auto"
@@ -135,8 +141,9 @@ markers = [
     "kubernetes_unavailable: opt out of the config-flow kubernetes_available autouse fixture",
 ]
 filterwarnings = [
-    "error",
-    "ignore::UserWarning",
+    # HA deprecation warnings are already caught by the autouse
+    # fail_on_ha_deprecations fixture (tests/conftest.py); "error" here plus
+    # blanket ignores for User/DeprecationWarning canceled each other out.
     "ignore::DeprecationWarning",
 ]
 

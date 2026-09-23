@@ -124,7 +124,7 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest
+          pytest --cov-report=xml
 
       - name: Upload coverage to Codecov
         if: github.ref != 'refs/heads/release-please--branches--main'

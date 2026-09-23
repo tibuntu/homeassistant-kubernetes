@@ -1,6 +1,7 @@
 """Tests for the Kubernetes services."""
 
 import os
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.config_entries import ConfigEntryState
@@ -521,7 +522,9 @@ class TestRestartWorkloadService:
     ):
         """Test restart_workload raises when no valid workloads are found."""
         await async_setup_services(hass)
-        with pytest.raises(ServiceValidationError, match="switch.nonexistent"):
+        with pytest.raises(
+            ServiceValidationError, match=re.escape("switch.nonexistent")
+        ):
             await hass.services.async_call(
                 DOMAIN,
                 SERVICE_RESTART_WORKLOAD,
@@ -696,7 +699,7 @@ class TestGetWorkloadInfoFromEntity:
             workload_type=WORKLOAD_TYPE_STATEFULSET,
             statefulset_name="redis",
         )
-        ns, name, wtype = _get_workload_info_from_entity(hass, "switch.redis")
+        _ns, name, wtype = _get_workload_info_from_entity(hass, "switch.redis")
         assert name == "redis"
         assert wtype == WORKLOAD_TYPE_STATEFULSET
 
@@ -707,7 +710,7 @@ class TestGetWorkloadInfoFromEntity:
             workload_type=WORKLOAD_TYPE_CRONJOB,
             cronjob_name="backup",
         )
-        ns, name, wtype = _get_workload_info_from_entity(hass, "switch.backup")
+        _ns, name, wtype = _get_workload_info_from_entity(hass, "switch.backup")
         assert name == "backup"
         assert wtype == WORKLOAD_TYPE_CRONJOB
 
@@ -859,7 +862,7 @@ class TestServiceHandlerEdgeCases:
     ):
         """Test scale_workload raises when no workloads found."""
         await async_setup_services(hass)
-        with pytest.raises(ServiceValidationError, match="switch.missing"):
+        with pytest.raises(ServiceValidationError, match=re.escape("switch.missing")):
             await hass.services.async_call(
                 DOMAIN,
                 SERVICE_SCALE_WORKLOAD,
@@ -1079,7 +1082,7 @@ class TestServiceHandlerEdgeCases:
     ):
         """Test start_workload raises when no workloads found."""
         await async_setup_services(hass)
-        with pytest.raises(ServiceValidationError, match="switch.missing"):
+        with pytest.raises(ServiceValidationError, match=re.escape("switch.missing")):
             await hass.services.async_call(
                 DOMAIN,
                 SERVICE_START_WORKLOAD,
@@ -1173,7 +1176,7 @@ class TestServiceHandlerEdgeCases:
     ):
         """Test stop_workload raises when no workloads found."""
         await async_setup_services(hass)
-        with pytest.raises(ServiceValidationError, match="switch.missing"):
+        with pytest.raises(ServiceValidationError, match=re.escape("switch.missing")):
             await hass.services.async_call(
                 DOMAIN,
                 SERVICE_STOP_WORKLOAD,

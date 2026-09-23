@@ -546,8 +546,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         }
         failures: list[str] = []
 
-        for workload_name, namespace, workload_type in workloads:
-            namespace = namespace or config_data.get("namespace", "default")
+        for workload_name, raw_namespace, workload_type in workloads:
+            namespace = raw_namespace or config_data.get("namespace", "default")
             label = f"{workload_type} {namespace}/{workload_name}"
 
             if await _attempt(
@@ -590,8 +590,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         }
         failures: list[str] = []
 
-        for workload_name, namespace, workload_type in workloads:
-            namespace = namespace or config_data.get("namespace", "default")
+        for workload_name, raw_namespace, workload_type in workloads:
+            namespace = raw_namespace or config_data.get("namespace", "default")
             label = f"{workload_type} {namespace}/{workload_name}"
 
             if workload_type == WORKLOAD_TYPE_CRONJOB:
@@ -642,8 +642,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         }
         failures: list[str] = []
 
-        for workload_name, namespace, workload_type in workloads:
-            namespace = namespace or config_data.get("namespace", "default")
+        for workload_name, raw_namespace, workload_type in workloads:
+            namespace = raw_namespace or config_data.get("namespace", "default")
             label = f"{workload_type} {namespace}/{workload_name}"
 
             if await _attempt(
@@ -684,8 +684,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         }
         failures: list[str] = []
 
-        for workload_name, namespace, workload_type in workloads:
-            namespace = namespace or config_data.get("namespace", "default")
+        for workload_name, raw_namespace, workload_type in workloads:
+            namespace = raw_namespace or config_data.get("namespace", "default")
             label = f"{workload_type} {namespace}/{workload_name}"
 
             if await _attempt(
