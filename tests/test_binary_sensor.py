@@ -3,11 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.binary_sensor import (
     KubernetesBaseBinarySensor,
@@ -20,21 +18,8 @@ from custom_components.kubernetes.binary_sensor import (
 from custom_components.kubernetes.const import CONF_DISABLED_RESOURCES, DOMAIN
 from custom_components.kubernetes.coordinator import KubernetesEntryData
 
-
-@pytest.fixture
-def mock_config_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Create a mock config entry."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        entry_id="test_entry_id",
-        data={
-            CONF_HOST: "https://kubernetes.example.com",
-            CONF_PORT: 443,
-            CONF_VERIFY_SSL: True,
-        },
-    )
-    entry.add_to_hass(hass)
-    return entry
+# `mock_config_entry` (host/port/verify_ssl/cluster_name shape) comes from
+# tests/conftest.py's `mock_config_entry` fixture.
 
 
 @pytest.fixture

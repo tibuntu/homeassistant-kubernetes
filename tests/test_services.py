@@ -33,7 +33,6 @@ from custom_components.kubernetes.const import (
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
-from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.services import (
     _collect_entity_ids,
     _collect_job_names,
@@ -76,33 +75,13 @@ def mock_client():
     return client
 
 
-def _add_loaded_entry(
-    hass: HomeAssistant, entry_id: str, *, config=None, coordinator=None
-) -> MockConfigEntry:
-    """Add a config entry in the LOADED state with runtime data attached."""
-    entry = MockConfigEntry(
-        domain=DOMAIN,
-        entry_id=entry_id,
-        data=config or {},
-        state=ConfigEntryState.LOADED,
-    )
-    entry.add_to_hass(hass)
-    entry.runtime_data = KubernetesEntryData(
-        config=entry.data,
-        client=MagicMock(),
-        coordinator=coordinator if coordinator is not None else MagicMock(),
-    )
-    return entry
-
-
 @pytest.fixture
-def setup_domain_data(hass: HomeAssistant, mock_client) -> MockConfigEntry:
+def setup_domain_data(add_loaded_entry, mock_client) -> MockConfigEntry:
     """Add a loaded Kubernetes config entry with runtime data."""
     mock_coordinator = MagicMock()
     mock_coordinator.client = mock_client
     mock_coordinator.async_request_refresh = AsyncMock()
-    return _add_loaded_entry(
-        hass,
+    return add_loaded_entry(
         "test-entry-id",
         config={
             "host": "test-cluster.example.com",
@@ -1493,16 +1472,12 @@ class TestServiceHandlerEdgeCases:
 class TestResolveRawWorkloadName:
     """Tests for _resolve_raw_workload_name."""
 
-    def _make_coordinator_with_data(self, data):
-        """Create a mock coordinator with the given data."""
-        coordinator = MagicMock()
-        coordinator.data = data
-        return coordinator
-
-    async def test_resolves_deployment(self, hass: HomeAssistant):
+    async def test_resolves_deployment(
+        self, hass: HomeAssistant, add_loaded_entry, make_coordinator
+    ):
         """Test resolves a deployment name to its type."""
-        coordinator = self._make_coordinator_with_data(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {
                     "default_nginx": {"name": "nginx", "namespace": "default"},
                 },
@@ -1510,15 +1485,17 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
+        add_loaded_entry("entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "nginx", None)
         assert result == ("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)
 
-    async def test_resolves_statefulset(self, hass: HomeAssistant):
+    async def test_resolves_statefulset(
+        self, hass: HomeAssistant, add_loaded_entry, make_coordinator
+    ):
         """Test resolves a statefulset name to its type."""
-        coordinator = self._make_coordinator_with_data(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {},
                 "statefulsets": {
                     "cache_redis": {"name": "redis", "namespace": "cache"},
@@ -1526,15 +1503,17 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
+        add_loaded_entry("entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "redis", None)
         assert result == ("redis", "cache", WORKLOAD_TYPE_STATEFULSET)
 
-    async def test_resolves_cronjob(self, hass: HomeAssistant):
+    async def test_resolves_cronjob(
+        self, hass: HomeAssistant, add_loaded_entry, make_coordinator
+    ):
         """Test resolves a cronjob name to its type."""
-        coordinator = self._make_coordinator_with_data(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {},
                 "statefulsets": {},
                 "cronjobs": {
@@ -1542,15 +1521,17 @@ class TestResolveRawWorkloadName:
                 },
             }
         )
-        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
+        add_loaded_entry("entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "backup", None)
         assert result == ("backup", "default", WORKLOAD_TYPE_CRONJOB)
 
-    async def test_resolves_daemonset(self, hass: HomeAssistant):
+    async def test_resolves_daemonset(
+        self, hass: HomeAssistant, add_loaded_entry, make_coordinator
+    ):
         """Test resolves a daemonset name to its type."""
-        coordinator = self._make_coordinator_with_data(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {},
                 "statefulsets": {},
                 "daemonsets": {
@@ -1562,15 +1543,17 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
+        add_loaded_entry("entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "fluentd", None)
         assert result == ("fluentd", "kube-system", WORKLOAD_TYPE_DAEMONSET)
 
-    async def test_filters_by_namespace(self, hass: HomeAssistant):
+    async def test_filters_by_namespace(
+        self, hass: HomeAssistant, add_loaded_entry, make_coordinator
+    ):
         """Test namespace filtering when provided."""
-        coordinator = self._make_coordinator_with_data(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {
                     "default_nginx": {"name": "nginx", "namespace": "default"},
                     "production_nginx": {"name": "nginx", "namespace": "production"},
@@ -1579,22 +1562,24 @@ class TestResolveRawWorkloadName:
                 "cronjobs": {},
             }
         )
-        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
+        add_loaded_entry("entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "nginx", "production")
         assert result is not None
         assert result[1] == "production"
 
-    async def test_returns_none_when_not_found(self, hass: HomeAssistant):
+    async def test_returns_none_when_not_found(
+        self, hass: HomeAssistant, add_loaded_entry, make_coordinator
+    ):
         """Test returns None when workload name doesn't match."""
-        coordinator = self._make_coordinator_with_data(
-            {
+        coordinator = make_coordinator(
+            data={
                 "deployments": {},
                 "statefulsets": {},
                 "cronjobs": {},
             }
         )
-        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
+        add_loaded_entry("entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "nonexistent", None)
         assert result is None
@@ -1604,10 +1589,12 @@ class TestResolveRawWorkloadName:
         result = _resolve_raw_workload_name(hass, "nginx", None)
         assert result is None
 
-    async def test_skips_coordinator_with_none_data(self, hass: HomeAssistant):
+    async def test_skips_coordinator_with_none_data(
+        self, hass: HomeAssistant, add_loaded_entry, make_coordinator
+    ):
         """Test skips coordinator with None data."""
-        coordinator = self._make_coordinator_with_data(None)
-        _add_loaded_entry(hass, "entry_1", coordinator=coordinator)
+        coordinator = make_coordinator(data=None)
+        add_loaded_entry("entry_1", coordinator=coordinator)
 
         result = _resolve_raw_workload_name(hass, "nginx", None)
         assert result is None
@@ -1627,24 +1614,28 @@ class TestGetEntryData:
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             _get_entry_data(hass, {})
 
-    async def test_returns_specified_entry(self, hass: HomeAssistant):
+    async def test_returns_specified_entry(self, hass: HomeAssistant, add_loaded_entry):
         """Test returns the entry matching entry_id."""
-        _add_loaded_entry(hass, "entry_a", config={"host": "a"})
-        entry_b = _add_loaded_entry(hass, "entry_b", config={"host": "b"})
+        add_loaded_entry("entry_a", config={"host": "a"})
+        entry_b = add_loaded_entry("entry_b", config={"host": "b"})
 
         result = _get_entry_data(hass, {"entry_id": "entry_b"})
         assert result is entry_b.runtime_data
 
-    async def test_falls_back_to_first_entry(self, hass: HomeAssistant):
+    async def test_falls_back_to_first_entry(
+        self, hass: HomeAssistant, add_loaded_entry
+    ):
         """Test falls back to the first loaded entry when no entry_id provided."""
-        entry_a = _add_loaded_entry(hass, "entry_a", config={"host": "a"})
+        entry_a = add_loaded_entry("entry_a", config={"host": "a"})
 
         result = _get_entry_data(hass, {})
         assert result is entry_a.runtime_data
 
-    async def test_raises_on_invalid_entry_id(self, hass: HomeAssistant):
+    async def test_raises_on_invalid_entry_id(
+        self, hass: HomeAssistant, add_loaded_entry
+    ):
         """Test raises when entry_id doesn't match any loaded entry."""
-        _add_loaded_entry(hass, "entry_a", config={"host": "a"})
+        add_loaded_entry("entry_a", config={"host": "a"})
 
         with pytest.raises(ServiceValidationError, match="nonexistent"):
             _get_entry_data(hass, {"entry_id": "nonexistent"})
@@ -2089,7 +2080,7 @@ class TestDeleteJobService:
         mock_client.delete_job.assert_called_once_with("unknown-job", "default")
 
     async def test_entry_id_selects_correct_entry(
-        self, hass: HomeAssistant, mock_client
+        self, hass: HomeAssistant, mock_client, add_loaded_entry
     ):
         """Test that entry_id routes to the correct cluster's client."""
         mock_coordinator_a = MagicMock()
@@ -2102,14 +2093,12 @@ class TestDeleteJobService:
         mock_coordinator_b.client = other_client
         mock_coordinator_b.data = {"jobs": {}}
 
-        _add_loaded_entry(
-            hass,
+        add_loaded_entry(
             "entry-a",
             config={"namespace": "default"},
             coordinator=mock_coordinator_a,
         )
-        _add_loaded_entry(
-            hass,
+        add_loaded_entry(
             "entry-b",
             config={"namespace": "other"},
             coordinator=mock_coordinator_b,

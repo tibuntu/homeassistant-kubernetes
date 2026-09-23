@@ -251,7 +251,7 @@ pytest
 pytest -v
 
 # Run specific test file
-pytest tests/test_kubernetes_integration.py
+pytest tests/test_switch.py
 
 # Run tests with coverage
 pytest --cov=custom_components/kubernetes
