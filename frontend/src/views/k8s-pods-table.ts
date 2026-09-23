@@ -685,7 +685,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       <div
         class="confirm-overlay"
         tabindex="-1"
-        autofocus
+        ${this._autofocusOverlay()}
         @click=${this._deleting ? nothing : this._cancelDelete}
         @keydown=${this._onOverlayKeydown(this._deleting ? nothing : this._cancelDelete)}
       >
