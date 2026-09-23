@@ -1,5 +1,6 @@
 import { html, css, nothing, PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import {
   stateStyles,
@@ -60,6 +61,8 @@ type ColumnKey = (typeof TOGGLEABLE_COLUMNS)[number]["key"];
 const ALL_COLUMN_KEYS: Set<ColumnKey> = new Set(TOGGLEABLE_COLUMNS.map((c) => c.key));
 const STORAGE_KEY = "k8s-pods-columns";
 
+type SortField = "namespace" | "name" | "phase" | "restarts" | "node_name" | "age";
+
 function loadColumnPrefs(): Set<ColumnKey> {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -87,12 +90,13 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   @state() private _searchQuery: string = "";
   @state() private _phaseFilter: string = "all";
   @state() private _namespaceFilter: string = "all";
-  @state() private _sortField: string = "name";
+  @state() private _sortField: SortField = "name";
   @state() private _sortAsc: boolean = true;
   @state() private _deleteConfirm: PodIdentifier | null = null;
   @state() private _deleting = false;
   @state() private _visibleColumns: Set<ColumnKey> = loadColumnPrefs();
   @state() private _columnMenuOpen = false;
+  @state() private _actionError: string | null = null;
 
   protected loadErrorFallback = "Failed to load pods data";
 
@@ -154,8 +158,8 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         valA = a.creation_timestamp || "";
         valB = b.creation_timestamp || "";
       } else {
-        valA = (a as any)[field] || "";
-        valB = (b as any)[field] || "";
+        valA = a[field] || "";
+        valB = b[field] || "";
       }
       const cmp = valA < valB ? -1 : valA > valB ? 1 : 0;
       return this._sortAsc ? cmp : -cmp;
@@ -164,7 +168,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     return filtered;
   }
 
-  private _handleSort(field: string): void {
+  private _handleSort(field: SortField): void {
     if (this._sortField === field) {
       this._sortAsc = !this._sortAsc;
     } else {
@@ -173,7 +177,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     }
   }
 
-  private _handleSortKeydown(e: KeyboardEvent, field: string): void {
+  private _handleSortKeydown(e: KeyboardEvent, field: SortField): void {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       this._handleSort(field);
@@ -205,7 +209,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       this._deleteConfirm = null;
       await this._loadData();
     } catch (err: unknown) {
-      this._error = errorMessage(err, "Failed to delete pod");
+      this._actionError = errorMessage(err, "Failed to delete pod");
       this._deleteConfirm = null;
     } finally {
       this._deleting = false;
@@ -218,6 +222,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   }
 
   static styles = [
+    actionStyles,
     stateStyles,
     filterStyles,
     badgeStyles,
@@ -391,6 +396,24 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     if (state !== nothing) return state;
 
     return html`
+      ${
+        this._actionError
+          ? html`
+              <div class="action-error">
+                <span>${this._actionError}</span>
+                <button
+                  class="dismiss-btn"
+                  @click=${() => {
+                    this._actionError = null;
+                  }}
+                  title="Dismiss"
+                >
+                  <ha-icon icon="mdi:close"></ha-icon>
+                </button>
+              </div>
+            `
+          : nothing
+      }
       ${this._data!.clusters.map((c) => this._renderCluster(c))}
       ${this._deleteConfirm ? this._renderDeleteDialog() : nothing}
     `;
@@ -661,7 +684,10 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     return html`
       <div
         class="confirm-overlay"
+        tabindex="-1"
+        autofocus
         @click=${this._deleting ? nothing : this._cancelDelete}
+        @keydown=${this._onOverlayKeydown(this._deleting ? nothing : this._cancelDelete)}
       >
         <div class="confirm-dialog" @click=${(e: Event) => e.stopPropagation()}>
           <h3>Delete Pod</h3>
