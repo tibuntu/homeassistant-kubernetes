@@ -248,6 +248,40 @@ class TestKubernetesServicesSensor:
         assert sensor.native_value == 0
 
 
+class TestShouldPoll:
+    """Coordinator-backed sensors are never polled by HA.
+
+    Only the cluster health binary sensor keeps its own 30 s live probe.
+    """
+
+    @pytest.mark.parametrize(
+        ("sensor_cls", "extra_args"),
+        [
+            (KubernetesPodsSensor, ()),
+            (KubernetesNodeSensor, ("worker-node-1",)),
+            (KubernetesPodSensor, ("default", "pod-1")),
+            (KubernetesWorkloadStatusSensor, ("nginx", "default", "deployment")),
+            (KubernetesWorkloadMetricSensor, ("nginx", "default", "deployment", "cpu")),
+            (KubernetesDaemonSetSensor, ("ds-1", "default")),
+            (KubernetesCronJobSensor, ("cj-1", "default")),
+            (KubernetesJobSensor, ("job-1", "default")),
+        ],
+    )
+    def test_coordinator_sensors_do_not_poll(
+        self, mock_config_entry, mock_client, mock_coordinator, sensor_cls, extra_args
+    ):
+        """Every KubernetesBaseSensor subclass inherits should_poll = False."""
+        sensor = sensor_cls(
+            mock_coordinator, mock_client, mock_config_entry, *extra_args
+        )
+        assert sensor.should_poll is False
+
+    def test_cluster_health_sensor_polls(self, mock_config_entry, mock_client):
+        """The cluster health sensor is the one deliberately polled entity."""
+        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
+        assert sensor.should_poll is True
+
+
 class TestKubernetesClusterHealthSensor:
     """Test Kubernetes cluster health binary sensor."""
 
@@ -845,41 +879,6 @@ class TestKubernetesNodeSensor:
         # Test extra state attributes
         attributes = sensor.extra_state_attributes
         assert attributes == {}
-
-    async def test_sensor_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test successful sensor update."""
-        node_name = "worker-node-1"
-        sensor = KubernetesNodeSensor(
-            mock_coordinator, mock_client, mock_config_entry, node_name
-        )
-
-        # Mock the coordinator update
-        mock_coordinator.async_request_refresh = AsyncMock()
-
-        # Should complete without error
-        await sensor.async_update()
-
-        # Verify coordinator refresh was called
-        mock_coordinator.async_request_refresh.assert_called_once()
-
-    async def test_sensor_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor update failure."""
-        node_name = "worker-node-1"
-        sensor = KubernetesNodeSensor(
-            mock_coordinator, mock_client, mock_config_entry, node_name
-        )
-
-        # Mock the coordinator to raise an exception
-        mock_coordinator.async_request_refresh = AsyncMock(
-            side_effect=Exception("Update failed")
-        )
-
-        # Should handle exception gracefully
-        await sensor.async_update()
 
 
 class TestDynamicNodeSensorDiscovery:
@@ -3143,17 +3142,6 @@ class TestKubernetesJobsSensorExtended:
 
         mock_coordinator.last_update_success = False
         assert sensor.available is False
-
-    async def test_async_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test async update when coordinator succeeds."""
-        mock_coordinator.data = {"jobs": {"job1": {}}}
-        mock_coordinator.async_request_refresh = AsyncMock()
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-
-        await sensor.async_update()
-        mock_coordinator.async_request_refresh.assert_called_once()
 
 
 class TestKubernetesJobSensorExtended:

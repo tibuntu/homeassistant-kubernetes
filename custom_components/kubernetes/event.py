@@ -42,6 +42,7 @@ class KubernetesClusterEventEntity(EventEntity):
     """Fires Home Assistant events for Kubernetes cluster events."""
 
     _attr_has_entity_name = True
+    _attr_should_poll = False  # purely dispatcher-driven
     _attr_name = "Cluster events"
     _attr_event_types: ClassVar[list[str]] = [*EVENT_CURATED_REASONS, EVENT_TYPE_OTHER]
 

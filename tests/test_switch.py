@@ -1,6 +1,6 @@
 """Tests for the Kubernetes switch platform."""
 
-import time
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
@@ -354,8 +354,8 @@ class TestKubernetesCronJobSwitch:
         assert cronjob_switch._is_on is True
         assert cronjob_switch._suspend is False
 
-    async def test_async_update_enabled_cronjob(self, cronjob_switch, mock_coordinator):
-        """Test async_update with enabled CronJob."""
+    def test_coordinator_update_enabled_cronjob(self, cronjob_switch, mock_coordinator):
+        """Test _handle_coordinator_update with enabled CronJob."""
         # Setup coordinator data for enabled CronJob
         mock_coordinator.data = {
             "cronjobs": {
@@ -377,7 +377,8 @@ class TestKubernetesCronJobSwitch:
         )
 
         # Execute
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         # Verify
         assert cronjob_switch._is_on is True
@@ -387,10 +388,10 @@ class TestKubernetesCronJobSwitch:
         assert cronjob_switch._last_schedule_time == "2023-01-01T02:00:00Z"
         assert cronjob_switch._next_schedule_time == "2023-01-02T02:00:00Z"
 
-    async def test_async_update_suspended_cronjob(
+    def test_coordinator_update_suspended_cronjob(
         self, cronjob_switch, mock_coordinator
     ):
-        """Test async_update with suspended CronJob."""
+        """Test _handle_coordinator_update with suspended CronJob."""
         # Setup coordinator data for suspended CronJob
         mock_coordinator.data = {
             "cronjobs": {
@@ -412,33 +413,39 @@ class TestKubernetesCronJobSwitch:
         )
 
         # Execute
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         # Verify
         assert cronjob_switch._is_on is False
         assert cronjob_switch._suspend is True
         assert cronjob_switch._active_jobs_count == 0
 
-    async def test_async_update_cronjob_not_found(
-        self, cronjob_switch, mock_coordinator
+    def test_coordinator_update_cronjob_not_found(
+        self, cronjob_switch, mock_coordinator, caplog
     ):
-        """Test async_update when CronJob is not found in coordinator data."""
+        """Test _handle_coordinator_update when CronJob is not found in coordinator data."""
         # Setup empty coordinator data
         mock_coordinator.data = {"cronjobs": {}}
 
         # Mock the get_cronjob_data method to return None
         mock_coordinator.get_cronjob_data = MagicMock(return_value=None)
+        cronjob_switch._is_on = True
 
         # Execute
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        with caplog.at_level(logging.WARNING):
+            cronjob_switch._handle_coordinator_update()
 
-        # Verify - should not raise exception and should log warning
-        # State should remain unchanged
+        # Verify - warning logged, state untouched, state still written
+        assert "CronJob test-cronjob not found" in caplog.text
+        assert cronjob_switch._is_on is True
+        cronjob_switch.async_write_ha_state.assert_called_once()
 
-    async def test_async_update_with_string_suspend_value(
+    def test_coordinator_update_with_string_suspend_value(
         self, cronjob_switch, mock_coordinator
     ):
-        """Test async_update with string suspend value."""
+        """Test _handle_coordinator_update with string suspend value."""
         # Setup coordinator data with string suspend value
         mock_coordinator.data = {
             "cronjobs": {
@@ -460,16 +467,17 @@ class TestKubernetesCronJobSwitch:
         )
 
         # Execute
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         # Verify
         assert cronjob_switch._is_on is False
         assert cronjob_switch._suspend is True
 
-    async def test_async_update_with_none_suspend_value(
+    def test_coordinator_update_with_none_suspend_value(
         self, cronjob_switch, mock_coordinator
     ):
-        """Test async_update with None suspend value."""
+        """Test _handle_coordinator_update with None suspend value."""
         # Setup coordinator data with None suspend value
         mock_coordinator.data = {
             "cronjobs": {
@@ -491,36 +499,79 @@ class TestKubernetesCronJobSwitch:
         )
 
         # Execute
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         # Verify
         assert cronjob_switch._is_on is True
         assert cronjob_switch._suspend is False
 
     async def test_async_added_to_hass(self, cronjob_switch, mock_coordinator):
-        """Test async_added_to_hass."""
+        """async_added_to_hass registers the listener and populates state at once."""
         # Setup
         cronjob_switch.hass = MagicMock()
         cronjob_switch.async_on_remove = MagicMock()
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                **mock_coordinator.data["cronjobs"]["default_test-cronjob"],
+                "suspend": True,
+                "active_jobs_count": 4,
+            }
+        )
 
         # Execute
         await cronjob_switch.async_added_to_hass()
 
         # Verify
         cronjob_switch.async_on_remove.assert_called_once()
+        mock_coordinator.async_add_listener.assert_called_once_with(
+            cronjob_switch._handle_coordinator_update
+        )
+        assert cronjob_switch.is_on is False
+        assert cronjob_switch.extra_state_attributes["active_jobs_count"] == 4
+        assert cronjob_switch.extra_state_attributes["schedule"] == "0 2 * * *"
 
-    def test_handle_coordinator_update(self, cronjob_switch):
-        """Test _handle_coordinator_update callback."""
+    def test_handle_coordinator_update(self, cronjob_switch, mock_coordinator):
+        """_handle_coordinator_update syncs state, then writes it."""
         # Setup
         cronjob_switch.async_write_ha_state = MagicMock()
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                **mock_coordinator.data["cronjobs"]["default_test-cronjob"],
+                "active_jobs_count": 1,
+                "next_schedule_time": "2026-01-01T00:00:00Z",
+            }
+        )
 
         # Execute
         cronjob_switch._handle_coordinator_update()
 
         # Verify
+        assert cronjob_switch.is_on is True
+        assert cronjob_switch.extra_state_attributes["active_jobs_count"] == 1
+        assert (
+            cronjob_switch.extra_state_attributes["next_schedule_time"]
+            == "2026-01-01T00:00:00Z"
+        )
         cronjob_switch.async_write_ha_state.assert_called_once()
 
-    async def test_switch_available_when_coordinator_last_update_success_is_true(
+    @pytest.mark.parametrize(
+        ("switch_cls", "args"),
+        [
+            (KubernetesCronJobSwitch, ("test-cronjob", "default")),
+            (KubernetesDeploymentSwitch, ("nginx", "default")),
+            (KubernetesStatefulSetSwitch, ("redis", "default")),
+            (KubernetesNodeSchedulableSwitch, ("node-1",)),
+        ],
+    )
+    def test_switches_do_not_poll(
+        self, mock_coordinator, mock_config_entry, switch_cls, args
+    ):
+        """Every switch is coordinator-driven; HA must not poll it."""
+        switch = switch_cls(mock_coordinator, mock_config_entry, *args)
+        assert switch.should_poll is False
+
+    def test_switch_available_when_coordinator_last_update_success_is_true(
         self, mock_coordinator, mock_config_entry
     ):
         """Test switch available property when coordinator last_update_success is True."""
@@ -755,89 +806,6 @@ class TestKubernetesDeploymentSwitch:
 
         assert deployment_switch._last_scale_attempt_failed is True
         deployment_coordinator.async_request_refresh.assert_called_once()
-
-    async def test_async_update_with_data(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test async_update with coordinator data."""
-        deployment_switch._last_scale_time = 0.0
-        deployment_coordinator.data["deployments"]["default_nginx"] = {
-            "replicas": 3,
-            "is_running": True,
-            "cpu_usage": 100.0,
-            "memory_usage": 256.0,
-        }
-        await deployment_switch.async_update()
-        assert deployment_switch._replicas == 3
-        assert deployment_switch._is_on is True
-
-    async def test_async_update_no_data(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test async_update when deployment not found in coordinator."""
-        deployment_switch._last_scale_time = 0.0
-        deployment_coordinator.data = {"deployments": {}}
-        # Should return early without exception
-        await deployment_switch.async_update()
-
-    async def test_async_update_in_cooldown(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test async_update skips during cooldown period."""
-        deployment_switch._last_scale_time = time.time()
-        deployment_switch._scale_cooldown = 100
-        original_replicas = deployment_switch._replicas
-        await deployment_switch.async_update()
-        # Replicas should not change during cooldown
-        assert deployment_switch._replicas == original_replicas
-
-    async def test_async_update_replica_change_logged(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test async_update logs replica changes."""
-        deployment_switch._last_scale_time = 0.0
-        deployment_switch._replicas = 1
-        deployment_switch._is_on = True
-        deployment_coordinator.data["deployments"]["default_nginx"] = {
-            "replicas": 3,
-            "is_running": True,
-            "cpu_usage": 0.0,
-            "memory_usage": 0.0,
-        }
-        await deployment_switch.async_update()
-        assert deployment_switch._replicas == 3
-
-    async def test_async_update_state_change_logged(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test async_update logs state changes."""
-        deployment_switch._last_scale_time = 0.0
-        deployment_switch._is_on = False
-        deployment_coordinator.data["deployments"]["default_nginx"] = {
-            "replicas": 1,
-            "is_running": True,
-            "cpu_usage": 0.0,
-            "memory_usage": 0.0,
-        }
-        await deployment_switch.async_update()
-        assert deployment_switch._is_on is True
-
-    async def test_async_update_unchanged_state(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test async_update when state unchanged (covers debug log path)."""
-        deployment_switch._last_scale_time = 0.0
-        deployment_switch._replicas = 2
-        deployment_switch._is_on = True
-        deployment_coordinator.data["deployments"]["default_nginx"] = {
-            "replicas": 2,
-            "is_running": True,
-            "cpu_usage": 0.0,
-            "memory_usage": 0.0,
-        }
-        await deployment_switch.async_update()
-        assert deployment_switch._replicas == 2
-        assert deployment_switch._is_on is True
 
     async def test_verify_scaling_success(
         self, deployment_switch, deployment_coordinator
@@ -1119,87 +1087,6 @@ class TestKubernetesStatefulSetSwitch:
         assert statefulset_switch._last_scale_attempt_failed is True
         statefulset_coordinator.async_request_refresh.assert_called_once()
 
-    async def test_async_update_with_data(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test async_update with coordinator data."""
-        statefulset_switch._last_scale_time = 0.0
-        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
-            "replicas": 2,
-            "is_running": True,
-            "cpu_usage": 50.0,
-            "memory_usage": 128.0,
-        }
-        await statefulset_switch.async_update()
-        assert statefulset_switch._replicas == 2
-        assert statefulset_switch._is_on is True
-
-    async def test_async_update_no_data(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test async_update when statefulset not found in coordinator."""
-        statefulset_switch._last_scale_time = 0.0
-        statefulset_coordinator.data = {"statefulsets": {}}
-        await statefulset_switch.async_update()
-
-    async def test_async_update_in_cooldown(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test async_update skips during cooldown period."""
-        statefulset_switch._last_scale_time = time.time()
-        statefulset_switch._scale_cooldown = 100
-        original_replicas = statefulset_switch._replicas
-        await statefulset_switch.async_update()
-        assert statefulset_switch._replicas == original_replicas
-
-    async def test_async_update_replica_change(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test async_update logs replica changes."""
-        statefulset_switch._last_scale_time = 0.0
-        statefulset_switch._replicas = 1
-        statefulset_switch._is_on = True
-        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
-            "replicas": 3,
-            "is_running": True,
-            "cpu_usage": 0.0,
-            "memory_usage": 0.0,
-        }
-        await statefulset_switch.async_update()
-        assert statefulset_switch._replicas == 3
-
-    async def test_async_update_state_change(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test async_update logs state changes."""
-        statefulset_switch._last_scale_time = 0.0
-        statefulset_switch._is_on = False
-        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
-            "replicas": 1,
-            "is_running": True,
-            "cpu_usage": 0.0,
-            "memory_usage": 0.0,
-        }
-        await statefulset_switch.async_update()
-        assert statefulset_switch._is_on is True
-
-    async def test_async_update_unchanged_state(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test async_update covers debug log path for unchanged state."""
-        statefulset_switch._last_scale_time = 0.0
-        statefulset_switch._replicas = 1
-        statefulset_switch._is_on = True
-        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
-            "replicas": 1,
-            "is_running": True,
-            "cpu_usage": 0.0,
-            "memory_usage": 0.0,
-        }
-        await statefulset_switch.async_update()
-        assert statefulset_switch._replicas == 1
-        assert statefulset_switch._is_on is True
-
     async def test_verify_scaling_success(
         self, statefulset_switch, statefulset_coordinator
     ):
@@ -1270,7 +1157,7 @@ class TestKubernetesStatefulSetSwitch:
 class TestStatefulSetNamespaceCollisionRegression:
     """Two StatefulSets sharing a name across namespaces must not collide."""
 
-    async def test_same_name_different_namespace_statefulsets_are_distinct(
+    def test_same_name_different_namespace_statefulsets_are_distinct(
         self, mock_config_entry
     ):
         """Same-named 'bot' StatefulSets in 'c3po' and 'toothless' stay independent."""
@@ -1320,11 +1207,11 @@ class TestStatefulSetNamespaceCollisionRegression:
         assert toothless_data["replicas"] == 0
         assert toothless_data["is_running"] is False
 
-        # async_update must reflect independent, non-colliding state per namespace
-        switch_c3po._last_scale_time = 0.0
-        switch_toothless._last_scale_time = 0.0
-        await switch_c3po.async_update()
-        await switch_toothless.async_update()
+        # The coordinator listener must sync independent, non-colliding state
+        switch_c3po.async_write_ha_state = MagicMock()
+        switch_toothless.async_write_ha_state = MagicMock()
+        switch_c3po._handle_coordinator_update()
+        switch_toothless._handle_coordinator_update()
 
         assert switch_c3po.is_on is True
         assert switch_c3po._replicas == 10
@@ -1822,10 +1709,10 @@ class TestCronJobOperations:
         assert cronjob_switch._last_resume_time is None
 
     # -----------------------------------------------------------------------
-    # 3. CronJob state update (async_update)
+    # 3. CronJob state sync (_sync_from_coordinator via the listener)
     # -----------------------------------------------------------------------
 
-    async def test_update_with_coordinator_data(self, cronjob_switch, mock_coordinator):
+    def test_update_with_coordinator_data(self, cronjob_switch, mock_coordinator):
         """Normal update sets _is_on, _schedule, _suspend, _active_jobs_count."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
@@ -1839,7 +1726,8 @@ class TestCronJobOperations:
             }
         )
 
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._is_on is True
         assert cronjob_switch._suspend is False
@@ -1848,19 +1736,20 @@ class TestCronJobOperations:
         assert cronjob_switch._last_schedule_time == "2026-03-14T10:00:00Z"
         assert cronjob_switch._next_schedule_time == "2026-03-14T10:05:00Z"
 
-    async def test_update_no_data_returns_early(self, cronjob_switch, mock_coordinator):
+    def test_update_no_data_returns_early(self, cronjob_switch, mock_coordinator):
         """No data from coordinator: returns early without crash."""
         mock_coordinator.get_cronjob_data = MagicMock(return_value=None)
 
         # Should not raise
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         # Internal state should remain at defaults
         assert cronjob_switch._is_on is False
         assert cronjob_switch._schedule == ""
         assert cronjob_switch._active_jobs_count == 0
 
-    async def test_update_suspend_true_boolean(self, cronjob_switch, mock_coordinator):
+    def test_update_suspend_true_boolean(self, cronjob_switch, mock_coordinator):
         """suspend=True (bool) -> _suspend=True, _is_on=False."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
@@ -1872,12 +1761,13 @@ class TestCronJobOperations:
             }
         )
 
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._suspend is True
         assert cronjob_switch._is_on is False
 
-    async def test_update_suspend_false_boolean(self, cronjob_switch, mock_coordinator):
+    def test_update_suspend_false_boolean(self, cronjob_switch, mock_coordinator):
         """suspend=False (bool) -> _suspend=False, _is_on=True."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
@@ -1889,12 +1779,13 @@ class TestCronJobOperations:
             }
         )
 
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._suspend is False
         assert cronjob_switch._is_on is True
 
-    async def test_update_suspend_string_true(self, cronjob_switch, mock_coordinator):
+    def test_update_suspend_string_true(self, cronjob_switch, mock_coordinator):
         """suspend='true' (string) -> _suspend=True, _is_on=False."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
@@ -1906,12 +1797,13 @@ class TestCronJobOperations:
             }
         )
 
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._suspend is True
         assert cronjob_switch._is_on is False
 
-    async def test_update_suspend_string_false(self, cronjob_switch, mock_coordinator):
+    def test_update_suspend_string_false(self, cronjob_switch, mock_coordinator):
         """suspend='false' (string) -> _suspend=False, _is_on=True."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
@@ -1923,12 +1815,13 @@ class TestCronJobOperations:
             }
         )
 
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._suspend is False
         assert cronjob_switch._is_on is True
 
-    async def test_update_suspend_other_value_defaults_false(
+    def test_update_suspend_other_value_defaults_false(
         self, cronjob_switch, mock_coordinator
     ):
         """suspend=42 (non-bool, non-string) -> _suspend=False, _is_on=True."""
@@ -1942,14 +1835,13 @@ class TestCronJobOperations:
             }
         )
 
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._suspend is False
         assert cronjob_switch._is_on is True
 
-    async def test_update_schedule_time_as_strings(
-        self, cronjob_switch, mock_coordinator
-    ):
+    def test_update_schedule_time_as_strings(self, cronjob_switch, mock_coordinator):
         """Schedule times are converted to strings."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
@@ -1961,14 +1853,15 @@ class TestCronJobOperations:
             }
         )
 
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._last_schedule_time == "2026-03-14T00:00:00Z"
         assert cronjob_switch._next_schedule_time == "2026-03-15T00:00:00Z"
         assert isinstance(cronjob_switch._last_schedule_time, str)
         assert isinstance(cronjob_switch._next_schedule_time, str)
 
-    async def test_update_schedule_time_none(self, cronjob_switch, mock_coordinator):
+    def test_update_schedule_time_none(self, cronjob_switch, mock_coordinator):
         """Schedule times that are None remain None."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
@@ -1980,7 +1873,8 @@ class TestCronJobOperations:
             }
         )
 
-        await cronjob_switch.async_update()
+        cronjob_switch.async_write_ha_state = MagicMock()
+        cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._last_schedule_time is None
         assert cronjob_switch._next_schedule_time is None

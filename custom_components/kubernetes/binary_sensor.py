@@ -178,6 +178,8 @@ class KubernetesClusterHealthSensor(KubernetesBaseBinarySensor):
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
+    # Deliberately polled: HA's 30 s entity poll is this entity's live probe
+    # (is_cluster_healthy() is a cheap GET /api/v1/), independent of the coordinator.
     async def async_update(self) -> None:
         """Update the binary sensor state."""
         try:
@@ -190,6 +192,9 @@ class KubernetesClusterHealthSensor(KubernetesBaseBinarySensor):
 
 class KubernetesNodeConditionBinarySensor(BinarySensorEntity):
     """Binary sensor for an individual Kubernetes node condition."""
+
+    # Listener-driven; HA's 30 s poll would be a no-op write per condition.
+    _attr_should_poll = False
 
     def __init__(
         self,

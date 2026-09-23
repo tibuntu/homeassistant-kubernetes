@@ -96,6 +96,10 @@ class TestKubernetesClusterEventEntity:
         entry.add_to_hass(hass)
         return entry
 
+    def test_entity_does_not_poll(self, entry):
+        """The event entity is dispatcher-driven; HA must not poll it."""
+        assert KubernetesClusterEventEntity(entry).should_poll is False
+
     def test_handle_event_maps_curated_reason(self, entry):
         """A curated reason is passed through as the event_type."""
         entity = KubernetesClusterEventEntity(entry)
