@@ -45,7 +45,6 @@ from custom_components.kubernetes.services import (
     _no_workloads_error,
     _normalize_entity_id_list,
     _resolve_raw_workload_name,
-    _validate_entity_workload_type,
     _validate_job_schema,
     _validate_node_schema,
     _validate_workload_schema,
@@ -772,69 +771,6 @@ class TestNormalizeEntityIdList:
 
     def test_list_skips_non_string_items(self):
         assert _normalize_entity_id_list(["switch.a", 123, None]) == ["switch.a"]
-
-
-class TestValidateEntityWorkloadType:
-    """Test the _validate_entity_workload_type helper."""
-
-    async def test_non_switch_entity_always_valid(self, hass: HomeAssistant):
-        assert (
-            _validate_entity_workload_type(hass, "my-deployment", "Deployment") is True
-        )
-
-    async def test_switch_entity_correct_type(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT},
-        )
-        assert (
-            _validate_entity_workload_type(
-                hass, "switch.nginx", WORKLOAD_TYPE_DEPLOYMENT
-            )
-            is True
-        )
-
-    async def test_switch_entity_wrong_type(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET},
-        )
-        assert (
-            _validate_entity_workload_type(
-                hass, "switch.nginx", WORKLOAD_TYPE_DEPLOYMENT
-            )
-            is False
-        )
-
-    async def test_switch_entity_not_found(self, hass: HomeAssistant):
-        assert (
-            _validate_entity_workload_type(
-                hass, "switch.missing", WORKLOAD_TYPE_DEPLOYMENT
-            )
-            is False
-        )
-
-    async def test_switch_entity_no_attributes(self, hass: HomeAssistant):
-        # Real HA State with no explicit attributes has empty MappingProxyType (falsy)
-        hass.states.async_set("switch.noattr", "on")
-        assert (
-            _validate_entity_workload_type(
-                hass, "switch.noattr", WORKLOAD_TYPE_DEPLOYMENT
-            )
-            is False
-        )
-
-    def test_exception_returns_false(self):
-        mock_hass = MagicMock()
-        mock_hass.states.get.side_effect = Exception("boom")
-        assert (
-            _validate_entity_workload_type(
-                mock_hass, "switch.error", WORKLOAD_TYPE_DEPLOYMENT
-            )
-            is False
-        )
 
 
 class TestGetWorkloadInfoFromEntity:

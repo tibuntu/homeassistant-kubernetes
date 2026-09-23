@@ -17,8 +17,6 @@ from custom_components.kubernetes.const import (
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
     SERVICE_STOP_WORKLOAD,
-    SWITCH_TYPE_DEPLOYMENT,
-    SWITCH_TYPE_STATEFULSET,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
@@ -179,15 +177,6 @@ def mock_coordinator(mock_kubernetes_client):
         "last_update": 1234567890.0,
     }
 
-    # Mock the get_deployment_data method
-    def get_deployment_data(namespace, name):
-        return coordinator.data["deployments"].get(f"{namespace}_{name}")
-
-    def get_statefulset_data(namespace, name):
-        return coordinator.data["statefulsets"].get(f"{namespace}_{name}")
-
-    coordinator.get_deployment_data = get_deployment_data
-    coordinator.get_statefulset_data = get_statefulset_data
     coordinator.async_request_refresh = AsyncMock()
 
     return coordinator
@@ -515,8 +504,6 @@ async def test_same_name_statefulsets_in_different_namespaces(
 def test_constants():
     """Test that constants are properly defined."""
     assert DOMAIN == "kubernetes"
-    assert SWITCH_TYPE_DEPLOYMENT == "deployment"
-    assert SWITCH_TYPE_STATEFULSET == "statefulset"
     assert SERVICE_SCALE_WORKLOAD == "scale_workload"
     assert SERVICE_START_WORKLOAD == "start_workload"
     assert SERVICE_STOP_WORKLOAD == "stop_workload"

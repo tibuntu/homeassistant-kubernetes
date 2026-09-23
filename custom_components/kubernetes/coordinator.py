@@ -58,6 +58,27 @@ RBAC_LEARN_MORE_URL = (
     "https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md"
 )
 
+# Namespace-scoped watch resources: (resource_type, api_group, plural,
+# client parse-method name). Nodes are cluster-scoped and handled separately
+# in _build_watch_configs. Used to build both the cluster-wide URL
+# (f"{base_url}/{api_group}/{plural}") and the per-namespace URL (with
+# "/namespaces/{ns}" inserted before the plural).
+_NAMESPACED_WATCH_RESOURCES: tuple[tuple[str, str, str, str], ...] = (
+    ("pods", "api/v1", "pods", "_parse_pod_item"),
+    ("deployments", "apis/apps/v1", "deployments", "_parse_deployment_item"),
+    ("statefulsets", "apis/apps/v1", "statefulsets", "_parse_statefulset_item"),
+    ("daemonsets", "apis/apps/v1", "daemonsets", "_parse_daemonset_item"),
+    ("cronjobs", "apis/batch/v1", "cronjobs", "_format_cronjob_from_dict"),
+    ("jobs", "apis/batch/v1", "jobs", "_format_job_from_dict"),
+    (
+        "ingresses",
+        "apis/networking.k8s.io/v1",
+        "ingresses",
+        "_parse_ingress_item",
+    ),
+    ("services", "api/v1", "services", "_parse_service_item"),
+)
+
 
 @dataclass
 class KubernetesEntryData:
@@ -339,30 +360,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Failed to update Kubernetes data: %s", ex)
                 raise UpdateFailed(f"Failed to update Kubernetes data: {ex}") from ex
 
-    def get_deployment_data(
-        self, namespace: str, deployment_name: str
-    ) -> dict[str, Any] | None:
-        """Get deployment data by namespace and name."""
-        if not self.data or "deployments" not in self.data:
-            return None
-        return self.data["deployments"].get(f"{namespace}_{deployment_name}")
-
-    def get_statefulset_data(
-        self, namespace: str, statefulset_name: str
-    ) -> dict[str, Any] | None:
-        """Get statefulset data by namespace and name."""
-        if not self.data or "statefulsets" not in self.data:
-            return None
-        return self.data["statefulsets"].get(f"{namespace}_{statefulset_name}")
-
-    def get_daemonset_data(
-        self, namespace: str, daemonset_name: str
-    ) -> dict[str, Any] | None:
-        """Get daemonset data by namespace and name."""
-        if not self.data or "daemonsets" not in self.data:
-            return None
-        return self.data["daemonsets"].get(f"{namespace}_{daemonset_name}")
-
     def get_cronjob_data(
         self, namespace: str, cronjob_name: str
     ) -> dict[str, Any] | None:
@@ -376,22 +373,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "jobs" not in self.data:
             return None
         return self.data["jobs"].get(f"{namespace}_{job_name}")
-
-    def get_ingress_data(
-        self, namespace: str, ingress_name: str
-    ) -> dict[str, Any] | None:
-        """Get ingress data by namespace and name."""
-        if not self.data or "ingresses" not in self.data:
-            return None
-        return self.data["ingresses"].get(f"{namespace}_{ingress_name}")
-
-    def get_service_data(
-        self, namespace: str, service_name: str
-    ) -> dict[str, Any] | None:
-        """Get service data by namespace and name."""
-        if not self.data or "services" not in self.data:
-            return None
-        return self.data["services"].get(f"{namespace}_{service_name}")
 
     def get_node_data(self, node_name: str) -> dict[str, Any] | None:
         """Get node data by name."""
@@ -434,16 +415,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         if not self.data or "pods" not in self.data:
             return {}
         return self.data["pods"]
-
-    def get_last_update_time(self) -> float:
-        """Get the timestamp of the last successful update."""
-        if not self.data or "last_update" not in self.data:
-            return 0.0
-        return self.data["last_update"]
-
-    def get_all_namespaces(self) -> set[str]:
-        """Get all unique namespaces from coordinator data."""
-        return get_all_namespaces(self.data)
 
     def _build_expected_unique_ids(self, current_data: dict[str, Any]) -> set[str]:
         """Build the set of unique_ids that should exist based on current data.
@@ -605,96 +576,37 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Cluster-scoped: nodes always use the cluster-wide endpoint
         configs.append(("nodes", f"{base_url}/api/v1/nodes", client._parse_node_item))
 
-        # Namespace-scoped resources
+        # Namespace-scoped resources, one watch per (resource, namespace) —
+        # or per resource only, when monitoring the whole cluster.
         if client.monitor_all_namespaces:
-            configs.extend(
-                [
-                    ("pods", f"{base_url}/api/v1/pods", client._parse_pod_item),
+            for (
+                resource_type,
+                api_group,
+                plural,
+                parse_attr,
+            ) in _NAMESPACED_WATCH_RESOURCES:
+                configs.append(
                     (
-                        "deployments",
-                        f"{base_url}/apis/apps/v1/deployments",
-                        client._parse_deployment_item,
-                    ),
-                    (
-                        "statefulsets",
-                        f"{base_url}/apis/apps/v1/statefulsets",
-                        client._parse_statefulset_item,
-                    ),
-                    (
-                        "daemonsets",
-                        f"{base_url}/apis/apps/v1/daemonsets",
-                        client._parse_daemonset_item,
-                    ),
-                    (
-                        "cronjobs",
-                        f"{base_url}/apis/batch/v1/cronjobs",
-                        client._format_cronjob_from_dict,
-                    ),
-                    (
-                        "jobs",
-                        f"{base_url}/apis/batch/v1/jobs",
-                        client._format_job_from_dict,
-                    ),
-                    (
-                        "ingresses",
-                        f"{base_url}/apis/networking.k8s.io/v1/ingresses",
-                        client._parse_ingress_item,
-                    ),
-                    (
-                        "services",
-                        f"{base_url}/api/v1/services",
-                        client._parse_service_item,
-                    ),
-                ]
-            )
-        else:
-            # One watch per namespace for each namespace-scoped resource
-            for namespace in client.namespaces:
-                ns = namespace
-                configs.extend(
-                    [
-                        (
-                            "pods",
-                            f"{base_url}/api/v1/namespaces/{ns}/pods",
-                            client._parse_pod_item,
-                        ),
-                        (
-                            "deployments",
-                            f"{base_url}/apis/apps/v1/namespaces/{ns}/deployments",
-                            client._parse_deployment_item,
-                        ),
-                        (
-                            "statefulsets",
-                            f"{base_url}/apis/apps/v1/namespaces/{ns}/statefulsets",
-                            client._parse_statefulset_item,
-                        ),
-                        (
-                            "daemonsets",
-                            f"{base_url}/apis/apps/v1/namespaces/{ns}/daemonsets",
-                            client._parse_daemonset_item,
-                        ),
-                        (
-                            "cronjobs",
-                            f"{base_url}/apis/batch/v1/namespaces/{ns}/cronjobs",
-                            client._format_cronjob_from_dict,
-                        ),
-                        (
-                            "jobs",
-                            f"{base_url}/apis/batch/v1/namespaces/{ns}/jobs",
-                            client._format_job_from_dict,
-                        ),
-                        (
-                            "ingresses",
-                            f"{base_url}/apis/networking.k8s.io/v1/namespaces/{ns}/ingresses",
-                            client._parse_ingress_item,
-                        ),
-                        (
-                            "services",
-                            f"{base_url}/api/v1/namespaces/{ns}/services",
-                            client._parse_service_item,
-                        ),
-                    ]
+                        resource_type,
+                        f"{base_url}/{api_group}/{plural}",
+                        getattr(client, parse_attr),
+                    )
                 )
+        else:
+            for ns in client.namespaces:
+                for (
+                    resource_type,
+                    api_group,
+                    plural,
+                    parse_attr,
+                ) in _NAMESPACED_WATCH_RESOURCES:
+                    configs.append(
+                        (
+                            resource_type,
+                            f"{base_url}/{api_group}/namespaces/{ns}/{plural}",
+                            getattr(client, parse_attr),
+                        )
+                    )
 
         return [c for c in configs if c[0] not in skipped]
 

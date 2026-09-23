@@ -458,46 +458,6 @@ class TestKubernetesDataCoordinator:
         with pytest.raises(ConfigEntryAuthFailed):
             await coordinator._async_update_data()
 
-    async def test_get_deployment_data(self, coordinator):
-        """Test getting deployment data."""
-        coordinator.data = {
-            "deployments": {
-                "default_nginx-deployment": {
-                    "name": "nginx-deployment",
-                    "namespace": "default",
-                    "replicas": 3,
-                }
-            }
-        }
-
-        result = coordinator.get_deployment_data("default", "nginx-deployment")
-        assert result is not None
-        assert result["name"] == "nginx-deployment"
-        assert result["replicas"] == 3
-
-        result = coordinator.get_deployment_data("default", "non-existent")
-        assert result is None
-
-    async def test_get_statefulset_data(self, coordinator):
-        """Test getting StatefulSet data."""
-        coordinator.data = {
-            "statefulsets": {
-                "default_redis-statefulset": {
-                    "name": "redis-statefulset",
-                    "namespace": "default",
-                    "replicas": 1,
-                }
-            }
-        }
-
-        result = coordinator.get_statefulset_data("default", "redis-statefulset")
-        assert result is not None
-        assert result["name"] == "redis-statefulset"
-        assert result["replicas"] == 1
-
-        result = coordinator.get_statefulset_data("default", "non-existent")
-        assert result is None
-
     async def test_get_cronjob_data(self, coordinator):
         """Test getting CronJob data."""
         coordinator.data = {
@@ -559,15 +519,6 @@ class TestKubernetesDataCoordinator:
         coordinator.data = None
         result = coordinator.get_all_nodes_data()
         assert result == {}
-
-    async def test_get_last_update_time(self, coordinator):
-        """Test getting last update time."""
-        result = coordinator.get_last_update_time()
-        assert result == 0.0
-
-        coordinator.data = {"last_update": 1234567890.0}
-        result = coordinator.get_last_update_time()
-        assert result == 1234567890.0
 
     async def test_cleanup_orphaned_entities_no_config_entry(self, coordinator):
         """Test cleanup when config entry is not available."""
@@ -804,24 +755,6 @@ class TestKubernetesDataCoordinator:
         registry = er.async_get(hass)
         assert registry.async_get("sensor.current_node") is not None
 
-    async def test_get_daemonset_data(self, coordinator):
-        """Test getting DaemonSet data by namespace and name."""
-        coordinator.data = {
-            "daemonsets": {
-                "logging_fluentd": {"name": "fluentd", "namespace": "logging"},
-            }
-        }
-        result = coordinator.get_daemonset_data("logging", "fluentd")
-        assert result is not None
-        assert result["name"] == "fluentd"
-
-        result = coordinator.get_daemonset_data("logging", "non-existent")
-        assert result is None
-
-        coordinator.data = None
-        result = coordinator.get_daemonset_data("logging", "fluentd")
-        assert result is None
-
     async def test_get_job_data(self, coordinator):
         """Test getting Job data by namespace and name."""
         coordinator.data = {
@@ -844,60 +777,6 @@ class TestKubernetesDataCoordinator:
         coordinator.data = None
         result = coordinator.get_job_data("default", "backup-job")
         assert result is None
-
-    async def test_get_ingress_data(self, coordinator):
-        """Test getting Ingress data by namespace and name."""
-        coordinator.data = {
-            "ingresses": {
-                "default_web": {
-                    "name": "web",
-                    "namespace": "default",
-                    "status": "Active",
-                },
-                "prod_api": {
-                    "name": "api",
-                    "namespace": "prod",
-                    "status": "Active",
-                },
-            }
-        }
-        result = coordinator.get_ingress_data("default", "web")
-        assert result is not None
-        assert result["name"] == "web"
-        assert result["namespace"] == "default"
-
-        result = coordinator.get_ingress_data("prod", "api")
-        assert result is not None
-        assert result["name"] == "api"
-        assert result["namespace"] == "prod"
-
-        result = coordinator.get_ingress_data("default", "non-existent")
-        assert result is None
-
-        result = coordinator.get_ingress_data("missing", "web")
-        assert result is None
-
-        coordinator.data = None
-        result = coordinator.get_ingress_data("default", "web")
-        assert result is None
-
-    async def test_get_service_data(self, coordinator):
-        """Test getting Service data by namespace and name."""
-        coordinator.data = {
-            "services": {
-                "default_web": {"name": "web", "namespace": "default"},
-                "prod_api": {"name": "api", "namespace": "prod"},
-            }
-        }
-        assert coordinator.get_service_data("default", "web")["name"] == "web"
-        assert coordinator.get_service_data("prod", "api")["namespace"] == "prod"
-        assert coordinator.get_service_data("default", "missing") is None
-
-        coordinator.data = {}
-        assert coordinator.get_service_data("default", "web") is None
-
-        coordinator.data = None
-        assert coordinator.get_service_data("default", "web") is None
 
     async def test_get_pod_data(self, coordinator):
         """Test getting pod data by namespace and name."""
@@ -935,17 +814,6 @@ class TestKubernetesDataCoordinator:
         coordinator.data = None
         result = coordinator.get_all_pods_data()
         assert result == {}
-
-    async def test_get_all_namespaces(self, coordinator):
-        """Test getting all unique namespaces from coordinator data."""
-        coordinator.data = {
-            "deployments": {"nginx": {"namespace": "default"}},
-            "pods": {"default_app": {"namespace": "default"}},
-            "statefulsets": {"redis": {"namespace": "production"}},
-        }
-        namespaces = coordinator.get_all_namespaces()
-        assert "default" in namespaces
-        assert "production" in namespaces
 
     async def test_cleanup_orphaned_entities_removes_daemonset(
         self, hass: HomeAssistant, coordinator, mock_config_entry
@@ -2659,6 +2527,78 @@ class TestBuildWatchConfigs:
             in urls
         )
 
+    async def test_exact_url_set_monitor_all_namespaces(self, coord, mock_client):
+        """Locks the exact (resource_type, url) set for monitor_all_namespaces=True.
+
+        Guards the table-driven rewrite of _build_watch_configs: this set must
+        match what the original hand-written version produced.
+        """
+        mock_client.monitor_all_namespaces = True
+        base_url = "https://host:6443"
+
+        configs = coord._build_watch_configs(base_url)
+        got = {(rt, url) for rt, url, _ in configs}
+
+        expected = {
+            ("nodes", "https://host:6443/api/v1/nodes"),
+            ("pods", "https://host:6443/api/v1/pods"),
+            ("deployments", "https://host:6443/apis/apps/v1/deployments"),
+            ("statefulsets", "https://host:6443/apis/apps/v1/statefulsets"),
+            ("daemonsets", "https://host:6443/apis/apps/v1/daemonsets"),
+            ("cronjobs", "https://host:6443/apis/batch/v1/cronjobs"),
+            ("jobs", "https://host:6443/apis/batch/v1/jobs"),
+            ("ingresses", "https://host:6443/apis/networking.k8s.io/v1/ingresses"),
+            ("services", "https://host:6443/api/v1/services"),
+        }
+        assert got == expected
+        assert len(configs) == len(expected)
+
+    async def test_exact_url_set_per_namespace(self, coord, mock_client):
+        """Locks the exact (resource_type, url) set for namespaces=["a", "b"].
+
+        Guards the table-driven rewrite of _build_watch_configs: this set must
+        match what the original hand-written version produced.
+        """
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["a", "b"]
+        base_url = "https://host:6443"
+
+        configs = coord._build_watch_configs(base_url)
+        got = {(rt, url) for rt, url, _ in configs}
+
+        expected = {("nodes", "https://host:6443/api/v1/nodes")}
+        for ns in ("a", "b"):
+            expected |= {
+                ("pods", f"https://host:6443/api/v1/namespaces/{ns}/pods"),
+                (
+                    "deployments",
+                    f"https://host:6443/apis/apps/v1/namespaces/{ns}/deployments",
+                ),
+                (
+                    "statefulsets",
+                    f"https://host:6443/apis/apps/v1/namespaces/{ns}/statefulsets",
+                ),
+                (
+                    "daemonsets",
+                    f"https://host:6443/apis/apps/v1/namespaces/{ns}/daemonsets",
+                ),
+                (
+                    "cronjobs",
+                    f"https://host:6443/apis/batch/v1/namespaces/{ns}/cronjobs",
+                ),
+                ("jobs", f"https://host:6443/apis/batch/v1/namespaces/{ns}/jobs"),
+                (
+                    "ingresses",
+                    f"https://host:6443/apis/networking.k8s.io/v1/namespaces/{ns}/ingresses",
+                ),
+                (
+                    "services",
+                    f"https://host:6443/api/v1/namespaces/{ns}/services",
+                ),
+            }
+        assert got == expected
+        assert len(configs) == len(expected)
+
     async def test_watch_configs_include_services_all_namespaces(
         self, coord, mock_client
     ):
@@ -3409,8 +3349,8 @@ class TestSameNameDifferentNamespace:
 
         coordinator.data = result
 
-        c3po_bot = coordinator.get_statefulset_data("c3po", "bot")
-        toothless_bot = coordinator.get_statefulset_data("toothless", "bot")
+        c3po_bot = coordinator.data["statefulsets"].get("c3po_bot")
+        toothless_bot = coordinator.data["statefulsets"].get("toothless_bot")
 
         assert c3po_bot is not None
         assert c3po_bot["namespace"] == "c3po"
@@ -3451,8 +3391,8 @@ class TestSameNameDifferentNamespace:
 
         coordinator.data = result
 
-        default_web = coordinator.get_ingress_data("default", "web")
-        prod_web = coordinator.get_ingress_data("prod", "web")
+        default_web = coordinator.data["ingresses"].get("default_web")
+        prod_web = coordinator.data["ingresses"].get("prod_web")
 
         assert default_web is not None
         assert default_web["namespace"] == "default"

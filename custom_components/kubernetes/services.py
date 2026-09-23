@@ -37,50 +37,7 @@ from .const import (
 from .coordinator import KubernetesEntryData, get_loaded_entries
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.info("Kubernetes services module loaded")
-
-
-def _validate_entity_workload_type(
-    hass: HomeAssistant, entity_id_or_name: str, expected_workload_type: str
-) -> bool:
-    """Validate that an entity represents the expected workload type."""
-    try:
-        # Only validate if this looks like an entity ID (starts with switch.)
-        # If it's a direct resource name, skip validation (for backward compatibility)
-        if not entity_id_or_name.startswith("switch."):
-            _LOGGER.debug(
-                "Skipping workload type validation for direct resource name: %s",
-                entity_id_or_name,
-            )
-            return True
-
-        # If it's already an entity ID, use it directly
-        entity_id = entity_id_or_name
-
-        entity = hass.states.get(entity_id)
-        if entity and entity.attributes:
-            workload_type = entity.attributes.get(ATTR_WORKLOAD_TYPE)
-            if workload_type == expected_workload_type:
-                _LOGGER.debug(
-                    "Entity %s has correct workload type: %s", entity_id, workload_type
-                )
-                return True
-            else:
-                _LOGGER.warning(
-                    "Entity %s has workload type %s, expected %s",
-                    entity_id,
-                    workload_type,
-                    expected_workload_type,
-                )
-                return False
-        else:
-            _LOGGER.debug("Entity %s not found or has no attributes", entity_id)
-            return False
-    except Exception as e:
-        _LOGGER.debug(
-            "Error validating workload type for entity %s: %s", entity_id_or_name, e
-        )
-        return False
+_LOGGER.debug("Kubernetes services module loaded")
 
 
 def _get_workload_info_from_entity(
@@ -560,9 +517,9 @@ def _get_entry_data(
     raise ServiceValidationError("No Kubernetes integration configured")
 
 
-async def async_setup_services(hass: HomeAssistant) -> None:  # noqa: C901
+async def async_setup_services(hass: HomeAssistant) -> None:
     """Set up the Kubernetes services."""
-    _LOGGER.info("Setting up Kubernetes services")
+    _LOGGER.debug("Setting up Kubernetes services")
 
     # Generic service handlers
     async def scale_workload(call: ServiceCall) -> None:

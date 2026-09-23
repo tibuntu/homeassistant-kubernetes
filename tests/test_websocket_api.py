@@ -16,16 +16,10 @@ from custom_components.kubernetes.websocket_api import (
     _get_cluster_overview_data,
     _get_config_list_data,
     _get_coordinator,
-    _get_ingresses_list_data,
-    _get_nodes_list_data,
-    _get_pods_list_data,
-    _get_services_list_data,
     _get_workloads_list_data,
-    _handle_delete_job,
-    _handle_delete_pod,
-    _handle_subscribe_updates,
-    _handle_suspend_cronjob,
+    _list_data,
     async_register_websocket_commands,
+    websocket_subscribe_updates,
 )
 
 
@@ -184,6 +178,33 @@ def _make_entry(entry_id, coordinator, config=None, options=None):
 def _load_entries(mock_hass, *entries):
     """Install the given entries as the loaded Kubernetes config entries."""
     mock_hass.config_entries.async_loaded_entries.return_value = list(entries)
+
+
+def _add_loaded_client_entry(
+    hass: HomeAssistant, client: MagicMock, entry_id: str = "entry_1"
+) -> MagicMock:
+    """Add a real LOADED config entry whose coordinator wraps ``client``.
+
+    Used by end-to-end WebSocket tests: ``websocket_delete_pod``,
+    ``websocket_delete_job`` and ``websocket_suspend_cronjob`` are decorated
+    with ``require_admin``/``websocket_command``/``async_response``, which
+    turns them into scheduling wrappers that can't be awaited directly with a
+    mock hass — they must be driven through a real WebSocket connection.
+    """
+    coordinator = MagicMock()
+    coordinator.client = client
+    coordinator.async_request_refresh = AsyncMock()
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id=entry_id,
+        data={"host": "test", "cluster_name": "test"},
+        state=ConfigEntryState.LOADED,
+    )
+    entry.add_to_hass(hass)
+    entry.runtime_data = KubernetesEntryData(
+        config=entry.data, client=client, coordinator=coordinator
+    )
+    return coordinator
 
 
 class TestGetCoordinator:
@@ -535,7 +556,7 @@ class TestWebsocketNodesList:
     def test_returns_empty_when_no_entries(self, mock_hass):
         """Test returns empty clusters list when no entries are loaded."""
         _load_entries(mock_hass)
-        result = _get_nodes_list_data(mock_hass)
+        result = _list_data(mock_hass, "nodes")
         assert result == {"clusters": []}
 
     def test_returns_nodes_for_cluster(self, mock_hass, sample_coordinator_data):
@@ -546,7 +567,7 @@ class TestWebsocketNodesList:
             _make_entry("entry_1", coordinator, {"cluster_name": "test-cluster"}),
         )
 
-        result = _get_nodes_list_data(mock_hass)
+        result = _list_data(mock_hass, "nodes")
 
         assert len(result["clusters"]) == 1
         cluster = result["clusters"][0]
@@ -564,7 +585,7 @@ class TestWebsocketNodesList:
             mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
         )
 
-        result = _get_nodes_list_data(mock_hass)
+        result = _list_data(mock_hass, "nodes")
 
         cluster = result["clusters"][0]
         assert cluster["nodes"] == []
@@ -594,7 +615,7 @@ class TestWebsocketNodesList:
             _make_entry("entry_2", coordinator_2, {"cluster_name": "cluster-b"}),
         )
 
-        result = _get_nodes_list_data(mock_hass)
+        result = _list_data(mock_hass, "nodes")
 
         assert len(result["clusters"]) == 2
         total_nodes = sum(len(c["nodes"]) for c in result["clusters"])
@@ -607,7 +628,7 @@ class TestWebsocketPodsList:
     def test_returns_empty_when_no_entries(self, mock_hass):
         """Test returns empty clusters list when no entries are loaded."""
         _load_entries(mock_hass)
-        result = _get_pods_list_data(mock_hass)
+        result = _list_data(mock_hass, "pods")
         assert result == {"clusters": []}
 
     def test_returns_pods_for_cluster(self, mock_hass, sample_coordinator_data):
@@ -618,7 +639,7 @@ class TestWebsocketPodsList:
             _make_entry("entry_1", coordinator, {"cluster_name": "test-cluster"}),
         )
 
-        result = _get_pods_list_data(mock_hass)
+        result = _list_data(mock_hass, "pods")
 
         assert len(result["clusters"]) == 1
         cluster = result["clusters"][0]
@@ -636,7 +657,7 @@ class TestWebsocketPodsList:
             mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
         )
 
-        result = _get_pods_list_data(mock_hass)
+        result = _list_data(mock_hass, "pods")
 
         cluster = result["clusters"][0]
         assert cluster["pods"] == []
@@ -670,7 +691,7 @@ class TestWebsocketPodsList:
             _make_entry("entry_2", coordinator_2, {"cluster_name": "cluster-b"}),
         )
 
-        result = _get_pods_list_data(mock_hass)
+        result = _list_data(mock_hass, "pods")
 
         assert len(result["clusters"]) == 2
         total_pods = sum(len(c["pods"]) for c in result["clusters"])
@@ -711,7 +732,7 @@ class TestWebsocketPodsList:
             mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
         )
 
-        result = _get_pods_list_data(mock_hass)
+        result = _list_data(mock_hass, "pods")
         pod = result["clusters"][0]["pods"][0]
         assert pod["name"] == "web-abc"
         assert pod["namespace"] == "prod"
@@ -870,7 +891,7 @@ class TestWebsocketIngressesList:
     def test_returns_empty_when_no_entries(self, mock_hass):
         """Test returns empty clusters list when no entries are loaded."""
         _load_entries(mock_hass)
-        result = _get_ingresses_list_data(mock_hass)
+        result = _list_data(mock_hass, "ingresses")
         assert result == {"clusters": []}
 
     def test_returns_ingresses_per_cluster(self, mock_hass):
@@ -902,7 +923,7 @@ class TestWebsocketIngressesList:
             _make_entry("entry1", coordinator, {"cluster_name": "test-cluster"}),
         )
 
-        result = _get_ingresses_list_data(mock_hass)
+        result = _list_data(mock_hass, "ingresses")
 
         assert len(result["clusters"]) == 1
         cluster = result["clusters"][0]
@@ -916,7 +937,7 @@ class TestWebsocketIngressesList:
         coordinator = _make_coordinator(None)
         _load_entries(mock_hass, _make_entry("entry1", coordinator))
 
-        result = _get_ingresses_list_data(mock_hass)
+        result = _list_data(mock_hass, "ingresses")
 
         assert result["clusters"][0]["ingresses"] == []
 
@@ -975,7 +996,7 @@ class TestWebsocketIngressesList:
             _make_entry("entry_2", coordinator_2, {"cluster_name": "cluster-b"}),
         )
 
-        result = _get_ingresses_list_data(mock_hass)
+        result = _list_data(mock_hass, "ingresses")
 
         assert len(result["clusters"]) == 2
         total_ingresses = sum(len(c["ingresses"]) for c in result["clusters"])
@@ -988,7 +1009,7 @@ class TestWebsocketServicesList:
     def test_returns_empty_when_no_entries(self, mock_hass):
         """No loaded entries -> empty clusters list."""
         _load_entries(mock_hass)
-        assert _get_services_list_data(mock_hass) == {"clusters": []}
+        assert _list_data(mock_hass, "services") == {"clusters": []}
 
     def test_returns_services_per_cluster(self, mock_hass):
         """Services from coordinator data are returned per cluster."""
@@ -1013,7 +1034,7 @@ class TestWebsocketServicesList:
             _make_entry("entry1", coordinator, {"cluster_name": "test-cluster"}),
         )
 
-        result = _get_services_list_data(mock_hass)
+        result = _list_data(mock_hass, "services")
 
         assert len(result["clusters"]) == 1
         cluster = result["clusters"][0]
@@ -1033,7 +1054,7 @@ class TestWebsocketServicesList:
         coordinator = _make_coordinator(None)
         _load_entries(mock_hass, _make_entry("entry1", coordinator))
 
-        assert _get_services_list_data(mock_hass)["clusters"][0]["services"] == []
+        assert _list_data(mock_hass, "services")["clusters"][0]["services"] == []
 
     def test_multi_cluster(self, mock_hass):
         """Each loaded entry contributes its own cluster block."""
@@ -1045,7 +1066,7 @@ class TestWebsocketServicesList:
             _make_entry("e2", c2, {"cluster_name": "two"}),
         )
 
-        result = _get_services_list_data(mock_hass)
+        result = _list_data(mock_hass, "services")
 
         assert [c["cluster_name"] for c in result["clusters"]] == ["one", "two"]
         assert len(result["clusters"][0]["services"]) == 1
@@ -1772,7 +1793,7 @@ class TestHandlersEdgeCases:
         _load_entries(
             mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "empty"})
         )
-        result = _get_nodes_list_data(mock_hass)
+        result = _list_data(mock_hass, "nodes")
         assert result["clusters"][0]["nodes"] == []
 
     def test_pods_list_empty_pods_dict(self, mock_hass):
@@ -1781,7 +1802,7 @@ class TestHandlersEdgeCases:
         _load_entries(
             mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "empty"})
         )
-        result = _get_pods_list_data(mock_hass)
+        result = _list_data(mock_hass, "pods")
         assert result["clusters"][0]["pods"] == []
 
     def test_workloads_list_empty_data(self, mock_hass):
@@ -1811,14 +1832,14 @@ class TestHandlersEdgeCases:
         """Test nodes list uses default cluster name when config is missing."""
         coordinator = _make_coordinator({"nodes": {"n1": {"name": "n1"}}})
         _load_entries(mock_hass, _make_entry("entry_1", coordinator))
-        result = _get_nodes_list_data(mock_hass)
+        result = _list_data(mock_hass, "nodes")
         assert result["clusters"][0]["cluster_name"] == "default"
 
     def test_pods_list_missing_config_key(self, mock_hass):
         """Test pods list uses default cluster name when config is missing."""
         coordinator = _make_coordinator({"pods": {}})
         _load_entries(mock_hass, _make_entry("entry_1", coordinator))
-        result = _get_pods_list_data(mock_hass)
+        result = _list_data(mock_hass, "pods")
         assert result["clusters"][0]["cluster_name"] == "default"
 
     def test_workloads_list_missing_config_key(self, mock_hass):
@@ -2013,257 +2034,170 @@ class TestSameNameDifferentNamespace:
 
 
 class TestWebsocketDeletePod:
-    """Tests for the kubernetes/pods/delete command."""
+    """Drive kubernetes/pods/delete through HA's real WebSocket stack.
 
-    async def test_delete_pod_success(self, mock_hass, sample_coordinator_data):
+    ``websocket_delete_pod`` is decorated with ``require_admin`` +
+    ``websocket_command`` + ``async_response``, which turns it into a
+    scheduling wrapper — it can't be awaited directly with a mock hass, so
+    these tests register the command for real and talk to it over a
+    WebSocket connection (see ``_add_loaded_client_entry``).
+    """
+
+    @staticmethod
+    def _msg(msg_id: int, entry_id: str = "entry_1") -> dict:
+        return {
+            "id": msg_id,
+            "type": "kubernetes/pods/delete",
+            "entry_id": entry_id,
+            "pod_name": "nginx-abc123",
+            "namespace": "default",
+        }
+
+    async def test_delete_pod_success(self, hass: HomeAssistant, hass_ws_client):
         """Test successful pod deletion."""
-        mock_client = MagicMock()
-        mock_client.delete_pod = AsyncMock(return_value=True)
-        coordinator = _make_coordinator(sample_coordinator_data)
-        coordinator.client = mock_client
-        coordinator.async_request_refresh = AsyncMock()
+        client = MagicMock()
+        client.delete_pod = AsyncMock(return_value=True)
+        coordinator = _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
 
-        _load_entries(
-            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
-        )
+        await ws.send_json(self._msg(1))
+        msg = await ws.receive_json()
 
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/pods/delete",
-            "entry_id": "entry_1",
-            "pod_name": "nginx-abc123",
-            "namespace": "default",
-        }
+        assert msg["success"] is True
+        assert msg["result"] == {"success": True}
+        client.delete_pod.assert_awaited_once_with("nginx-abc123", "default")
+        coordinator.async_request_refresh.assert_awaited_once()
 
-        await _handle_delete_pod(mock_hass, connection, msg)
-
-        mock_client.delete_pod.assert_called_once_with("nginx-abc123", "default")
-        coordinator.async_request_refresh.assert_called_once()
-        connection.send_result.assert_called_once_with(1, {"success": True})
-
-    async def test_delete_pod_failure(self, mock_hass, sample_coordinator_data):
+    async def test_delete_pod_failure(self, hass: HomeAssistant, hass_ws_client):
         """Test pod deletion failure returns error."""
-        mock_client = MagicMock()
-        mock_client.delete_pod = AsyncMock(return_value=False)
-        coordinator = _make_coordinator(sample_coordinator_data)
-        coordinator.client = mock_client
+        client = MagicMock()
+        client.delete_pod = AsyncMock(return_value=False)
+        _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
 
-        _load_entries(
-            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        await ws.send_json(self._msg(2))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "delete_failed"
+        assert (
+            msg["error"]["message"]
+            == "Failed to delete pod nginx-abc123 in namespace default"
         )
 
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/pods/delete",
-            "entry_id": "entry_1",
-            "pod_name": "nginx-abc123",
-            "namespace": "default",
-        }
-
-        await _handle_delete_pod(mock_hass, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            1,
-            "delete_failed",
-            "Failed to delete pod nginx-abc123 in namespace default",
-        )
-
-    async def test_delete_pod_entry_not_found(self, mock_hass):
+    async def test_delete_pod_entry_not_found(
+        self, hass: HomeAssistant, hass_ws_client
+    ):
         """Test pod deletion with invalid entry_id."""
-        _load_entries(mock_hass)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
 
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/pods/delete",
-            "entry_id": "nonexistent",
-            "pod_name": "test-pod",
-            "namespace": "default",
-        }
+        await ws.send_json(self._msg(3, entry_id="nonexistent"))
+        msg = await ws.receive_json()
 
-        await _handle_delete_pod(mock_hass, connection, msg)
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "not_found"
 
-        connection.send_error.assert_called_once_with(
-            1, "not_found", "Config entry not found"
-        )
+    async def test_non_admin_is_rejected(
+        self, hass: HomeAssistant, hass_ws_client, hass_read_only_access_token
+    ):
+        """A read-only user is refused before the handler runs."""
+        client = MagicMock()
+        client.delete_pod = AsyncMock(return_value=True)
+        _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass, hass_read_only_access_token)
+
+        await ws.send_json(self._msg(4))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "unauthorized"
+        client.delete_pod.assert_not_called()
 
 
 class TestWebsocketDeleteJob:
-    """Tests for the kubernetes/jobs/delete command."""
+    """Drive kubernetes/jobs/delete through HA's real WebSocket stack.
 
-    async def test_delete_job_success(self, mock_hass, sample_coordinator_data):
-        """Test successful job deletion."""
-        mock_client = MagicMock()
-        mock_client.delete_job = AsyncMock(return_value=True)
-        coordinator = _make_coordinator(sample_coordinator_data)
-        coordinator.client = mock_client
-        coordinator.async_request_refresh = AsyncMock()
-
-        _load_entries(
-            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
-        )
-
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/jobs/delete",
-            "entry_id": "entry_1",
-            "job_name": "my-job-abc123",
-            "namespace": "default",
-        }
-
-        await _handle_delete_job(mock_hass, connection, msg)
-
-        mock_client.delete_job.assert_called_once_with("my-job-abc123", "default")
-        coordinator.async_request_refresh.assert_called_once()
-        connection.send_result.assert_called_once_with(1, {"success": True})
-
-    async def test_delete_job_failure(self, mock_hass, sample_coordinator_data):
-        """Test job deletion failure returns error."""
-        mock_client = MagicMock()
-        mock_client.delete_job = AsyncMock(return_value=False)
-        coordinator = _make_coordinator(sample_coordinator_data)
-        coordinator.client = mock_client
-
-        _load_entries(
-            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
-        )
-
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/jobs/delete",
-            "entry_id": "entry_1",
-            "job_name": "my-job-abc123",
-            "namespace": "default",
-        }
-
-        await _handle_delete_job(mock_hass, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            1,
-            "delete_failed",
-            "Failed to delete job my-job-abc123 in namespace default",
-        )
-
-    async def test_delete_job_entry_not_found(self, mock_hass):
-        """Test job deletion with invalid entry_id."""
-        _load_entries(mock_hass)
-
-        connection = MagicMock()
-        msg = {
-            "id": 1,
-            "type": "kubernetes/jobs/delete",
-            "entry_id": "nonexistent",
-            "job_name": "test-job",
-            "namespace": "default",
-        }
-
-        await _handle_delete_job(mock_hass, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            1, "not_found", "Config entry not found"
-        )
-
-
-class TestWebsocketSuspendCronJob:
-    """Tests for the kubernetes/cronjobs/suspend command."""
+    ``websocket_delete_job`` is decorated the same way as
+    ``websocket_delete_pod`` — see ``TestWebsocketDeletePod``.
+    """
 
     @staticmethod
-    def _msg(suspend: bool, entry_id: str = "entry_1") -> dict:
+    def _msg(msg_id: int, entry_id: str = "entry_1") -> dict:
         return {
-            "id": 1,
-            "type": "kubernetes/cronjobs/suspend",
+            "id": msg_id,
+            "type": "kubernetes/jobs/delete",
             "entry_id": entry_id,
-            "cronjob_name": "backup",
+            "job_name": "my-job-abc123",
             "namespace": "default",
-            "suspend": suspend,
         }
 
-    def _loaded(self, mock_hass, sample_coordinator_data, mock_client):
-        coordinator = _make_coordinator(sample_coordinator_data)
-        coordinator.client = mock_client
-        coordinator.async_request_refresh = AsyncMock()
-        _load_entries(
-            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+    async def test_delete_job_success(self, hass: HomeAssistant, hass_ws_client):
+        """Test successful job deletion."""
+        client = MagicMock()
+        client.delete_job = AsyncMock(return_value=True)
+        coordinator = _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json(self._msg(1))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is True
+        assert msg["result"] == {"success": True}
+        client.delete_job.assert_awaited_once_with("my-job-abc123", "default")
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_delete_job_failure(self, hass: HomeAssistant, hass_ws_client):
+        """Test job deletion failure returns error."""
+        client = MagicMock()
+        client.delete_job = AsyncMock(return_value=False)
+        _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json(self._msg(2))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "delete_failed"
+        assert (
+            msg["error"]["message"]
+            == "Failed to delete job my-job-abc123 in namespace default"
         )
-        return coordinator
 
-    async def test_suspend_success(self, mock_hass, sample_coordinator_data):
-        """suspend=True calls suspend_cronjob, refreshes, and reports success."""
-        mock_client = MagicMock()
-        mock_client.suspend_cronjob = AsyncMock(return_value={"success": True})
-        mock_client.resume_cronjob = AsyncMock()
-        coordinator = self._loaded(mock_hass, sample_coordinator_data, mock_client)
-        connection = MagicMock()
-
-        await _handle_suspend_cronjob(mock_hass, connection, self._msg(True))
-
-        mock_client.suspend_cronjob.assert_awaited_once_with("backup", "default")
-        mock_client.resume_cronjob.assert_not_called()
-        coordinator.async_request_refresh.assert_awaited_once()
-        connection.send_result.assert_called_once_with(1, {"success": True})
-
-    async def test_resume_success(self, mock_hass, sample_coordinator_data):
-        """suspend=False calls resume_cronjob, refreshes, and reports success."""
-        mock_client = MagicMock()
-        mock_client.suspend_cronjob = AsyncMock()
-        mock_client.resume_cronjob = AsyncMock(return_value={"success": True})
-        coordinator = self._loaded(mock_hass, sample_coordinator_data, mock_client)
-        connection = MagicMock()
-
-        await _handle_suspend_cronjob(mock_hass, connection, self._msg(False))
-
-        mock_client.resume_cronjob.assert_awaited_once_with("backup", "default")
-        mock_client.suspend_cronjob.assert_not_called()
-        coordinator.async_request_refresh.assert_awaited_once()
-        connection.send_result.assert_called_once_with(1, {"success": True})
-
-    async def test_failure_forwards_client_error(
-        self, mock_hass, sample_coordinator_data
+    async def test_delete_job_entry_not_found(
+        self, hass: HomeAssistant, hass_ws_client
     ):
-        """A failed client call surfaces the client's error text, no refresh."""
-        mock_client = MagicMock()
-        mock_client.suspend_cronjob = AsyncMock(
-            return_value={"success": False, "error": "403 Forbidden"}
-        )
-        coordinator = self._loaded(mock_hass, sample_coordinator_data, mock_client)
-        connection = MagicMock()
+        """Test job deletion with invalid entry_id."""
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
 
-        await _handle_suspend_cronjob(mock_hass, connection, self._msg(True))
+        await ws.send_json(self._msg(3, entry_id="nonexistent"))
+        msg = await ws.receive_json()
 
-        coordinator.async_request_refresh.assert_not_called()
-        connection.send_error.assert_called_once_with(
-            1, "suspend_failed", "403 Forbidden"
-        )
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "not_found"
 
-    async def test_failure_without_error_text(self, mock_hass, sample_coordinator_data):
-        """A failed call with no error text gets a generic message naming the target."""
-        mock_client = MagicMock()
-        mock_client.resume_cronjob = AsyncMock(return_value={"success": False})
-        self._loaded(mock_hass, sample_coordinator_data, mock_client)
-        connection = MagicMock()
+    async def test_non_admin_is_rejected(
+        self, hass: HomeAssistant, hass_ws_client, hass_read_only_access_token
+    ):
+        """A read-only user is refused before the handler runs."""
+        client = MagicMock()
+        client.delete_job = AsyncMock(return_value=True)
+        _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass, hass_read_only_access_token)
 
-        await _handle_suspend_cronjob(mock_hass, connection, self._msg(False))
+        await ws.send_json(self._msg(4))
+        msg = await ws.receive_json()
 
-        connection.send_error.assert_called_once_with(
-            1, "resume_failed", "Failed to resume CronJob backup in namespace default"
-        )
-
-    async def test_entry_not_found(self, mock_hass):
-        """An unknown entry_id returns not_found."""
-        _load_entries(mock_hass)
-        connection = MagicMock()
-
-        await _handle_suspend_cronjob(
-            mock_hass, connection, self._msg(True, entry_id="missing")
-        )
-
-        connection.send_error.assert_called_once_with(
-            1, "not_found", "Config entry not found"
-        )
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "unauthorized"
+        client.delete_job.assert_not_called()
 
 
 class TestWebsocketSubscribeUpdates:
@@ -2294,7 +2228,7 @@ class TestWebsocketSubscribeUpdates:
         connection = self._make_connection()
         msg = {"id": 42, "type": "kubernetes/subscribe_updates"}
 
-        _handle_subscribe_updates(mock_hass, connection, msg)
+        websocket_subscribe_updates(mock_hass, connection, msg)
 
         connection.send_result.assert_called_once_with(42)
         assert 42 in connection.subscriptions
@@ -2308,7 +2242,7 @@ class TestWebsocketSubscribeUpdates:
         connection = self._make_connection()
         msg = {"id": 42, "type": "kubernetes/subscribe_updates"}
 
-        _handle_subscribe_updates(mock_hass, connection, msg)
+        websocket_subscribe_updates(mock_hass, connection, msg)
         listeners[0]()
 
         connection.send_message.assert_called_once()
@@ -2329,7 +2263,7 @@ class TestWebsocketSubscribeUpdates:
         connection = self._make_connection()
         msg = {"id": 7, "type": "kubernetes/subscribe_updates"}
 
-        _handle_subscribe_updates(mock_hass, connection, msg)
+        websocket_subscribe_updates(mock_hass, connection, msg)
         assert len(listeners) == 2
 
         connection.subscriptions[7]()
@@ -2341,7 +2275,7 @@ class TestWebsocketSubscribeUpdates:
         connection = self._make_connection()
         msg = {"id": 1, "type": "kubernetes/subscribe_updates"}
 
-        _handle_subscribe_updates(mock_hass, connection, msg)
+        websocket_subscribe_updates(mock_hass, connection, msg)
 
         connection.send_result.assert_called_once_with(1)
         connection.send_message.assert_not_called()
@@ -2350,36 +2284,19 @@ class TestWebsocketSubscribeUpdates:
 class TestWebsocketSuspendCronJobEndToEnd:
     """Drive kubernetes/cronjobs/suspend through HA's real WebSocket stack.
 
-    The other tests call the ``_handle_*`` functions directly, which leaves the
-    decorated wrapper (``require_admin`` + ``websocket_command`` +
-    ``async_response``) unexercised. This class registers the commands for
-    real and talks to them over a WebSocket connection.
+    ``websocket_suspend_cronjob`` is decorated with ``require_admin`` +
+    ``websocket_command`` + ``async_response``, which turns it into a
+    scheduling wrapper — it can't be awaited directly with a mock hass, so
+    these tests register the command for real and talk to it over a
+    WebSocket connection.
     """
 
     @staticmethod
-    def _add_loaded_entry(hass: HomeAssistant, client: MagicMock) -> MagicMock:
-        """Add a LOADED config entry whose coordinator wraps ``client``."""
-        coordinator = MagicMock()
-        coordinator.client = client
-        coordinator.async_request_refresh = AsyncMock()
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="entry_1",
-            data={"host": "test", "cluster_name": "test"},
-            state=ConfigEntryState.LOADED,
-        )
-        entry.add_to_hass(hass)
-        entry.runtime_data = KubernetesEntryData(
-            config=entry.data, client=client, coordinator=coordinator
-        )
-        return coordinator
-
-    @staticmethod
-    def _suspend_msg(msg_id: int, suspend: bool) -> dict:
+    def _suspend_msg(msg_id: int, suspend: bool, entry_id: str = "entry_1") -> dict:
         return {
             "id": msg_id,
             "type": "kubernetes/cronjobs/suspend",
-            "entry_id": "entry_1",
+            "entry_id": entry_id,
             "cronjob_name": "backup",
             "namespace": "default",
             "suspend": suspend,
@@ -2389,7 +2306,7 @@ class TestWebsocketSuspendCronJobEndToEnd:
         """An admin connection suspends the CronJob and gets success back."""
         client = MagicMock()
         client.suspend_cronjob = AsyncMock(return_value={"success": True})
-        coordinator = self._add_loaded_entry(hass, client)
+        coordinator = _add_loaded_client_entry(hass, client)
         async_register_websocket_commands(hass)
         ws = await hass_ws_client(hass)
 
@@ -2402,13 +2319,80 @@ class TestWebsocketSuspendCronJobEndToEnd:
         client.suspend_cronjob.assert_awaited_once_with("backup", "default")
         coordinator.async_request_refresh.assert_awaited_once()
 
+    async def test_resume_success(self, hass: HomeAssistant, hass_ws_client):
+        """suspend=False calls resume_cronjob, refreshes, and reports success."""
+        client = MagicMock()
+        client.resume_cronjob = AsyncMock(return_value={"success": True})
+        coordinator = _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json(self._suspend_msg(7, False))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is True
+        assert msg["result"] == {"success": True}
+        client.resume_cronjob.assert_awaited_once_with("backup", "default")
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_failure_forwards_client_error(
+        self, hass: HomeAssistant, hass_ws_client
+    ):
+        """A failed client call surfaces the client's error text, no refresh."""
+        client = MagicMock()
+        client.suspend_cronjob = AsyncMock(
+            return_value={"success": False, "error": "403 Forbidden"}
+        )
+        coordinator = _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json(self._suspend_msg(8, True))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "suspend_failed"
+        assert msg["error"]["message"] == "403 Forbidden"
+        coordinator.async_request_refresh.assert_not_called()
+
+    async def test_failure_without_error_text(
+        self, hass: HomeAssistant, hass_ws_client
+    ):
+        """A failed call with no error text gets a generic message naming the target."""
+        client = MagicMock()
+        client.resume_cronjob = AsyncMock(return_value={"success": False})
+        _add_loaded_client_entry(hass, client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json(self._suspend_msg(9, False))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "resume_failed"
+        assert (
+            msg["error"]["message"]
+            == "Failed to resume CronJob backup in namespace default"
+        )
+
+    async def test_entry_not_found(self, hass: HomeAssistant, hass_ws_client):
+        """An unknown entry_id returns not_found."""
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json(self._suspend_msg(10, True, entry_id="missing"))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "not_found"
+
     async def test_non_admin_is_rejected(
         self, hass: HomeAssistant, hass_ws_client, hass_read_only_access_token
     ):
         """A read-only user is refused before the handler runs."""
         client = MagicMock()
         client.resume_cronjob = AsyncMock(return_value={"success": True})
-        self._add_loaded_entry(hass, client)
+        _add_loaded_client_entry(hass, client)
         async_register_websocket_commands(hass)
         ws = await hass_ws_client(hass, hass_read_only_access_token)
 

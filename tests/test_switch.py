@@ -577,16 +577,6 @@ def deployment_coordinator():
     }
     coordinator.async_add_listener = MagicMock(return_value=lambda: None)
     coordinator.async_request_refresh = AsyncMock()
-    coordinator.get_deployment_data = MagicMock(
-        return_value={
-            "name": "nginx",
-            "namespace": "default",
-            "replicas": 2,
-            "is_running": True,
-            "cpu_usage": 50.0,
-            "memory_usage": 128.0,
-        }
-    )
     coordinator.client = MagicMock()
     coordinator.client.start_deployment = AsyncMock(return_value=True)
     coordinator.client.stop_deployment = AsyncMock(return_value=True)
@@ -954,16 +944,6 @@ def statefulset_coordinator():
     }
     coordinator.async_add_listener = MagicMock(return_value=lambda: None)
     coordinator.async_request_refresh = AsyncMock()
-    coordinator.get_statefulset_data = MagicMock(
-        return_value={
-            "name": "redis",
-            "namespace": "default",
-            "replicas": 1,
-            "is_running": True,
-            "cpu_usage": 20.0,
-            "memory_usage": 64.0,
-        }
-    )
     coordinator.client = MagicMock()
     coordinator.client.start_statefulset = AsyncMock(return_value=True)
     coordinator.client.stop_statefulset = AsyncMock(return_value=True)
