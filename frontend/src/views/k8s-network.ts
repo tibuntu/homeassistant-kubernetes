@@ -1,6 +1,8 @@
-import { LitElement, html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant } from "../types/homeassistant";
+import { html, css, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
+import { K8sDataView } from "./base-view";
+import { stateStyles, filterStyles, badgeStyles, tableStyles } from "../styles/shared";
+import { formatAge, errorMessage } from "../utils/format";
 
 interface IngressRule {
   host: string;
@@ -67,95 +69,19 @@ const NETWORK_TYPES = [
 type NetworkTypeFilter = "all" | (typeof NETWORK_TYPES)[number];
 
 @customElement("k8s-network")
-export class K8sNetwork extends LitElement {
-  @property({ attribute: false }) public hass!: HomeAssistant;
-
-  @state() private _data: IngressesResponse | null = null;
+export class K8sNetwork extends K8sDataView<IngressesResponse> {
   @state() private _services: ServicesResponse | null = null;
-  @state() private _loading = true;
-  @state() private _error: string | null = null;
   @state() private _servicesError: string | null = null;
   @state() private _searchQuery: string = "";
   @state() private _typeFilter: NetworkTypeFilter = "all";
 
-  private _refreshInterval?: ReturnType<typeof setInterval>;
-  private _loadingInFlight = false;
-  private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
-  private _unsubUpdates?: () => Promise<void>;
-  private _updateDebounce?: ReturnType<typeof setTimeout>;
+  protected loadErrorFallback = "Failed to load network data";
 
-  protected firstUpdated(_changedProps: PropertyValues): void {
-    this._loadData();
-    this._startPolling();
-    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
-    void this._subscribeUpdates();
+  protected hasData(): boolean {
+    return this._data !== null || this._services !== null;
   }
 
-  disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this._stopPolling();
-    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
-    void this._unsubUpdates?.().catch(() => {});
-    this._unsubUpdates = undefined;
-    if (this._updateDebounce) {
-      clearTimeout(this._updateDebounce);
-      this._updateDebounce = undefined;
-    }
-  }
-
-  private _handleVisibilityChange(): void {
-    if (document.hidden) {
-      this._stopPolling();
-    } else {
-      this._loadData();
-      this._startPolling();
-    }
-  }
-
-  private _startPolling(): void {
-    if (!this._refreshInterval) {
-      this._refreshInterval = setInterval(() => this._loadData(), 60000);
-    }
-  }
-
-  private _stopPolling(): void {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = undefined;
-    }
-  }
-
-  private async _subscribeUpdates(): Promise<void> {
-    try {
-      const unsub = await this.hass.connection.subscribeMessage(
-        () => this._scheduleLoad(),
-        { type: "kubernetes/subscribe_updates" },
-      );
-      if (!this.isConnected) {
-        void unsub().catch(() => {});
-        return;
-      }
-      this._unsubUpdates = unsub;
-    } catch {
-      // Backend without subscription support — interval polling covers it.
-    }
-  }
-
-  private _scheduleLoad(): void {
-    if (document.hidden) return;
-    if (this._updateDebounce) return;
-    this._updateDebounce = setTimeout(() => {
-      this._updateDebounce = undefined;
-      this._loadData();
-    }, 1000);
-  }
-
-  private async _loadData(): Promise<void> {
-    if (this._loadingInFlight) return;
-    this._loadingInFlight = true;
-    if (!this._data && !this._services) {
-      this._loading = true;
-    }
+  protected async fetchData(): Promise<void> {
     // Each list fails on its own, so a missing RBAC rule for one resource
     // does not blank the other section.
     const [ingresses, services] = await Promise.allSettled([
@@ -166,27 +92,17 @@ export class K8sNetwork extends LitElement {
       this._data = ingresses.value;
       this._error = null;
     } else {
-      this._error = ingresses.reason?.message || "Failed to load ingress data";
+      this._error = errorMessage(ingresses.reason, "Failed to load ingress data");
     }
     if (services.status === "fulfilled") {
       this._services = services.value;
       this._servicesError = null;
     } else {
-      this._servicesError = services.reason?.message || "Failed to load service data";
+      this._servicesError = errorMessage(
+        services.reason,
+        "Failed to load service data",
+      );
     }
-    this._loading = false;
-    this._loadingInFlight = false;
-  }
-
-  private _formatAge(timestamp: string): string {
-    if (!timestamp || timestamp === "N/A") return "N/A";
-    const created = new Date(timestamp).getTime();
-    const now = Date.now();
-    const diff = Math.max(0, Math.floor((now - created) / 1000));
-    if (diff < 60) return `${diff}s`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
   }
 
   private _getFilteredIngresses(ingresses: IngressData[]): IngressData[] {
@@ -238,201 +154,109 @@ export class K8sNetwork extends LitElement {
     return `${p.port}${target}/${p.protocol}${node}`;
   }
 
-  static styles = css`
-    :host {
-      display: block;
-    }
+  static styles = [
+    stateStyles,
+    filterStyles,
+    badgeStyles,
+    tableStyles,
+    css`
+      /* stateStyles' .empty is 64px padding; network uses .empty for five
+       in-section messages, where that much padding doubles up. */
+      .empty {
+        padding: 32px 16px;
+      }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+      .inline-error {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        margin-bottom: 16px;
+        border-radius: 8px;
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+        color: var(--error-color, #f44336);
+        font-size: 14px;
+        --mdc-icon-size: 18px;
+      }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+      .section-title {
+        font-size: 18px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin: 24px 0 12px;
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .section-title:first-of-type {
+        margin-top: 0;
+      }
 
-    .inline-error {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      margin-bottom: 16px;
-      border-radius: 8px;
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      color: var(--error-color, #f44336);
-      font-size: 14px;
-      --mdc-icon-size: 18px;
-    }
+      .cluster-section {
+        margin-bottom: 24px;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .cluster-name {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 12px;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .network-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
 
-    .empty {
-      text-align: center;
-      padding: 32px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .network-table th {
+        text-align: left;
+        padding: 10px 12px;
+        color: var(--secondary-text-color);
+        font-weight: 500;
+        border-bottom: 2px solid var(--divider-color);
+        white-space: nowrap;
+      }
 
-    .section-title {
-      font-size: 18px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin: 24px 0 12px;
-    }
+      .network-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--divider-color);
+        vertical-align: middle;
+      }
 
-    .section-title:first-of-type {
-      margin-top: 0;
-    }
+      .network-table tr:last-child td {
+        border-bottom: none;
+      }
 
-    .cluster-section {
-      margin-bottom: 24px;
-    }
+      .network-table tr:hover td {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
+      }
 
-    .cluster-name {
-      font-size: 20px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin-bottom: 12px;
-    }
+      .mono {
+        font-family: monospace;
+        white-space: nowrap;
+      }
 
-    .filters {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
+      .url-link {
+        display: block;
+        color: var(--primary-color);
+        text-decoration: none;
+        white-space: nowrap;
+      }
 
-    .search-input {
-      padding: 8px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 14px;
-      min-width: 200px;
-    }
+      .url-link:hover {
+        text-decoration: underline;
+      }
 
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
+      .badge-type-nodeport {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
+        color: var(--primary-color);
+      }
 
-    select.filter-select {
-      padding: 6px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 13px;
-    }
-
-    .network-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-
-    .network-table th {
-      text-align: left;
-      padding: 10px 12px;
-      color: var(--secondary-text-color);
-      font-weight: 500;
-      border-bottom: 2px solid var(--divider-color);
-      white-space: nowrap;
-    }
-
-    .network-table td {
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--divider-color);
-      vertical-align: middle;
-    }
-
-    .network-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .network-table tr:hover td {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
-    }
-
-    .mono {
-      font-family: monospace;
-      white-space: nowrap;
-    }
-
-    .url-link {
-      display: block;
-      color: var(--primary-color);
-      text-decoration: none;
-      white-space: nowrap;
-    }
-
-    .url-link:hover {
-      text-decoration: underline;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .badge-tls,
-    .badge-type-loadbalancer {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
-
-    .badge-plain,
-    .badge-type-externalname {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-      color: var(--warning-color, #ff9800);
-    }
-
-    .badge-type-nodeport {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-      color: var(--primary-color);
-    }
-
-    .badge-type-clusterip {
-      background: rgba(var(--rgb-secondary-text-color, 114, 114, 114), 0.15);
-      color: var(--secondary-text-color);
-    }
-
-    .table-wrapper {
-      overflow-x: auto;
-    }
-  `;
+      .badge-type-clusterip {
+        background: rgba(var(--rgb-secondary-text-color, 114, 114, 114), 0.15);
+        color: var(--secondary-text-color);
+      }
+    `,
+  ];
 
   protected render() {
     if (this._loading) {
@@ -572,7 +396,7 @@ export class K8sNetwork extends LitElement {
                     <td>${this._renderUrls(ingress.urls)}</td>
                     <td>${this._services_of(ingress) || "—"}</td>
                     <td>${this._renderTlsBadge(ingress)}</td>
-                    <td>${this._formatAge(ingress.creation_timestamp)}</td>
+                    <td>${formatAge(ingress.creation_timestamp)}</td>
                   </tr>
                 `,
               )}
@@ -641,7 +465,7 @@ export class K8sNetwork extends LitElement {
                           : "—"
                       }
                     </td>
-                    <td>${this._formatAge(svc.creation_timestamp)}</td>
+                    <td>${formatAge(svc.creation_timestamp)}</td>
                   </tr>
                 `,
               )}

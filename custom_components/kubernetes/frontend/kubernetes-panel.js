@@ -685,6 +685,52 @@ var loadHaElements = async () => {
 	}
 };
 //#endregion
+//#region src/utils/format.ts
+/** Pure helpers shared by the panel views. */
+/** Human-readable node condition names, keyed by the API's snake_case flags. */
+var CONDITION_LABELS = {
+	memory_pressure: "Memory Pressure",
+	disk_pressure: "Disk Pressure",
+	pid_pressure: "PID Pressure",
+	network_unavailable: "Network Unavailable"
+};
+/** Age of an ISO timestamp as a compact "5s" / "5m" / "2h" / "3d" string. */
+function formatAge(iso) {
+	if (!iso || iso === "N/A") return "N/A";
+	const created = new Date(iso).getTime();
+	const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
+	if (diff < 60) return `${diff}s`;
+	if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+	if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+	return `${Math.floor(diff / 86400)}d`;
+}
+/** Time since a unix timestamp (seconds) as "5m ago"; "Never" for 0. */
+function formatRelative(epochSeconds) {
+	if (!epochSeconds) return "Never";
+	const now = Date.now() / 1e3;
+	const diff = Math.max(0, Math.floor(now - epochSeconds));
+	if (diff < 60) return `${diff}s ago`;
+	if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+	if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+	return `${Math.floor(diff / 86400)}d ago`;
+}
+/** Copy `set` with `key` added if absent, removed if present (Lit needs a new ref). */
+function toggleInSet(set, key) {
+	const updated = new Set(set);
+	if (updated.has(key)) updated.delete(key);
+	else updated.add(key);
+	return updated;
+}
+/**
+* Message of a caught value. HA's `callWS` rejects with a plain
+* `{ code, message }` object rather than an `Error`, so any object with a
+* non-empty string `message` counts.
+*/
+function errorMessage(err, fallback) {
+	if (typeof err === "object" && err !== null && "message" in err && typeof err.message === "string" && err.message) return err.message;
+	return fallback;
+}
+//#endregion
 //#region \0@oxc-project+runtime@0.147.0/helpers/esm/decorate.js
 function __decorate(decorators, target, key, desc) {
 	var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
@@ -693,50 +739,46 @@ function __decorate(decorators, target, key, desc) {
 	return c > 3 && r && Object.defineProperty(target, key, r), r;
 }
 //#endregion
-//#region src/views/k8s-overview.ts
-var RESOURCE_ICONS = {
-	pods: "mdi:cube-outline",
-	nodes: "mdi:server",
-	deployments: "mdi:rocket-launch",
-	statefulsets: "mdi:database",
-	daemonsets: "mdi:lan",
-	cronjobs: "mdi:clock-outline",
-	jobs: "mdi:briefcase-check",
-	ingresses: "mdi:earth",
-	services: "mdi:swap-horizontal"
-};
-var RESOURCE_LABELS = {
-	pods: "Pods",
-	nodes: "Nodes",
-	deployments: "Deployments",
-	statefulsets: "StatefulSets",
-	daemonsets: "DaemonSets",
-	cronjobs: "CronJobs",
-	jobs: "Jobs",
-	ingresses: "Ingresses",
-	services: "Services"
-};
-var CONDITION_LABELS$1 = {
-	memory_pressure: "Memory Pressure",
-	disk_pressure: "Disk Pressure",
-	pid_pressure: "PID Pressure",
-	network_unavailable: "Network Unavailable"
-};
-var K8sOverview = class K8sOverview extends i {
+//#region src/views/base-view.ts
+/**
+* Base class for the panel's data views.
+*
+* Owns the load/refresh lifecycle every view shares: initial load, 60 s
+* polling (paused while the tab is hidden), the `kubernetes/subscribe_updates`
+* push subscription with a 1 s debounce, an in-flight guard, and the
+* loading / error / empty preamble. Subclasses implement `fetchData()` (call
+* the WebSocket API and assign `this._data`) and start `render()` with
+* `renderState()`.
+*
+* `T` is the WebSocket response type stored in `_data`.
+*/
+var K8sDataView = class extends i {
 	constructor(..._args) {
 		super(..._args);
 		this._data = null;
 		this._loading = true;
 		this._error = null;
-		this._expandedNamespaces = /* @__PURE__ */ new Set();
+		this.pollMs = 6e4;
+		this.subscribe = true;
+		this.loadErrorFallback = "Failed to load data";
+		this.emptyMessage = "No Kubernetes clusters configured.";
 		this._loadingInFlight = false;
 		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
 	}
+	/**
+	* Whether a previous load produced data. While `false`, `_loadData()` shows
+	* the spinner; afterwards refreshes keep the stale view visible.
+	*/
+	hasData() {
+		return this._data !== null;
+	}
 	firstUpdated(_changedProps) {
 		this._loadData();
-		this._startPolling();
-		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
-		this._subscribeUpdates();
+		if (this.pollMs > 0) {
+			this._startPolling();
+			document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+		}
+		if (this.subscribe) this._subscribeUpdates();
 	}
 	disconnectedCallback() {
 		super.disconnectedCallback();
@@ -748,6 +790,10 @@ var K8sOverview = class K8sOverview extends i {
 			clearTimeout(this._updateDebounce);
 			this._updateDebounce = void 0;
 		}
+		if (this._reloadTimer) {
+			clearTimeout(this._reloadTimer);
+			this._reloadTimer = void 0;
+		}
 	}
 	_handleVisibilityChange() {
 		if (document.hidden) this._stopPolling();
@@ -757,7 +803,7 @@ var K8sOverview = class K8sOverview extends i {
 		}
 	}
 	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
+		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), this.pollMs);
 	}
 	_stopPolling() {
 		if (this._refreshInterval) {
@@ -783,352 +829,34 @@ var K8sOverview = class K8sOverview extends i {
 			this._loadData();
 		}, 1e3);
 	}
+	/** Reload after `delayMs`, replacing any pending reload. */
+	_scheduleReload(delayMs) {
+		if (this._reloadTimer) clearTimeout(this._reloadTimer);
+		this._reloadTimer = setTimeout(() => {
+			this._reloadTimer = void 0;
+			this._loadData();
+		}, delayMs);
+	}
+	/** Guarded load: one request at a time, spinner only before the first data. */
 	async _loadData() {
 		if (this._loadingInFlight) return;
 		this._loadingInFlight = true;
-		if (!this._data) this._loading = true;
+		if (!this.hasData()) this._loading = true;
 		this._error = null;
 		try {
-			const result = await this.hass.callWS({ type: "kubernetes/cluster/overview" });
-			this._data = result;
+			await this.fetchData();
 		} catch (err) {
-			this._error = err.message || "Failed to load cluster data";
+			this._error = errorMessage(err, this.loadErrorFallback);
 		} finally {
 			this._loading = false;
 			this._loadingInFlight = false;
 		}
 	}
-	_toggleNamespaces(clusterId) {
-		const updated = new Set(this._expandedNamespaces);
-		if (updated.has(clusterId)) updated.delete(clusterId);
-		else updated.add(clusterId);
-		this._expandedNamespaces = updated;
-	}
-	_formatRelativeTime(timestamp) {
-		if (!timestamp) return "Never";
-		const now = Date.now() / 1e3;
-		const diff = Math.max(0, Math.floor(now - timestamp));
-		if (diff < 60) return `${diff}s ago`;
-		if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-		if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-		return `${Math.floor(diff / 86400)}d ago`;
-	}
-	static {
-		this.styles = i$3`
-    :host {
-      display: block;
-    }
-
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
-
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
-
-    .error-card p {
-      margin: 16px 0;
-    }
-
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
-
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
-
-    .empty {
-      text-align: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
-
-    .cluster-section {
-      margin-bottom: 24px;
-    }
-
-    .cluster-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
-
-    .cluster-name {
-      font-size: 24px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-    }
-
-    .badge-healthy {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
-
-    .badge-unhealthy {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-      color: var(--error-color, #f44336);
-    }
-
-    .badge-unknown {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-      color: var(--disabled-color, #9e9e9e);
-    }
-
-    .meta-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 16px;
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      flex-wrap: wrap;
-    }
-
-    .meta-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      --mdc-icon-size: 16px;
-    }
-
-    .refresh-btn {
-      cursor: pointer;
-      background: none;
-      border: none;
-      color: var(--primary-color);
-      padding: 4px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      --mdc-icon-size: 18px;
-    }
-
-    .refresh-btn:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
-    }
-
-    .counts-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    .count-card {
-      padding: 16px;
-      border-radius: 12px;
-      text-align: center;
-      --mdc-icon-size: 28px;
-    }
-
-    .count-card ha-icon {
-      color: var(--primary-color);
-      margin-bottom: 8px;
-    }
-
-    .count-value {
-      font-size: 28px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
-
-    .count-label {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      margin-top: 4px;
-    }
-
-    .section-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      user-select: none;
-      padding: 8px 0;
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      --mdc-icon-size: 20px;
-    }
-
-    .section-header:hover {
-      color: var(--primary-color);
-    }
-
-    .ns-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 8px 0 16px;
-      font-size: 13px;
-    }
-
-    .ns-table th {
-      text-align: left;
-      padding: 8px 12px;
-      color: var(--secondary-text-color);
-      font-weight: 500;
-      border-bottom: 1px solid var(--divider-color);
-    }
-
-    .ns-table td {
-      padding: 6px 12px;
-      border-bottom: 1px solid var(--divider-color);
-    }
-
-    .ns-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .alerts-section {
-      margin-top: 16px;
-    }
-
-    .alert-card {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 12px 16px;
-      margin-bottom: 8px;
-      border-radius: 8px;
-      font-size: 14px;
-      --mdc-icon-size: 20px;
-    }
-
-    .alert-warning {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
-      color: var(--primary-text-color);
-    }
-
-    .alert-warning ha-icon {
-      color: var(--warning-color, #ff9800);
-    }
-
-    .alert-error {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      color: var(--primary-text-color);
-    }
-
-    .alert-error ha-icon {
-      color: var(--error-color, #f44336);
-    }
-
-    .alert-title {
-      font-weight: 500;
-    }
-
-    .alert-detail {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      margin-top: 2px;
-    }
-
-    .no-alerts {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px;
-      border-radius: 8px;
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.08);
-      font-size: 14px;
-      --mdc-icon-size: 24px;
-    }
-
-    .no-alerts ha-icon {
-      color: var(--success-color, #4caf50);
-      flex-shrink: 0;
-    }
-
-    .no-alerts-text {
-      flex: 1;
-    }
-
-    .no-alerts-title {
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
-
-    .no-alerts-detail {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      margin-top: 2px;
-    }
-
-    .alerts-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      --mdc-icon-size: 20px;
-    }
-
-    .alerts-info-icon {
-      color: var(--secondary-text-color);
-      cursor: help;
-      --mdc-icon-size: 18px;
-      position: relative;
-    }
-
-    .alerts-info-icon:hover {
-      color: var(--primary-color);
-    }
-
-    .alerts-tooltip {
-      display: none;
-      position: absolute;
-      bottom: calc(100% + 8px);
-      left: 0;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 12px;
-      font-weight: 400;
-      color: var(--secondary-text-color);
-      width: 280px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-      z-index: 10;
-      line-height: 1.5;
-    }
-
-    .alerts-info-icon:hover .alerts-tooltip {
-      display: block;
-    }
-  `;
-	}
-	render() {
+	/**
+	* Loading spinner, error card or empty message, or `nothing` when the view
+	* should render its data. `empty` is the view's own "no items" test.
+	*/
+	renderState(empty) {
 		if (this._loading) return b`
         <div class="loading">
           <ha-circular-progress indeterminate></ha-circular-progress>
@@ -1143,7 +871,555 @@ var K8sOverview = class K8sOverview extends i {
           </div>
         </ha-card>
       `;
-		if (!this._data?.clusters.length) return b` <div class="empty">No Kubernetes clusters configured.</div> `;
+		if (empty) return b`<div class="empty">${this.emptyMessage}</div>`;
+		return A;
+	}
+};
+__decorate([n({ attribute: false })], K8sDataView.prototype, "hass", void 0);
+__decorate([r()], K8sDataView.prototype, "_data", void 0);
+__decorate([r()], K8sDataView.prototype, "_loading", void 0);
+__decorate([r()], K8sDataView.prototype, "_error", void 0);
+//#endregion
+//#region src/styles/shared.ts
+/**
+* Loading spinner, full-page error card with Retry, and the centred empty
+* message rendered by `K8sDataView.renderState()`. Every view composes this.
+*/
+var stateStyles = i$3`
+  :host {
+    display: block;
+  }
+
+  .loading {
+    display: flex;
+    justify-content: center;
+    padding: 64px 0;
+  }
+
+  .error-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px;
+    text-align: center;
+    color: var(--error-color, #db4437);
+    --mdc-icon-size: 48px;
+  }
+
+  .error-card p {
+    margin: 16px 0;
+  }
+
+  .retry-btn {
+    cursor: pointer;
+    padding: 8px 24px;
+    border: 1px solid var(--primary-color);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--primary-color);
+    font-size: 14px;
+  }
+
+  .retry-btn:hover {
+    background: var(--primary-color);
+    color: var(--text-primary-color, #fff);
+  }
+
+  .empty {
+    text-align: center;
+    padding: 64px 16px;
+    color: var(--secondary-text-color);
+    font-size: 16px;
+  }
+`;
+/** Filter bar: search input, `<select class="filter-select">`, and filter chips. */
+var filterStyles = i$3`
+  .filters {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .search-input {
+    padding: 8px 12px;
+    border: 1px solid var(--divider-color);
+    border-radius: 8px;
+    background: var(--card-background-color, var(--primary-background-color));
+    color: var(--primary-text-color);
+    font-size: 14px;
+    min-width: 200px;
+  }
+
+  .search-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  select.filter-select {
+    padding: 6px 12px;
+    border: 1px solid var(--divider-color);
+    border-radius: 8px;
+    background: var(--card-background-color, var(--primary-background-color));
+    color: var(--primary-text-color);
+    font-size: 13px;
+  }
+
+  .filter-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid var(--divider-color);
+    background: transparent;
+    color: var(--primary-text-color);
+    user-select: none;
+    transition:
+      background 0.2s,
+      border-color 0.2s;
+  }
+
+  .filter-chip:hover {
+    background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+  }
+
+  .filter-chip[active] {
+    background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+  }
+`;
+/**
+* Status pills. Variants are grouped by colour; the class names are the ones
+* the views already render, so markup does not change.
+*/
+var badgeStyles = i$3`
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .badge-healthy,
+  .badge-ready,
+  .badge-running,
+  .badge-complete,
+  .badge-tls,
+  .badge-type-loadbalancer {
+    background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
+    color: var(--success-color, #4caf50);
+  }
+
+  .badge-unhealthy,
+  .badge-not-ready,
+  .badge-failed {
+    background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
+    color: var(--error-color, #f44336);
+  }
+
+  .badge-unschedulable,
+  .badge-condition,
+  .badge-pending,
+  .badge-degraded,
+  .badge-plain,
+  .badge-type-externalname {
+    background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
+    color: var(--warning-color, #ff9800);
+  }
+
+  .badge-unknown,
+  .badge-stopped,
+  .badge-suspended {
+    background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
+    color: var(--disabled-color, #9e9e9e);
+  }
+
+  .badge-succeeded,
+  .badge-active {
+    background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
+    color: var(--info-color, #2196f3);
+  }
+`;
+/** Modal confirmation dialog (delete pod / delete job / scale). */
+var dialogStyles = i$3`
+  .confirm-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+  }
+
+  .confirm-dialog {
+    background: var(--card-background-color, #fff);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .confirm-dialog h3 {
+    margin: 0 0 12px;
+    font-size: 18px;
+    color: var(--primary-text-color);
+  }
+
+  .confirm-dialog p {
+    margin: 0 0 20px;
+    color: var(--secondary-text-color);
+    font-size: 14px;
+  }
+
+  .confirm-dialog .confirm-ref {
+    font-family: monospace;
+    font-weight: 500;
+    color: var(--primary-text-color);
+  }
+
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .confirm-actions button {
+    padding: 8px 20px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid var(--divider-color);
+    background: transparent;
+    color: var(--primary-text-color);
+  }
+
+  .confirm-actions button:hover {
+    background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+  }
+
+  .confirm-actions .delete-action {
+    background: var(--error-color, #f44336);
+    color: #fff;
+    border-color: var(--error-color, #f44336);
+  }
+
+  .confirm-actions .delete-action:hover {
+    opacity: 0.9;
+    background: var(--error-color, #f44336);
+  }
+
+  .confirm-actions .delete-action:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+/** Horizontal-scroll wrapper for data tables inside an `<ha-card>`. */
+var tableStyles = i$3`
+  .table-wrapper {
+    overflow-x: auto;
+  }
+`;
+//#endregion
+//#region src/views/k8s-overview.ts
+var RESOURCE_ICONS = {
+	pods: "mdi:cube-outline",
+	nodes: "mdi:server",
+	deployments: "mdi:rocket-launch",
+	statefulsets: "mdi:database",
+	daemonsets: "mdi:lan",
+	cronjobs: "mdi:clock-outline",
+	jobs: "mdi:briefcase-check",
+	ingresses: "mdi:earth",
+	services: "mdi:swap-horizontal"
+};
+var RESOURCE_LABELS = {
+	pods: "Pods",
+	nodes: "Nodes",
+	deployments: "Deployments",
+	statefulsets: "StatefulSets",
+	daemonsets: "DaemonSets",
+	cronjobs: "CronJobs",
+	jobs: "Jobs",
+	ingresses: "Ingresses",
+	services: "Services"
+};
+var K8sOverview = class K8sOverview extends K8sDataView {
+	constructor(..._args) {
+		super(..._args);
+		this._expandedNamespaces = /* @__PURE__ */ new Set();
+		this.loadErrorFallback = "Failed to load cluster data";
+	}
+	async fetchData() {
+		const result = await this.hass.callWS({ type: "kubernetes/cluster/overview" });
+		this._data = result;
+	}
+	_toggleNamespaces(clusterId) {
+		this._expandedNamespaces = toggleInSet(this._expandedNamespaces, clusterId);
+	}
+	static {
+		this.styles = [
+			stateStyles,
+			badgeStyles,
+			i$3`
+      .cluster-section {
+        margin-bottom: 24px;
+      }
+
+      .cluster-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+
+      .cluster-name {
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
+
+      .meta-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        flex-wrap: wrap;
+      }
+
+      .meta-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        --mdc-icon-size: 16px;
+      }
+
+      .refresh-btn {
+        cursor: pointer;
+        background: none;
+        border: none;
+        color: var(--primary-color);
+        padding: 4px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        --mdc-icon-size: 18px;
+      }
+
+      .refresh-btn:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+      }
+
+      .counts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      .count-card {
+        padding: 16px;
+        border-radius: 12px;
+        text-align: center;
+        --mdc-icon-size: 28px;
+      }
+
+      .count-card ha-icon {
+        color: var(--primary-color);
+        margin-bottom: 8px;
+      }
+
+      .count-value {
+        font-size: 28px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
+
+      .count-label {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-top: 4px;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
+        padding: 8px 0;
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        --mdc-icon-size: 20px;
+      }
+
+      .section-header:hover {
+        color: var(--primary-color);
+      }
+
+      .ns-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0 16px;
+        font-size: 13px;
+      }
+
+      .ns-table th {
+        text-align: left;
+        padding: 8px 12px;
+        color: var(--secondary-text-color);
+        font-weight: 500;
+        border-bottom: 1px solid var(--divider-color);
+      }
+
+      .ns-table td {
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--divider-color);
+      }
+
+      .ns-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .alerts-section {
+        margin-top: 16px;
+      }
+
+      .alert-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+        border-radius: 8px;
+        font-size: 14px;
+        --mdc-icon-size: 20px;
+      }
+
+      .alert-warning {
+        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
+        color: var(--primary-text-color);
+      }
+
+      .alert-warning ha-icon {
+        color: var(--warning-color, #ff9800);
+      }
+
+      .alert-error {
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+        color: var(--primary-text-color);
+      }
+
+      .alert-error ha-icon {
+        color: var(--error-color, #f44336);
+      }
+
+      .alert-title {
+        font-weight: 500;
+      }
+
+      .alert-detail {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-top: 2px;
+      }
+
+      .no-alerts {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+        border-radius: 8px;
+        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.08);
+        font-size: 14px;
+        --mdc-icon-size: 24px;
+      }
+
+      .no-alerts ha-icon {
+        color: var(--success-color, #4caf50);
+        flex-shrink: 0;
+      }
+
+      .no-alerts-text {
+        flex: 1;
+      }
+
+      .no-alerts-title {
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
+
+      .no-alerts-detail {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        margin-top: 2px;
+      }
+
+      .alerts-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        --mdc-icon-size: 20px;
+      }
+
+      .alerts-info-icon {
+        color: var(--secondary-text-color);
+        cursor: help;
+        --mdc-icon-size: 18px;
+        position: relative;
+      }
+
+      .alerts-info-icon:hover {
+        color: var(--primary-color);
+      }
+
+      .alerts-tooltip {
+        display: none;
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 0;
+        background: var(--card-background-color, #fff);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--secondary-text-color);
+        width: 280px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        z-index: 10;
+        line-height: 1.5;
+      }
+
+      .alerts-info-icon:hover .alerts-tooltip {
+        display: block;
+      }
+    `
+		];
+	}
+	render() {
+		const state = this.renderState(!this._data?.clusters.length);
+		if (state !== A) return state;
 		return b` ${this._data.clusters.map((c) => this._renderCluster(c))} `;
 	}
 	_renderCluster(cluster) {
@@ -1158,7 +1434,7 @@ var K8sOverview = class K8sOverview extends i {
         <div class="meta-row">
           <div class="meta-item">
             <ha-icon icon="mdi:update"></ha-icon>
-            <span>Updated ${this._formatRelativeTime(cluster.last_update)}</span>
+            <span>Updated ${formatRelative(cluster.last_update)}</span>
           </div>
           <button class="refresh-btn" @click=${this._loadData} title="Refresh data">
             <ha-icon icon="mdi:refresh"></ha-icon>
@@ -1269,7 +1545,7 @@ var K8sOverview = class K8sOverview extends i {
             <div>
               <div class="alert-title">Node: ${node.name}</div>
               <div class="alert-detail">
-                ${node.conditions.map((c) => CONDITION_LABELS$1[c] || c).join(", ")}
+                ${node.conditions.map((c) => CONDITION_LABELS[c] || c).join(", ")}
               </div>
             </div>
           </div>
@@ -1295,10 +1571,6 @@ var K8sOverview = class K8sOverview extends i {
     `;
 	}
 };
-__decorate([n({ attribute: false })], K8sOverview.prototype, "hass", void 0);
-__decorate([r()], K8sOverview.prototype, "_data", void 0);
-__decorate([r()], K8sOverview.prototype, "_loading", void 0);
-__decorate([r()], K8sOverview.prototype, "_error", void 0);
 __decorate([r()], K8sOverview.prototype, "_expandedNamespaces", void 0);
 K8sOverview = __decorate([t("k8s-overview")], K8sOverview);
 //#endregion
@@ -1389,97 +1661,22 @@ var actionStyles = i$3`
 `;
 //#endregion
 //#region src/views/k8s-nodes-table.ts
-var CONDITION_LABELS = {
-	memory_pressure: "Memory Pressure",
-	disk_pressure: "Disk Pressure",
-	pid_pressure: "PID Pressure",
-	network_unavailable: "Network Unavailable"
-};
-var K8sNodesTable = class K8sNodesTable extends i {
+var K8sNodesTable = class K8sNodesTable extends K8sDataView {
 	constructor(..._args) {
 		super(..._args);
-		this._data = null;
-		this._loading = true;
-		this._error = null;
 		this._expandedNodes = /* @__PURE__ */ new Set();
 		this._statusFilter = "all";
 		this._searchQuery = "";
 		this._actionInProgress = /* @__PURE__ */ new Set();
 		this._actionError = null;
-		this._loadingInFlight = false;
-		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+		this.loadErrorFallback = "Failed to load nodes data";
 	}
-	firstUpdated(_changedProps) {
-		this._loadData();
-		this._startPolling();
-		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
-		this._subscribeUpdates();
-	}
-	disconnectedCallback() {
-		super.disconnectedCallback();
-		this._stopPolling();
-		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
-		this._unsubUpdates?.().catch(() => {});
-		this._unsubUpdates = void 0;
-		if (this._updateDebounce) {
-			clearTimeout(this._updateDebounce);
-			this._updateDebounce = void 0;
-		}
-	}
-	_handleVisibilityChange() {
-		if (document.hidden) this._stopPolling();
-		else {
-			this._loadData();
-			this._startPolling();
-		}
-	}
-	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
-	}
-	_stopPolling() {
-		if (this._refreshInterval) {
-			clearInterval(this._refreshInterval);
-			this._refreshInterval = void 0;
-		}
-	}
-	async _subscribeUpdates() {
-		try {
-			const unsub = await this.hass.connection.subscribeMessage(() => this._scheduleLoad(), { type: "kubernetes/subscribe_updates" });
-			if (!this.isConnected) {
-				unsub().catch(() => {});
-				return;
-			}
-			this._unsubUpdates = unsub;
-		} catch {}
-	}
-	_scheduleLoad() {
-		if (document.hidden) return;
-		if (this._updateDebounce) return;
-		this._updateDebounce = setTimeout(() => {
-			this._updateDebounce = void 0;
-			this._loadData();
-		}, 1e3);
-	}
-	async _loadData() {
-		if (this._loadingInFlight) return;
-		this._loadingInFlight = true;
-		if (!this._data) this._loading = true;
-		this._error = null;
-		try {
-			const result = await this.hass.callWS({ type: "kubernetes/nodes/list" });
-			this._data = result;
-		} catch (err) {
-			this._error = err.message || "Failed to load nodes data";
-		} finally {
-			this._loading = false;
-			this._loadingInFlight = false;
-		}
+	async fetchData() {
+		const result = await this.hass.callWS({ type: "kubernetes/nodes/list" });
+		this._data = result;
 	}
 	_toggleNode(nodeKey) {
-		const updated = new Set(this._expandedNodes);
-		if (updated.has(nodeKey)) updated.delete(nodeKey);
-		else updated.add(nodeKey);
-		this._expandedNodes = updated;
+		this._expandedNodes = toggleInSet(this._expandedNodes, nodeKey);
 	}
 	_getConditions(node) {
 		const conditions = [];
@@ -1488,15 +1685,6 @@ var K8sNodesTable = class K8sNodesTable extends i {
 		if (node.pid_pressure) conditions.push("pid_pressure");
 		if (node.network_unavailable) conditions.push("network_unavailable");
 		return conditions;
-	}
-	_formatAge(timestamp) {
-		if (!timestamp || timestamp === "N/A") return "N/A";
-		const created = new Date(timestamp).getTime();
-		const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
-		if (diff < 60) return `${diff}s`;
-		if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-		if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-		return `${Math.floor(diff / 86400)}d`;
 	}
 	_getFilteredNodes(nodes) {
 		let filtered = nodes;
@@ -1520,7 +1708,7 @@ var K8sNodesTable = class K8sNodesTable extends i {
 			});
 			await this._loadData();
 		} catch (err) {
-			const message = err?.message || "Action failed";
+			const message = errorMessage(err, "Action failed");
 			this._actionError = `Action failed: ${message}`;
 			console.error("[k8s-nodes-table] Action failed:", err);
 		} finally {
@@ -1530,53 +1718,12 @@ var K8sNodesTable = class K8sNodesTable extends i {
 		}
 	}
 	static {
-		this.styles = [actionStyles, i$3`
-      :host {
-        display: block;
-      }
-
-      .loading {
-        display: flex;
-        justify-content: center;
-        padding: 64px 0;
-      }
-
-      .error-card {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 32px;
-        text-align: center;
-        color: var(--error-color, #db4437);
-        --mdc-icon-size: 48px;
-      }
-
-      .error-card p {
-        margin: 16px 0;
-      }
-
-      .retry-btn {
-        cursor: pointer;
-        padding: 8px 24px;
-        border: 1px solid var(--primary-color);
-        border-radius: 4px;
-        background: transparent;
-        color: var(--primary-color);
-        font-size: 14px;
-      }
-
-      .retry-btn:hover {
-        background: var(--primary-color);
-        color: var(--text-primary-color, #fff);
-      }
-
-      .empty {
-        text-align: center;
-        padding: 64px 16px;
-        color: var(--secondary-text-color);
-        font-size: 16px;
-      }
-
+		this.styles = [
+			actionStyles,
+			stateStyles,
+			filterStyles,
+			badgeStyles,
+			i$3`
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -1586,55 +1733,6 @@ var K8sNodesTable = class K8sNodesTable extends i {
         font-weight: 500;
         color: var(--primary-text-color);
         margin-bottom: 12px;
-      }
-
-      .filters {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 16px;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-
-      .search-input {
-        padding: 8px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        background: var(--card-background-color, var(--primary-background-color));
-        color: var(--primary-text-color);
-        font-size: 14px;
-        min-width: 200px;
-      }
-
-      .search-input:focus {
-        outline: none;
-        border-color: var(--primary-color);
-      }
-
-      .filter-chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 6px 14px;
-        border-radius: 16px;
-        font-size: 13px;
-        cursor: pointer;
-        border: 1px solid var(--divider-color);
-        background: transparent;
-        color: var(--primary-text-color);
-        user-select: none;
-        transition:
-          background 0.2s,
-          border-color 0.2s;
-      }
-
-      .filter-chip:hover {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-      }
-
-      .filter-chip[active] {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-        border-color: var(--primary-color);
-        color: var(--primary-color);
       }
 
       .node-card {
@@ -1664,37 +1762,6 @@ var K8sNodesTable = class K8sNodesTable extends i {
         align-items: center;
         gap: 8px;
         --mdc-icon-size: 18px;
-      }
-
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 500;
-        white-space: nowrap;
-      }
-
-      .badge-ready {
-        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-        color: var(--success-color, #4caf50);
-      }
-
-      .badge-not-ready {
-        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-        color: var(--error-color, #f44336);
-      }
-
-      .badge-unschedulable {
-        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-        color: var(--warning-color, #ff9800);
-      }
-
-      .badge-condition {
-        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-        color: var(--warning-color, #ff9800);
       }
 
       .node-ip {
@@ -1805,24 +1872,12 @@ var K8sNodesTable = class K8sNodesTable extends i {
           display: none;
         }
       }
-    `];
+    `
+		];
 	}
 	render() {
-		if (this._loading) return b`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-		if (this._error) return b`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-		if (!this._data?.clusters.length) return b`<div class="empty">No Kubernetes clusters configured.</div>`;
+		const state = this.renderState(!this._data?.clusters.length);
+		if (state !== A) return state;
 		return b`
       ${this._actionError ? b`
               <div class="action-error">
@@ -1951,7 +2006,7 @@ var K8sNodesTable = class K8sNodesTable extends i {
                     GiB</span
                   >`}
           </div>
-          <span class="node-age">${this._formatAge(node.creation_timestamp)}</span>
+          <span class="node-age">${formatAge(node.creation_timestamp)}</span>
           <button
             class="action-btn ${node.schedulable ? "cordon" : "uncordon"}"
             title=${node.schedulable ? "Cordon (stop scheduling new pods)" : "Uncordon"}
@@ -2050,10 +2105,6 @@ var K8sNodesTable = class K8sNodesTable extends i {
     `;
 	}
 };
-__decorate([n({ attribute: false })], K8sNodesTable.prototype, "hass", void 0);
-__decorate([r()], K8sNodesTable.prototype, "_data", void 0);
-__decorate([r()], K8sNodesTable.prototype, "_loading", void 0);
-__decorate([r()], K8sNodesTable.prototype, "_error", void 0);
 __decorate([r()], K8sNodesTable.prototype, "_expandedNodes", void 0);
 __decorate([r()], K8sNodesTable.prototype, "_statusFilter", void 0);
 __decorate([r()], K8sNodesTable.prototype, "_searchQuery", void 0);
@@ -2112,12 +2163,9 @@ function saveColumnPrefs(cols) {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify([...cols]));
 	} catch {}
 }
-var K8sPodsTable = class K8sPodsTable extends i {
+var K8sPodsTable = class K8sPodsTable extends K8sDataView {
 	constructor(..._args) {
 		super(..._args);
-		this._data = null;
-		this._loading = true;
-		this._error = null;
 		this._searchQuery = "";
 		this._phaseFilter = "all";
 		this._namespaceFilter = "all";
@@ -2127,88 +2175,22 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		this._deleting = false;
 		this._visibleColumns = loadColumnPrefs();
 		this._columnMenuOpen = false;
-		this._loadingInFlight = false;
-		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+		this.loadErrorFallback = "Failed to load pods data";
 		this._boundCloseMenu = () => {
 			this._columnMenuOpen = false;
 		};
 	}
-	firstUpdated(_changedProps) {
-		this._loadData();
-		this._startPolling();
-		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+	firstUpdated(changedProps) {
+		super.firstUpdated(changedProps);
 		document.addEventListener("click", this._boundCloseMenu);
-		this._subscribeUpdates();
 	}
 	disconnectedCallback() {
 		super.disconnectedCallback();
-		this._stopPolling();
-		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
 		document.removeEventListener("click", this._boundCloseMenu);
-		this._unsubUpdates?.().catch(() => {});
-		this._unsubUpdates = void 0;
-		if (this._updateDebounce) {
-			clearTimeout(this._updateDebounce);
-			this._updateDebounce = void 0;
-		}
 	}
-	_handleVisibilityChange() {
-		if (document.hidden) this._stopPolling();
-		else {
-			this._loadData();
-			this._startPolling();
-		}
-	}
-	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
-	}
-	_stopPolling() {
-		if (this._refreshInterval) {
-			clearInterval(this._refreshInterval);
-			this._refreshInterval = void 0;
-		}
-	}
-	async _subscribeUpdates() {
-		try {
-			const unsub = await this.hass.connection.subscribeMessage(() => this._scheduleLoad(), { type: "kubernetes/subscribe_updates" });
-			if (!this.isConnected) {
-				unsub().catch(() => {});
-				return;
-			}
-			this._unsubUpdates = unsub;
-		} catch {}
-	}
-	_scheduleLoad() {
-		if (document.hidden) return;
-		if (this._updateDebounce) return;
-		this._updateDebounce = setTimeout(() => {
-			this._updateDebounce = void 0;
-			this._loadData();
-		}, 1e3);
-	}
-	async _loadData() {
-		if (this._loadingInFlight) return;
-		this._loadingInFlight = true;
-		if (!this._data) this._loading = true;
-		this._error = null;
-		try {
-			const result = await this.hass.callWS({ type: "kubernetes/pods/list" });
-			this._data = result;
-		} catch (err) {
-			this._error = err.message || "Failed to load pods data";
-		} finally {
-			this._loading = false;
-			this._loadingInFlight = false;
-		}
-	}
-	_formatAge(timestamp) {
-		if (!timestamp || timestamp === "N/A") return "N/A";
-		const created = new Date(timestamp).getTime();
-		const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
-		if (diff < 60) return `${diff}s`;
-		if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-		if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-		return `${Math.floor(diff / 86400)}d`;
+	async fetchData() {
+		const result = await this.hass.callWS({ type: "kubernetes/pods/list" });
+		this._data = result;
 	}
 	_getNamespaces(pods) {
 		return [...new Set(pods.map((p) => p.namespace))].sort();
@@ -2276,7 +2258,7 @@ var K8sPodsTable = class K8sPodsTable extends i {
 			this._deleteConfirm = null;
 			await this._loadData();
 		} catch (err) {
-			this._error = err.message || "Failed to delete pod";
+			this._error = errorMessage(err, "Failed to delete pod");
 			this._deleteConfirm = null;
 		} finally {
 			this._deleting = false;
@@ -2287,403 +2269,178 @@ var K8sPodsTable = class K8sPodsTable extends i {
 		return this._sortAsc ? "mdi:arrow-up" : "mdi:arrow-down";
 	}
 	static {
-		this.styles = i$3`
-    :host {
-      display: block;
-    }
+		this.styles = [
+			stateStyles,
+			filterStyles,
+			badgeStyles,
+			dialogStyles,
+			tableStyles,
+			i$3`
+      .cluster-section {
+        margin-bottom: 24px;
+      }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+      .cluster-name {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 12px;
+      }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+      .pod-count {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-bottom: 8px;
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .pods-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .pods-table th {
+        text-align: left;
+        padding: 10px 12px;
+        color: var(--secondary-text-color);
+        font-weight: 500;
+        border-bottom: 2px solid var(--divider-color);
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+        --mdc-icon-size: 14px;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .pods-table th:hover {
+        color: var(--primary-color);
+      }
 
-    .empty {
-      text-align: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .pods-table th ha-icon {
+        vertical-align: middle;
+        margin-left: 2px;
+      }
 
-    .cluster-section {
-      margin-bottom: 24px;
-    }
+      .pods-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--divider-color);
+        vertical-align: middle;
+      }
 
-    .cluster-name {
-      font-size: 20px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin-bottom: 12px;
-    }
+      .pods-table tr:last-child td {
+        border-bottom: none;
+      }
 
-    .filters {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
+      .pods-table tr:hover td {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
+      }
 
-    .search-input {
-      padding: 8px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 14px;
-      min-width: 200px;
-    }
+      .mono {
+        font-family: monospace;
+      }
 
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
+      .pod-name {
+        font-weight: 500;
+        word-break: break-all;
+      }
 
-    .filter-chip {
-      display: inline-flex;
-      align-items: center;
-      padding: 6px 14px;
-      border-radius: 16px;
-      font-size: 13px;
-      cursor: pointer;
-      border: 1px solid var(--divider-color);
-      background: transparent;
-      color: var(--primary-text-color);
-      user-select: none;
-      transition:
-        background 0.2s,
-        border-color 0.2s;
-    }
+      .owner-info {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+      }
 
-    .filter-chip:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-    }
+      .restart-warn {
+        color: var(--warning-color, #ff9800);
+        font-weight: 500;
+      }
 
-    .filter-chip[active] {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-      border-color: var(--primary-color);
-      color: var(--primary-color);
-    }
+      .col-actions {
+        width: 40px;
+        min-width: 40px;
+        cursor: default;
+      }
 
-    select.ns-select {
-      padding: 6px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 13px;
-    }
+      .delete-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 50%;
+        color: var(--secondary-text-color);
+        --mdc-icon-size: 18px;
+        transition:
+          color 0.2s,
+          background 0.2s;
+      }
 
-    .pod-count {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      margin-bottom: 8px;
-    }
+      .delete-btn:hover {
+        color: var(--error-color, #f44336);
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+      }
 
-    .pods-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
+      .column-menu-wrapper {
+        position: relative;
+        margin-left: auto;
+      }
 
-    .pods-table th {
-      text-align: left;
-      padding: 10px 12px;
-      color: var(--secondary-text-color);
-      font-weight: 500;
-      border-bottom: 2px solid var(--divider-color);
-      cursor: pointer;
-      user-select: none;
-      white-space: nowrap;
-      --mdc-icon-size: 14px;
-    }
+      .column-toggle-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--secondary-text-color);
+        cursor: pointer;
+        --mdc-icon-size: 18px;
+      }
 
-    .pods-table th:hover {
-      color: var(--primary-color);
-    }
+      .column-toggle-btn:hover {
+        color: var(--primary-color);
+        border-color: var(--primary-color);
+      }
 
-    .pods-table th ha-icon {
-      vertical-align: middle;
-      margin-left: 2px;
-    }
+      .column-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 4px;
+        background: var(--card-background-color, #fff);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 8px 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 10;
+        min-width: 140px;
+      }
 
-    .pods-table td {
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--divider-color);
-      vertical-align: middle;
-    }
+      .column-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        font-size: 13px;
+        color: var(--primary-text-color);
+        cursor: pointer;
+        white-space: nowrap;
+      }
 
-    .pods-table tr:last-child td {
-      border-bottom: none;
-    }
+      .column-option:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
+      }
 
-    .pods-table tr:hover td {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .badge-running {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
-
-    .badge-succeeded {
-      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
-      color: var(--info-color, #2196f3);
-    }
-
-    .badge-pending {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-      color: var(--warning-color, #ff9800);
-    }
-
-    .badge-failed {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-      color: var(--error-color, #f44336);
-    }
-
-    .badge-unknown {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-      color: var(--disabled-color, #9e9e9e);
-    }
-
-    .mono {
-      font-family: monospace;
-    }
-
-    .pod-name {
-      font-weight: 500;
-      word-break: break-all;
-    }
-
-    .owner-info {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-    }
-
-    .restart-warn {
-      color: var(--warning-color, #ff9800);
-      font-weight: 500;
-    }
-
-    .col-actions {
-      width: 40px;
-      min-width: 40px;
-      cursor: default;
-    }
-
-    .delete-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      padding: 4px;
-      border-radius: 50%;
-      color: var(--secondary-text-color);
-      --mdc-icon-size: 18px;
-      transition:
-        color 0.2s,
-        background 0.2s;
-    }
-
-    .delete-btn:hover {
-      color: var(--error-color, #f44336);
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-    }
-
-    .confirm-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 999;
-    }
-
-    .confirm-dialog {
-      background: var(--card-background-color, #fff);
-      border-radius: 12px;
-      padding: 24px;
-      max-width: 400px;
-      width: 90%;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-    }
-
-    .confirm-dialog h3 {
-      margin: 0 0 12px;
-      font-size: 18px;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-dialog p {
-      margin: 0 0 20px;
-      color: var(--secondary-text-color);
-      font-size: 14px;
-    }
-
-    .confirm-dialog .pod-ref {
-      font-family: monospace;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    .confirm-actions button {
-      padding: 8px 20px;
-      border-radius: 4px;
-      font-size: 14px;
-      cursor: pointer;
-      border: 1px solid var(--divider-color);
-      background: transparent;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-actions button:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-    }
-
-    .confirm-actions .delete-action {
-      background: var(--error-color, #f44336);
-      color: #fff;
-      border-color: var(--error-color, #f44336);
-    }
-
-    .confirm-actions .delete-action:hover {
-      opacity: 0.9;
-      background: var(--error-color, #f44336);
-    }
-
-    .confirm-actions .delete-action:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .table-wrapper {
-      overflow-x: auto;
-    }
-
-    .column-menu-wrapper {
-      position: relative;
-      margin-left: auto;
-    }
-
-    .column-toggle-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 6px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: transparent;
-      color: var(--secondary-text-color);
-      cursor: pointer;
-      --mdc-icon-size: 18px;
-    }
-
-    .column-toggle-btn:hover {
-      color: var(--primary-color);
-      border-color: var(--primary-color);
-    }
-
-    .column-menu {
-      position: absolute;
-      top: 100%;
-      right: 0;
-      margin-top: 4px;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      padding: 8px 0;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      z-index: 10;
-      min-width: 140px;
-    }
-
-    .column-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      font-size: 13px;
-      color: var(--primary-text-color);
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .column-option:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
-    }
-
-    .column-option input[type="checkbox"] {
-      accent-color: var(--primary-color);
-    }
-  `;
+      .column-option input[type="checkbox"] {
+        accent-color: var(--primary-color);
+      }
+    `
+		];
 	}
 	render() {
-		if (this._loading) return b`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-		if (this._error) return b`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-		if (!this._data?.clusters.length) return b`<div class="empty">No Kubernetes clusters configured.</div>`;
+		const state = this.renderState(!this._data?.clusters.length);
+		if (state !== A) return state;
 		return b`
       ${this._data.clusters.map((c) => this._renderCluster(c))}
       ${this._deleteConfirm ? this._renderDeleteDialog() : A}
@@ -2709,7 +2466,7 @@ var K8sPodsTable = class K8sPodsTable extends i {
           />
 
           <select
-            class="ns-select"
+            class="filter-select"
             .value=${this._namespaceFilter}
             @change=${(e) => {
 			this._namespaceFilter = e.target.value;
@@ -2878,7 +2635,7 @@ var K8sPodsTable = class K8sPodsTable extends i {
         ${this._colVisible("node") ? b`<td>${pod.node_name}</td>` : A}
         ${this._colVisible("ip") ? b`<td class="mono">${pod.pod_ip}</td>` : A}
         ${this._colVisible("owner") ? b`<td>${pod.owner_kind !== "N/A" ? b`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>` : b`<span class="owner-info">-</span>`}</td>` : A}
-        ${this._colVisible("age") ? b`<td>${this._formatAge(pod.creation_timestamp)}</td>` : A}
+        ${this._colVisible("age") ? b`<td>${formatAge(pod.creation_timestamp)}</td>` : A}
         <td>
           <button
             class="delete-btn"
@@ -2902,8 +2659,8 @@ var K8sPodsTable = class K8sPodsTable extends i {
           <h3>Delete Pod</h3>
           <p>
             Are you sure you want to delete
-            <span class="pod-ref">${confirm.namespace}/${confirm.pod_name}</span>? This
-            action cannot be undone.
+            <span class="confirm-ref">${confirm.namespace}/${confirm.pod_name}</span>?
+            This action cannot be undone.
           </p>
           <div class="confirm-actions">
             <button @click=${this._cancelDelete} ?disabled=${this._deleting}>
@@ -2922,10 +2679,6 @@ var K8sPodsTable = class K8sPodsTable extends i {
     `;
 	}
 };
-__decorate([n({ attribute: false })], K8sPodsTable.prototype, "hass", void 0);
-__decorate([r()], K8sPodsTable.prototype, "_data", void 0);
-__decorate([r()], K8sPodsTable.prototype, "_loading", void 0);
-__decorate([r()], K8sPodsTable.prototype, "_error", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_searchQuery", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_phaseFilter", void 0);
 __decorate([r()], K8sPodsTable.prototype, "_namespaceFilter", void 0);
@@ -2945,94 +2698,28 @@ var NETWORK_TYPES = [
 	"ClusterIP",
 	"ExternalName"
 ];
-var K8sNetwork = class K8sNetwork extends i {
+var K8sNetwork = class K8sNetwork extends K8sDataView {
 	constructor(..._args) {
 		super(..._args);
-		this._data = null;
 		this._services = null;
-		this._loading = true;
-		this._error = null;
 		this._servicesError = null;
 		this._searchQuery = "";
 		this._typeFilter = "all";
-		this._loadingInFlight = false;
-		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+		this.loadErrorFallback = "Failed to load network data";
 	}
-	firstUpdated(_changedProps) {
-		this._loadData();
-		this._startPolling();
-		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
-		this._subscribeUpdates();
+	hasData() {
+		return this._data !== null || this._services !== null;
 	}
-	disconnectedCallback() {
-		super.disconnectedCallback();
-		this._stopPolling();
-		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
-		this._unsubUpdates?.().catch(() => {});
-		this._unsubUpdates = void 0;
-		if (this._updateDebounce) {
-			clearTimeout(this._updateDebounce);
-			this._updateDebounce = void 0;
-		}
-	}
-	_handleVisibilityChange() {
-		if (document.hidden) this._stopPolling();
-		else {
-			this._loadData();
-			this._startPolling();
-		}
-	}
-	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
-	}
-	_stopPolling() {
-		if (this._refreshInterval) {
-			clearInterval(this._refreshInterval);
-			this._refreshInterval = void 0;
-		}
-	}
-	async _subscribeUpdates() {
-		try {
-			const unsub = await this.hass.connection.subscribeMessage(() => this._scheduleLoad(), { type: "kubernetes/subscribe_updates" });
-			if (!this.isConnected) {
-				unsub().catch(() => {});
-				return;
-			}
-			this._unsubUpdates = unsub;
-		} catch {}
-	}
-	_scheduleLoad() {
-		if (document.hidden) return;
-		if (this._updateDebounce) return;
-		this._updateDebounce = setTimeout(() => {
-			this._updateDebounce = void 0;
-			this._loadData();
-		}, 1e3);
-	}
-	async _loadData() {
-		if (this._loadingInFlight) return;
-		this._loadingInFlight = true;
-		if (!this._data && !this._services) this._loading = true;
+	async fetchData() {
 		const [ingresses, services] = await Promise.allSettled([this.hass.callWS({ type: "kubernetes/ingresses/list" }), this.hass.callWS({ type: "kubernetes/services/list" })]);
 		if (ingresses.status === "fulfilled") {
 			this._data = ingresses.value;
 			this._error = null;
-		} else this._error = ingresses.reason?.message || "Failed to load ingress data";
+		} else this._error = errorMessage(ingresses.reason, "Failed to load ingress data");
 		if (services.status === "fulfilled") {
 			this._services = services.value;
 			this._servicesError = null;
-		} else this._servicesError = services.reason?.message || "Failed to load service data";
-		this._loading = false;
-		this._loadingInFlight = false;
-	}
-	_formatAge(timestamp) {
-		if (!timestamp || timestamp === "N/A") return "N/A";
-		const created = new Date(timestamp).getTime();
-		const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
-		if (diff < 60) return `${diff}s`;
-		if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-		if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-		return `${Math.floor(diff / 86400)}d`;
+		} else this._servicesError = errorMessage(services.reason, "Failed to load service data");
 	}
 	_getFilteredIngresses(ingresses) {
 		if (!this._searchQuery) return ingresses;
@@ -3060,201 +2747,109 @@ var K8sNetwork = class K8sNetwork extends i {
 		return `${p.port}${target}/${p.protocol}${node}`;
 	}
 	static {
-		this.styles = i$3`
-    :host {
-      display: block;
-    }
+		this.styles = [
+			stateStyles,
+			filterStyles,
+			badgeStyles,
+			tableStyles,
+			i$3`
+      /* stateStyles' .empty is 64px padding; network uses .empty for five
+       in-section messages, where that much padding doubles up. */
+      .empty {
+        padding: 32px 16px;
+      }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+      .inline-error {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        margin-bottom: 16px;
+        border-radius: 8px;
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+        color: var(--error-color, #f44336);
+        font-size: 14px;
+        --mdc-icon-size: 18px;
+      }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+      .section-title {
+        font-size: 18px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin: 24px 0 12px;
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .section-title:first-of-type {
+        margin-top: 0;
+      }
 
-    .inline-error {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      margin-bottom: 16px;
-      border-radius: 8px;
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      color: var(--error-color, #f44336);
-      font-size: 14px;
-      --mdc-icon-size: 18px;
-    }
+      .cluster-section {
+        margin-bottom: 24px;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .cluster-name {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 12px;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .network-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
 
-    .empty {
-      text-align: center;
-      padding: 32px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .network-table th {
+        text-align: left;
+        padding: 10px 12px;
+        color: var(--secondary-text-color);
+        font-weight: 500;
+        border-bottom: 2px solid var(--divider-color);
+        white-space: nowrap;
+      }
 
-    .section-title {
-      font-size: 18px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin: 24px 0 12px;
-    }
+      .network-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--divider-color);
+        vertical-align: middle;
+      }
 
-    .section-title:first-of-type {
-      margin-top: 0;
-    }
+      .network-table tr:last-child td {
+        border-bottom: none;
+      }
 
-    .cluster-section {
-      margin-bottom: 24px;
-    }
+      .network-table tr:hover td {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
+      }
 
-    .cluster-name {
-      font-size: 20px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin-bottom: 12px;
-    }
+      .mono {
+        font-family: monospace;
+        white-space: nowrap;
+      }
 
-    .filters {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
+      .url-link {
+        display: block;
+        color: var(--primary-color);
+        text-decoration: none;
+        white-space: nowrap;
+      }
 
-    .search-input {
-      padding: 8px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 14px;
-      min-width: 200px;
-    }
+      .url-link:hover {
+        text-decoration: underline;
+      }
 
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
+      .badge-type-nodeport {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
+        color: var(--primary-color);
+      }
 
-    select.filter-select {
-      padding: 6px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 13px;
-    }
-
-    .network-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-
-    .network-table th {
-      text-align: left;
-      padding: 10px 12px;
-      color: var(--secondary-text-color);
-      font-weight: 500;
-      border-bottom: 2px solid var(--divider-color);
-      white-space: nowrap;
-    }
-
-    .network-table td {
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--divider-color);
-      vertical-align: middle;
-    }
-
-    .network-table tr:last-child td {
-      border-bottom: none;
-    }
-
-    .network-table tr:hover td {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
-    }
-
-    .mono {
-      font-family: monospace;
-      white-space: nowrap;
-    }
-
-    .url-link {
-      display: block;
-      color: var(--primary-color);
-      text-decoration: none;
-      white-space: nowrap;
-    }
-
-    .url-link:hover {
-      text-decoration: underline;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .badge-tls,
-    .badge-type-loadbalancer {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
-
-    .badge-plain,
-    .badge-type-externalname {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-      color: var(--warning-color, #ff9800);
-    }
-
-    .badge-type-nodeport {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-      color: var(--primary-color);
-    }
-
-    .badge-type-clusterip {
-      background: rgba(var(--rgb-secondary-text-color, 114, 114, 114), 0.15);
-      color: var(--secondary-text-color);
-    }
-
-    .table-wrapper {
-      overflow-x: auto;
-    }
-  `;
+      .badge-type-clusterip {
+        background: rgba(var(--rgb-secondary-text-color, 114, 114, 114), 0.15);
+        color: var(--secondary-text-color);
+      }
+    `
+		];
 	}
 	render() {
 		if (this._loading) return b`<div class="loading">
@@ -3348,7 +2943,7 @@ var K8sNetwork = class K8sNetwork extends i {
                     <td>${this._renderUrls(ingress.urls)}</td>
                     <td>${this._services_of(ingress) || "—"}</td>
                     <td>${this._renderTlsBadge(ingress)}</td>
-                    <td>${this._formatAge(ingress.creation_timestamp)}</td>
+                    <td>${formatAge(ingress.creation_timestamp)}</td>
                   </tr>
                 `)}
             </tbody>
@@ -3398,7 +2993,7 @@ var K8sNetwork = class K8sNetwork extends i {
                     <td class="mono">
                       ${svc.ports.length ? svc.ports.map((p) => b`<div>${this._formatPort(p)}</div>`) : "—"}
                     </td>
-                    <td>${this._formatAge(svc.creation_timestamp)}</td>
+                    <td>${formatAge(svc.creation_timestamp)}</td>
                   </tr>
                 `)}
             </tbody>
@@ -3424,23 +3019,16 @@ var K8sNetwork = class K8sNetwork extends i {
 		return this._hasTls(ingress) ? b`<span class="badge badge-tls">TLS</span>` : b`<span class="badge badge-plain">HTTP</span>`;
 	}
 };
-__decorate([n({ attribute: false })], K8sNetwork.prototype, "hass", void 0);
-__decorate([r()], K8sNetwork.prototype, "_data", void 0);
 __decorate([r()], K8sNetwork.prototype, "_services", void 0);
-__decorate([r()], K8sNetwork.prototype, "_loading", void 0);
-__decorate([r()], K8sNetwork.prototype, "_error", void 0);
 __decorate([r()], K8sNetwork.prototype, "_servicesError", void 0);
 __decorate([r()], K8sNetwork.prototype, "_searchQuery", void 0);
 __decorate([r()], K8sNetwork.prototype, "_typeFilter", void 0);
 K8sNetwork = __decorate([t("k8s-network")], K8sNetwork);
 //#endregion
 //#region src/views/k8s-workloads.ts
-var K8sWorkloads = class K8sWorkloads extends i {
+var K8sWorkloads = class K8sWorkloads extends K8sDataView {
 	constructor(..._args) {
 		super(..._args);
-		this._data = null;
-		this._loading = true;
-		this._error = null;
 		this._namespaceFilter = "all";
 		this._categoryFilter = "all";
 		this._statusFilter = "all";
@@ -3453,85 +3041,11 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		this._scaleTarget = null;
 		this._scaleValue = 0;
 		this._scaling = false;
-		this._loadingInFlight = false;
-		this._boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+		this.loadErrorFallback = "Failed to load workloads data";
 	}
-	firstUpdated(_changedProps) {
-		this._loadData();
-		this._startPolling();
-		document.addEventListener("visibilitychange", this._boundVisibilityHandler);
-		this._subscribeUpdates();
-	}
-	disconnectedCallback() {
-		super.disconnectedCallback();
-		this._stopPolling();
-		document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
-		this._unsubUpdates?.().catch(() => {});
-		this._unsubUpdates = void 0;
-		if (this._updateDebounce) {
-			clearTimeout(this._updateDebounce);
-			this._updateDebounce = void 0;
-		}
-		if (this._reloadTimer) {
-			clearTimeout(this._reloadTimer);
-			this._reloadTimer = void 0;
-		}
-	}
-	_scheduleReload(delayMs) {
-		if (this._reloadTimer) clearTimeout(this._reloadTimer);
-		this._reloadTimer = setTimeout(() => {
-			this._reloadTimer = void 0;
-			this._loadData();
-		}, delayMs);
-	}
-	_handleVisibilityChange() {
-		if (document.hidden) this._stopPolling();
-		else {
-			this._loadData();
-			this._startPolling();
-		}
-	}
-	_startPolling() {
-		if (!this._refreshInterval) this._refreshInterval = setInterval(() => this._loadData(), 6e4);
-	}
-	_stopPolling() {
-		if (this._refreshInterval) {
-			clearInterval(this._refreshInterval);
-			this._refreshInterval = void 0;
-		}
-	}
-	async _subscribeUpdates() {
-		try {
-			const unsub = await this.hass.connection.subscribeMessage(() => this._scheduleLoad(), { type: "kubernetes/subscribe_updates" });
-			if (!this.isConnected) {
-				unsub().catch(() => {});
-				return;
-			}
-			this._unsubUpdates = unsub;
-		} catch {}
-	}
-	_scheduleLoad() {
-		if (document.hidden) return;
-		if (this._updateDebounce) return;
-		this._updateDebounce = setTimeout(() => {
-			this._updateDebounce = void 0;
-			this._loadData();
-		}, 1e3);
-	}
-	async _loadData() {
-		if (this._loadingInFlight) return;
-		this._loadingInFlight = true;
-		if (!this._data) this._loading = true;
-		this._error = null;
-		try {
-			const result = await this.hass.callWS({ type: "kubernetes/workloads/list" });
-			this._data = result;
-		} catch (err) {
-			this._error = err.message || "Failed to load workloads data";
-		} finally {
-			this._loading = false;
-			this._loadingInFlight = false;
-		}
+	async fetchData() {
+		const result = await this.hass.callWS({ type: "kubernetes/workloads/list" });
+		this._data = result;
 	}
 	_getNamespaces(cluster) {
 		const namespaces = /* @__PURE__ */ new Set();
@@ -3561,15 +3075,6 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		if (!this._searchQuery) return true;
 		return name.toLowerCase().includes(this._searchQuery.toLowerCase());
 	}
-	_formatAge(timestamp) {
-		if (!timestamp) return "N/A";
-		const created = new Date(timestamp).getTime();
-		const diff = Math.max(0, Math.floor((Date.now() - created) / 1e3));
-		if (diff < 60) return `${diff}s ago`;
-		if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-		if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-		return `${Math.floor(diff / 86400)}d ago`;
-	}
 	/** Run an action with per-card busy state; failures land in the error banner. */
 	async _runAction(actionKey, run) {
 		const updated = new Set(this._actionInProgress);
@@ -3578,7 +3083,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		try {
 			await run();
 		} catch (err) {
-			const message = err?.message || "Action failed";
+			const message = errorMessage(err, "Action failed");
 			this._actionError = `Action failed: ${message}`;
 			console.error("[k8s-workloads] Action failed:", err);
 		} finally {
@@ -3606,53 +3111,13 @@ var K8sWorkloads = class K8sWorkloads extends i {
 		});
 	}
 	static {
-		this.styles = [actionStyles, i$3`
-      :host {
-        display: block;
-      }
-
-      .loading {
-        display: flex;
-        justify-content: center;
-        padding: 64px 0;
-      }
-
-      .error-card {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 32px;
-        text-align: center;
-        color: var(--error-color, #db4437);
-        --mdc-icon-size: 48px;
-      }
-
-      .error-card p {
-        margin: 16px 0;
-      }
-
-      .retry-btn {
-        cursor: pointer;
-        padding: 8px 24px;
-        border: 1px solid var(--primary-color);
-        border-radius: 4px;
-        background: transparent;
-        color: var(--primary-color);
-        font-size: 14px;
-      }
-
-      .retry-btn:hover {
-        background: var(--primary-color);
-        color: var(--text-primary-color, #fff);
-      }
-
-      .empty {
-        text-align: center;
-        padding: 64px 16px;
-        color: var(--secondary-text-color);
-        font-size: 16px;
-      }
-
+		this.styles = [
+			actionStyles,
+			stateStyles,
+			filterStyles,
+			badgeStyles,
+			dialogStyles,
+			i$3`
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -3662,64 +3127,6 @@ var K8sWorkloads = class K8sWorkloads extends i {
         font-weight: 500;
         color: var(--primary-text-color);
         margin-bottom: 12px;
-      }
-
-      .filters {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 16px;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-
-      .search-input {
-        padding: 8px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        background: var(--card-background-color, var(--primary-background-color));
-        color: var(--primary-text-color);
-        font-size: 14px;
-        min-width: 200px;
-      }
-
-      .search-input:focus {
-        outline: none;
-        border-color: var(--primary-color);
-      }
-
-      select.filter-select {
-        padding: 6px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        background: var(--card-background-color, var(--primary-background-color));
-        color: var(--primary-text-color);
-        font-size: 13px;
-      }
-
-      .filter-chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 6px 14px;
-        border-radius: 16px;
-        font-size: 13px;
-        cursor: pointer;
-        border: 1px solid var(--divider-color);
-        background: transparent;
-        color: var(--primary-text-color);
-        user-select: none;
-        transition:
-          background 0.2s,
-          border-color 0.2s;
-      }
-
-      .filter-chip:hover {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-      }
-
-      .filter-chip[active] {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-        border-color: var(--primary-color);
-        color: var(--primary-color);
       }
 
       .category-section {
@@ -3797,52 +3204,6 @@ var K8sWorkloads = class K8sWorkloads extends i {
         flex-shrink: 0;
       }
 
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 500;
-        white-space: nowrap;
-      }
-
-      .badge-healthy {
-        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-        color: var(--success-color, #4caf50);
-      }
-
-      .badge-degraded {
-        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-        color: var(--warning-color, #ff9800);
-      }
-
-      .badge-stopped {
-        background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-        color: var(--disabled-color, #9e9e9e);
-      }
-
-      .badge-failed {
-        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-        color: var(--error-color, #f44336);
-      }
-
-      .badge-active {
-        background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
-        color: var(--info-color, #2196f3);
-      }
-
-      .badge-suspended {
-        background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-        color: var(--disabled-color, #9e9e9e);
-      }
-
-      .badge-complete {
-        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-        color: var(--success-color, #4caf50);
-      }
-
       .replica-info {
         font-size: 13px;
         color: var(--secondary-text-color);
@@ -3878,82 +3239,6 @@ var K8sWorkloads = class K8sWorkloads extends i {
       .last-schedule {
         font-size: 12px;
         color: var(--secondary-text-color);
-      }
-
-      .confirm-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 999;
-      }
-
-      .confirm-dialog {
-        background: var(--card-background-color, #fff);
-        border-radius: 12px;
-        padding: 24px;
-        max-width: 400px;
-        width: 90%;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-      }
-
-      .confirm-dialog h3 {
-        margin: 0 0 12px;
-        font-size: 18px;
-        color: var(--primary-text-color);
-      }
-
-      .confirm-dialog p {
-        margin: 0 0 20px;
-        color: var(--secondary-text-color);
-        font-size: 14px;
-      }
-
-      .confirm-dialog .job-ref {
-        font-family: monospace;
-        font-weight: 500;
-        color: var(--primary-text-color);
-      }
-
-      .confirm-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-      }
-
-      .confirm-actions button {
-        padding: 8px 20px;
-        border-radius: 4px;
-        font-size: 14px;
-        cursor: pointer;
-        border: 1px solid var(--divider-color);
-        background: transparent;
-        color: var(--primary-text-color);
-      }
-
-      .confirm-actions button:hover {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-      }
-
-      .confirm-actions .delete-action {
-        background: var(--error-color, #f44336);
-        color: #fff;
-        border-color: var(--error-color, #f44336);
-      }
-
-      .confirm-actions .delete-action:hover {
-        opacity: 0.9;
-        background: var(--error-color, #f44336);
-      }
-
-      .confirm-actions .delete-action:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
       }
 
       .scale-controls {
@@ -4032,24 +3317,12 @@ var K8sWorkloads = class K8sWorkloads extends i {
           display: none;
         }
       }
-    `];
+    `
+		];
 	}
 	render() {
-		if (this._loading) return b`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-		if (this._error) return b`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-		if (!this._data?.clusters.length) return b`<div class="empty">No Kubernetes clusters configured.</div>`;
+		const state = this.renderState(!this._data?.clusters.length);
+		if (state !== A) return state;
 		return b`
       ${this._actionError ? b`
               <div class="action-error">
@@ -4484,7 +3757,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
                 >` : A}
           ${cj.suspend ? b`<span class="badge badge-suspended">Suspended</span>` : b`<span class="badge badge-healthy">Active</span>`}
           ${cj.last_schedule_time ? b`<span class="last-schedule"
-                  >Last: ${this._formatAge(cj.last_schedule_time)}</span
+                  >Last: ${formatAge(cj.last_schedule_time)} ago</span
                 >` : A}
           <div class="workload-actions">
             <button
@@ -4561,7 +3834,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
           ${hasFailed ? b`<span class="badge badge-failed">${j.failed} failed</span>` : A}
           ${isComplete ? b`<span class="badge badge-complete">Complete</span>` : A}
           ${j.start_time ? b`<span class="last-schedule"
-                  >Started: ${this._formatAge(j.start_time)}</span
+                  >Started: ${formatAge(j.start_time)} ago</span
                 >` : A}
           <div class="workload-actions">
             <button
@@ -4602,7 +3875,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 			this._scaleTarget = null;
 			this._scheduleReload(2e3);
 		} catch (err) {
-			this._actionError = err?.message || "Failed to scale workload";
+			this._actionError = errorMessage(err, "Failed to scale workload");
 			this._scaleTarget = null;
 		} finally {
 			this._scaling = false;
@@ -4618,7 +3891,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
         <div class="confirm-dialog" @click=${(e) => e.stopPropagation()}>
           <h3>Scale Workload</h3>
           <p>
-            <span class="job-ref">${target.namespace}/${target.workload_name}</span>
+            <span class="confirm-ref">${target.namespace}/${target.workload_name}</span>
           </p>
           <div class="scale-controls">
             <button
@@ -4686,7 +3959,7 @@ var K8sWorkloads = class K8sWorkloads extends i {
 			this._jobDeleteConfirm = null;
 			await this._loadData();
 		} catch (err) {
-			this._actionError = err?.message || "Failed to delete job";
+			this._actionError = errorMessage(err, "Failed to delete job");
 			this._jobDeleteConfirm = null;
 		} finally {
 			this._deletingJob = false;
@@ -4703,8 +3976,8 @@ var K8sWorkloads = class K8sWorkloads extends i {
           <h3>Delete Job</h3>
           <p>
             Are you sure you want to delete
-            <span class="job-ref">${confirm.namespace}/${confirm.job_name}</span>? This
-            action cannot be undone.
+            <span class="confirm-ref">${confirm.namespace}/${confirm.job_name}</span>?
+            This action cannot be undone.
           </p>
           <div class="confirm-actions">
             <button @click=${this._cancelJobDelete} ?disabled=${this._deletingJob}>
@@ -4723,10 +3996,6 @@ var K8sWorkloads = class K8sWorkloads extends i {
     `;
 	}
 };
-__decorate([n({ attribute: false })], K8sWorkloads.prototype, "hass", void 0);
-__decorate([r()], K8sWorkloads.prototype, "_data", void 0);
-__decorate([r()], K8sWorkloads.prototype, "_loading", void 0);
-__decorate([r()], K8sWorkloads.prototype, "_error", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_namespaceFilter", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_categoryFilter", void 0);
 __decorate([r()], K8sWorkloads.prototype, "_statusFilter", void 0);
@@ -4742,251 +4011,161 @@ __decorate([r()], K8sWorkloads.prototype, "_scaling", void 0);
 K8sWorkloads = __decorate([t("k8s-workloads")], K8sWorkloads);
 //#endregion
 //#region src/views/k8s-settings.ts
-var K8sSettings = class K8sSettings extends i {
+var K8sSettings = class K8sSettings extends K8sDataView {
 	constructor(..._args) {
 		super(..._args);
-		this._data = null;
-		this._loading = true;
-		this._error = null;
+		this.pollMs = 0;
+		this.subscribe = false;
+		this.loadErrorFallback = "Failed to load configuration";
+		this.emptyMessage = "No Kubernetes entries configured.";
 	}
-	firstUpdated(_changedProps) {
-		this._loadData();
-	}
-	async _loadData() {
-		this._loading = true;
-		this._error = null;
-		try {
-			const result = await this.hass.callWS({ type: "kubernetes/config/list" });
-			this._data = result;
-		} catch (err) {
-			this._error = err.message || "Failed to load configuration";
-		} finally {
-			this._loading = false;
-		}
+	async fetchData() {
+		const result = await this.hass.callWS({ type: "kubernetes/config/list" });
+		this._data = result;
 	}
 	_navigateToIntegration() {
 		window.open("/config/integrations/integration/kubernetes", "_blank");
 	}
 	static {
-		this.styles = i$3`
-    :host {
-      display: block;
-    }
+		this.styles = [
+			stateStyles,
+			badgeStyles,
+			i$3`
+      .entry-section {
+        margin-bottom: 24px;
+      }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+      .entry-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+      .entry-name {
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 16px;
+        margin-bottom: 16px;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .settings-card {
+        padding: 20px;
+        border-radius: 12px;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .card-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 16px;
+        --mdc-icon-size: 20px;
+      }
 
-    .empty {
-      text-align: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .card-title ha-icon {
+        color: var(--primary-color);
+      }
 
-    .entry-section {
-      margin-bottom: 24px;
-    }
+      .setting-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--divider-color);
+        font-size: 14px;
+      }
 
-    .entry-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
+      .setting-row:last-child {
+        border-bottom: none;
+      }
 
-    .entry-name {
-      font-size: 24px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
+      .setting-label {
+        color: var(--secondary-text-color);
+      }
 
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-    }
+      .setting-value {
+        color: var(--primary-text-color);
+        font-weight: 500;
+        text-align: right;
+        max-width: 60%;
+        word-break: break-all;
+      }
 
-    .badge-healthy {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
+      .setting-value-bool {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        --mdc-icon-size: 16px;
+      }
 
-    .badge-unhealthy {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-      color: var(--error-color, #f44336);
-    }
+      .bool-true {
+        color: var(--success-color, #4caf50);
+      }
 
-    .badge-unknown {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-      color: var(--disabled-color, #9e9e9e);
-    }
+      .bool-false {
+        color: var(--secondary-text-color);
+      }
 
-    .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-      gap: 16px;
-      margin-bottom: 16px;
-    }
+      .namespace-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        justify-content: flex-end;
+      }
 
-    .settings-card {
-      padding: 20px;
-      border-radius: 12px;
-    }
+      .ns-tag {
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+        color: var(--primary-color);
+        font-size: 12px;
+      }
 
-    .card-title {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin-bottom: 16px;
-      --mdc-icon-size: 20px;
-    }
+      .actions-bar {
+        display: flex;
+        gap: 12px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
 
-    .card-title ha-icon {
-      color: var(--primary-color);
-    }
+      .action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 8px 20px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--primary-text-color);
+        font-size: 14px;
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+        --mdc-icon-size: 18px;
+      }
 
-    .setting-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--divider-color);
-      font-size: 14px;
-    }
-
-    .setting-row:last-child {
-      border-bottom: none;
-    }
-
-    .setting-label {
-      color: var(--secondary-text-color);
-    }
-
-    .setting-value {
-      color: var(--primary-text-color);
-      font-weight: 500;
-      text-align: right;
-      max-width: 60%;
-      word-break: break-all;
-    }
-
-    .setting-value-bool {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      --mdc-icon-size: 16px;
-    }
-
-    .bool-true {
-      color: var(--success-color, #4caf50);
-    }
-
-    .bool-false {
-      color: var(--secondary-text-color);
-    }
-
-    .namespace-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      justify-content: flex-end;
-    }
-
-    .ns-tag {
-      padding: 2px 8px;
-      border-radius: 4px;
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
-      color: var(--primary-color);
-      font-size: 12px;
-    }
-
-    .actions-bar {
-      display: flex;
-      gap: 12px;
-      margin-top: 16px;
-      flex-wrap: wrap;
-    }
-
-    .action-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      cursor: pointer;
-      padding: 8px 20px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: transparent;
-      color: var(--primary-text-color);
-      font-size: 14px;
-      transition:
-        background 0.2s,
-        border-color 0.2s;
-      --mdc-icon-size: 18px;
-    }
-
-    .action-btn:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-      border-color: var(--primary-color);
-      color: var(--primary-color);
-    }
-  `;
+      .action-btn:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+      }
+    `
+		];
 	}
 	render() {
-		if (this._loading) return b`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-		if (this._error) return b`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-		if (!this._data?.entries.length) return b`<div class="empty">No Kubernetes entries configured.</div>`;
+		const state = this.renderState(!this._data?.entries.length);
+		if (state !== A) return state;
 		return b`${this._data.entries.map((e) => this._renderEntry(e))}`;
 	}
 	_renderEntry(entry) {
@@ -5125,10 +4304,6 @@ var K8sSettings = class K8sSettings extends i {
     `;
 	}
 };
-__decorate([n({ attribute: false })], K8sSettings.prototype, "hass", void 0);
-__decorate([r()], K8sSettings.prototype, "_data", void 0);
-__decorate([r()], K8sSettings.prototype, "_loading", void 0);
-__decorate([r()], K8sSettings.prototype, "_error", void 0);
 K8sSettings = __decorate([t("k8s-settings")], K8sSettings);
 //#endregion
 //#region src/kubernetes-panel.ts

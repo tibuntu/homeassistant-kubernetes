@@ -1,6 +1,14 @@
-import { LitElement, html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant } from "../types/homeassistant";
+import { html, css, nothing, PropertyValues } from "lit";
+import { customElement, state } from "lit/decorators.js";
+import { K8sDataView } from "./base-view";
+import {
+  stateStyles,
+  filterStyles,
+  badgeStyles,
+  dialogStyles,
+  tableStyles,
+} from "../styles/shared";
+import { formatAge, errorMessage } from "../utils/format";
 
 interface PodData {
   name: string;
@@ -75,12 +83,7 @@ function saveColumnPrefs(cols: Set<ColumnKey>): void {
 }
 
 @customElement("k8s-pods-table")
-export class K8sPodsTable extends LitElement {
-  @property({ attribute: false }) public hass!: HomeAssistant;
-
-  @state() private _data: PodsResponse | null = null;
-  @state() private _loading = true;
-  @state() private _error: string | null = null;
+export class K8sPodsTable extends K8sDataView<PodsResponse> {
   @state() private _searchQuery: string = "";
   @state() private _phaseFilter: string = "all";
   @state() private _namespaceFilter: string = "all";
@@ -91,112 +94,27 @@ export class K8sPodsTable extends LitElement {
   @state() private _visibleColumns: Set<ColumnKey> = loadColumnPrefs();
   @state() private _columnMenuOpen = false;
 
-  private _refreshInterval?: ReturnType<typeof setInterval>;
-  private _loadingInFlight = false;
-  private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
+  protected loadErrorFallback = "Failed to load pods data";
+
   private _boundCloseMenu = () => {
     this._columnMenuOpen = false;
   };
-  private _unsubUpdates?: () => Promise<void>;
-  private _updateDebounce?: ReturnType<typeof setTimeout>;
 
-  protected firstUpdated(_changedProps: PropertyValues): void {
-    this._loadData();
-    this._startPolling();
-    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
+  protected firstUpdated(changedProps: PropertyValues): void {
+    super.firstUpdated(changedProps);
     document.addEventListener("click", this._boundCloseMenu);
-    void this._subscribeUpdates();
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
-    this._stopPolling();
-    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
     document.removeEventListener("click", this._boundCloseMenu);
-    void this._unsubUpdates?.().catch(() => {});
-    this._unsubUpdates = undefined;
-    if (this._updateDebounce) {
-      clearTimeout(this._updateDebounce);
-      this._updateDebounce = undefined;
-    }
   }
 
-  private _handleVisibilityChange(): void {
-    if (document.hidden) {
-      this._stopPolling();
-    } else {
-      this._loadData();
-      this._startPolling();
-    }
-  }
-
-  private _startPolling(): void {
-    if (!this._refreshInterval) {
-      this._refreshInterval = setInterval(() => this._loadData(), 60000);
-    }
-  }
-
-  private _stopPolling(): void {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = undefined;
-    }
-  }
-
-  private async _subscribeUpdates(): Promise<void> {
-    try {
-      const unsub = await this.hass.connection.subscribeMessage(
-        () => this._scheduleLoad(),
-        { type: "kubernetes/subscribe_updates" },
-      );
-      if (!this.isConnected) {
-        void unsub().catch(() => {});
-        return;
-      }
-      this._unsubUpdates = unsub;
-    } catch {
-      // Backend without subscription support — interval polling covers it.
-    }
-  }
-
-  private _scheduleLoad(): void {
-    if (document.hidden) return;
-    if (this._updateDebounce) return;
-    this._updateDebounce = setTimeout(() => {
-      this._updateDebounce = undefined;
-      this._loadData();
-    }, 1000);
-  }
-
-  private async _loadData(): Promise<void> {
-    if (this._loadingInFlight) return;
-    this._loadingInFlight = true;
-    if (!this._data) {
-      this._loading = true;
-    }
-    this._error = null;
-    try {
-      const result: PodsResponse = await this.hass.callWS({
-        type: "kubernetes/pods/list",
-      });
-      this._data = result;
-    } catch (err: any) {
-      this._error = err.message || "Failed to load pods data";
-    } finally {
-      this._loading = false;
-      this._loadingInFlight = false;
-    }
-  }
-
-  private _formatAge(timestamp: string): string {
-    if (!timestamp || timestamp === "N/A") return "N/A";
-    const created = new Date(timestamp).getTime();
-    const now = Date.now();
-    const diff = Math.max(0, Math.floor((now - created) / 1000));
-    if (diff < 60) return `${diff}s`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
+  protected async fetchData(): Promise<void> {
+    const result: PodsResponse = await this.hass.callWS({
+      type: "kubernetes/pods/list",
+    });
+    this._data = result;
   }
 
   private _getNamespaces(pods: PodData[]): string[] {
@@ -286,8 +204,8 @@ export class K8sPodsTable extends LitElement {
       });
       this._deleteConfirm = null;
       await this._loadData();
-    } catch (err: any) {
-      this._error = err.message || "Failed to delete pod";
+    } catch (err: unknown) {
+      this._error = errorMessage(err, "Failed to delete pod");
       this._deleteConfirm = null;
     } finally {
       this._deleting = false;
@@ -299,414 +217,181 @@ export class K8sPodsTable extends LitElement {
     return this._sortAsc ? "mdi:arrow-up" : "mdi:arrow-down";
   }
 
-  static styles = css`
-    :host {
-      display: block;
-    }
+  static styles = [
+    stateStyles,
+    filterStyles,
+    badgeStyles,
+    dialogStyles,
+    tableStyles,
+    css`
+      .cluster-section {
+        margin-bottom: 24px;
+      }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+      .cluster-name {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 12px;
+      }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+      .pod-count {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-bottom: 8px;
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .pods-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .pods-table th {
+        text-align: left;
+        padding: 10px 12px;
+        color: var(--secondary-text-color);
+        font-weight: 500;
+        border-bottom: 2px solid var(--divider-color);
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+        --mdc-icon-size: 14px;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .pods-table th:hover {
+        color: var(--primary-color);
+      }
 
-    .empty {
-      text-align: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .pods-table th ha-icon {
+        vertical-align: middle;
+        margin-left: 2px;
+      }
 
-    .cluster-section {
-      margin-bottom: 24px;
-    }
+      .pods-table td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--divider-color);
+        vertical-align: middle;
+      }
 
-    .cluster-name {
-      font-size: 20px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin-bottom: 12px;
-    }
+      .pods-table tr:last-child td {
+        border-bottom: none;
+      }
 
-    .filters {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
+      .pods-table tr:hover td {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
+      }
 
-    .search-input {
-      padding: 8px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 14px;
-      min-width: 200px;
-    }
+      .mono {
+        font-family: monospace;
+      }
 
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
+      .pod-name {
+        font-weight: 500;
+        word-break: break-all;
+      }
 
-    .filter-chip {
-      display: inline-flex;
-      align-items: center;
-      padding: 6px 14px;
-      border-radius: 16px;
-      font-size: 13px;
-      cursor: pointer;
-      border: 1px solid var(--divider-color);
-      background: transparent;
-      color: var(--primary-text-color);
-      user-select: none;
-      transition:
-        background 0.2s,
-        border-color 0.2s;
-    }
+      .owner-info {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+      }
 
-    .filter-chip:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-    }
+      .restart-warn {
+        color: var(--warning-color, #ff9800);
+        font-weight: 500;
+      }
 
-    .filter-chip[active] {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-      border-color: var(--primary-color);
-      color: var(--primary-color);
-    }
+      .col-actions {
+        width: 40px;
+        min-width: 40px;
+        cursor: default;
+      }
 
-    select.ns-select {
-      padding: 6px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: var(--card-background-color, var(--primary-background-color));
-      color: var(--primary-text-color);
-      font-size: 13px;
-    }
+      .delete-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 50%;
+        color: var(--secondary-text-color);
+        --mdc-icon-size: 18px;
+        transition:
+          color 0.2s,
+          background 0.2s;
+      }
 
-    .pod-count {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      margin-bottom: 8px;
-    }
+      .delete-btn:hover {
+        color: var(--error-color, #f44336);
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+      }
 
-    .pods-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
+      .column-menu-wrapper {
+        position: relative;
+        margin-left: auto;
+      }
 
-    .pods-table th {
-      text-align: left;
-      padding: 10px 12px;
-      color: var(--secondary-text-color);
-      font-weight: 500;
-      border-bottom: 2px solid var(--divider-color);
-      cursor: pointer;
-      user-select: none;
-      white-space: nowrap;
-      --mdc-icon-size: 14px;
-    }
+      .column-toggle-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--secondary-text-color);
+        cursor: pointer;
+        --mdc-icon-size: 18px;
+      }
 
-    .pods-table th:hover {
-      color: var(--primary-color);
-    }
+      .column-toggle-btn:hover {
+        color: var(--primary-color);
+        border-color: var(--primary-color);
+      }
 
-    .pods-table th ha-icon {
-      vertical-align: middle;
-      margin-left: 2px;
-    }
+      .column-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 4px;
+        background: var(--card-background-color, #fff);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 8px 0;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 10;
+        min-width: 140px;
+      }
 
-    .pods-table td {
-      padding: 8px 12px;
-      border-bottom: 1px solid var(--divider-color);
-      vertical-align: middle;
-    }
+      .column-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 14px;
+        font-size: 13px;
+        color: var(--primary-text-color);
+        cursor: pointer;
+        white-space: nowrap;
+      }
 
-    .pods-table tr:last-child td {
-      border-bottom: none;
-    }
+      .column-option:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
+      }
 
-    .pods-table tr:hover td {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.04);
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-      white-space: nowrap;
-    }
-
-    .badge-running {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
-
-    .badge-succeeded {
-      background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
-      color: var(--info-color, #2196f3);
-    }
-
-    .badge-pending {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-      color: var(--warning-color, #ff9800);
-    }
-
-    .badge-failed {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-      color: var(--error-color, #f44336);
-    }
-
-    .badge-unknown {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-      color: var(--disabled-color, #9e9e9e);
-    }
-
-    .mono {
-      font-family: monospace;
-    }
-
-    .pod-name {
-      font-weight: 500;
-      word-break: break-all;
-    }
-
-    .owner-info {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-    }
-
-    .restart-warn {
-      color: var(--warning-color, #ff9800);
-      font-weight: 500;
-    }
-
-    .col-actions {
-      width: 40px;
-      min-width: 40px;
-      cursor: default;
-    }
-
-    .delete-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      padding: 4px;
-      border-radius: 50%;
-      color: var(--secondary-text-color);
-      --mdc-icon-size: 18px;
-      transition:
-        color 0.2s,
-        background 0.2s;
-    }
-
-    .delete-btn:hover {
-      color: var(--error-color, #f44336);
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-    }
-
-    .confirm-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.5);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 999;
-    }
-
-    .confirm-dialog {
-      background: var(--card-background-color, #fff);
-      border-radius: 12px;
-      padding: 24px;
-      max-width: 400px;
-      width: 90%;
-      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-    }
-
-    .confirm-dialog h3 {
-      margin: 0 0 12px;
-      font-size: 18px;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-dialog p {
-      margin: 0 0 20px;
-      color: var(--secondary-text-color);
-      font-size: 14px;
-    }
-
-    .confirm-dialog .pod-ref {
-      font-family: monospace;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-    }
-
-    .confirm-actions button {
-      padding: 8px 20px;
-      border-radius: 4px;
-      font-size: 14px;
-      cursor: pointer;
-      border: 1px solid var(--divider-color);
-      background: transparent;
-      color: var(--primary-text-color);
-    }
-
-    .confirm-actions button:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-    }
-
-    .confirm-actions .delete-action {
-      background: var(--error-color, #f44336);
-      color: #fff;
-      border-color: var(--error-color, #f44336);
-    }
-
-    .confirm-actions .delete-action:hover {
-      opacity: 0.9;
-      background: var(--error-color, #f44336);
-    }
-
-    .confirm-actions .delete-action:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    .table-wrapper {
-      overflow-x: auto;
-    }
-
-    .column-menu-wrapper {
-      position: relative;
-      margin-left: auto;
-    }
-
-    .column-toggle-btn {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 6px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: transparent;
-      color: var(--secondary-text-color);
-      cursor: pointer;
-      --mdc-icon-size: 18px;
-    }
-
-    .column-toggle-btn:hover {
-      color: var(--primary-color);
-      border-color: var(--primary-color);
-    }
-
-    .column-menu {
-      position: absolute;
-      top: 100%;
-      right: 0;
-      margin-top: 4px;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      padding: 8px 0;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-      z-index: 10;
-      min-width: 140px;
-    }
-
-    .column-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      font-size: 13px;
-      color: var(--primary-text-color);
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .column-option:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.06);
-    }
-
-    .column-option input[type="checkbox"] {
-      accent-color: var(--primary-color);
-    }
-  `;
+      .column-option input[type="checkbox"] {
+        accent-color: var(--primary-color);
+      }
+    `,
+  ];
 
   protected render() {
-    if (this._loading) {
-      return html`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-    }
-
-    if (this._error) {
-      return html`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-    }
-
-    if (!this._data?.clusters.length) {
-      return html`<div class="empty">No Kubernetes clusters configured.</div>`;
-    }
+    const state = this.renderState(!this._data?.clusters.length);
+    if (state !== nothing) return state;
 
     return html`
-      ${this._data.clusters.map((c) => this._renderCluster(c))}
+      ${this._data!.clusters.map((c) => this._renderCluster(c))}
       ${this._deleteConfirm ? this._renderDeleteDialog() : nothing}
     `;
   }
@@ -736,7 +421,7 @@ export class K8sPodsTable extends LitElement {
           />
 
           <select
-            class="ns-select"
+            class="filter-select"
             .value=${this._namespaceFilter}
             @change=${(e: Event) => {
               this._namespaceFilter = (e.target as HTMLSelectElement).value;
@@ -957,7 +642,7 @@ export class K8sPodsTable extends LitElement {
         ${this._colVisible("node") ? html`<td>${pod.node_name}</td>` : nothing}
         ${this._colVisible("ip") ? html`<td class="mono">${pod.pod_ip}</td>` : nothing}
         ${this._colVisible("owner") ? html`<td>${pod.owner_kind !== "N/A" ? html`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>` : html`<span class="owner-info">-</span>`}</td>` : nothing}
-        ${this._colVisible("age") ? html`<td>${this._formatAge(pod.creation_timestamp)}</td>` : nothing}
+        ${this._colVisible("age") ? html`<td>${formatAge(pod.creation_timestamp)}</td>` : nothing}
         <td>
           <button
             class="delete-btn"
@@ -982,8 +667,8 @@ export class K8sPodsTable extends LitElement {
           <h3>Delete Pod</h3>
           <p>
             Are you sure you want to delete
-            <span class="pod-ref">${confirm.namespace}/${confirm.pod_name}</span>? This
-            action cannot be undone.
+            <span class="confirm-ref">${confirm.namespace}/${confirm.pod_name}</span>?
+            This action cannot be undone.
           </p>
           <div class="confirm-actions">
             <button @click=${this._cancelDelete} ?disabled=${this._deleting}>
