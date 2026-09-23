@@ -1104,6 +1104,58 @@ class TestWebsocketServicesList:
         ]
 
 
+class TestReadCommandsEndToEnd:
+    """Each read-only list/overview command answers a real WebSocket request.
+
+    The dedicated test classes above call the payload builders directly,
+    which leaves the decorated `websocket_command`/`async_response` wrappers
+    uncovered; this drives each one through `hass_ws_client` instead.
+    """
+
+    @pytest.mark.parametrize(
+        ("command_type", "result_key"),
+        [
+            ("kubernetes/cluster/overview", "clusters"),
+            ("kubernetes/nodes/list", "clusters"),
+            ("kubernetes/pods/list", "clusters"),
+            ("kubernetes/workloads/list", "clusters"),
+            ("kubernetes/ingresses/list", "clusters"),
+            ("kubernetes/config/list", "entries"),
+        ],
+    )
+    async def test_read_command_over_websocket(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        command_type,
+        result_key,
+    ):
+        """The command succeeds and returns its documented top-level key."""
+        client = MagicMock()
+        coordinator = add_loaded_client_entry(client)
+        coordinator.data = {
+            "nodes": {},
+            "pods": {},
+            "deployments": {},
+            "statefulsets": {},
+            "daemonsets": {},
+            "cronjobs": {},
+            "jobs": {},
+            "ingresses": {},
+            "services": {},
+            "last_update": 0.0,
+        }
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json({"id": 1, "type": command_type})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is True
+        assert result_key in msg["result"]
+
+
 class TestWebsocketConfigList:
     """Tests for the kubernetes/config/list command logic."""
 

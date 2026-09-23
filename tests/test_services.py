@@ -94,6 +94,23 @@ def setup_domain_data(add_loaded_entry, mock_client) -> MockConfigEntry:
     )
 
 
+def _set_workload_state(
+    hass: HomeAssistant,
+    entity_id: str,
+    *,
+    workload_type: str = WORKLOAD_TYPE_DEPLOYMENT,
+    namespace: str = "default",
+    state: str = "on",
+    **attrs,
+) -> None:
+    """Set a switch entity's state with the workload attributes services read."""
+    hass.states.async_set(
+        entity_id,
+        state,
+        {ATTR_WORKLOAD_TYPE: workload_type, "namespace": namespace, **attrs},
+    )
+
+
 class TestServiceRegistration:
     """Test service registration."""
 
@@ -113,14 +130,8 @@ class TestGenericWorkloadServices:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test scaling a deployment using the generic scale_workload service."""
-        hass.states.async_set(
-            "switch.test_deployment",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "test-deployment",
-            },
+        _set_workload_state(
+            hass, "switch.test_deployment", deployment_name="test-deployment"
         )
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -146,14 +157,11 @@ class TestGenericWorkloadServices:
             "success": True,
             "job_name": "test-job-123",
         }
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.test_cronjob",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
-                "namespace": "default",
-                "cronjob_name": "test-cronjob",
-            },
+            workload_type=WORKLOAD_TYPE_CRONJOB,
+            cronjob_name="test-cronjob",
         )
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -172,14 +180,11 @@ class TestGenericWorkloadServices:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test stopping a StatefulSet using the generic stop_workload service."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.test_statefulset",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "default",
-                "statefulset_name": "test-statefulset",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="test-statefulset",
         )
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -200,14 +205,11 @@ class TestGenericWorkloadServices:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test that stop_workload rejects CronJobs with a validation error."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.test_cronjob",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
-                "namespace": "default",
-                "cronjob_name": "test-cronjob",
-            },
+            workload_type=WORKLOAD_TYPE_CRONJOB,
+            cronjob_name="test-cronjob",
         )
         await async_setup_services(hass)
         with pytest.raises(ServiceValidationError, match="suspend CronJobs"):
@@ -229,23 +231,17 @@ class TestGenericWorkloadServices:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test stop_workload with workload_names as list of {entity_id: [switch.…, …]} (UI format)."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.default_audiobookshelf_audiobookshelf",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "audiobookshelf",
-                "deployment_name": "audiobookshelf",
-            },
+            namespace="audiobookshelf",
+            deployment_name="audiobookshelf",
         )
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.default_cert_manager_cert_manager",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "cert-manager",
-                "deployment_name": "cert-manager",
-            },
+            namespace="cert-manager",
+            deployment_name="cert-manager",
         )
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -276,14 +272,8 @@ class TestRestartWorkloadService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test restarting a deployment via entity reference."""
-        hass.states.async_set(
-            "switch.test_deployment",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "test-deployment",
-            },
+        _set_workload_state(
+            hass, "switch.test_deployment", deployment_name="test-deployment"
         )
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -304,14 +294,11 @@ class TestRestartWorkloadService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test restarting a StatefulSet via entity reference."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.test_statefulset",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "default",
-                "statefulset_name": "test-statefulset",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="test-statefulset",
         )
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -360,14 +347,11 @@ class TestRestartWorkloadService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test that restarting an unsupported workload type raises a validation error."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.test_cronjob",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
-                "namespace": "default",
-                "cronjob_name": "test-cronjob",
-            },
+            workload_type=WORKLOAD_TYPE_CRONJOB,
+            cronjob_name="test-cronjob",
         )
         await async_setup_services(hass)
         with pytest.raises(ServiceValidationError, match="Cannot restart test-cronjob"):
@@ -390,14 +374,8 @@ class TestRestartWorkloadService:
     ):
         """Test restart deployment raises on failure."""
         mock_client.rollout_restart_deployment = AsyncMock(return_value=False)
-        hass.states.async_set(
-            "switch.test_deployment",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "test-deployment",
-            },
+        _set_workload_state(
+            hass, "switch.test_deployment", deployment_name="test-deployment"
         )
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError, match="default/test-deployment"):
@@ -420,14 +398,11 @@ class TestRestartWorkloadService:
     ):
         """Test restart statefulset raises on failure."""
         mock_client.rollout_restart_statefulset = AsyncMock(return_value=False)
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.test_statefulset",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "default",
-                "statefulset_name": "test-statefulset",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="test-statefulset",
         )
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError, match="default/test-statefulset"):
@@ -479,24 +454,8 @@ class TestRestartWorkloadService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test restarting multiple workloads in a single service call."""
-        hass.states.async_set(
-            "switch.test_deploy_a",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "deploy-a",
-            },
-        )
-        hass.states.async_set(
-            "switch.test_deploy_b",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "deploy-b",
-            },
-        )
+        _set_workload_state(hass, "switch.test_deploy_a", deployment_name="deploy-a")
+        _set_workload_state(hass, "switch.test_deploy_b", deployment_name="deploy-b")
         await async_setup_services(hass)
         await hass.services.async_call(
             DOMAIN,
@@ -521,24 +480,8 @@ class TestRestartWorkloadService:
     ):
         """Test that every target is attempted and only the failed one is reported."""
         mock_client.rollout_restart_deployment = AsyncMock(side_effect=[False, True])
-        hass.states.async_set(
-            "switch.test_deploy_a",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "deploy-a",
-            },
-        )
-        hass.states.async_set(
-            "switch.test_deploy_b",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "deploy-b",
-            },
-        )
+        _set_workload_state(hass, "switch.test_deploy_a", deployment_name="deploy-a")
+        _set_workload_state(hass, "switch.test_deploy_b", deployment_name="deploy-b")
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError) as err:
             await hass.services.async_call(
@@ -561,14 +504,8 @@ class TestRestartWorkloadService:
         mock_client.rollout_restart_deployment = AsyncMock(
             side_effect=Exception("boom")
         )
-        hass.states.async_set(
-            "switch.test_deployment",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "test-deployment",
-            },
+        _set_workload_state(
+            hass, "switch.test_deployment", deployment_name="test-deployment"
         )
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError, match="boom"):
@@ -602,14 +539,8 @@ class TestRestartWorkloadService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test restart_workload raises when domain data is cleared."""
-        hass.states.async_set(
-            "switch.test_deployment",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "test-deployment",
-            },
+        _set_workload_state(
+            hass, "switch.test_deployment", deployment_name="test-deployment"
         )
         await async_setup_services(hass)
         setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
@@ -629,14 +560,8 @@ class TestRestartWorkloadService:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test an entry_id that matches no loaded entry raises a validation error."""
-        hass.states.async_set(
-            "switch.test_deployment",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "test-deployment",
-            },
+        _set_workload_state(
+            hass, "switch.test_deployment", deployment_name="test-deployment"
         )
         await async_setup_services(hass)
         with pytest.raises(ServiceValidationError, match="nope"):
@@ -756,14 +681,8 @@ class TestGetWorkloadInfoFromEntity:
     """Test the _get_workload_info_from_entity helper."""
 
     async def test_switch_entity_deployment(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "production",
-                "deployment_name": "nginx",
-            },
+        _set_workload_state(
+            hass, "switch.nginx", namespace="production", deployment_name="nginx"
         )
         ns, name, wtype = _get_workload_info_from_entity(hass, "switch.nginx")
         assert ns == "production"
@@ -771,28 +690,22 @@ class TestGetWorkloadInfoFromEntity:
         assert wtype == WORKLOAD_TYPE_DEPLOYMENT
 
     async def test_switch_entity_statefulset(self, hass: HomeAssistant):
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.redis",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "default",
-                "statefulset_name": "redis",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="redis",
         )
         ns, name, wtype = _get_workload_info_from_entity(hass, "switch.redis")
         assert name == "redis"
         assert wtype == WORKLOAD_TYPE_STATEFULSET
 
     async def test_switch_entity_cronjob(self, hass: HomeAssistant):
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.backup",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
-                "namespace": "default",
-                "cronjob_name": "backup",
-            },
+            workload_type=WORKLOAD_TYPE_CRONJOB,
+            cronjob_name="backup",
         )
         ns, name, wtype = _get_workload_info_from_entity(hass, "switch.backup")
         assert name == "backup"
@@ -800,15 +713,7 @@ class TestGetWorkloadInfoFromEntity:
 
     async def test_non_switch_entity_builds_id(self, hass: HomeAssistant):
         # The function prepends "switch." to bare names, so "nginx" → "switch.nginx"
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         ns, name, wtype = _get_workload_info_from_entity(hass, "nginx")
         assert ns == "default"
         assert name == "nginx"
@@ -833,27 +738,17 @@ class TestExtractWorkloadInfo:
     """Test the _extract_workload_info helper."""
 
     async def test_workload_name_string_switch(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         result = _extract_workload_info({ATTR_WORKLOAD_NAME: "switch.nginx"}, hass)
         assert result == [("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_workload_name_dict_with_entity_id(self, hass: HomeAssistant):
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.redis",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "prod",
-                "statefulset_name": "redis",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            namespace="prod",
+            statefulset_name="redis",
         )
         result = _extract_workload_info(
             {ATTR_WORKLOAD_NAME: {"entity_id": "switch.redis"}}, hass
@@ -861,51 +756,25 @@ class TestExtractWorkloadInfo:
         assert result == [("redis", "prod", WORKLOAD_TYPE_STATEFULSET)]
 
     async def test_workload_names_as_string(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         result = _extract_workload_info({ATTR_WORKLOAD_NAMES: "switch.nginx"}, hass)
         assert result == [("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_workload_names_as_dict_entity_id(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.app",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "app",
-            },
-        )
+        _set_workload_state(hass, "switch.app", deployment_name="app")
         result = _extract_workload_info(
             {ATTR_WORKLOAD_NAMES: {"entity_id": ["switch.app"]}}, hass
         )
         assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_workload_names_as_list_of_strings(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.a",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "ns1",
-                "deployment_name": "a",
-            },
-        )
-        hass.states.async_set(
+        _set_workload_state(hass, "switch.a", namespace="ns1", deployment_name="a")
+        _set_workload_state(
+            hass,
             "switch.b",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "ns2",
-                "statefulset_name": "b",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            namespace="ns2",
+            statefulset_name="b",
         )
         result = _extract_workload_info(
             {ATTR_WORKLOAD_NAMES: ["switch.a", "switch.b"]}, hass
@@ -915,42 +784,20 @@ class TestExtractWorkloadInfo:
         assert ("b", "ns2", WORKLOAD_TYPE_STATEFULSET) in result
 
     async def test_workload_names_list_of_dicts(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.app",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "app",
-            },
-        )
+        _set_workload_state(hass, "switch.app", deployment_name="app")
         result = _extract_workload_info(
             {ATTR_WORKLOAD_NAMES: [{"entity_id": ["switch.app"]}]}, hass
         )
         assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_target_fallback(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.app",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "app",
-            },
-        )
+        _set_workload_state(hass, "switch.app", deployment_name="app")
         result = _extract_workload_info({"target": {"entity_id": ["switch.app"]}}, hass)
         assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_provided_namespace_overrides(self, hass: HomeAssistant):
-        hass.states.async_set(
-            "switch.app",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "original",
-                "deployment_name": "app",
-            },
+        _set_workload_state(
+            hass, "switch.app", namespace="original", deployment_name="app"
         )
         result = _extract_workload_info(
             {ATTR_WORKLOAD_NAME: "switch.app", ATTR_NAMESPACE: "override"},
@@ -1025,14 +872,11 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test scale_workload scales a StatefulSet."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.redis",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "default",
-                "statefulset_name": "redis",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="redis",
         )
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -1051,14 +895,11 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test scale_workload rejects CronJob type."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.backup",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
-                "namespace": "default",
-                "cronjob_name": "backup",
-            },
+            workload_type=WORKLOAD_TYPE_CRONJOB,
+            cronjob_name="backup",
         )
         await async_setup_services(hass)
         with pytest.raises(ServiceValidationError, match="Cannot scale backup"):
@@ -1076,15 +917,7 @@ class TestServiceHandlerEdgeCases:
     ):
         """Test scale_workload raises when scale returns False."""
         mock_client.scale_deployment.return_value = False
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError, match="Failed to scale"):
             await hass.services.async_call(
@@ -1103,15 +936,7 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test scale_workload raises when no kubernetes data in hass."""
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
@@ -1127,24 +952,8 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test scale_workload logs completion when multiple workloads scaled."""
-        hass.states.async_set(
-            "switch.a",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "a",
-            },
-        )
-        hass.states.async_set(
-            "switch.b",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "b",
-            },
-        )
+        _set_workload_state(hass, "switch.a", deployment_name="a")
+        _set_workload_state(hass, "switch.b", deployment_name="b")
         await async_setup_services(hass)
         await hass.services.async_call(
             DOMAIN,
@@ -1161,15 +970,7 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test start_workload starts a Deployment."""
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         await hass.services.async_call(
             DOMAIN,
@@ -1187,14 +988,11 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test start_workload starts a StatefulSet."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.redis",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "default",
-                "statefulset_name": "redis",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="redis",
         )
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -1217,14 +1015,11 @@ class TestServiceHandlerEdgeCases:
             "success": False,
             "error": "quota exceeded",
         }
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.backup",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
-                "namespace": "default",
-                "cronjob_name": "backup",
-            },
+            workload_type=WORKLOAD_TYPE_CRONJOB,
+            cronjob_name="backup",
         )
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError, match="quota exceeded"):
@@ -1244,15 +1039,7 @@ class TestServiceHandlerEdgeCases:
     ):
         """Test start_workload raises when the deployment start returns False."""
         mock_client.start_deployment.return_value = False
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError, match="Failed to start"):
             await hass.services.async_call(
@@ -1270,14 +1057,11 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test start_workload rejects an unsupported type."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.ds",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DAEMONSET,
-                "namespace": "default",
-                "deployment_name": "ds",
-            },
+            workload_type=WORKLOAD_TYPE_DAEMONSET,
+            deployment_name="ds",
         )
         await async_setup_services(hass)
         with pytest.raises(ServiceValidationError, match="Cannot start ds"):
@@ -1308,15 +1092,7 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test stop_workload stops a Deployment."""
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         await hass.services.async_call(
             DOMAIN,
@@ -1334,15 +1110,7 @@ class TestServiceHandlerEdgeCases:
     ):
         """Test stop_workload raises when stop returns False."""
         mock_client.stop_deployment.return_value = False
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError, match="Failed to stop"):
             await hass.services.async_call(
@@ -1361,14 +1129,11 @@ class TestServiceHandlerEdgeCases:
     ):
         """Test stop_workload raises when StatefulSet stop returns False."""
         mock_client.stop_statefulset.return_value = False
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.redis",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_STATEFULSET,
-                "namespace": "default",
-                "statefulset_name": "redis",
-            },
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="redis",
         )
         await async_setup_services(hass)
         with pytest.raises(HomeAssistantError, match="default/redis"):
@@ -1387,14 +1152,11 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test stop_workload rejects unsupported types."""
-        hass.states.async_set(
+        _set_workload_state(
+            hass,
             "switch.ds",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DAEMONSET,
-                "namespace": "default",
-                "deployment_name": "ds",
-            },
+            workload_type=WORKLOAD_TYPE_DAEMONSET,
+            deployment_name="ds",
         )
         await async_setup_services(hass)
         with pytest.raises(ServiceValidationError, match="Cannot stop ds"):
@@ -1424,15 +1186,7 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test stop_workload raises when no kubernetes data."""
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
@@ -1448,15 +1202,7 @@ class TestServiceHandlerEdgeCases:
         self, hass: HomeAssistant, mock_client, setup_domain_data
     ):
         """Test start_workload raises when no kubernetes data."""
-        hass.states.async_set(
-            "switch.nginx",
-            "on",
-            {
-                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
-                "namespace": "default",
-                "deployment_name": "nginx",
-            },
-        )
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
