@@ -3030,7 +3030,7 @@ class TestReconfigureNamespacesStringEntry:
 
 
 # ---------------------------------------------------------------------------
-# Additional coverage: _ensure_kubernetes_imported double-checked locking
+# Additional coverage: _ensure_kubernetes_imported module-level cache
 # ---------------------------------------------------------------------------
 
 
@@ -3059,28 +3059,6 @@ def test_ensure_kubernetes_imported_cached_false():
     try:
         result = cf_module._ensure_kubernetes_imported()
         assert result is False
-    finally:
-        cf_module.KUBERNETES_AVAILABLE = original
-
-
-def test_ensure_kubernetes_imported_set_while_waiting_for_lock():
-    """Test the re-check inside the lock when another thread won the race."""
-    import custom_components.kubernetes.config_flow as cf_module
-
-    original = cf_module.KUBERNETES_AVAILABLE
-    cf_module.KUBERNETES_AVAILABLE = None
-
-    def _other_thread_wins_race():
-        cf_module.KUBERNETES_AVAILABLE = True
-
-    # Stand-in lock that simulates another thread completing the import while
-    # this caller was blocked on acquiring it.
-    lock = MagicMock()
-    lock.__enter__.side_effect = _other_thread_wins_race
-
-    try:
-        with patch.object(cf_module, "_import_lock", lock):
-            assert cf_module._ensure_kubernetes_imported() is True
     finally:
         cf_module.KUBERNETES_AVAILABLE = original
 
