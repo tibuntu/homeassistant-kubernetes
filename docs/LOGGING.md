@@ -110,20 +110,19 @@ logger:
 
 ## Authentication Testing
 
-If you're experiencing authentication issues, you can test the authentication directly:
+If you're experiencing authentication issues, verify the token outside Home Assistant with the same request the integration's connection probe makes:
 
-```python
-# In a Python script or Home Assistant developer tools
-client = KubernetesClient(config_data)
-auth_status = await client.test_authentication()
-print(auth_status)
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer $TOKEN" \
+  https://<host>:<port>/api/v1/
 ```
 
-This will return detailed information about:
+- `200` — the token is accepted
+- `401` — the token is rejected (the integration raises a reauthentication flow for a persistent 401)
+- `403` — the token authenticates but lacks RBAC permissions; see [RBAC.md](RBAC.md)
 
-- Whether authentication succeeded
-- Which method was used (kubernetes_client or aiohttp_fallback)
-- Specific error details if authentication failed
+Add `--cacert <ca.crt>` (or `-k` for a quick test only) when the cluster uses a private CA.
 
 ## Log Examples
 
