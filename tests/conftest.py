@@ -3,12 +3,17 @@
 import logging
 from unittest.mock import AsyncMock, MagicMock
 
-from homeassistant.config_entries import ConfigEntryState
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.kubernetes.const import DOMAIN
-from custom_components.kubernetes.coordinator import KubernetesEntryData
+
+try:
+    from homeassistant.config_entries import ConfigEntryState
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.kubernetes.coordinator import KubernetesEntryData
+except ImportError:  # pragma: no cover - k8s_compat job installs no Home Assistant
+    ConfigEntryState = MockConfigEntry = KubernetesEntryData = None  # type: ignore[assignment,misc]
 
 
 @pytest.fixture(autouse=True)

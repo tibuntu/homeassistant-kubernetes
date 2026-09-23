@@ -8,6 +8,8 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow, FlowResultType
+from kubernetes import client as k8s_client
+from kubernetes.client.rest import ApiException as K8sApiException
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -67,9 +69,14 @@ def kubernetes_available(request: pytest.FixtureRequest):
     if request.node.get_closest_marker("kubernetes_unavailable"):
         yield
         return
+    # Mirror what the real import guard leaves behind: without this,
+    # config_flow.ApiException stays at its `Exception` placeholder and every
+    # error would take the ApiException branch (which reads `.status`).
     with (
         patch(_ENSURE_IMPORTED_TARGET, return_value=True),
         patch("custom_components.kubernetes.config_flow.KUBERNETES_AVAILABLE", True),
+        patch("custom_components.kubernetes.config_flow.client", k8s_client),
+        patch("custom_components.kubernetes.config_flow.ApiException", K8sApiException),
     ):
         yield
 
