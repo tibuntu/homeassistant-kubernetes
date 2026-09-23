@@ -2780,6 +2780,28 @@ def test_kubernetes_import_cache_returns_false():
         cf_module.KUBERNETES_AVAILABLE = original
 
 
+@pytest.mark.kubernetes_unavailable
+def test_kubernetes_import_succeeds_and_caches_true():
+    """An uncached import that actually succeeds sets client/ApiException/flag."""
+    import custom_components.kubernetes.config_flow as cf_module
+
+    original_available = cf_module.KUBERNETES_AVAILABLE
+    original_client = cf_module.client
+    original_api_exc = cf_module.ApiException
+    cf_module.KUBERNETES_AVAILABLE = None
+
+    try:
+        result = cf_module._ensure_kubernetes_imported()
+        assert result is True
+        assert cf_module.KUBERNETES_AVAILABLE is True
+        assert cf_module.client is not None
+        assert cf_module.ApiException is not None
+    finally:
+        cf_module.KUBERNETES_AVAILABLE = original_available
+        cf_module.client = original_client
+        cf_module.ApiException = original_api_exc
+
+
 # ---------------------------------------------------------------------------
 # Additional coverage: in-cluster port parsing
 # ---------------------------------------------------------------------------
