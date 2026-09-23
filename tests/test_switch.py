@@ -707,6 +707,25 @@ class TestKubernetesDeploymentSwitch:
             deployment_switch._handle_coordinator_update
         )
 
+    async def test_async_added_to_hass_populates_state(
+        self, deployment_switch, deployment_coordinator
+    ):
+        """Adding the entity syncs state from existing coordinator data at once."""
+        deployment_switch.async_on_remove = MagicMock()
+        deployment_switch.async_write_ha_state = MagicMock()
+        assert deployment_switch._last_scale_time == 0.0  # gate cannot apply
+        assert deployment_switch.is_on is False
+        assert deployment_switch._replicas == 0
+
+        await deployment_switch.async_added_to_hass()
+
+        # fixture data: replicas=2, is_running=True, cpu=50.0, memory=128.0
+        assert deployment_switch.is_on is True
+        assert deployment_switch._replicas == 2
+        assert deployment_switch._cpu_usage == 50.0
+        assert deployment_switch._memory_usage == 128.0
+        deployment_switch.async_write_ha_state.assert_not_called()
+
     def test_handle_coordinator_update_with_data(
         self, deployment_switch, deployment_coordinator
     ):
@@ -1930,12 +1949,24 @@ class TestCronJobOperations:
     # 4. CronJob coordinator update (_handle_coordinator_update)
     # -----------------------------------------------------------------------
 
-    def test_handle_coordinator_update_calls_write_ha_state(self, cronjob_switch):
-        """_handle_coordinator_update calls async_write_ha_state."""
+    def test_handle_coordinator_update_calls_write_ha_state(
+        self, cronjob_switch, mock_coordinator
+    ):
+        """_handle_coordinator_update syncs from the coordinator, then writes state."""
         cronjob_switch.async_write_ha_state = MagicMock()
+        mock_coordinator.get_cronjob_data = MagicMock(
+            return_value={
+                "schedule": "0 0 * * *",
+                "suspend": False,
+                "active_jobs_count": 0,
+                "last_schedule_time": None,
+                "next_schedule_time": None,
+            }
+        )
 
         cronjob_switch._handle_coordinator_update()
 
+        assert cronjob_switch.is_on is True
         cronjob_switch.async_write_ha_state.assert_called_once()
 
 

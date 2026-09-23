@@ -345,6 +345,9 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         self.async_on_remove(
             self.coordinator.async_add_listener(self._handle_coordinator_update)
         )
+        # Populate the initial state without waiting for the next refresh
+        # (_last_scale_time is 0.0 here, so the cooldown gate cannot apply).
+        self._sync_from_coordinator()
 
     @callback
     def _handle_coordinator_update(self) -> None:
@@ -356,9 +359,12 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
                 self.workload_name,
                 remaining,
             )
-            self.async_write_ha_state()
-            return
+        else:
+            self._sync_from_coordinator()
+        self.async_write_ha_state()
 
+    def _sync_from_coordinator(self) -> None:
+        """Sync replicas, running state and metrics from coordinator data."""
         workload_data = self._get_workload_data()
         if workload_data:
             self._replicas = workload_data.get("replicas", 0)
@@ -383,7 +389,6 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
                 self._log_label,
                 self.workload_name,
             )
-        self.async_write_ha_state()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the workload on by scaling to 1 replica."""
