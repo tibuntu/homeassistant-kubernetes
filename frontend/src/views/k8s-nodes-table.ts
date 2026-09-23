@@ -1,7 +1,14 @@
-import { LitElement, html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { html, css, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { actionStyles } from "../styles/actions";
-import type { HomeAssistant } from "../types/homeassistant";
+import { K8sDataView } from "./base-view";
+import { stateStyles, filterStyles, badgeStyles } from "../styles/shared";
+import {
+  formatAge,
+  toggleInSet,
+  errorMessage,
+  CONDITION_LABELS,
+} from "../utils/format";
 
 interface NodeData {
   name: string;
@@ -35,126 +42,25 @@ interface NodesResponse {
   clusters: ClusterNodes[];
 }
 
-const CONDITION_LABELS: Record<string, string> = {
-  memory_pressure: "Memory Pressure",
-  disk_pressure: "Disk Pressure",
-  pid_pressure: "PID Pressure",
-  network_unavailable: "Network Unavailable",
-};
-
 @customElement("k8s-nodes-table")
-export class K8sNodesTable extends LitElement {
-  @property({ attribute: false }) public hass!: HomeAssistant;
-
-  @state() private _data: NodesResponse | null = null;
-  @state() private _loading = true;
-  @state() private _error: string | null = null;
+export class K8sNodesTable extends K8sDataView<NodesResponse> {
   @state() private _expandedNodes: Set<string> = new Set();
   @state() private _statusFilter: string = "all";
   @state() private _searchQuery: string = "";
   @state() private _actionInProgress: Set<string> = new Set();
   @state() private _actionError: string | null = null;
 
-  private _refreshInterval?: ReturnType<typeof setInterval>;
-  private _loadingInFlight = false;
-  private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
-  private _unsubUpdates?: () => Promise<void>;
-  private _updateDebounce?: ReturnType<typeof setTimeout>;
+  protected loadErrorFallback = "Failed to load nodes data";
 
-  protected firstUpdated(_changedProps: PropertyValues): void {
-    this._loadData();
-    this._startPolling();
-    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
-    void this._subscribeUpdates();
-  }
-
-  disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this._stopPolling();
-    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
-    void this._unsubUpdates?.().catch(() => {});
-    this._unsubUpdates = undefined;
-    if (this._updateDebounce) {
-      clearTimeout(this._updateDebounce);
-      this._updateDebounce = undefined;
-    }
-  }
-
-  private _handleVisibilityChange(): void {
-    if (document.hidden) {
-      this._stopPolling();
-    } else {
-      this._loadData();
-      this._startPolling();
-    }
-  }
-
-  private _startPolling(): void {
-    if (!this._refreshInterval) {
-      this._refreshInterval = setInterval(() => this._loadData(), 60000);
-    }
-  }
-
-  private _stopPolling(): void {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = undefined;
-    }
-  }
-
-  private async _subscribeUpdates(): Promise<void> {
-    try {
-      const unsub = await this.hass.connection.subscribeMessage(
-        () => this._scheduleLoad(),
-        { type: "kubernetes/subscribe_updates" },
-      );
-      if (!this.isConnected) {
-        void unsub().catch(() => {});
-        return;
-      }
-      this._unsubUpdates = unsub;
-    } catch {
-      // Backend without subscription support — interval polling covers it.
-    }
-  }
-
-  private _scheduleLoad(): void {
-    if (document.hidden) return;
-    if (this._updateDebounce) return;
-    this._updateDebounce = setTimeout(() => {
-      this._updateDebounce = undefined;
-      this._loadData();
-    }, 1000);
-  }
-
-  private async _loadData(): Promise<void> {
-    if (this._loadingInFlight) return;
-    this._loadingInFlight = true;
-    if (!this._data) {
-      this._loading = true;
-    }
-    this._error = null;
-    try {
-      const result: NodesResponse = await this.hass.callWS({
-        type: "kubernetes/nodes/list",
-      });
-      this._data = result;
-    } catch (err: any) {
-      this._error = err.message || "Failed to load nodes data";
-    } finally {
-      this._loading = false;
-      this._loadingInFlight = false;
-    }
+  protected async fetchData(): Promise<void> {
+    const result: NodesResponse = await this.hass.callWS({
+      type: "kubernetes/nodes/list",
+    });
+    this._data = result;
   }
 
   private _toggleNode(nodeKey: string): void {
-    const updated = new Set(this._expandedNodes);
-    if (updated.has(nodeKey)) {
-      updated.delete(nodeKey);
-    } else {
-      updated.add(nodeKey);
-    }
-    this._expandedNodes = updated;
+    this._expandedNodes = toggleInSet(this._expandedNodes, nodeKey);
   }
 
   private _getConditions(node: NodeData): string[] {
@@ -164,17 +70,6 @@ export class K8sNodesTable extends LitElement {
     if (node.pid_pressure) conditions.push("pid_pressure");
     if (node.network_unavailable) conditions.push("network_unavailable");
     return conditions;
-  }
-
-  private _formatAge(timestamp: string): string {
-    if (!timestamp || timestamp === "N/A") return "N/A";
-    const created = new Date(timestamp).getTime();
-    const now = Date.now();
-    const diff = Math.max(0, Math.floor((now - created) / 1000));
-    if (diff < 60) return `${diff}s`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    return `${Math.floor(diff / 86400)}d`;
   }
 
   private _getFilteredNodes(nodes: NodeData[]): NodeData[] {
@@ -218,8 +113,8 @@ export class K8sNodesTable extends LitElement {
       // The services request a coordinator refresh; reload now and let the
       // update push catch anything the cluster reports late.
       await this._loadData();
-    } catch (err: any) {
-      const message = err?.message || "Action failed";
+    } catch (err: unknown) {
+      const message = errorMessage(err, "Action failed");
       this._actionError = `Action failed: ${message}`;
       console.error("[k8s-nodes-table] Action failed:", err);
     } finally {
@@ -231,53 +126,10 @@ export class K8sNodesTable extends LitElement {
 
   static styles = [
     actionStyles,
+    stateStyles,
+    filterStyles,
+    badgeStyles,
     css`
-      :host {
-        display: block;
-      }
-
-      .loading {
-        display: flex;
-        justify-content: center;
-        padding: 64px 0;
-      }
-
-      .error-card {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 32px;
-        text-align: center;
-        color: var(--error-color, #db4437);
-        --mdc-icon-size: 48px;
-      }
-
-      .error-card p {
-        margin: 16px 0;
-      }
-
-      .retry-btn {
-        cursor: pointer;
-        padding: 8px 24px;
-        border: 1px solid var(--primary-color);
-        border-radius: 4px;
-        background: transparent;
-        color: var(--primary-color);
-        font-size: 14px;
-      }
-
-      .retry-btn:hover {
-        background: var(--primary-color);
-        color: var(--text-primary-color, #fff);
-      }
-
-      .empty {
-        text-align: center;
-        padding: 64px 16px;
-        color: var(--secondary-text-color);
-        font-size: 16px;
-      }
-
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -287,55 +139,6 @@ export class K8sNodesTable extends LitElement {
         font-weight: 500;
         color: var(--primary-text-color);
         margin-bottom: 12px;
-      }
-
-      .filters {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 16px;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-
-      .search-input {
-        padding: 8px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        background: var(--card-background-color, var(--primary-background-color));
-        color: var(--primary-text-color);
-        font-size: 14px;
-        min-width: 200px;
-      }
-
-      .search-input:focus {
-        outline: none;
-        border-color: var(--primary-color);
-      }
-
-      .filter-chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 6px 14px;
-        border-radius: 16px;
-        font-size: 13px;
-        cursor: pointer;
-        border: 1px solid var(--divider-color);
-        background: transparent;
-        color: var(--primary-text-color);
-        user-select: none;
-        transition:
-          background 0.2s,
-          border-color 0.2s;
-      }
-
-      .filter-chip:hover {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-      }
-
-      .filter-chip[active] {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-        border-color: var(--primary-color);
-        color: var(--primary-color);
       }
 
       .node-card {
@@ -365,37 +168,6 @@ export class K8sNodesTable extends LitElement {
         align-items: center;
         gap: 8px;
         --mdc-icon-size: 18px;
-      }
-
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 500;
-        white-space: nowrap;
-      }
-
-      .badge-ready {
-        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-        color: var(--success-color, #4caf50);
-      }
-
-      .badge-not-ready {
-        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-        color: var(--error-color, #f44336);
-      }
-
-      .badge-unschedulable {
-        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-        color: var(--warning-color, #ff9800);
-      }
-
-      .badge-condition {
-        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-        color: var(--warning-color, #ff9800);
       }
 
       .node-ip {
@@ -510,29 +282,8 @@ export class K8sNodesTable extends LitElement {
   ];
 
   protected render() {
-    if (this._loading) {
-      return html`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-    }
-
-    if (this._error) {
-      return html`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-    }
-
-    if (!this._data?.clusters.length) {
-      return html`<div class="empty">No Kubernetes clusters configured.</div>`;
-    }
+    const state = this.renderState(!this._data?.clusters.length);
+    if (state !== nothing) return state;
 
     return html`
       ${
@@ -553,7 +304,7 @@ export class K8sNodesTable extends LitElement {
             `
           : nothing
       }
-      ${this._data.clusters.map((c) => this._renderCluster(c))}
+      ${this._data!.clusters.map((c) => this._renderCluster(c))}
     `;
   }
 
@@ -698,7 +449,7 @@ export class K8sNodesTable extends LitElement {
                   >`
             }
           </div>
-          <span class="node-age">${this._formatAge(node.creation_timestamp)}</span>
+          <span class="node-age">${formatAge(node.creation_timestamp)}</span>
           <button
             class="action-btn ${node.schedulable ? "cordon" : "uncordon"}"
             title=${node.schedulable ? "Cordon (stop scheduling new pods)" : "Uncordon"}

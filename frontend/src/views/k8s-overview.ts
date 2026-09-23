@@ -1,6 +1,8 @@
-import { LitElement, html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant } from "../types/homeassistant";
+import { html, css, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
+import { K8sDataView } from "./base-view";
+import { stateStyles, badgeStyles } from "../styles/shared";
+import { formatRelative, toggleInSet, CONDITION_LABELS } from "../utils/format";
 
 interface AlertNodePressure {
   name: string;
@@ -65,474 +67,275 @@ const RESOURCE_LABELS: Record<string, string> = {
   services: "Services",
 };
 
-const CONDITION_LABELS: Record<string, string> = {
-  memory_pressure: "Memory Pressure",
-  disk_pressure: "Disk Pressure",
-  pid_pressure: "PID Pressure",
-  network_unavailable: "Network Unavailable",
-};
-
 @customElement("k8s-overview")
-export class K8sOverview extends LitElement {
-  @property({ attribute: false }) public hass!: HomeAssistant;
-
-  @state() private _data: OverviewResponse | null = null;
-  @state() private _loading = true;
-  @state() private _error: string | null = null;
+export class K8sOverview extends K8sDataView<OverviewResponse> {
   @state() private _expandedNamespaces: Set<string> = new Set();
 
-  private _refreshInterval?: ReturnType<typeof setInterval>;
-  private _loadingInFlight = false;
-  private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
-  private _unsubUpdates?: () => Promise<void>;
-  private _updateDebounce?: ReturnType<typeof setTimeout>;
+  protected loadErrorFallback = "Failed to load cluster data";
 
-  protected firstUpdated(_changedProps: PropertyValues): void {
-    this._loadData();
-    this._startPolling();
-    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
-    void this._subscribeUpdates();
-  }
-
-  disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this._stopPolling();
-    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
-    void this._unsubUpdates?.().catch(() => {});
-    this._unsubUpdates = undefined;
-    if (this._updateDebounce) {
-      clearTimeout(this._updateDebounce);
-      this._updateDebounce = undefined;
-    }
-  }
-
-  private _handleVisibilityChange(): void {
-    if (document.hidden) {
-      this._stopPolling();
-    } else {
-      this._loadData();
-      this._startPolling();
-    }
-  }
-
-  private _startPolling(): void {
-    if (!this._refreshInterval) {
-      this._refreshInterval = setInterval(() => this._loadData(), 60000);
-    }
-  }
-
-  private _stopPolling(): void {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = undefined;
-    }
-  }
-
-  private async _subscribeUpdates(): Promise<void> {
-    try {
-      const unsub = await this.hass.connection.subscribeMessage(
-        () => this._scheduleLoad(),
-        { type: "kubernetes/subscribe_updates" },
-      );
-      if (!this.isConnected) {
-        void unsub().catch(() => {});
-        return;
-      }
-      this._unsubUpdates = unsub;
-    } catch {
-      // Backend without subscription support — interval polling covers it.
-    }
-  }
-
-  private _scheduleLoad(): void {
-    if (document.hidden) return;
-    if (this._updateDebounce) return;
-    this._updateDebounce = setTimeout(() => {
-      this._updateDebounce = undefined;
-      this._loadData();
-    }, 1000);
-  }
-
-  private async _loadData(): Promise<void> {
-    if (this._loadingInFlight) return;
-    this._loadingInFlight = true;
-    if (!this._data) {
-      this._loading = true;
-    }
-    this._error = null;
-    try {
-      const result: OverviewResponse = await this.hass.callWS({
-        type: "kubernetes/cluster/overview",
-      });
-      this._data = result;
-    } catch (err: any) {
-      this._error = err.message || "Failed to load cluster data";
-    } finally {
-      this._loading = false;
-      this._loadingInFlight = false;
-    }
+  protected async fetchData(): Promise<void> {
+    const result: OverviewResponse = await this.hass.callWS({
+      type: "kubernetes/cluster/overview",
+    });
+    this._data = result;
   }
 
   private _toggleNamespaces(clusterId: string): void {
-    const updated = new Set(this._expandedNamespaces);
-    if (updated.has(clusterId)) {
-      updated.delete(clusterId);
-    } else {
-      updated.add(clusterId);
-    }
-    this._expandedNamespaces = updated;
+    this._expandedNamespaces = toggleInSet(this._expandedNamespaces, clusterId);
   }
 
-  private _formatRelativeTime(timestamp: number): string {
-    if (!timestamp) return "Never";
-    const now = Date.now() / 1000;
-    const diff = Math.max(0, Math.floor(now - timestamp));
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  }
+  static styles = [
+    stateStyles,
+    badgeStyles,
+    css`
+      .cluster-section {
+        margin-bottom: 24px;
+      }
 
-  static styles = css`
-    :host {
-      display: block;
-    }
+      .cluster-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+      .cluster-name {
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+      .meta-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        flex-wrap: wrap;
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .meta-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        --mdc-icon-size: 16px;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .refresh-btn {
+        cursor: pointer;
+        background: none;
+        border: none;
+        color: var(--primary-color);
+        padding: 4px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        --mdc-icon-size: 18px;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .refresh-btn:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+      }
 
-    .empty {
-      text-align: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .counts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
 
-    .cluster-section {
-      margin-bottom: 24px;
-    }
+      .count-card {
+        padding: 16px;
+        border-radius: 12px;
+        text-align: center;
+        --mdc-icon-size: 28px;
+      }
 
-    .cluster-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
+      .count-card ha-icon {
+        color: var(--primary-color);
+        margin-bottom: 8px;
+      }
 
-    .cluster-name {
-      font-size: 24px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
+      .count-value {
+        font-size: 28px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
 
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-    }
+      .count-label {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-top: 4px;
+      }
 
-    .badge-healthy {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
+      .section-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
+        padding: 8px 0;
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        --mdc-icon-size: 20px;
+      }
 
-    .badge-unhealthy {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-      color: var(--error-color, #f44336);
-    }
+      .section-header:hover {
+        color: var(--primary-color);
+      }
 
-    .badge-unknown {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-      color: var(--disabled-color, #9e9e9e);
-    }
+      .ns-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 8px 0 16px;
+        font-size: 13px;
+      }
 
-    .meta-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 16px;
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      flex-wrap: wrap;
-    }
+      .ns-table th {
+        text-align: left;
+        padding: 8px 12px;
+        color: var(--secondary-text-color);
+        font-weight: 500;
+        border-bottom: 1px solid var(--divider-color);
+      }
 
-    .meta-item {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      --mdc-icon-size: 16px;
-    }
+      .ns-table td {
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--divider-color);
+      }
 
-    .refresh-btn {
-      cursor: pointer;
-      background: none;
-      border: none;
-      color: var(--primary-color);
-      padding: 4px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      --mdc-icon-size: 18px;
-    }
+      .ns-table tr:last-child td {
+        border-bottom: none;
+      }
 
-    .refresh-btn:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
-    }
+      .alerts-section {
+        margin-top: 16px;
+      }
 
-    .counts-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: 12px;
-      margin-bottom: 20px;
-    }
+      .alert-card {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+        border-radius: 8px;
+        font-size: 14px;
+        --mdc-icon-size: 20px;
+      }
 
-    .count-card {
-      padding: 16px;
-      border-radius: 12px;
-      text-align: center;
-      --mdc-icon-size: 28px;
-    }
+      .alert-warning {
+        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
+        color: var(--primary-text-color);
+      }
 
-    .count-card ha-icon {
-      color: var(--primary-color);
-      margin-bottom: 8px;
-    }
+      .alert-warning ha-icon {
+        color: var(--warning-color, #ff9800);
+      }
 
-    .count-value {
-      font-size: 28px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
+      .alert-error {
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+        color: var(--primary-text-color);
+      }
 
-    .count-label {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      margin-top: 4px;
-    }
+      .alert-error ha-icon {
+        color: var(--error-color, #f44336);
+      }
 
-    .section-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      user-select: none;
-      padding: 8px 0;
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      --mdc-icon-size: 20px;
-    }
+      .alert-title {
+        font-weight: 500;
+      }
 
-    .section-header:hover {
-      color: var(--primary-color);
-    }
+      .alert-detail {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-top: 2px;
+      }
 
-    .ns-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 8px 0 16px;
-      font-size: 13px;
-    }
+      .no-alerts {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+        border-radius: 8px;
+        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.08);
+        font-size: 14px;
+        --mdc-icon-size: 24px;
+      }
 
-    .ns-table th {
-      text-align: left;
-      padding: 8px 12px;
-      color: var(--secondary-text-color);
-      font-weight: 500;
-      border-bottom: 1px solid var(--divider-color);
-    }
+      .no-alerts ha-icon {
+        color: var(--success-color, #4caf50);
+        flex-shrink: 0;
+      }
 
-    .ns-table td {
-      padding: 6px 12px;
-      border-bottom: 1px solid var(--divider-color);
-    }
+      .no-alerts-text {
+        flex: 1;
+      }
 
-    .ns-table tr:last-child td {
-      border-bottom: none;
-    }
+      .no-alerts-title {
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
 
-    .alerts-section {
-      margin-top: 16px;
-    }
+      .no-alerts-detail {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        margin-top: 2px;
+      }
 
-    .alert-card {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 12px 16px;
-      margin-bottom: 8px;
-      border-radius: 8px;
-      font-size: 14px;
-      --mdc-icon-size: 20px;
-    }
+      .alerts-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        --mdc-icon-size: 20px;
+      }
 
-    .alert-warning {
-      background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
-      color: var(--primary-text-color);
-    }
+      .alerts-info-icon {
+        color: var(--secondary-text-color);
+        cursor: help;
+        --mdc-icon-size: 18px;
+        position: relative;
+      }
 
-    .alert-warning ha-icon {
-      color: var(--warning-color, #ff9800);
-    }
+      .alerts-info-icon:hover {
+        color: var(--primary-color);
+      }
 
-    .alert-error {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      color: var(--primary-text-color);
-    }
+      .alerts-tooltip {
+        display: none;
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 0;
+        background: var(--card-background-color, #fff);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-size: 12px;
+        font-weight: 400;
+        color: var(--secondary-text-color);
+        width: 280px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        z-index: 10;
+        line-height: 1.5;
+      }
 
-    .alert-error ha-icon {
-      color: var(--error-color, #f44336);
-    }
-
-    .alert-title {
-      font-weight: 500;
-    }
-
-    .alert-detail {
-      font-size: 13px;
-      color: var(--secondary-text-color);
-      margin-top: 2px;
-    }
-
-    .no-alerts {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 16px;
-      border-radius: 8px;
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.08);
-      font-size: 14px;
-      --mdc-icon-size: 24px;
-    }
-
-    .no-alerts ha-icon {
-      color: var(--success-color, #4caf50);
-      flex-shrink: 0;
-    }
-
-    .no-alerts-text {
-      flex: 1;
-    }
-
-    .no-alerts-title {
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
-
-    .no-alerts-detail {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      margin-top: 2px;
-    }
-
-    .alerts-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      --mdc-icon-size: 20px;
-    }
-
-    .alerts-info-icon {
-      color: var(--secondary-text-color);
-      cursor: help;
-      --mdc-icon-size: 18px;
-      position: relative;
-    }
-
-    .alerts-info-icon:hover {
-      color: var(--primary-color);
-    }
-
-    .alerts-tooltip {
-      display: none;
-      position: absolute;
-      bottom: calc(100% + 8px);
-      left: 0;
-      background: var(--card-background-color, #fff);
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      padding: 12px 16px;
-      font-size: 12px;
-      font-weight: 400;
-      color: var(--secondary-text-color);
-      width: 280px;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-      z-index: 10;
-      line-height: 1.5;
-    }
-
-    .alerts-info-icon:hover .alerts-tooltip {
-      display: block;
-    }
-  `;
+      .alerts-info-icon:hover .alerts-tooltip {
+        display: block;
+      }
+    `,
+  ];
 
   protected render() {
-    if (this._loading) {
-      return html`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-    }
+    const state = this.renderState(!this._data?.clusters.length);
+    if (state !== nothing) return state;
 
-    if (this._error) {
-      return html`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-    }
-
-    if (!this._data?.clusters.length) {
-      return html` <div class="empty">No Kubernetes clusters configured.</div> `;
-    }
-
-    return html` ${this._data.clusters.map((c) => this._renderCluster(c))} `;
+    return html` ${this._data!.clusters.map((c) => this._renderCluster(c))} `;
   }
 
   private _renderCluster(cluster: ClusterOverview) {
@@ -551,7 +354,7 @@ export class K8sOverview extends LitElement {
         <div class="meta-row">
           <div class="meta-item">
             <ha-icon icon="mdi:update"></ha-icon>
-            <span>Updated ${this._formatRelativeTime(cluster.last_update)}</span>
+            <span>Updated ${formatRelative(cluster.last_update)}</span>
           </div>
           <button class="refresh-btn" @click=${this._loadData} title="Refresh data">
             <ha-icon icon="mdi:refresh"></ha-icon>

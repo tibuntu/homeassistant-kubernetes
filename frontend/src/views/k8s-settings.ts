@@ -1,6 +1,7 @@
-import { LitElement, html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
-import type { HomeAssistant } from "../types/homeassistant";
+import { html, css, nothing } from "lit";
+import { customElement } from "lit/decorators.js";
+import { K8sDataView } from "./base-view";
+import { stateStyles, badgeStyles } from "../styles/shared";
 
 interface ConfigEntry {
   entry_id: string;
@@ -24,265 +25,164 @@ interface ConfigResponse {
 }
 
 @customElement("k8s-settings")
-export class K8sSettings extends LitElement {
-  @property({ attribute: false }) public hass!: HomeAssistant;
+export class K8sSettings extends K8sDataView<ConfigResponse> {
+  protected pollMs = 0;
+  protected subscribe = false;
+  protected loadErrorFallback = "Failed to load configuration";
+  protected emptyMessage = "No Kubernetes entries configured.";
 
-  @state() private _data: ConfigResponse | null = null;
-  @state() private _loading = true;
-  @state() private _error: string | null = null;
-
-  protected firstUpdated(_changedProps: PropertyValues): void {
-    this._loadData();
-  }
-
-  private async _loadData(): Promise<void> {
-    this._loading = true;
-    this._error = null;
-    try {
-      const result: ConfigResponse = await this.hass.callWS({
-        type: "kubernetes/config/list",
-      });
-      this._data = result;
-    } catch (err: any) {
-      this._error = err.message || "Failed to load configuration";
-    } finally {
-      this._loading = false;
-    }
+  protected async fetchData(): Promise<void> {
+    const result: ConfigResponse = await this.hass.callWS({
+      type: "kubernetes/config/list",
+    });
+    this._data = result;
   }
 
   private _navigateToIntegration(): void {
     window.open("/config/integrations/integration/kubernetes", "_blank");
   }
 
-  static styles = css`
-    :host {
-      display: block;
-    }
+  static styles = [
+    stateStyles,
+    badgeStyles,
+    css`
+      .entry-section {
+        margin-bottom: 24px;
+      }
 
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 64px 0;
-    }
+      .entry-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
 
-    .error-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 32px;
-      text-align: center;
-      color: var(--error-color, #db4437);
-      --mdc-icon-size: 48px;
-    }
+      .entry-name {
+        font-size: 24px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
 
-    .error-card p {
-      margin: 16px 0;
-    }
+      .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 16px;
+        margin-bottom: 16px;
+      }
 
-    .retry-btn {
-      cursor: pointer;
-      padding: 8px 24px;
-      border: 1px solid var(--primary-color);
-      border-radius: 4px;
-      background: transparent;
-      color: var(--primary-color);
-      font-size: 14px;
-    }
+      .settings-card {
+        padding: 20px;
+        border-radius: 12px;
+      }
 
-    .retry-btn:hover {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
+      .card-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        margin-bottom: 16px;
+        --mdc-icon-size: 20px;
+      }
 
-    .empty {
-      text-align: center;
-      padding: 64px 16px;
-      color: var(--secondary-text-color);
-      font-size: 16px;
-    }
+      .card-title ha-icon {
+        color: var(--primary-color);
+      }
 
-    .entry-section {
-      margin-bottom: 24px;
-    }
+      .setting-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--divider-color);
+        font-size: 14px;
+      }
 
-    .entry-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-    }
+      .setting-row:last-child {
+        border-bottom: none;
+      }
 
-    .entry-name {
-      font-size: 24px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-    }
+      .setting-label {
+        color: var(--secondary-text-color);
+      }
 
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 10px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 500;
-    }
+      .setting-value {
+        color: var(--primary-text-color);
+        font-weight: 500;
+        text-align: right;
+        max-width: 60%;
+        word-break: break-all;
+      }
 
-    .badge-healthy {
-      background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-      color: var(--success-color, #4caf50);
-    }
+      .setting-value-bool {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        --mdc-icon-size: 16px;
+      }
 
-    .badge-unhealthy {
-      background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-      color: var(--error-color, #f44336);
-    }
+      .bool-true {
+        color: var(--success-color, #4caf50);
+      }
 
-    .badge-unknown {
-      background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-      color: var(--disabled-color, #9e9e9e);
-    }
+      .bool-false {
+        color: var(--secondary-text-color);
+      }
 
-    .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-      gap: 16px;
-      margin-bottom: 16px;
-    }
+      .namespace-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        justify-content: flex-end;
+      }
 
-    .settings-card {
-      padding: 20px;
-      border-radius: 12px;
-    }
+      .ns-tag {
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+        color: var(--primary-color);
+        font-size: 12px;
+      }
 
-    .card-title {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 16px;
-      font-weight: 500;
-      color: var(--primary-text-color);
-      margin-bottom: 16px;
-      --mdc-icon-size: 20px;
-    }
+      .actions-bar {
+        display: flex;
+        gap: 12px;
+        margin-top: 16px;
+        flex-wrap: wrap;
+      }
 
-    .card-title ha-icon {
-      color: var(--primary-color);
-    }
+      .action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        padding: 8px 20px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        background: transparent;
+        color: var(--primary-text-color);
+        font-size: 14px;
+        transition:
+          background 0.2s,
+          border-color 0.2s;
+        --mdc-icon-size: 18px;
+      }
 
-    .setting-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--divider-color);
-      font-size: 14px;
-    }
-
-    .setting-row:last-child {
-      border-bottom: none;
-    }
-
-    .setting-label {
-      color: var(--secondary-text-color);
-    }
-
-    .setting-value {
-      color: var(--primary-text-color);
-      font-weight: 500;
-      text-align: right;
-      max-width: 60%;
-      word-break: break-all;
-    }
-
-    .setting-value-bool {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      --mdc-icon-size: 16px;
-    }
-
-    .bool-true {
-      color: var(--success-color, #4caf50);
-    }
-
-    .bool-false {
-      color: var(--secondary-text-color);
-    }
-
-    .namespace-tags {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      justify-content: flex-end;
-    }
-
-    .ns-tag {
-      padding: 2px 8px;
-      border-radius: 4px;
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
-      color: var(--primary-color);
-      font-size: 12px;
-    }
-
-    .actions-bar {
-      display: flex;
-      gap: 12px;
-      margin-top: 16px;
-      flex-wrap: wrap;
-    }
-
-    .action-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      cursor: pointer;
-      padding: 8px 20px;
-      border: 1px solid var(--divider-color);
-      border-radius: 8px;
-      background: transparent;
-      color: var(--primary-text-color);
-      font-size: 14px;
-      transition:
-        background 0.2s,
-        border-color 0.2s;
-      --mdc-icon-size: 18px;
-    }
-
-    .action-btn:hover {
-      background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-      border-color: var(--primary-color);
-      color: var(--primary-color);
-    }
-  `;
+      .action-btn:hover {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
+        border-color: var(--primary-color);
+        color: var(--primary-color);
+      }
+    `,
+  ];
 
   protected render() {
-    if (this._loading) {
-      return html`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-    }
+    const state = this.renderState(!this._data?.entries.length);
+    if (state !== nothing) return state;
 
-    if (this._error) {
-      return html`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-    }
-
-    if (!this._data?.entries.length) {
-      return html`<div class="empty">No Kubernetes entries configured.</div>`;
-    }
-
-    return html`${this._data.entries.map((e) => this._renderEntry(e))}`;
+    return html`${this._data!.entries.map((e) => this._renderEntry(e))}`;
   }
 
   private _renderEntry(entry: ConfigEntry) {

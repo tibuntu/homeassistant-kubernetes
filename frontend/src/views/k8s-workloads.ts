@@ -1,7 +1,9 @@
-import { LitElement, html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { html, css, nothing } from "lit";
+import { customElement, state } from "lit/decorators.js";
 import { actionStyles } from "../styles/actions";
-import type { HomeAssistant } from "../types/homeassistant";
+import { K8sDataView } from "./base-view";
+import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
+import { formatAge, errorMessage } from "../utils/format";
 
 interface DeploymentData {
   name: string;
@@ -71,12 +73,7 @@ type WorkloadCategory =
 type StatusFilter = "all" | "healthy" | "degraded" | "stopped";
 
 @customElement("k8s-workloads")
-export class K8sWorkloads extends LitElement {
-  @property({ attribute: false }) public hass!: HomeAssistant;
-
-  @state() private _data: WorkloadsResponse | null = null;
-  @state() private _loading = true;
-  @state() private _error: string | null = null;
+export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   @state() private _namespaceFilter: string = "all";
   @state() private _categoryFilter: WorkloadCategory = "all";
   @state() private _statusFilter: StatusFilter = "all";
@@ -99,109 +96,13 @@ export class K8sWorkloads extends LitElement {
   @state() private _scaleValue: number = 0;
   @state() private _scaling = false;
 
-  private _refreshInterval?: ReturnType<typeof setInterval>;
-  private _loadingInFlight = false;
-  private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
-  private _unsubUpdates?: () => Promise<void>;
-  private _updateDebounce?: ReturnType<typeof setTimeout>;
-  private _reloadTimer?: ReturnType<typeof setTimeout>;
+  protected loadErrorFallback = "Failed to load workloads data";
 
-  protected firstUpdated(_changedProps: PropertyValues): void {
-    this._loadData();
-    this._startPolling();
-    document.addEventListener("visibilitychange", this._boundVisibilityHandler);
-    void this._subscribeUpdates();
-  }
-
-  disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this._stopPolling();
-    document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
-    void this._unsubUpdates?.().catch(() => {});
-    this._unsubUpdates = undefined;
-    if (this._updateDebounce) {
-      clearTimeout(this._updateDebounce);
-      this._updateDebounce = undefined;
-    }
-    if (this._reloadTimer) {
-      clearTimeout(this._reloadTimer);
-      this._reloadTimer = undefined;
-    }
-  }
-
-  private _scheduleReload(delayMs: number): void {
-    if (this._reloadTimer) clearTimeout(this._reloadTimer);
-    this._reloadTimer = setTimeout(() => {
-      this._reloadTimer = undefined;
-      this._loadData();
-    }, delayMs);
-  }
-
-  private _handleVisibilityChange(): void {
-    if (document.hidden) {
-      this._stopPolling();
-    } else {
-      this._loadData();
-      this._startPolling();
-    }
-  }
-
-  private _startPolling(): void {
-    if (!this._refreshInterval) {
-      this._refreshInterval = setInterval(() => this._loadData(), 60000);
-    }
-  }
-
-  private _stopPolling(): void {
-    if (this._refreshInterval) {
-      clearInterval(this._refreshInterval);
-      this._refreshInterval = undefined;
-    }
-  }
-
-  private async _subscribeUpdates(): Promise<void> {
-    try {
-      const unsub = await this.hass.connection.subscribeMessage(
-        () => this._scheduleLoad(),
-        { type: "kubernetes/subscribe_updates" },
-      );
-      if (!this.isConnected) {
-        void unsub().catch(() => {});
-        return;
-      }
-      this._unsubUpdates = unsub;
-    } catch {
-      // Backend without subscription support — interval polling covers it.
-    }
-  }
-
-  private _scheduleLoad(): void {
-    if (document.hidden) return;
-    if (this._updateDebounce) return;
-    this._updateDebounce = setTimeout(() => {
-      this._updateDebounce = undefined;
-      this._loadData();
-    }, 1000);
-  }
-
-  private async _loadData(): Promise<void> {
-    if (this._loadingInFlight) return;
-    this._loadingInFlight = true;
-    if (!this._data) {
-      this._loading = true;
-    }
-    this._error = null;
-    try {
-      const result: WorkloadsResponse = await this.hass.callWS({
-        type: "kubernetes/workloads/list",
-      });
-      this._data = result;
-    } catch (err: any) {
-      this._error = err.message || "Failed to load workloads data";
-    } finally {
-      this._loading = false;
-      this._loadingInFlight = false;
-    }
+  protected async fetchData(): Promise<void> {
+    const result: WorkloadsResponse = await this.hass.callWS({
+      type: "kubernetes/workloads/list",
+    });
+    this._data = result;
   }
 
   private _getNamespaces(cluster: ClusterWorkloads): string[] {
@@ -240,17 +141,6 @@ export class K8sWorkloads extends LitElement {
     return name.toLowerCase().includes(this._searchQuery.toLowerCase());
   }
 
-  private _formatAge(timestamp: string | null): string {
-    if (!timestamp) return "N/A";
-    const created = new Date(timestamp).getTime();
-    const now = Date.now();
-    const diff = Math.max(0, Math.floor((now - created) / 1000));
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  }
-
   /** Run an action with per-card busy state; failures land in the error banner. */
   private async _runAction(actionKey: string, run: () => Promise<void>): Promise<void> {
     const updated = new Set(this._actionInProgress);
@@ -258,8 +148,8 @@ export class K8sWorkloads extends LitElement {
     this._actionInProgress = updated;
     try {
       await run();
-    } catch (err: any) {
-      const message = err?.message || "Action failed";
+    } catch (err: unknown) {
+      const message = errorMessage(err, "Action failed");
       this._actionError = `Action failed: ${message}`;
       console.error("[k8s-workloads] Action failed:", err);
     } finally {
@@ -302,53 +192,11 @@ export class K8sWorkloads extends LitElement {
 
   static styles = [
     actionStyles,
+    stateStyles,
+    filterStyles,
+    badgeStyles,
+    dialogStyles,
     css`
-      :host {
-        display: block;
-      }
-
-      .loading {
-        display: flex;
-        justify-content: center;
-        padding: 64px 0;
-      }
-
-      .error-card {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 32px;
-        text-align: center;
-        color: var(--error-color, #db4437);
-        --mdc-icon-size: 48px;
-      }
-
-      .error-card p {
-        margin: 16px 0;
-      }
-
-      .retry-btn {
-        cursor: pointer;
-        padding: 8px 24px;
-        border: 1px solid var(--primary-color);
-        border-radius: 4px;
-        background: transparent;
-        color: var(--primary-color);
-        font-size: 14px;
-      }
-
-      .retry-btn:hover {
-        background: var(--primary-color);
-        color: var(--text-primary-color, #fff);
-      }
-
-      .empty {
-        text-align: center;
-        padding: 64px 16px;
-        color: var(--secondary-text-color);
-        font-size: 16px;
-      }
-
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -358,64 +206,6 @@ export class K8sWorkloads extends LitElement {
         font-weight: 500;
         color: var(--primary-text-color);
         margin-bottom: 12px;
-      }
-
-      .filters {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 16px;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-
-      .search-input {
-        padding: 8px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        background: var(--card-background-color, var(--primary-background-color));
-        color: var(--primary-text-color);
-        font-size: 14px;
-        min-width: 200px;
-      }
-
-      .search-input:focus {
-        outline: none;
-        border-color: var(--primary-color);
-      }
-
-      select.filter-select {
-        padding: 6px 12px;
-        border: 1px solid var(--divider-color);
-        border-radius: 8px;
-        background: var(--card-background-color, var(--primary-background-color));
-        color: var(--primary-text-color);
-        font-size: 13px;
-      }
-
-      .filter-chip {
-        display: inline-flex;
-        align-items: center;
-        padding: 6px 14px;
-        border-radius: 16px;
-        font-size: 13px;
-        cursor: pointer;
-        border: 1px solid var(--divider-color);
-        background: transparent;
-        color: var(--primary-text-color);
-        user-select: none;
-        transition:
-          background 0.2s,
-          border-color 0.2s;
-      }
-
-      .filter-chip:hover {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-      }
-
-      .filter-chip[active] {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.15);
-        border-color: var(--primary-color);
-        color: var(--primary-color);
       }
 
       .category-section {
@@ -493,52 +283,6 @@ export class K8sWorkloads extends LitElement {
         flex-shrink: 0;
       }
 
-      .badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 12px;
-        font-weight: 500;
-        white-space: nowrap;
-      }
-
-      .badge-healthy {
-        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-        color: var(--success-color, #4caf50);
-      }
-
-      .badge-degraded {
-        background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
-        color: var(--warning-color, #ff9800);
-      }
-
-      .badge-stopped {
-        background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-        color: var(--disabled-color, #9e9e9e);
-      }
-
-      .badge-failed {
-        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
-        color: var(--error-color, #f44336);
-      }
-
-      .badge-active {
-        background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
-        color: var(--info-color, #2196f3);
-      }
-
-      .badge-suspended {
-        background: rgba(var(--rgb-disabled-color, 158, 158, 158), 0.15);
-        color: var(--disabled-color, #9e9e9e);
-      }
-
-      .badge-complete {
-        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.15);
-        color: var(--success-color, #4caf50);
-      }
-
       .replica-info {
         font-size: 13px;
         color: var(--secondary-text-color);
@@ -574,82 +318,6 @@ export class K8sWorkloads extends LitElement {
       .last-schedule {
         font-size: 12px;
         color: var(--secondary-text-color);
-      }
-
-      .confirm-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 999;
-      }
-
-      .confirm-dialog {
-        background: var(--card-background-color, #fff);
-        border-radius: 12px;
-        padding: 24px;
-        max-width: 400px;
-        width: 90%;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-      }
-
-      .confirm-dialog h3 {
-        margin: 0 0 12px;
-        font-size: 18px;
-        color: var(--primary-text-color);
-      }
-
-      .confirm-dialog p {
-        margin: 0 0 20px;
-        color: var(--secondary-text-color);
-        font-size: 14px;
-      }
-
-      .confirm-dialog .job-ref {
-        font-family: monospace;
-        font-weight: 500;
-        color: var(--primary-text-color);
-      }
-
-      .confirm-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-      }
-
-      .confirm-actions button {
-        padding: 8px 20px;
-        border-radius: 4px;
-        font-size: 14px;
-        cursor: pointer;
-        border: 1px solid var(--divider-color);
-        background: transparent;
-        color: var(--primary-text-color);
-      }
-
-      .confirm-actions button:hover {
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
-      }
-
-      .confirm-actions .delete-action {
-        background: var(--error-color, #f44336);
-        color: #fff;
-        border-color: var(--error-color, #f44336);
-      }
-
-      .confirm-actions .delete-action:hover {
-        opacity: 0.9;
-        background: var(--error-color, #f44336);
-      }
-
-      .confirm-actions .delete-action:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
       }
 
       .scale-controls {
@@ -732,29 +400,8 @@ export class K8sWorkloads extends LitElement {
   ];
 
   protected render() {
-    if (this._loading) {
-      return html`
-        <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
-        </div>
-      `;
-    }
-
-    if (this._error) {
-      return html`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._error}</p>
-            <button class="retry-btn" @click=${this._loadData}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-    }
-
-    if (!this._data?.clusters.length) {
-      return html`<div class="empty">No Kubernetes clusters configured.</div>`;
-    }
+    const state = this.renderState(!this._data?.clusters.length);
+    if (state !== nothing) return state;
 
     return html`
       ${
@@ -775,7 +422,7 @@ export class K8sWorkloads extends LitElement {
             `
           : nothing
       }
-      ${this._data.clusters.map((c) => this._renderCluster(c))}
+      ${this._data!.clusters.map((c) => this._renderCluster(c))}
       ${this._jobDeleteConfirm ? this._renderJobDeleteDialog() : nothing}
       ${this._scaleTarget ? this._renderScaleDialog() : nothing}
     `;
@@ -1326,7 +973,7 @@ export class K8sWorkloads extends LitElement {
           ${
             cj.last_schedule_time
               ? html`<span class="last-schedule"
-                  >Last: ${this._formatAge(cj.last_schedule_time)}</span
+                  >Last: ${formatAge(cj.last_schedule_time)} ago</span
                 >`
               : nothing
           }
@@ -1440,7 +1087,7 @@ export class K8sWorkloads extends LitElement {
           ${
             j.start_time
               ? html`<span class="last-schedule"
-                  >Started: ${this._formatAge(j.start_time)}</span
+                  >Started: ${formatAge(j.start_time)} ago</span
                 >`
               : nothing
           }
@@ -1490,8 +1137,8 @@ export class K8sWorkloads extends LitElement {
       });
       this._scaleTarget = null;
       this._scheduleReload(2000);
-    } catch (err: any) {
-      this._actionError = err?.message || "Failed to scale workload";
+    } catch (err: unknown) {
+      this._actionError = errorMessage(err, "Failed to scale workload");
       this._scaleTarget = null;
     } finally {
       this._scaling = false;
@@ -1508,7 +1155,7 @@ export class K8sWorkloads extends LitElement {
         <div class="confirm-dialog" @click=${(e: Event) => e.stopPropagation()}>
           <h3>Scale Workload</h3>
           <p>
-            <span class="job-ref">${target.namespace}/${target.workload_name}</span>
+            <span class="confirm-ref">${target.namespace}/${target.workload_name}</span>
           </p>
           <div class="scale-controls">
             <button
@@ -1578,8 +1225,8 @@ export class K8sWorkloads extends LitElement {
       });
       this._jobDeleteConfirm = null;
       await this._loadData();
-    } catch (err: any) {
-      this._actionError = err?.message || "Failed to delete job";
+    } catch (err: unknown) {
+      this._actionError = errorMessage(err, "Failed to delete job");
       this._jobDeleteConfirm = null;
     } finally {
       this._deletingJob = false;
@@ -1597,8 +1244,8 @@ export class K8sWorkloads extends LitElement {
           <h3>Delete Job</h3>
           <p>
             Are you sure you want to delete
-            <span class="job-ref">${confirm.namespace}/${confirm.job_name}</span>? This
-            action cannot be undone.
+            <span class="confirm-ref">${confirm.namespace}/${confirm.job_name}</span>?
+            This action cannot be undone.
           </p>
           <div class="confirm-actions">
             <button @click=${this._cancelJobDelete} ?disabled=${this._deletingJob}>
