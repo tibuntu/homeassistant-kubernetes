@@ -28,7 +28,7 @@ concurrency:
 # The matrix tests this version plus the two preceding minors.
 # renovate: datasource=github-releases depName=kubernetes/kubernetes versioning=semver
 env:
-  K8S_LATEST: "1.37.0"
+  K8S_LATEST: "1.37.1"
 
 jobs:
   build-matrix:
