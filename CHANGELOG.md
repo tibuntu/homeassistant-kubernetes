@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.12.0...v1.12.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* use mounted in-cluster token from the first request and reauth on early 401 ([fae9357](https://github.com/tibuntu/homeassistant-kubernetes/commit/fae93570fd4b38121018124c76d2ce5f4a6a1276))
+
 ## [1.12.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.11.0...v1.12.0) (2026-09-23)
 
 A hardening release from a repository-wide audit: two real bugs fixed, documentation corrected to match the code, and about 7,400 net lines of duplication removed with no change to entities, services or panel features. Three behaviour changes are listed under *Upgrading*.
