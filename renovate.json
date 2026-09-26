@@ -127,6 +127,7 @@
     {
       "description": "Kubernetes stable version pin for the compat CI matrix — also updates the supported-version range in docs",
       "matchDepNames": ["kubernetes/kubernetes"],
+      "groupName": "kubernetes-latest",
       "semanticCommitScope": "deps-actions",
       "postUpgradeTasks": {
         "commands": [

@@ -200,6 +200,6 @@ Renovate handles all dependency updates. When making any change that involves ve
 - Versions pinned in `custom_components/kubernetes/manifest.json` are tracked via a custom regex manager.
 - Pre-commit hook versions in `.pre-commit-config.yaml` are managed by Renovate's pre-commit manager.
 - The Helm CLI version pinned in `.github/workflows/{helm,release}.yaml` is tracked via a custom regex manager (`helm/helm`, github-releases) and grouped as `helm`. Keep both workflows on the same version — the `manifests/` drift check depends on it.
-- The latest stable Kubernetes version `K8S_LATEST` in `.github/workflows/k8s-compat.yaml` is tracked via a custom regex manager (`kubernetes/kubernetes`, github-releases). `postUpgradeTasks` runs `scripts/update-k8s-support-range.sh` to keep the supported-version range in README.md and docs/SETUP.md in sync.
+- The latest stable Kubernetes version `K8S_LATEST` in `.github/workflows/k8s-compat.yaml` is tracked via a custom regex manager (`kubernetes/kubernetes`, github-releases) and grouped as `kubernetes-latest` so its patch bumps stay out of the generic `patch updates` group. `postUpgradeTasks` runs `scripts/update-k8s-support-range.sh` to keep the supported-version range in README.md and docs/SETUP.md in sync.
 - `chart/Chart.yaml` `version`/`appVersion` are bumped by release-please (generic updater, `x-release-please-version` comments), not Renovate.
 - When the same package appears in multiple files, add a `groupName` rule in `renovate.json` so updates are batched into a single PR.
