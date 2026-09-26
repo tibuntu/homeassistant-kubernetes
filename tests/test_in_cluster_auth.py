@@ -529,6 +529,33 @@ def test_api_token_returns_fallback_when_file_yields_empty(monkeypatch):
     assert client._token_cache == ""
 
 
+async def test_load_in_cluster_token_beats_stale_static_token():
+    """A freshly built client must use the mounted token from its first request.
+
+    Without priming, the event-loop path of api_token serves the stored static
+    token (the previous pod's bound token) while the file read is still in
+    flight, and setup retries forever on 401 (issue #408).
+    """
+    client = _make_client(use_in_cluster=True, static_token="dead-pod-token")
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.open",
+        mock_open(read_data="mounted-token\n"),
+    ):
+        client.load_in_cluster_token()
+
+    assert client.api_token == "mounted-token"
+
+
+def test_load_in_cluster_token_noop_when_disabled():
+    """Outside in-cluster mode the token file is never touched."""
+    client = _make_client(use_in_cluster=False, static_token="static")
+    with patch("custom_components.kubernetes.kubernetes_client.open") as opener:
+        client.load_in_cluster_token()
+
+    opener.assert_not_called()
+    assert client.api_token == "static"
+
+
 # ---------------------------------------------------------------------------
 # api_token / _ensure_refresh_task — event-loop-safe token refresh
 # ---------------------------------------------------------------------------

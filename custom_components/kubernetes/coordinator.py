@@ -42,7 +42,11 @@ from .const import (
     event_signal,
 )
 from .device import cleanup_orphaned_namespace_devices, get_all_namespaces
-from .kubernetes_client import KubernetesClient, ResourceVersionExpired
+from .kubernetes_client import (
+    KubernetesApiError,
+    KubernetesClient,
+    ResourceVersionExpired,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -352,7 +356,15 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             except Exception as ex:
                 # The client's list/count methods raise on any failure, so a
                 # 401 aborts the fetch before the in-line check above runs.
-                # Route it to reauth instead of UpdateFailed.
+                # Route it to reauth instead of UpdateFailed. A non-200 from
+                # a fetch that runs before the pods call aborts the cycle
+                # before the probe, so probe here or a dead token would
+                # never reach reauth (issue #408).
+                if (
+                    isinstance(ex, KubernetesApiError)
+                    and self.client.auth_failed is not True
+                ):
+                    await self.client.is_cluster_healthy()
                 if self.client.auth_failed is True:
                     raise ConfigEntryAuthFailed(
                         "Kubernetes API rejected the configured token"

@@ -207,6 +207,17 @@ class KubernetesClient:
             self._token_cache = token
             self._token_cache_time = time.time()
 
+    def load_in_cluster_token(self) -> None:
+        """Populate the in-cluster token cache before the first request.
+
+        Blocking — run it in the executor. A fresh client has an empty cache,
+        and the event-loop path of api_token then serves the stored static
+        token, which for in-cluster entries is usually the pod-bound token of
+        a previous pod and gets a 401 (issue #408).
+        """
+        if self._use_in_cluster:
+            self._store_token_if_present(self._read_token_file())
+
     def _ensure_refresh_task(self) -> asyncio.Task[None]:
         """Start (or return the already in-flight) background token refresh."""
         if self._token_refresh_task is None:

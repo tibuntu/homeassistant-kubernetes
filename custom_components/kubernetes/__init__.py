@@ -98,6 +98,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
             ),
         }
     )
+    # Before the first request, or it goes out with the stale stored token.
+    await hass.async_add_executor_job(client.load_in_cluster_token)
 
     # Create and store the coordinator
     coordinator = KubernetesDataCoordinator(hass, entry, client)
