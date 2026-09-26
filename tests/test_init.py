@@ -90,6 +90,10 @@ async def test_async_setup_entry_success(
         # Verify panel sync was called
         mock_sync_panel.assert_called_once_with(hass, mock_config_entry)
 
+        # Verify the in-cluster token cache is primed before the first
+        # request (issue #408)
+        mock_client.load_in_cluster_token.assert_called_once_with()
+
         # Verify coordinator was started
         mock_coordinator.async_config_entry_first_refresh.assert_called_once()
 

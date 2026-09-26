@@ -26,7 +26,10 @@ from custom_components.kubernetes.const import (
     WATCH_MAX_FAILURE_STREAK,
 )
 from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
-from custom_components.kubernetes.kubernetes_client import ResourceVersionExpired
+from custom_components.kubernetes.kubernetes_client import (
+    KubernetesApiError,
+    ResourceVersionExpired,
+)
 
 
 @pytest.fixture
@@ -452,6 +455,60 @@ class TestKubernetesDataCoordinator:
 
         with pytest.raises(ConfigEntryAuthFailed):
             await coordinator._async_update_data()
+
+    async def test_async_update_data_early_401_probes_and_reauths(
+        self, coordinator, mock_client
+    ):
+        """A 401 before the pods call still reaches reauth (issue #408).
+
+        get_deployments fails first, so the probe inside get_pods never runs;
+        the handler probes itself and the probe confirms the 401.
+        """
+        mock_client.auth_failed = False
+        mock_client.get_deployments.side_effect = KubernetesApiError(
+            "deployments request failed with status 401"
+        )
+
+        async def probe() -> bool:
+            mock_client.auth_failed = True
+            return False
+
+        mock_client.is_cluster_healthy = AsyncMock(side_effect=probe)
+
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coordinator._async_update_data()
+
+        mock_client.is_cluster_healthy.assert_awaited_once()
+
+    async def test_async_update_data_non_auth_api_error_stays_update_failed(
+        self, coordinator, mock_client
+    ):
+        """A non-200 the probe does not confirm as 401 remains UpdateFailed."""
+        mock_client.auth_failed = False
+        mock_client.get_deployments.side_effect = KubernetesApiError(
+            "deployments request failed with status 500"
+        )
+        mock_client.is_cluster_healthy = AsyncMock(return_value=True)
+
+        with pytest.raises(UpdateFailed, match="status 500"):
+            await coordinator._async_update_data()
+
+        mock_client.is_cluster_healthy.assert_awaited_once()
+
+    async def test_async_update_data_transport_error_does_not_probe(
+        self, coordinator, mock_client
+    ):
+        """Transport errors cannot be a 401, so no extra probe is spent."""
+        mock_client.auth_failed = False
+        mock_client.get_deployments.side_effect = aiohttp.ClientConnectionError(
+            "Connection refused"
+        )
+        mock_client.is_cluster_healthy = AsyncMock(return_value=False)
+
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+        mock_client.is_cluster_healthy.assert_not_awaited()
 
     async def test_get_cronjob_data(self, coordinator):
         """Test getting CronJob data."""
