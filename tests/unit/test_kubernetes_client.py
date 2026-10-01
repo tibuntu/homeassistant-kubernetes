@@ -1933,6 +1933,56 @@ async def test_get_node_metrics(mock_client):
     assert result["node2"]["memory"] == 2325.0
 
 
+@pytest.mark.parametrize(
+    "git_version",
+    [
+        "v1.36.2",
+        "v1.36.2-eks-1552ad0",
+        "v1.36.2-gke.1234000",
+        "v1.36.2+k3s1",
+        "v1.36.2+rke2r1",
+    ],
+)
+async def test_get_server_version_returns_git_version_verbatim(
+    mock_client, git_version
+):
+    """Vendor suffixes are kept — the string is displayed, never parsed."""
+    mock_session = mock_aiohttp_session(
+        get=_mock_response(
+            200, json_data={"major": "1", "minor": "36+", "gitVersion": git_version}
+        )
+    )
+
+    with (
+        patch("aiohttp.TCPConnector"),
+        patch("aiohttp.ClientSession", return_value=mock_session),
+    ):
+        assert await mock_client.get_server_version() == git_version
+
+    assert mock_session.get.call_args.args[0].endswith(":6443/version")
+
+
+@pytest.mark.parametrize(
+    "get",
+    [
+        403,
+        _mock_response(200, json_data={}),
+        _mock_response(200, json_data={"gitVersion": 136}),
+        Exception("Connection refused"),
+    ],
+    ids=["non_200", "missing", "not_a_string", "exception"],
+)
+async def test_get_server_version_best_effort(mock_client, get):
+    """Any failure yields None instead of raising."""
+    mock_session = mock_aiohttp_session(get=get)
+
+    with (
+        patch("aiohttp.TCPConnector"),
+        patch("aiohttp.ClientSession", return_value=mock_session),
+    ):
+        assert await mock_client.get_server_version() is None
+
+
 async def test_get_node_metrics_aiohttp_success(mock_client):
     """Test _get_node_metrics_aiohttp parses API response correctly."""
     mock_session = mock_aiohttp_session(

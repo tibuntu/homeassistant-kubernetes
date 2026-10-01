@@ -41,7 +41,11 @@ from .const import (
     WATCH_RECONNECT_JITTER,
     event_signal,
 )
-from .device import cleanup_orphaned_namespace_devices, get_all_namespaces
+from .device import (
+    cleanup_orphaned_namespace_devices,
+    get_all_namespaces,
+    update_cluster_device_version,
+)
 from .kubernetes_client import (
     KubernetesApiError,
     KubernetesClient,
@@ -279,6 +283,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     node_names = [node.get("name", "Unknown") for node in nodes]
                     _LOGGER.debug("Fetched nodes: %s", node_names)
 
+                server_version = await self.client.get_server_version()
+
                 # Create a lookup dictionary for quick access. Namespaced
                 # resources are keyed by "{namespace}_{name}" so that
                 # same-named workloads in different namespaces don't collide.
@@ -302,6 +308,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                     "pods_count": pods_count,
                     "nodes_count": nodes_count,
+                    "server_version": server_version,
                     "last_update": time.time(),
                 }
 
@@ -336,6 +343,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     len(pods),
                     nodes_count,
                     len(nodes),
+                )
+
+                update_cluster_device_version(
+                    self.hass, self.config_entry, server_version
                 )
 
                 # Clean up entities for resources that no longer exist

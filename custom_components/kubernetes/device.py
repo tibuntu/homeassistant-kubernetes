@@ -47,13 +47,26 @@ async def get_or_create_cluster_device(
         name=cluster_name,
         manufacturer="Kubernetes",
         model="Cluster",
-        sw_version=None,
     )
 
     _LOGGER.debug(
         "Ensured cluster device: %s (identifier: %s)", device.name, device_identifier
     )
     return device
+
+
+def update_cluster_device_version(
+    hass: HomeAssistant, config_entry: ConfigEntry, version: str | None
+) -> None:
+    """Mirror the API server version onto the cluster device's sw_version."""
+    # ponytail: no-op until the platforms have created the device, so a fresh
+    # install shows the version from the second poll on.
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_device(
+        identifiers={(DOMAIN, get_cluster_device_identifier(config_entry))}
+    )
+    if device and version and device.sw_version != version:
+        device_registry.async_update_device(device.id, sw_version=version)
 
 
 async def get_or_create_namespace_device(

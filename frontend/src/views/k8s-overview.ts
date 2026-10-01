@@ -34,6 +34,7 @@ interface ClusterOverview {
   entry_id: string;
   cluster_name: string;
   healthy: boolean | null;
+  server_version: string | null;
   last_update: number;
   counts: Record<string, number>;
   namespaces: Record<string, Record<string, number>>;
@@ -383,6 +384,14 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
             <ha-icon icon="mdi:update"></ha-icon>
             <span>Updated ${formatRelative(cluster.last_update)}</span>
           </div>
+          ${
+            cluster.server_version
+              ? html`<div class="meta-item">
+                  <ha-icon icon="mdi:kubernetes"></ha-icon>
+                  <span>${cluster.server_version}</span>
+                </div>`
+              : nothing
+          }
           <button class="refresh-btn" @click=${this._loadData} title="Refresh data">
             <ha-icon icon="mdi:refresh"></ha-icon>
           </button>
