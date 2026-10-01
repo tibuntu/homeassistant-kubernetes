@@ -62,8 +62,8 @@ def update_cluster_device_version(
     # No-op until the platforms have created the device; async_setup_entry
     # calls this once more right after forwarding them.
     device_registry = dr.async_get(hass)
-    device = device_registry.async_get_device(
-        identifiers={(DOMAIN, get_cluster_device_identifier(config_entry))}
+    device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, get_cluster_device_identifier(config_entry)), config_entry.entry_id
     )
     if device and version and device.sw_version != version:
         device_registry.async_update_device(device.id, sw_version=version)

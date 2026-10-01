@@ -138,8 +138,9 @@ async def test_async_setup_entry_sets_cluster_device_version(
 
         await async_setup_entry(hass, mock_config_entry)
 
-    device = dr.async_get(hass).async_get_device(
-        identifiers={(DOMAIN, get_cluster_device_identifier(mock_config_entry))}
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, get_cluster_device_identifier(mock_config_entry)),
+        mock_config_entry.entry_id,
     )
     assert device.sw_version == "v1.36.2+k3s1"
 
