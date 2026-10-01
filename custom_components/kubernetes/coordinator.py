@@ -283,7 +283,13 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     node_names = [node.get("name", "Unknown") for node in nodes]
                     _LOGGER.debug("Fetched nodes: %s", node_names)
 
-                server_version = await self.client.get_server_version()
+                # Best-effort and runs after the auth check above: a dead token
+                # has already aborted the cycle, so swallowing a 401 here is
+                # harmless. A failed fetch keeps the last known version so the
+                # panel doesn't flicker.
+                server_version = await self.client.get_server_version() or (
+                    self.data or {}
+                ).get("server_version")
 
                 # Create a lookup dictionary for quick access. Namespaced
                 # resources are keyed by "{namespace}_{name}" so that

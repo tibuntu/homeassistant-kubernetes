@@ -341,6 +341,17 @@ class TestKubernetesDataCoordinator:
             dr.async_get(hass).async_get(device.id).sw_version == "v1.36.2-eks-1552ad0"
         )
 
+    async def test_async_update_data_server_version_keeps_last_known(
+        self, hass: HomeAssistant, coordinator, mock_client
+    ):
+        """A failed /version fetch keeps the previous value in data."""
+        coordinator.data = await coordinator._async_update_data()
+        mock_client.get_server_version.return_value = None
+
+        result = await coordinator._async_update_data()
+
+        assert result["server_version"] == "v1.36.2"
+
     async def test_async_update_data_with_cleanup(
         self, hass: HomeAssistant, coordinator, mock_client
     ):

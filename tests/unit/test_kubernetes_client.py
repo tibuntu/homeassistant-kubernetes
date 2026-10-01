@@ -1968,9 +1968,10 @@ async def test_get_server_version_returns_git_version_verbatim(
         403,
         _mock_response(200, json_data={}),
         _mock_response(200, json_data={"gitVersion": 136}),
+        _mock_response(200, json_data=["v1.36.2"]),
         Exception("Connection refused"),
     ],
-    ids=["non_200", "missing", "not_a_string", "exception"],
+    ids=["non_200", "missing", "not_a_string", "not_an_object", "exception"],
 )
 async def test_get_server_version_best_effort(mock_client, get):
     """Any failure yields None instead of raising."""
