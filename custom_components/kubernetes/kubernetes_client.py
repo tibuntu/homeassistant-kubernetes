@@ -1978,6 +1978,34 @@ class KubernetesClient:
         """Check if the cluster is healthy."""
         return await self._test_connection()
 
+    async def get_server_version(self) -> str | None:
+        """Get the API server's gitVersion from /version — best-effort.
+
+        Returned verbatim: managed distros append vendor suffixes
+        (``v1.36.2-eks-1552ad0``, ``v1.36.2+k3s1``) that users expect to see,
+        and the sibling ``major``/``minor`` fields are unusable for parsing
+        (EKS/GKE report ``minor: "36+"``). Readable by every authenticated
+        user via ``system:public-info-viewer``, so no RBAC rule is needed.
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://{self.host}:{self.port}/version",
+                    headers={"Authorization": f"Bearer {self.api_token}"},
+                    ssl=await self._get_ssl_param(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as response:
+                    if response.status != 200:
+                        _LOGGER.debug(
+                            "Failed to fetch server version: %s", response.status
+                        )
+                        return None
+                    version = (await response.json()).get("gitVersion")
+                    return version if isinstance(version, str) else None
+        except Exception as ex:
+            _LOGGER.debug("Exception fetching server version: %s", ex)
+            return None
+
     # DaemonSet methods
     async def get_daemonsets_count(self) -> int:
         """Get the count of DaemonSets in the namespace(s)."""

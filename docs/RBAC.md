@@ -164,6 +164,14 @@ Read-only access to every resource the integration monitors. No write permission
 | **deployments/scale** | `get`, `patch`, `update` | ✅ | ❌ | Legacy scaling (K8s < 1.16) |
 | **replicasets** | `get`, `list`, `watch` | ✅ | ❌ | Legacy API (K8s < 1.16) |
 
+### Non-resource endpoints
+
+| Endpoint | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **/version** | `get` | — | — | Cluster version on the panel's Overview tab and the cluster device |
+
+> **Note:** No rule is needed — Kubernetes grants `/version` to every authenticated user through the built-in `system:public-info-viewer` ClusterRoleBinding. If a hardened cluster has removed that binding, the version is simply not shown.
+
 ## Security Considerations
 
 ### Principle of Least Privilege

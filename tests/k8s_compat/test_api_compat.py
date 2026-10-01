@@ -27,6 +27,12 @@ class TestClusterHealth:
     async def test_is_cluster_healthy(self, k8s_client):
         assert await k8s_client.is_cluster_healthy() is True
 
+    async def test_get_server_version(self, k8s_client):
+        # Readable via system:public-info-viewer — the chart grants nothing.
+        version = await k8s_client.get_server_version()
+        assert isinstance(version, str)
+        assert version.startswith("v1.")
+
 
 class TestPods:
     async def test_get_pods(self, k8s_client):

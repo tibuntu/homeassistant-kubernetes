@@ -110,6 +110,8 @@ The automatic management currently supports:
 
 ## Device Management
 
+The cluster device's **Firmware** field shows the cluster's Kubernetes version (e.g. `v1.36.2-eks-1552ad0`), refreshed on every poll so it follows cluster upgrades.
+
 ### Namespace Device Cleanup
 
 The integration automatically manages namespace devices:

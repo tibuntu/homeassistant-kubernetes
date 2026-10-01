@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import aiohttp
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.update_coordinator import UpdateFailed
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -26,6 +26,7 @@ from custom_components.kubernetes.const import (
     WATCH_MAX_FAILURE_STREAK,
 )
 from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
+from custom_components.kubernetes.device import get_or_create_cluster_device
 from custom_components.kubernetes.kubernetes_client import (
     KubernetesApiError,
     ResourceVersionExpired,
@@ -70,6 +71,7 @@ def mock_client():
     client.get_nodes_count = AsyncMock(return_value=0)
     client.get_nodes = AsyncMock(return_value=[])
     client.get_node_metrics = AsyncMock(return_value={})
+    client.get_server_version = AsyncMock(return_value="v1.36.2")
     client._test_connection = AsyncMock(return_value=True)
     return client
 
@@ -324,6 +326,20 @@ class TestKubernetesDataCoordinator:
 
         assert "cpu_usage_millicores" not in result["nodes"]["node1"]
         assert "memory_usage_mib" not in result["nodes"]["node1"]
+
+    async def test_async_update_data_server_version(
+        self, hass: HomeAssistant, coordinator, mock_config_entry, mock_client
+    ):
+        """The server version lands in data and on the cluster device."""
+        device = await get_or_create_cluster_device(hass, mock_config_entry)
+        mock_client.get_server_version.return_value = "v1.36.2-eks-1552ad0"
+
+        result = await coordinator._async_update_data()
+
+        assert result["server_version"] == "v1.36.2-eks-1552ad0"
+        assert (
+            dr.async_get(hass).async_get(device.id).sw_version == "v1.36.2-eks-1552ad0"
+        )
 
     async def test_async_update_data_with_cleanup(
         self, hass: HomeAssistant, coordinator, mock_client

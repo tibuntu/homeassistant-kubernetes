@@ -507,6 +507,10 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <ha-icon icon="mdi:update"></ha-icon>
             <span>Updated ${Ye(e.last_update)}</span>
           </div>
+          ${e.server_version?E`<div class="meta-item">
+                  <ha-icon icon="mdi:kubernetes"></ha-icon>
+                  <span>${e.server_version}</span>
+                </div>`:O}
           <button class="refresh-btn" @click=${this._loadData} title="Refresh data">
             <ha-icon icon="mdi:refresh"></ha-icon>
           </button>

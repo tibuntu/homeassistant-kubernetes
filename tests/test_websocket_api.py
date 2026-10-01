@@ -148,6 +148,7 @@ def sample_coordinator_data():
         },
         "pods_count": 3,
         "nodes_count": 2,
+        "server_version": "v1.36.2+k3s1",
         "last_update": 1700000000.0,
     }
 
@@ -258,6 +259,7 @@ class TestWebsocketClusterOverview:
         assert cluster["entry_id"] == "entry_1"
         assert cluster["cluster_name"] == "test-cluster"
         assert cluster["healthy"] is True
+        assert cluster["server_version"] == "v1.36.2+k3s1"
         assert cluster["counts"]["pods"] == 3
         assert cluster["counts"]["nodes"] == 2
         assert cluster["counts"]["deployments"] == 2
@@ -308,6 +310,7 @@ class TestWebsocketClusterOverview:
 
         cluster = result["clusters"][0]
         assert cluster["healthy"] is None
+        assert cluster["server_version"] is None
         assert cluster["counts"]["pods"] == 0
         assert cluster["counts"]["nodes"] == 0
         assert cluster["namespaces"] == {}

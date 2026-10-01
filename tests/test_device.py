@@ -13,6 +13,7 @@ from custom_components.kubernetes.device import (
     get_namespace_device_info,
     get_or_create_cluster_device,
     get_or_create_namespace_device,
+    update_cluster_device_version,
 )
 
 # `mock_config_entry` (cluster_name="test-cluster", entry_id="test_entry_id")
@@ -164,6 +165,44 @@ class TestDeviceCreation:
         )
         assert cluster_device is not None
         assert device.via_device_id == cluster_device.id
+
+
+class TestUpdateClusterDeviceVersion:
+    """Test mirroring the API server version onto the cluster device."""
+
+    async def test_sets_and_updates_sw_version(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
+        """The version is written, then replaced on upgrade."""
+        device = await get_or_create_cluster_device(hass, mock_config_entry)
+        registry = dr.async_get(hass)
+
+        update_cluster_device_version(hass, mock_config_entry, "v1.36.2-eks-1552ad0")
+        assert registry.async_get(device.id).sw_version == "v1.36.2-eks-1552ad0"
+
+        update_cluster_device_version(hass, mock_config_entry, "v1.37.0-eks-0000000")
+        assert registry.async_get(device.id).sw_version == "v1.37.0-eks-0000000"
+
+    async def test_unknown_version_keeps_last_known(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
+        """A failed /version fetch must not blank the stored version."""
+        device = await get_or_create_cluster_device(hass, mock_config_entry)
+        update_cluster_device_version(hass, mock_config_entry, "v1.36.2")
+
+        update_cluster_device_version(hass, mock_config_entry, None)
+        # Re-running device creation (platform setup) must not clear it either.
+        await get_or_create_cluster_device(hass, mock_config_entry)
+
+        assert dr.async_get(hass).async_get(device.id).sw_version == "v1.36.2"
+
+    async def test_no_device_yet_is_noop(self, hass: HomeAssistant, mock_config_entry):
+        """Before the platforms create the device there is nothing to update."""
+        update_cluster_device_version(hass, mock_config_entry, "v1.36.2")
+
+        assert not dr.async_entries_for_config_entry(
+            dr.async_get(hass), mock_config_entry.entry_id
+        )
 
 
 class TestDeviceCleanup:
