@@ -3,6 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { K8sDataView } from "./base-view";
 import { stateStyles, badgeStyles } from "../styles/shared";
 import { formatRelative, toggleInSet, CONDITION_LABELS } from "../utils/format";
+import type { NavigateDetail } from "../kubernetes-panel";
 
 interface AlertNodePressure {
   name: string;
@@ -67,6 +68,18 @@ const RESOURCE_LABELS: Record<string, string> = {
   services: "Services",
 };
 
+const CARD_TARGETS: Record<string, NavigateDetail> = {
+  pods: { tab: "pods" },
+  nodes: { tab: "nodes" },
+  deployments: { tab: "workloads", filter: "deployments" },
+  statefulsets: { tab: "workloads", filter: "statefulsets" },
+  daemonsets: { tab: "workloads", filter: "daemonsets" },
+  cronjobs: { tab: "workloads", filter: "cronjobs" },
+  jobs: { tab: "workloads", filter: "jobs" },
+  ingresses: { tab: "network", filter: "Ingress" },
+  services: { tab: "network", filter: "Services" },
+};
+
 @customElement("k8s-overview")
 export class K8sOverview extends K8sDataView<OverviewResponse> {
   @state() private _expandedNamespaces: Set<string> = new Set();
@@ -82,6 +95,12 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
 
   private _toggleNamespaces(clusterId: string): void {
     this._expandedNamespaces = toggleInSet(this._expandedNamespaces, clusterId);
+  }
+
+  private _navigate(key: string): void {
+    const detail = CARD_TARGETS[key];
+    if (!detail) return;
+    this.dispatchEvent(new CustomEvent<NavigateDetail>("k8s-navigate", { detail }));
   }
 
   static styles = [
@@ -150,7 +169,15 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
         padding: 16px;
         border-radius: 12px;
         text-align: center;
+        cursor: pointer;
+        transition: box-shadow 0.2s;
         --mdc-icon-size: 28px;
+      }
+
+      .count-card:hover,
+      .count-card:focus-visible {
+        box-shadow: 0 0 0 2px var(--primary-color);
+        outline: none;
       }
 
       .count-card ha-icon {
@@ -364,7 +391,19 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
         <div class="counts-grid">
           ${Object.entries(cluster.counts).map(
             ([key, count]) => html`
-              <ha-card class="count-card">
+              <ha-card
+                class="count-card"
+                role="button"
+                tabindex="0"
+                title="Show ${RESOURCE_LABELS[key] || key}"
+                @click=${() => this._navigate(key)}
+                @keydown=${(e: KeyboardEvent) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    this._navigate(key);
+                  }
+                }}
+              >
                 <ha-icon icon=${RESOURCE_ICONS[key] || "mdi:help"}></ha-icon>
                 <div class="count-value">${count}</div>
                 <div class="count-label">${RESOURCE_LABELS[key] || key}</div>

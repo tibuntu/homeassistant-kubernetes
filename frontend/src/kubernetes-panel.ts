@@ -8,8 +8,10 @@ import "./views/k8s-pods-table";
 import "./views/k8s-network";
 import "./views/k8s-workloads";
 import "./views/k8s-settings";
+import type { NetworkTypeFilter } from "./views/k8s-network";
+import type { WorkloadCategory } from "./views/k8s-workloads";
 
-type Tab = "overview" | "nodes" | "workloads" | "pods" | "network" | "settings";
+export type Tab = "overview" | "nodes" | "workloads" | "pods" | "network" | "settings";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: "mdi:view-dashboard" },
@@ -20,6 +22,12 @@ const TABS = [
   { id: "settings", label: "Settings", icon: "mdi:cog" },
 ] as const satisfies { id: Tab; label: string; icon: string }[];
 
+/** Fired by the overview's count cards to jump to a tab with a filter preset. */
+export interface NavigateDetail {
+  tab: Tab;
+  filter?: WorkloadCategory | NetworkTypeFilter;
+}
+
 @customElement("kubernetes-panel")
 export class KubernetesPanel extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -28,13 +36,15 @@ export class KubernetesPanel extends LitElement {
   @property({ attribute: false }) public panel!: Record<string, unknown>;
 
   @state() private _activeTab: Tab = "overview";
+  @state() private _filter?: NavigateDetail["filter"];
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     loadHaElements();
   }
 
-  private _handleTabChange(tab: Tab): void {
+  private _handleTabChange(tab: Tab, filter?: NavigateDetail["filter"]): void {
     this._activeTab = tab;
+    this._filter = filter;
   }
 
   private _toggleSidebar(): void {
@@ -175,15 +185,25 @@ export class KubernetesPanel extends LitElement {
   private _renderActiveTab() {
     switch (this._activeTab) {
       case "overview":
-        return html`<k8s-overview .hass=${this.hass}></k8s-overview>`;
+        return html`<k8s-overview
+          .hass=${this.hass}
+          @k8s-navigate=${(e: CustomEvent<NavigateDetail>) =>
+            this._handleTabChange(e.detail.tab, e.detail.filter)}
+        ></k8s-overview>`;
       case "nodes":
         return html`<k8s-nodes-table .hass=${this.hass}></k8s-nodes-table>`;
       case "pods":
         return html`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
       case "workloads":
-        return html`<k8s-workloads .hass=${this.hass}></k8s-workloads>`;
+        return html`<k8s-workloads
+          .hass=${this.hass}
+          .initialFilter=${this._filter as WorkloadCategory | undefined}
+        ></k8s-workloads>`;
       case "network":
-        return html`<k8s-network .hass=${this.hass}></k8s-network>`;
+        return html`<k8s-network
+          .hass=${this.hass}
+          .initialFilter=${this._filter as NetworkTypeFilter | undefined}
+        ></k8s-network>`;
       case "settings":
         return html`<k8s-settings .hass=${this.hass}></k8s-settings>`;
     }
