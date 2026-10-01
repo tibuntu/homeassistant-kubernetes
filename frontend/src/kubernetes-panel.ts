@@ -23,10 +23,10 @@ const TABS = [
 ] as const satisfies { id: Tab; label: string; icon: string }[];
 
 /** Fired by the overview's count cards to jump to a tab with a filter preset. */
-export interface NavigateDetail {
-  tab: Tab;
-  filter?: WorkloadCategory | NetworkTypeFilter;
-}
+export type NavigateDetail =
+  | { tab: "workloads"; filter?: WorkloadCategory }
+  | { tab: "network"; filter?: NetworkTypeFilter }
+  | { tab: Exclude<Tab, "workloads" | "network">; filter?: never };
 
 @customElement("kubernetes-panel")
 export class KubernetesPanel extends LitElement {
@@ -35,16 +35,14 @@ export class KubernetesPanel extends LitElement {
   @property({ attribute: false }) public route!: Record<string, unknown>;
   @property({ attribute: false }) public panel!: Record<string, unknown>;
 
-  @state() private _activeTab: Tab = "overview";
-  @state() private _filter?: NavigateDetail["filter"];
+  @state() private _nav: NavigateDetail = { tab: "overview" };
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     loadHaElements();
   }
 
-  private _handleTabChange(tab: Tab, filter?: NavigateDetail["filter"]): void {
-    this._activeTab = tab;
-    this._filter = filter;
+  private _handleTabChange(tab: Tab): void {
+    this._nav = { tab };
   }
 
   private _toggleSidebar(): void {
@@ -163,7 +161,7 @@ export class KubernetesPanel extends LitElement {
               class="tab"
               role="button"
               tabindex="0"
-              ?active=${this._activeTab === tab.id}
+              ?active=${this._nav.tab === tab.id}
               @click=${() => this._handleTabChange(tab.id)}
               @keydown=${(e: KeyboardEvent) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -183,12 +181,14 @@ export class KubernetesPanel extends LitElement {
   }
 
   private _renderActiveTab() {
-    switch (this._activeTab) {
+    const nav = this._nav;
+    switch (nav.tab) {
       case "overview":
         return html`<k8s-overview
           .hass=${this.hass}
-          @k8s-navigate=${(e: CustomEvent<NavigateDetail>) =>
-            this._handleTabChange(e.detail.tab, e.detail.filter)}
+          @k8s-navigate=${(e: CustomEvent<NavigateDetail>) => {
+            this._nav = e.detail;
+          }}
         ></k8s-overview>`;
       case "nodes":
         return html`<k8s-nodes-table .hass=${this.hass}></k8s-nodes-table>`;
@@ -197,12 +197,12 @@ export class KubernetesPanel extends LitElement {
       case "workloads":
         return html`<k8s-workloads
           .hass=${this.hass}
-          .initialFilter=${this._filter as WorkloadCategory | undefined}
+          .initialFilter=${nav.filter}
         ></k8s-workloads>`;
       case "network":
         return html`<k8s-network
           .hass=${this.hass}
-          .initialFilter=${this._filter as NetworkTypeFilter | undefined}
+          .initialFilter=${nav.filter}
         ></k8s-network>`;
       case "settings":
         return html`<k8s-settings .hass=${this.hass}></k8s-settings>`;
