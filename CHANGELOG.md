@@ -2,17 +2,13 @@
 
 ## [1.13.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.12.1...v1.13.0) (2026-10-01)
 
+A small panel release: the Overview tab now shows **which Kubernetes version each cluster runs**, and its **count cards take you straight to the matching resources**.
 
-### Features
+### New features
 
-* **panel:** make overview count cards navigate to the matching tab ([ba980e7](https://github.com/tibuntu/homeassistant-kubernetes/commit/ba980e7e55345c2813989fb11af4f834725f69d8))
-* show Kubernetes version on the panel overview and cluster device ([e04431f](https://github.com/tibuntu/homeassistant-kubernetes/commit/e04431f558e766053c2147337f0b5cd041aeed0e))
+**Kubernetes version on the Overview tab.** Each cluster section shows its API server version next to the last-update time, exactly as the cluster reports it, distro suffixes included (`v1.36.2-eks-1552ad0`, `v1.36.2+k3s1`). With several clusters configured, each shows its own version. The same value appears as the cluster device's firmware version under **Settings → Devices & services** and follows cluster upgrades automatically. No RBAC changes are needed: Kubernetes lets every authenticated user read the version.
 
-
-### Bug Fixes
-
-* keep last known server version and set it on first install ([7968e72](https://github.com/tibuntu/homeassistant-kubernetes/commit/7968e72e54b87e21e8447f1790dc5eaea95ed1fb))
-* look up the cluster device via async_get_device_by_identifier ([0996b05](https://github.com/tibuntu/homeassistant-kubernetes/commit/0996b05e0904993f8fd6cc1a7757fd55b1fdeb2e))
+**Clickable count cards.** Clicking a resource count on the Overview tab opens the matching tab, already filtered: Pods and Nodes open their tabs, each workload type opens the Workloads tab on that category, and Ingresses and Services open the Network tab filtered to that type (the Network tab gains a Services-only filter for this). The cards work from the keyboard too.
 
 ## [1.12.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.12.0...v1.12.1) (2026-09-26)
 
