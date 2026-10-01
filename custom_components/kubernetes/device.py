@@ -59,8 +59,8 @@ def update_cluster_device_version(
     hass: HomeAssistant, config_entry: ConfigEntry, version: str | None
 ) -> None:
     """Mirror the API server version onto the cluster device's sw_version."""
-    # ponytail: no-op until the platforms have created the device, so a fresh
-    # install shows the version from the second poll on.
+    # No-op until the platforms have created the device; async_setup_entry
+    # calls this once more right after forwarding them.
     device_registry = dr.async_get(hass)
     device = device_registry.async_get_device(
         identifiers={(DOMAIN, get_cluster_device_identifier(config_entry))}

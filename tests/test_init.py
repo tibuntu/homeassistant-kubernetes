@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -21,6 +22,10 @@ from custom_components.kubernetes import (
     async_unload_entry,
 )
 from custom_components.kubernetes.coordinator import KubernetesEntryData
+from custom_components.kubernetes.device import (
+    get_cluster_device_identifier,
+    get_or_create_cluster_device,
+)
 
 # `add_loaded_entry` (LOADED-state entry + KubernetesEntryData runtime_data)
 # comes from tests/conftest.py's `add_loaded_entry` factory fixture.
@@ -102,6 +107,41 @@ async def test_async_setup_entry_success(
 
         # Verify platforms were forwarded
         mock_forward.assert_called_once_with(mock_config_entry, PLATFORMS)
+
+
+async def test_async_setup_entry_sets_cluster_device_version(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+):
+    """A fresh install gets sw_version right after the platforms create the device."""
+
+    async def _create_cluster_device(entry, platforms):
+        await get_or_create_cluster_device(hass, entry)
+
+    with (
+        patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
+        patch("custom_components.kubernetes.KubernetesClient"),
+        patch(
+            "custom_components.kubernetes.KubernetesDataCoordinator"
+        ) as mock_coordinator_class,
+        patch("custom_components.kubernetes._async_sync_panel"),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            side_effect=_create_cluster_device,
+        ),
+    ):
+        mock_coordinator = MagicMock()
+        mock_coordinator.data = {"server_version": "v1.36.2+k3s1"}
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_start_watch_tasks = AsyncMock()
+        mock_coordinator_class.return_value = mock_coordinator
+
+        await async_setup_entry(hass, mock_config_entry)
+
+    device = dr.async_get(hass).async_get_device(
+        identifiers={(DOMAIN, get_cluster_device_identifier(mock_config_entry))}
+    )
+    assert device.sw_version == "v1.36.2+k3s1"
 
 
 @pytest.mark.parametrize(

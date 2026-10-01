@@ -36,6 +36,7 @@ from .coordinator import (
     KubernetesEntryData,
     get_loaded_entries,
 )
+from .device import update_cluster_device_version
 from .kubernetes_client import KubernetesClient
 from .services import async_setup_services
 from .websocket_api import async_register_websocket_commands
@@ -124,6 +125,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
     _async_migrate_unique_ids(hass, entry, coordinator)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # The first refresh ran before the platforms created the cluster device.
+    update_cluster_device_version(
+        hass, entry, (coordinator.data or {}).get("server_version")
+    )
 
     # Start watch tasks after platforms are set up so that the first watch events
     # are delivered to already-registered entity listeners.
