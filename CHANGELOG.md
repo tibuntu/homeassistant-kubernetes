@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.13.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.12.1...v1.13.0) (2026-10-01)
+
+
+### Features
+
+* **panel:** make overview count cards navigate to the matching tab ([ba980e7](https://github.com/tibuntu/homeassistant-kubernetes/commit/ba980e7e55345c2813989fb11af4f834725f69d8))
+* show Kubernetes version on the panel overview and cluster device ([e04431f](https://github.com/tibuntu/homeassistant-kubernetes/commit/e04431f558e766053c2147337f0b5cd041aeed0e))
+
+
+### Bug Fixes
+
+* keep last known server version and set it on first install ([7968e72](https://github.com/tibuntu/homeassistant-kubernetes/commit/7968e72e54b87e21e8447f1790dc5eaea95ed1fb))
+* look up the cluster device via async_get_device_by_identifier ([0996b05](https://github.com/tibuntu/homeassistant-kubernetes/commit/0996b05e0904993f8fd6cc1a7757fd55b1fdeb2e))
+
 ## [1.12.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.12.0...v1.12.1) (2026-09-26)
 
 
