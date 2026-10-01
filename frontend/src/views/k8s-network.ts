@@ -1,5 +1,5 @@
-import { html, css, nothing } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { html, css, nothing, PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, tableStyles } from "../styles/shared";
 import { formatAge, errorMessage } from "../utils/format";
@@ -64,7 +64,8 @@ const NETWORK_TYPES = [
   "ClusterIP",
   "ExternalName",
 ] as const;
-type NetworkTypeFilter = "all" | (typeof NETWORK_TYPES)[number];
+// "Services" shows every service type and hides the ingress section.
+export type NetworkTypeFilter = "all" | "Services" | (typeof NETWORK_TYPES)[number];
 
 @customElement("k8s-network")
 export class K8sNetwork extends K8sDataView<IngressesResponse> {
@@ -73,8 +74,16 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
   @state() private _servicesError: string | null = null;
   @state() private _searchQuery: string = "";
   @state() private _typeFilter: NetworkTypeFilter = "all";
+  /** Preset from an overview card click. */
+  @property({ attribute: false }) public initialFilter?: NetworkTypeFilter;
 
   protected loadErrorFallback = "Failed to load network data";
+
+  protected willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("initialFilter") && this.initialFilter) {
+      this._typeFilter = this.initialFilter;
+    }
+  }
 
   protected hasData(): boolean {
     return this._data !== null || this._services !== null;
@@ -120,7 +129,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
 
   private _getFilteredServices(services: ServiceData[]): ServiceData[] {
     let filtered = services;
-    if (this._typeFilter !== "all") {
+    if (this._typeFilter !== "all" && this._typeFilter !== "Services") {
       filtered = filtered.filter((s) => s.type === this._typeFilter);
     }
     if (this._searchQuery) {
@@ -306,6 +315,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
           }}
         >
           <option value="all">All types</option>
+          <option value="Services">Services</option>
           ${NETWORK_TYPES.map((t) => html`<option value=${t}>${t}</option>`)}
         </select>
       </div>

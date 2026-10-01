@@ -1,5 +1,5 @@
-import { html, css, nothing } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { html, css, nothing, PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
@@ -55,7 +55,7 @@ interface WorkloadsResponse {
   clusters: ClusterWorkloads[];
 }
 
-type WorkloadCategory =
+export type WorkloadCategory =
   "all" | "deployments" | "statefulsets" | "daemonsets" | "cronjobs" | "jobs";
 type WorkloadStatus = "healthy" | "degraded" | "stopped";
 type StatusFilter = "all" | WorkloadStatus;
@@ -101,6 +101,8 @@ const REPLICA_KIND_META: Record<
 export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   @state() private _namespaceFilter: string = "all";
   @state() private _categoryFilter: WorkloadCategory = "all";
+  /** Preset from an overview card click. */
+  @property({ attribute: false }) public initialFilter?: WorkloadCategory;
   @state() private _statusFilter: StatusFilter = "all";
   @state() private _searchQuery: string = "";
   @state() private _actionInProgress: Set<string> = new Set();
@@ -122,6 +124,12 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   @state() private _scaling = false;
 
   protected loadErrorFallback = "Failed to load workloads data";
+
+  protected willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("initialFilter") && this.initialFilter) {
+      this._categoryFilter = this.initialFilter;
+    }
+  }
 
   protected async fetchData(): Promise<void> {
     const result: WorkloadsResponse = await this.hass.callWS({
