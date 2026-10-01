@@ -2188,7 +2188,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}};U([R()],Q.prototype,`_namespaceFilter`,void 0),U([R()],Q.prototype,`_categoryFilter`,void 0),U([L({attribute:!1})],Q.prototype,`initialFilter`,void 0),U([R()],Q.prototype,`_statusFilter`,void 0),U([R()],Q.prototype,`_searchQuery`,void 0),U([R()],Q.prototype,`_actionInProgress`,void 0),U([R()],Q.prototype,`_actionError`,void 0),U([R()],Q.prototype,`_jobDeleteConfirm`,void 0),U([R()],Q.prototype,`_deletingJob`,void 0),U([R()],Q.prototype,`_collapsedCategories`,void 0),U([R()],Q.prototype,`_scaleTarget`,void 0),U([R()],Q.prototype,`_scaleValue`,void 0),U([R()],Q.prototype,`_scaling`,void 0),Q=U([I(`k8s-workloads`)],Q);var ft=class extends W{constructor(...e){super(...e),this.pollMs=0,this.subscribe=!1,this.loadErrorFallback=`Failed to load configuration`,this.emptyMessage=`No Kubernetes entries configured.`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/config/list`});this._data=e}_navigateToIntegration(){window.open(`/config/integrations/integration/kubernetes`,`_blank`)}static{this.styles=[G,q,o`
+    `}};U([L({attribute:!1})],Q.prototype,`initialFilter`,void 0),U([R()],Q.prototype,`_namespaceFilter`,void 0),U([R()],Q.prototype,`_categoryFilter`,void 0),U([R()],Q.prototype,`_statusFilter`,void 0),U([R()],Q.prototype,`_searchQuery`,void 0),U([R()],Q.prototype,`_actionInProgress`,void 0),U([R()],Q.prototype,`_actionError`,void 0),U([R()],Q.prototype,`_jobDeleteConfirm`,void 0),U([R()],Q.prototype,`_deletingJob`,void 0),U([R()],Q.prototype,`_collapsedCategories`,void 0),U([R()],Q.prototype,`_scaleTarget`,void 0),U([R()],Q.prototype,`_scaleValue`,void 0),U([R()],Q.prototype,`_scaling`,void 0),Q=U([I(`k8s-workloads`)],Q);var ft=class extends W{constructor(...e){super(...e),this.pollMs=0,this.subscribe=!1,this.loadErrorFallback=`Failed to load configuration`,this.emptyMessage=`No Kubernetes entries configured.`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/config/list`});this._data=e}_navigateToIntegration(){window.open(`/config/integrations/integration/kubernetes`,`_blank`)}static{this.styles=[G,q,o`
       .entry-section {
         margin-bottom: 24px;
       }
@@ -2429,7 +2429,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       <span class="setting-value-bool bool-false">
         <ha-icon icon="mdi:close-circle-outline"></ha-icon> Disabled
       </span>
-    `}};ft=U([I(`k8s-settings`)],ft);var pt=[{id:`overview`,label:`Overview`,icon:`mdi:view-dashboard`},{id:`nodes`,label:`Nodes`,icon:`mdi:server`},{id:`workloads`,label:`Workloads`,icon:`mdi:application-cog`},{id:`pods`,label:`Pods`,icon:`mdi:cube-outline`},{id:`network`,label:`Network`,icon:`mdi:lan`},{id:`settings`,label:`Settings`,icon:`mdi:cog`}],$=class extends F{constructor(...e){super(...e),this.narrow=!1,this._activeTab=`overview`}firstUpdated(e){Fe()}_handleTabChange(e,t){this._activeTab=e,this._filter=t}_toggleSidebar(){this.dispatchEvent(new Event(`hass-toggle-menu`,{bubbles:!0,composed:!0}))}static{this.styles=o`
+    `}};ft=U([I(`k8s-settings`)],ft);var pt=[{id:`overview`,label:`Overview`,icon:`mdi:view-dashboard`},{id:`nodes`,label:`Nodes`,icon:`mdi:server`},{id:`workloads`,label:`Workloads`,icon:`mdi:application-cog`},{id:`pods`,label:`Pods`,icon:`mdi:cube-outline`},{id:`network`,label:`Network`,icon:`mdi:lan`},{id:`settings`,label:`Settings`,icon:`mdi:cog`}],$=class extends F{constructor(...e){super(...e),this.narrow=!1,this._nav={tab:`overview`}}firstUpdated(e){Fe()}_handleTabChange(e){this._nav={tab:e}}_toggleSidebar(){this.dispatchEvent(new Event(`hass-toggle-menu`,{bubbles:!0,composed:!0}))}static{this.styles=o`
     :host {
       display: flex;
       flex-direction: column;
@@ -2530,7 +2530,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               class="tab"
               role="button"
               tabindex="0"
-              ?active=${this._activeTab===e.id}
+              ?active=${this._nav.tab===e.id}
               @click=${()=>this._handleTabChange(e.id)}
               @keydown=${t=>{(t.key===`Enter`||t.key===` `)&&(t.preventDefault(),this._handleTabChange(e.id))}}
             >
@@ -2540,13 +2540,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           `)}
       </div>
       <div class="content">${this._renderActiveTab()}</div>
-    `}_renderActiveTab(){switch(this._activeTab){case`overview`:return E`<k8s-overview
+    `}_renderActiveTab(){let e=this._nav;switch(e.tab){case`overview`:return E`<k8s-overview
           .hass=${this.hass}
-          @k8s-navigate=${e=>this._handleTabChange(e.detail.tab,e.detail.filter)}
+          @k8s-navigate=${e=>{this._nav=e.detail}}
         ></k8s-overview>`;case`nodes`:return E`<k8s-nodes-table .hass=${this.hass}></k8s-nodes-table>`;case`pods`:return E`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;case`workloads`:return E`<k8s-workloads
           .hass=${this.hass}
-          .initialFilter=${this._filter}
+          .initialFilter=${e.filter}
         ></k8s-workloads>`;case`network`:return E`<k8s-network
           .hass=${this.hass}
-          .initialFilter=${this._filter}
-        ></k8s-network>`;case`settings`:return E`<k8s-settings .hass=${this.hass}></k8s-settings>`}}};U([L({attribute:!1})],$.prototype,`hass`,void 0),U([L({type:Boolean,reflect:!0})],$.prototype,`narrow`,void 0),U([L({attribute:!1})],$.prototype,`route`,void 0),U([L({attribute:!1})],$.prototype,`panel`,void 0),U([R()],$.prototype,`_activeTab`,void 0),U([R()],$.prototype,`_filter`,void 0),$=U([I(`kubernetes-panel`)],$);export{$ as KubernetesPanel};
+          .initialFilter=${e.filter}
+        ></k8s-network>`;case`settings`:return E`<k8s-settings .hass=${this.hass}></k8s-settings>`}}};U([L({attribute:!1})],$.prototype,`hass`,void 0),U([L({type:Boolean,reflect:!0})],$.prototype,`narrow`,void 0),U([L({attribute:!1})],$.prototype,`route`,void 0),U([L({attribute:!1})],$.prototype,`panel`,void 0),U([R()],$.prototype,`_nav`,void 0),$=U([I(`kubernetes-panel`)],$);export{$ as KubernetesPanel};

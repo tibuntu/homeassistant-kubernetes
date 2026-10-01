@@ -99,10 +99,10 @@ const REPLICA_KIND_META: Record<
 
 @customElement("k8s-workloads")
 export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
-  @state() private _namespaceFilter: string = "all";
-  @state() private _categoryFilter: WorkloadCategory = "all";
   /** Preset from an overview card click. */
   @property({ attribute: false }) public initialFilter?: WorkloadCategory;
+  @state() private _namespaceFilter: string = "all";
+  @state() private _categoryFilter: WorkloadCategory = "all";
   @state() private _statusFilter: StatusFilter = "all";
   @state() private _searchQuery: string = "";
   @state() private _actionInProgress: Set<string> = new Set();
