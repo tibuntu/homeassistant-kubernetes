@@ -44,7 +44,7 @@ dev = [
     "pre-commit==4.6.2",
 
     # Documentation
-    "zensical==0.0.65",
+    "zensical==0.0.67",
 ]
 
 [tool.setuptools.packages.find]
