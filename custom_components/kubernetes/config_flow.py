@@ -705,7 +705,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         configuration.api_key = {
             "authorization": f"Bearer {user_input[CONF_API_TOKEN]}"
         }
-        configuration.api_key_prefix = {"authorization": "Bearer"}
         configuration.verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
 
         if user_input.get(CONF_CA_CERT):

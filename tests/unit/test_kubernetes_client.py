@@ -126,6 +126,15 @@ def test_kubernetes_client_initialization(mock_config):
         assert client.verify_ssl == mock_config["verify_ssl"]
 
 
+def test_official_client_sends_single_bearer_prefix(mock_config):
+    """The real Configuration builds 'Bearer <token>', never 'Bearer Bearer …'."""
+    client = KubernetesClient(mock_config)
+
+    auth = client.core_v1.api_client.configuration.auth_settings()
+
+    assert auth["BearerToken"]["value"] == "Bearer test-token"
+
+
 def test_kubernetes_client_initialization_with_ca_cert(mock_config):
     """Test Kubernetes client initialization with CA certificate."""
     mock_config["ca_cert"] = "test-ca-cert"
