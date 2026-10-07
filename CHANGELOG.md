@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.0...v1.13.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* **deps:** update dependency kubernetes to v37 ([b92757a](https://github.com/tibuntu/homeassistant-kubernetes/commit/b92757a0ce555fe82064566f7c993fccc35f89a2))
+* send a single Bearer prefix from the official kubernetes client ([73fe326](https://github.com/tibuntu/homeassistant-kubernetes/commit/73fe32641b74ec0623057cc163064809e21a917d))
+
 ## [1.13.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.12.1...v1.13.0) (2026-10-01)
 
 A small panel release: the Overview tab now shows **which Kubernetes version each cluster runs**, and its **count cards take you straight to the matching resources**.
