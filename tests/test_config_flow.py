@@ -535,6 +535,31 @@ async def test_test_connection_brackets_ipv6_host(hass: HomeAssistant):
     assert configuration.host == "https://[aaaa:bbbb:cccc::1]:443"
 
 
+async def test_test_connection_sends_single_bearer_prefix(hass: HomeAssistant):
+    """The real Configuration builds 'Bearer <token>', never 'Bearer Bearer …'."""
+    from kubernetes.client import Configuration
+
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    with patch("custom_components.kubernetes.config_flow.client") as mock_client:
+        mock_client.Configuration = Configuration
+        loop = asyncio.get_running_loop()
+        with patch.object(loop, "run_in_executor", new_callable=AsyncMock):
+            await flow._test_connection(
+                {
+                    CONF_HOST: "test-host",
+                    CONF_PORT: 6443,
+                    CONF_API_TOKEN: "test-token",
+                    CONF_VERIFY_SSL: False,
+                }
+            )
+
+    configuration = mock_client.ApiClient.call_args.args[0]
+    auth = configuration.auth_settings()
+    assert auth["BearerToken"]["value"] == "Bearer test-token"
+
+
 async def test_test_connection_failure(hass: HomeAssistant):
     """Test failed connection test."""
     flow = KubernetesConfigFlow()

@@ -429,9 +429,10 @@ class KubernetesClient:
         # Use the static token here to avoid touching the projected SA file
         # from the event loop during integration setup; the refresh hook
         # below replaces this with the live token on subsequent calls (which
-        # run in urllib3's thread pool).
+        # run in urllib3's thread pool). The value already carries "Bearer";
+        # never also set api_key_prefix — kubernetes>=37 resolves the prefix
+        # via the 'authorization' alias and would send "Bearer Bearer <token>".
         configuration.api_key = {"authorization": f"Bearer {self._static_api_token}"}
-        configuration.api_key_prefix = {"authorization": "Bearer"}
         configuration.verify_ssl = self.verify_ssl
         # When use_in_cluster=True the bearer token rotates underneath us; the
         # hook re-reads via the api_token property before each request so the
