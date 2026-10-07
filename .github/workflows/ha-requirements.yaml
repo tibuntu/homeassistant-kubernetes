@@ -1,0 +1,29 @@
+name: HA Requirements
+
+on:
+  pull_request:
+    branches-ignore:
+      - release-please--branches--main
+    paths:
+      - "custom_components/kubernetes/manifest.json"
+      - "hacs.json"
+      - "scripts/check-ha-requirements.sh"
+      - ".github/workflows/ha-requirements.yaml"
+  schedule:
+    # Weekly Monday 06:00 UTC — a new HA release can tighten its pins.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - name: Resolve manifest requirements against HA constraints
+        run: scripts/check-ha-requirements.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
