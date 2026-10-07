@@ -29,6 +29,8 @@ concurrency:
 # renovate: datasource=github-releases depName=kubernetes/kubernetes versioning=semver
 env:
   K8S_LATEST: "1.37.1"
+  # The kind CLI and the node images must come from the same kind release.
+  KIND_VERSION: "v0.33.0"
 
 jobs:
   build-matrix:
@@ -45,8 +47,8 @@ jobs:
           MINOR=$(echo "$K8S_LATEST" | cut -d. -f2)
           TARGETS=("1.$((MINOR))" "1.$((MINOR-1))" "1.$((MINOR-2))")
 
-          # Fetch all kindest/node tags from the latest kind release notes.
-          IMAGES=$(gh api repos/kubernetes-sigs/kind/releases/latest \
+          # Fetch the kindest/node tags published for the pinned kind release.
+          IMAGES=$(gh api "repos/kubernetes-sigs/kind/releases/tags/${KIND_VERSION}" \
             --jq '.body' | grep -oP 'kindest/node:v[0-9.]+' | sort -uV)
 
           MATRIX="["
@@ -83,7 +85,7 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1
         with:
-          version: v0.33.0
+          version: ${{ env.KIND_VERSION }}
           node_image: ${{ matrix.node-image }}
           cluster_name: compat
           wait: 120s

@@ -62,7 +62,6 @@ repos:
       - id: bandit
         name: Security check with Bandit
         args: [-c, pyproject.toml]
-        additional_dependencies: ["bandit[toml]"]
 
   # Frontend linting and formatting
   - repo: local
@@ -90,7 +89,7 @@ repos:
 
 # Pre-commit configuration
 default_language_version:
-  python: python3.13
+  python: python3.14
 
 # Exclude patterns
 exclude: |
@@ -107,12 +106,3 @@ fail_fast: false
 
 # Default stages
 default_stages: [pre-commit, pre-push]
-
-# CI configuration
-ci:
-  # Skip these hooks in CI (they run in separate jobs)
-  skip: [markdownlint]
-  # Auto-fix pull requests
-  autofix_prs: true
-  # Auto-update configuration
-  autoupdate_schedule: weekly

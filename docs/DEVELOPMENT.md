@@ -53,7 +53,7 @@ The devcontainer automatically provides:
 
 - ✅ Complete Home Assistant installation
 - ✅ Your integration automatically mounted and available
-- ✅ All development dependencies (ruff, pytest, mypy)
+- ✅ All development dependencies (ruff, pytest, mypy) at the versions pinned in `pyproject.toml`, and the integration's requirements from `manifest.json`
 - ✅ Debug logging pre-configured
 - ✅ VS Code extensions for Python development
 - ✅ Quick test scripts and development helpers
@@ -300,10 +300,7 @@ kubectl expose pod nginx --port=80 -n test-namespace
 #### Using kind
 
 ```bash
-# Install kind
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
-chmod +x ./kind
-sudo mv ./kind /usr/local/bin/kind
+# Install kind: https://kind.sigs.k8s.io/docs/user/quick-start/#installation
 
 # Create cluster
 kind create cluster
@@ -370,7 +367,7 @@ mypy custom_components/kubernetes/
 
 ### Pre-commit Hooks
 
-Install pre-commit hooks:
+Install pre-commit hooks (the Python hooks run on `python3.14`, set by `default_language_version` in `.pre-commit-config.yaml` — the devcontainer already has it):
 
 ```bash
 pip install pre-commit
