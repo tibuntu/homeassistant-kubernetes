@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.1...v1.13.2) (2026-10-07)
+
+
+### Bug Fixes
+
+* **deps:** revert kubernetes to 36.0.3 so the integration installs on Home Assistant 2026.9 ([80d76c8](https://github.com/tibuntu/homeassistant-kubernetes/commit/80d76c80bdefdcd49b1ebacd42bafaf831c3fa6f))
+
 ## [1.13.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.0...v1.13.1) (2026-10-07)
 
 
