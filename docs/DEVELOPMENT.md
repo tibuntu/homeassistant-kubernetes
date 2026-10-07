@@ -5,7 +5,7 @@ This document provides detailed instructions for developing and contributing to 
 ## Prerequisites
 
 - Python 3.13 or higher
-- Home Assistant 2025.7 or higher
+- Home Assistant 2026.4 or higher
 - A Kubernetes cluster for testing (minikube, kind, or cloud-based)
 - Git
 - Helm — only needed when changing RBAC. Use the version pinned in `.github/workflows/helm.yaml` (`azure/setup-helm`); see [RBAC and the Helm Chart](#rbac-and-the-helm-chart)
@@ -274,6 +274,10 @@ pytest --cov=custom_components/kubernetes
 CI runs the `tests/k8s_compat/` suite against real kind clusters (Kubernetes N, N-1, N-2 — see `.github/workflows/k8s-compat.yaml`). These tests exercise every `KubernetesClient` method against a live API server with the chart's actual RBAC deployed. They are marked `k8s_compat` and auto-skip locally when `K8S_SERVER`/`K8S_TOKEN` are not set.
 
 The latest supported Kubernetes version is pinned as `K8S_LATEST` in the workflow and tracked by Renovate (`kubernetes/kubernetes` github-releases). When a new release is tagged, Renovate opens a PR that bumps the pin and auto-updates the supported-version range in README.md and docs/SETUP.md via `scripts/update-k8s-support-range.sh`.
+
+### Home Assistant Requirement Compatibility
+
+Home Assistant installs the `requirements` from `manifest.json` under its own `package_constraints.txt`, which pins shared packages such as pydantic, aiohttp, and urllib3. The pytest suite does not apply those pins, so a dependency bump can pass CI and still fail to install. `scripts/check-ha-requirements.sh` (needs `uv`, `jq`, and an authenticated `gh`) resolves the manifest requirements against the constraints of the minimum HA version in `hacs.json` and of the latest stable HA release; `.github/workflows/ha-requirements.yaml` runs it on PRs that touch `manifest.json` or `hacs.json` and weekly. If it fails, hold the bump or raise the `hacs.json` minimum to the oldest HA release that resolves.
 
 ### Setting Up a Test Kubernetes Cluster
 

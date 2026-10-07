@@ -35,7 +35,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 | Component | Version |
 |-----------|---------|
-| Home Assistant | 2025.7+ |
+| Home Assistant | 2026.4+ |
 | Python | 3.13+ |
 | Kubernetes | **1.35 – 1.37** (the three most recent stable releases) |
 
