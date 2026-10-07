@@ -46,26 +46,28 @@ sudo apt-get install -y \
 echo "📦 Installing Python dependencies..."
 pip install --upgrade pip setuptools wheel
 
+# Versions come from the files Renovate tracks, so nothing is pinned here.
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+mapfile -t K8S_REQS < <(python3 -c "import json, sys; print(*json.load(open(sys.argv[1]))['requirements'], sep='\n')" "$REPO/custom_components/kubernetes/manifest.json")
+mapfile -t DEV_REQS < <(python3 -c "import sys, tomllib; print(*tomllib.load(open(sys.argv[1], 'rb'))['project']['optional-dependencies']['dev'], sep='\n')" "$REPO/pyproject.toml")
+
 # Install integration runtime dependencies (NOT the package itself — it's symlinked as a custom component)
 echo "📦 Installing integration dependencies..."
-pip install kubernetes==35.0.0
+pip install "${K8S_REQS[@]}"
 
 # Verify kubernetes package installation
 echo "🔍 Verifying kubernetes package installation..."
 python3 -c "import kubernetes.client; print('✅ kubernetes.client import successful')" || {
     echo "❌ kubernetes package not properly installed, trying alternative installation..."
     pip uninstall -y kubernetes
-    pip install --no-cache-dir kubernetes==35.0.0
+    pip install --no-cache-dir "${K8S_REQS[@]}"
     python3 -c "import kubernetes.client; print('✅ kubernetes.client import successful after retry')"
 }
 
-# Install Home Assistant (after ensuring dependencies are available)
-echo "🏠 Installing Home Assistant..."
-pip install homeassistant
-
-# Install development dependencies
-echo "🛠️ Installing development dependencies..."
-pip install ruff pytest pytest-homeassistant-custom-component mypy bandit pre-commit
+# Install Home Assistant and development dependencies — pytest-homeassistant-custom-component
+# pins the matching homeassistant release, the same one CI tests against
+echo "🛠️ Installing Home Assistant and development dependencies..."
+pip install "${DEV_REQS[@]}"
 
 # Install performance libraries to address warnings
 echo "📈 Installing performance libraries..."
@@ -224,7 +226,7 @@ echo "🔍 Final verification of environment..."
 echo "Testing kubernetes package in Home Assistant python environment:"
 /usr/local/bin/python -c "import kubernetes.client; print('✅ kubernetes.client available in HA python')" || {
     echo "❌ kubernetes not available in HA python, installing globally..."
-    /usr/local/bin/python -m pip install kubernetes==35.0.0
+    /usr/local/bin/python -m pip install "${K8S_REQS[@]}"
     /usr/local/bin/python -c "import kubernetes.client; print('✅ kubernetes.client now available in HA python')"
 }
 

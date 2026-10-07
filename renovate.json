@@ -119,8 +119,8 @@
       "semanticCommitScope": "deps"
     },
     {
-      "description": "Helm CLI pin shared by the chart and release workflows",
-      "matchDepNames": ["helm/helm"],
+      "description": "Helm CLI pin (azure/setup-helm, extracted by the github-actions manager) shared by the chart, release and compat workflows",
+      "matchDepNames": ["helm"],
       "groupName": "helm",
       "semanticCommitScope": "deps-actions"
     },
@@ -139,28 +139,32 @@
         ],
         "executionMode": "branch"
       }
+    },
+    {
+      "description": "One Python version across CI, pre-commit and the HA requirements check",
+      "matchDepNames": ["python"],
+      "groupName": "python",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "kind CLI pin for the compat CI matrix — the node images are resolved from the same kind release",
+      "matchDepNames": ["kubernetes-sigs/kind"],
+      "semanticCommitScope": "deps-actions"
     }
   ],
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Track Python package pins in HA manifest.json",
+      "description": "Track the Python version in CI workflows, pre-commit and the HA requirements check",
       "managerFilePatterns": [
-        "/custom_components/kubernetes/manifest\\.json$/"
+        "/\\.github/workflows/.*\\.ya?ml$/",
+        "/^\\.pre-commit-config\\.yaml$/",
+        "/^scripts/check-ha-requirements\\.sh$/"
       ],
       "matchStrings": [
-        "\"(?<depName>[a-zA-Z0-9_-]+)==(?<currentValue>[^\"]+)\""
-      ],
-      "datasourceTemplate": "pypi"
-    },
-    {
-      "customType": "regex",
-      "description": "Track Python version in CI workflows",
-      "managerFilePatterns": [
-        "/\\.github/workflows/.*\\.ya?ml$/"
-      ],
-      "matchStrings": [
-        "PYTHON_VERSION:\\s*[\"'](?<currentValue>[0-9.]+)[\"']"
+        "PYTHON_VERSION:\\s*[\"'](?<currentValue>[0-9.]+)[\"']",
+        "\\n  python: python(?<currentValue>3\\.[0-9]+)\\n",
+        "--python-version (?<currentValue>3\\.[0-9]+)"
       ],
       "depNameTemplate": "python",
       "datasourceTemplate": "docker"
@@ -180,14 +184,14 @@
     },
     {
       "customType": "regex",
-      "description": "Track the pinned Helm CLI version in the chart and release workflows",
+      "description": "Track the kind CLI version for the compat CI matrix",
       "managerFilePatterns": [
-        "/\\.github/workflows/(helm|release)\\.ya?ml$/"
+        "/\\.github/workflows/k8s-compat\\.ya?ml$/"
       ],
       "matchStrings": [
-        "azure/setup-helm@v\\d+\\s*\\n\\s*with:\\s*\\n\\s*version:\\s*(?<currentValue>v[0-9.]+)"
+        "KIND_VERSION:\\s*\"(?<currentValue>v[0-9.]+)\""
       ],
-      "depNameTemplate": "helm/helm",
+      "depNameTemplate": "kubernetes-sigs/kind",
       "datasourceTemplate": "github-releases"
     }
   ]
