@@ -481,13 +481,36 @@ async def test_async_clear_repair_issues_removes_forbidden_issue(
     coordinator.async_clear_repair_issues()
 
     assert coordinator._forbidden_resources == set()
-    assert coordinator._forbidden_loops == set()
+    assert coordinator._forbidden_loops == {}
     assert (
         ir.async_get(hass).async_get_issue(
             DOMAIN, _expected_forbidden_issue_id(mock_entry)
         )
         is None
     )
+
+
+async def test_forbidden_issue_cleared_when_access_returns(
+    hass: HomeAssistant, mock_entry: MockConfigEntry, caplog: pytest.LogCaptureFixture
+):
+    """A successful relist after a transient 403 deletes the issue on its own."""
+    coordinator = _make_coordinator(hass, mock_entry)
+    coordinator._handle_watch_forbidden("services:u1", "services")
+    coordinator._handle_watch_forbidden("pods:u2", "pods")
+    registry = ir.async_get(hass)
+    issue_id = _expected_forbidden_issue_id(mock_entry)
+
+    coordinator._clear_watch_forbidden("services:u1")
+    assert (
+        registry.async_get_issue(DOMAIN, issue_id).translation_placeholders["resources"]
+        == "pods"
+    )
+
+    with caplog.at_level("INFO"):
+        coordinator._clear_watch_forbidden("pods:u2")
+
+    assert registry.async_get_issue(DOMAIN, issue_id) is None
+    assert any("access granted again" in m for m in caplog.messages)
 
 
 async def test_forbidden_warning_logged_once_per_resource(

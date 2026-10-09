@@ -69,6 +69,13 @@ class WatchStreamClosedEarly(Exception):
     """
 
 
+def _forbidden_retry_delay() -> float:
+    """Delay before a watch loop retries after HTTP 403: the slow backoff cap."""
+    return WATCH_MAX_RECONNECT_DELAY + random.uniform(  # nosec B311
+        0, WATCH_RECONNECT_JITTER
+    )
+
+
 ISSUE_METRICS_SERVER_UNAVAILABLE = "metrics_server_unavailable"
 METRICS_SERVER_LEARN_MORE_URL = "https://github.com/kubernetes-sigs/metrics-server"
 ISSUE_WATCH_CONNECTION_FAILING = "watch_connection_failing"
@@ -187,12 +194,16 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._metrics_issue_active: bool = False
         self._watch_issue_active: bool = False
         self._failing_watch_loops: set[str] = set()
-        # Resource types whose watch returned HTTP 403; feeds the
-        # watch_forbidden repair issue and is only reset on unload.
-        self._forbidden_resources: set[str] = set()
-        # Per-(resource_type, url) loops that hit that 403, used to detect
-        # when *every* watch task is forbidden (only reset on unload).
-        self._forbidden_loops: set[str] = set()
+        # Per-(resource_type, url) loop key -> resource type, for every loop
+        # whose last attempt got HTTP 403. Feeds the watch_forbidden repair
+        # issue and detects when *every* watch task is forbidden; a loop drops
+        # out again once its retry lists successfully.
+        self._forbidden_loops: dict[str, str] = {}
+
+    @property
+    def _forbidden_resources(self) -> set[str]:
+        """Resource types with at least one currently forbidden watch loop."""
+        return set(self._forbidden_loops.values())
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Update data via Kubernetes client.
@@ -769,26 +780,28 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
     def _handle_watch_forbidden(self, loop_key: str, resource_type: str) -> None:
         """Record that the ServiceAccount may not list/watch ``resource_type``.
 
-        A 403 is permanent until RBAC changes, so the calling loop exits
-        instead of feeding the failure streak: the generic watch issue stays
+        A 403 does not feed the failure streak: the generic watch issue stays
         untouched, and a dedicated issue names the resource(s) so the user
-        knows which rule to add. Re-creating the issue with the same id
-        updates its placeholders in place. If this was the last remaining
-        watch task, there is no live data source left at all, so the poll
-        interval is sped back up to the regular fast interval (see
-        `_forbidden_loops` below) instead of staying at the slow watch
+        knows which rule to add. The calling loop keeps retrying at the slow
+        backoff cap, because a 403 is not always permanent — right after an
+        API server restart the RBAC authorizer can deny requests until its
+        caches have synced — and `_clear_watch_forbidden` drops the loop again
+        once a retry succeeds. Re-creating the issue with the same id updates
+        its placeholders in place. If every watch task is forbidden, there is
+        no live data source left at all, so the poll interval is sped back up
+        to the regular fast interval instead of staying at the slow watch
         fallback.
         """
         if resource_type not in self._forbidden_resources:
             _LOGGER.warning(
                 "Watch %s: HTTP 403 Forbidden — the ServiceAccount may not "
                 "list/watch this resource; live updates for it are off until "
-                "the RBAC rule is added and the integration is reloaded",
+                "the RBAC rule is added (retrying every %d s)",
                 resource_type,
+                WATCH_MAX_RECONNECT_DELAY,
             )
         self._sync_watch_repair_issue(loop_key, failing=False)
-        self._forbidden_resources.add(resource_type)
-        self._forbidden_loops.add(loop_key)
+        self._forbidden_loops[loop_key] = resource_type
         # With every stream forbidden there is no live data source left, so
         # poll at the regular interval instead of the slow watch fallback.
         # `self._watch_tasks` must be non-empty here too: an empty list means
@@ -800,6 +813,31 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             and len(self._forbidden_loops) >= len(self._watch_tasks)
         ):
             self.update_interval = timedelta(seconds=self._poll_interval)
+        self._raise_forbidden_issue()
+
+    @callback
+    def _clear_watch_forbidden(self, loop_key: str) -> None:
+        """Drop ``loop_key`` from the forbidden set after a successful list.
+
+        Updates the issue's resource list, or deletes the issue once no
+        forbidden loop is left. The caller has just synced the poll interval
+        via `_sync_watch_repair_issue`, which covers the all-forbidden case.
+        """
+        resource_type = self._forbidden_loops.pop(loop_key, None)
+        if resource_type is None:
+            return
+        if resource_type not in self._forbidden_resources:
+            _LOGGER.info(
+                "Watch %s: access granted again, live updates resumed", resource_type
+            )
+        if self._forbidden_loops:
+            self._raise_forbidden_issue()
+        else:
+            ir.async_delete_issue(self.hass, DOMAIN, self._forbidden_issue_id())
+
+    @callback
+    def _raise_forbidden_issue(self) -> None:
+        """Create (or update in place) the watch_forbidden repair issue."""
         ir.async_create_issue(
             self.hass,
             DOMAIN,
@@ -829,7 +867,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._metrics_issue_active = False
         self._watch_issue_active = False
         self._failing_watch_loops.clear()
-        self._forbidden_resources.clear()
         self._forbidden_loops.clear()
 
     @callback
@@ -984,6 +1021,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     )
                     failure_streak = 0
                     self._sync_watch_repair_issue(loop_key, failing=False)
+                    self._clear_watch_forbidden(loop_key)
 
                 started = monotonic()
                 got_event = False
@@ -1033,21 +1071,25 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             except Exception as ex:
                 if isinstance(ex, aiohttp.ClientResponseError) and ex.status == 403:
                     self._handle_watch_forbidden(loop_key, resource_type)
-                    return
-                failure_streak += 1
-                delay = min(
-                    DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
-                    WATCH_MAX_RECONNECT_DELAY,
-                ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
-                if failure_streak >= WATCH_MAX_FAILURE_STREAK:
-                    self._sync_watch_repair_issue(loop_key, failing=True)
-                _LOGGER.warning(
-                    "Watch %s error: %s — reconnect attempt %d in %.1f s",
-                    resource_type,
-                    ex,
-                    failure_streak,
-                    delay,
-                )
+                    # Relist on retry: the successful list is what clears the
+                    # forbidden state, and data may have drifted meanwhile.
+                    resource_version = "0"
+                    delay = _forbidden_retry_delay()
+                else:
+                    failure_streak += 1
+                    delay = min(
+                        DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
+                        WATCH_MAX_RECONNECT_DELAY,
+                    ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
+                    if failure_streak >= WATCH_MAX_FAILURE_STREAK:
+                        self._sync_watch_repair_issue(loop_key, failing=True)
+                    _LOGGER.warning(
+                        "Watch %s error: %s — reconnect attempt %d in %.1f s",
+                        resource_type,
+                        ex,
+                        failure_streak,
+                        delay,
+                    )
                 try:
                     await asyncio.wait_for(self._watch_stop_event.wait(), timeout=delay)
                     # stop_event was set — exit gracefully
@@ -1117,6 +1159,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     ) = await self.client.list_resource_with_version(url)
                     failure_streak = 0
                     self._sync_watch_repair_issue(rt, failing=False)
+                    self._clear_watch_forbidden(rt)
                 started = monotonic()
                 got_event = False
                 async for event in self.client.watch_stream(url, resource_version):
@@ -1147,17 +1190,19 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             except Exception as ex:
                 if isinstance(ex, aiohttp.ClientResponseError) and ex.status == 403:
                     self._handle_watch_forbidden(rt, "events")
-                    return
-                failure_streak += 1
-                delay = min(
-                    DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
-                    WATCH_MAX_RECONNECT_DELAY,
-                ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
-                if failure_streak >= WATCH_MAX_FAILURE_STREAK:
-                    self._sync_watch_repair_issue(rt, failing=True)
-                _LOGGER.warning(
-                    "Event watch error: %s — reconnect in %.1f s", ex, delay
-                )
+                    resource_version = "0"
+                    delay = _forbidden_retry_delay()
+                else:
+                    failure_streak += 1
+                    delay = min(
+                        DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
+                        WATCH_MAX_RECONNECT_DELAY,
+                    ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
+                    if failure_streak >= WATCH_MAX_FAILURE_STREAK:
+                        self._sync_watch_repair_issue(rt, failing=True)
+                    _LOGGER.warning(
+                        "Event watch error: %s — reconnect in %.1f s", ex, delay
+                    )
                 try:
                     await asyncio.wait_for(self._watch_stop_event.wait(), timeout=delay)
                     self._failing_watch_loops.discard(rt)
