@@ -3018,6 +3018,31 @@ class TestWatchStream:
                 ):
                     pass
 
+    async def test_watch_stream_yields_events_before_error_event(self, mock_client):
+        """Events that precede an ERROR event are still delivered before the raise."""
+        import json as _json
+
+        added = {"type": "ADDED", "object": {"metadata": {"name": "p1"}}}
+        error = {"type": "ERROR", "object": {"kind": "Status", "code": 410}}
+        mock_session = _make_aiohttp_stream_mock(
+            [_json.dumps(added).encode(), _json.dumps(error).encode()]
+        )
+
+        collected = []
+        with (
+            patch(
+                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+                return_value=mock_session,
+            ),
+            pytest.raises(ResourceVersionExpired),
+        ):
+            async for event in mock_client.watch_stream(
+                "https://host/api/v1/pods", "1"
+            ):
+                collected.append(event)
+
+        assert collected == [added]
+
     async def test_watch_stream_skips_empty_lines(self, mock_client):
         """Empty lines in the stream should be silently ignored."""
         import json as _json
