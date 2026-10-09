@@ -105,7 +105,7 @@ async def build_ssl_param(
 
 
 class ResourceVersionExpired(Exception):
-    """Raised when Kubernetes returns HTTP 410 for a watch (resourceVersion too old)."""
+    """Raised when a watch's resourceVersion is too old (HTTP 410 or ERROR event 410)."""
 
 
 class KubernetesApiError(Exception):
@@ -2447,8 +2447,13 @@ class KubernetesClient:
     ) -> AsyncIterator[dict[str, Any]]:
         """Async generator that yields raw watch events from the Kubernetes API.
 
-        The caller is responsible for handling ResourceVersionExpired (HTTP 410)
-        by re-listing and restarting the watch.
+        The caller is responsible for handling ResourceVersionExpired by
+        re-listing and restarting the watch. An expired resourceVersion arrives
+        either as an HTTP 410 or — far more commonly — as an HTTP 200 stream
+        whose only event is ``{"type": "ERROR", "object": {"code": 410, ...}}``
+        followed by a close (issue #431). Any other ERROR event raises
+        KubernetesApiError so the caller's backoff path handles it; ERROR events
+        are never yielded.
         """
         params = {
             "watch": "true",
@@ -2482,5 +2487,18 @@ class KubernetesClient:
                 resp.raise_for_status()
                 async for raw_line in resp.content:
                     line = raw_line.strip()
-                    if line:
-                        yield json.loads(line)
+                    if not line:
+                        continue
+                    event = json.loads(line)
+                    if event.get("type") == "ERROR":
+                        status = event.get("object") or {}
+                        if status.get("code") == 410:
+                            raise ResourceVersionExpired(
+                                f"Watch resource version {resource_version!r} "
+                                f"expired (ERROR event): {status.get('message')}"
+                            )
+                        raise KubernetesApiError(
+                            f"Watch ERROR event {status.get('reason')} "
+                            f"(code {status.get('code')}): {status.get('message')}"
+                        )
+                    yield event

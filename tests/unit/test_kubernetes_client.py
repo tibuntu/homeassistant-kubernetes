@@ -2958,6 +2958,66 @@ class TestWatchStream:
                 ):
                     pass
 
+    async def test_watch_stream_error_event_410_raises_expired(self, mock_client):
+        """An HTTP 200 stream carrying an ERROR event with code 410 is an expiry.
+
+        Regression for issue #431: the API server reports a compacted
+        resourceVersion as a 200 response with a single ERROR/Status event, not
+        as an HTTP 410, and then closes the stream.
+        """
+        import json as _json
+
+        error_event = {
+            "type": "ERROR",
+            "object": {
+                "kind": "Status",
+                "apiVersion": "v1",
+                "status": "Failure",
+                "reason": "Expired",
+                "message": "too old resource version: 48555610 (48560000)",
+                "code": 410,
+            },
+        }
+        mock_session = _make_aiohttp_stream_mock([_json.dumps(error_event).encode()])
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            with pytest.raises(ResourceVersionExpired):
+                async for _ in mock_client.watch_stream(
+                    "https://host/api/v1/events", "48555610"
+                ):
+                    pass
+
+    async def test_watch_stream_error_event_other_code_raises_api_error(
+        self, mock_client
+    ):
+        """A non-410 ERROR event raises KubernetesApiError so the loop backs off."""
+        import json as _json
+
+        error_event = {
+            "type": "ERROR",
+            "object": {
+                "kind": "Status",
+                "status": "Failure",
+                "reason": "InternalError",
+                "message": "etcdserver: request timed out",
+                "code": 500,
+            },
+        }
+        mock_session = _make_aiohttp_stream_mock([_json.dumps(error_event).encode()])
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            with pytest.raises(KubernetesApiError, match="InternalError"):
+                async for _ in mock_client.watch_stream(
+                    "https://host/api/v1/events", "1"
+                ):
+                    pass
+
     async def test_watch_stream_skips_empty_lines(self, mock_client):
         """Empty lines in the stream should be silently ignored."""
         import json as _json
