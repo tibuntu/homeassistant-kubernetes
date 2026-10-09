@@ -696,6 +696,53 @@ async def test_test_connection_empty_token(hass: HomeAssistant):
         cf_module.KUBERNETES_AVAILABLE = original
 
 
+async def test_test_connection_empty_token_uses_in_cluster_token(hass: HomeAssistant):
+    """With in-cluster mode on, an empty token is filled from the ServiceAccount."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+    user_input = {
+        CONF_HOST: "test-host",
+        CONF_USE_IN_CLUSTER: True,
+        CONF_VERIFY_SSL: False,
+    }
+
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow.async_detect_in_cluster_config",
+            return_value={"host": "10.0.0.1", "port": 443, "api_token": "sa-token"},
+        ),
+        patch("custom_components.kubernetes.config_flow.client") as mock_client,
+        patch.object(
+            asyncio.get_running_loop(), "run_in_executor", new_callable=AsyncMock
+        ),
+    ):
+        configuration = MagicMock()
+        mock_client.Configuration.return_value = configuration
+        await flow._test_connection(user_input)
+
+    assert user_input[CONF_API_TOKEN] == "sa-token"
+    assert configuration.api_key == {"authorization": "Bearer sa-token"}
+
+
+async def test_test_connection_empty_token_in_cluster_not_detected(
+    hass: HomeAssistant,
+):
+    """In-cluster mode without a mounted ServiceAccount still requires a token."""
+    flow = KubernetesConfigFlow()
+    flow.hass = hass
+
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow.async_detect_in_cluster_config",
+            return_value=None,
+        ),
+        pytest.raises(ValueError, match="API token is required"),
+    ):
+        await flow._test_connection(
+            {CONF_HOST: "test-host", CONF_USE_IN_CLUSTER: True, CONF_API_TOKEN: ""}
+        )
+
+
 async def test_test_connection_with_ca_cert(hass: HomeAssistant):
     """Test _test_connection sets CA cert when provided."""
     import custom_components.kubernetes.config_flow as cf_module

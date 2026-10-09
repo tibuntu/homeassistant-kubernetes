@@ -279,7 +279,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 CONF_USE_IN_CLUSTER,
                 default=bool(in_cluster),
             ): bool,
-            vol.Required(CONF_API_TOKEN, description=_suggest("api_token")): str,
+            # Optional: with in-cluster mode on, an empty token is filled from
+            # the mounted ServiceAccount in _test_connection.
+            vol.Optional(CONF_API_TOKEN, description=_suggest("api_token")): str,
             vol.Optional(CONF_CA_CERT, description=_suggest("ca_cert")): str,
             vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
             vol.Optional(
@@ -464,7 +466,12 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 CONF_USE_IN_CLUSTER,
                 default=current.get(CONF_USE_IN_CLUSTER, DEFAULT_USE_IN_CLUSTER),
             ): bool,
-            vol.Required(CONF_API_TOKEN, default=current.get(CONF_API_TOKEN, "")): str,
+            # suggested_value, not default: a cleared field must come back
+            # empty instead of silently restoring the stored token.
+            vol.Optional(
+                CONF_API_TOKEN,
+                description={"suggested_value": current.get(CONF_API_TOKEN, "")},
+            ): str,
             vol.Optional(
                 CONF_CA_CERT,
                 description={
@@ -675,7 +682,15 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         if not user_input[CONF_HOST]:
             raise ValueError("Host is required")
 
-        if not user_input[CONF_API_TOKEN]:
+        # The token is optional while in-cluster mode is on: take it from the
+        # mounted ServiceAccount, so validation uses it and it is stored as
+        # the fallback — the same value the form pre-fills.
+        if not user_input.get(CONF_API_TOKEN) and user_input.get(CONF_USE_IN_CLUSTER):
+            detected = await async_detect_in_cluster_config(self.hass)
+            if detected:
+                user_input[CONF_API_TOKEN] = detected["api_token"]
+
+        if not user_input.get(CONF_API_TOKEN):
             raise ValueError("API token is required")
 
         # Create a test configuration
