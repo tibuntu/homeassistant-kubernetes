@@ -69,13 +69,6 @@ class WatchStreamClosedEarly(Exception):
     """
 
 
-def _forbidden_retry_delay() -> float:
-    """Delay before a watch loop retries after HTTP 403: the slow backoff cap."""
-    return WATCH_MAX_RECONNECT_DELAY + random.uniform(  # nosec B311
-        0, WATCH_RECONNECT_JITTER
-    )
-
-
 ISSUE_METRICS_SERVER_UNAVAILABLE = "metrics_server_unavailable"
 METRICS_SERVER_LEARN_MORE_URL = "https://github.com/kubernetes-sigs/metrics-server"
 ISSUE_WATCH_CONNECTION_FAILING = "watch_connection_failing"
@@ -87,6 +80,22 @@ ISSUE_WATCH_FORBIDDEN = "watch_forbidden"
 RBAC_LEARN_MORE_URL = (
     "https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md"
 )
+
+
+def _reconnect_delay(failure_streak: int) -> float:
+    """Jittered exponential backoff for a failing watch loop, capped."""
+    return min(
+        DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
+        WATCH_MAX_RECONNECT_DELAY,
+    ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
+
+
+def _forbidden_retry_delay() -> float:
+    """Delay before a watch loop retries after HTTP 403: the backoff cap."""
+    return WATCH_MAX_RECONNECT_DELAY + random.uniform(  # nosec B311
+        0, WATCH_RECONNECT_JITTER
+    )
+
 
 # Namespace-scoped watch resources: (resource_type, api_group, plural,
 # client parse-method name). Nodes are cluster-scoped and handled separately
@@ -1077,10 +1086,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     delay = _forbidden_retry_delay()
                 else:
                     failure_streak += 1
-                    delay = min(
-                        DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
-                        WATCH_MAX_RECONNECT_DELAY,
-                    ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
+                    delay = _reconnect_delay(failure_streak)
                     if failure_streak >= WATCH_MAX_FAILURE_STREAK:
                         self._sync_watch_repair_issue(loop_key, failing=True)
                     _LOGGER.warning(
@@ -1194,10 +1200,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     delay = _forbidden_retry_delay()
                 else:
                     failure_streak += 1
-                    delay = min(
-                        DEFAULT_WATCH_RECONNECT_DELAY * 2 ** (failure_streak - 1),
-                        WATCH_MAX_RECONNECT_DELAY,
-                    ) + random.uniform(0, WATCH_RECONNECT_JITTER)  # nosec B311
+                    delay = _reconnect_delay(failure_streak)
                     if failure_streak >= WATCH_MAX_FAILURE_STREAK:
                         self._sync_watch_repair_issue(rt, failing=True)
                     _LOGGER.warning(
