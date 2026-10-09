@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.13.4](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.3...v1.13.4) (2026-10-09)
+
+
+### Bug Fixes
+
+* make the API token optional while in-cluster mode is on ([72610de](https://github.com/tibuntu/homeassistant-kubernetes/commit/72610de072afff0461d185322ee08a2d487d1d86))
+* report a missing API token as token_required ([6cddea6](https://github.com/tibuntu/homeassistant-kubernetes/commit/6cddea650bb7b941587c3efdb798d5add73fc171))
+* retry forbidden watches so a transient 403 clears on its own ([32e4d8a](https://github.com/tibuntu/homeassistant-kubernetes/commit/32e4d8ac419420b6b11287ceb0b8d462796e147b))
+
 ## [1.13.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.2...v1.13.3) (2026-10-09)
 
 
