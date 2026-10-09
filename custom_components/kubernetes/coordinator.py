@@ -985,7 +985,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
             except ResourceVersionExpired:
                 _LOGGER.info(
-                    "Watch %s: resource version %r expired (HTTP 410), relisting",
+                    "Watch %s: resource version %r expired (410), relisting",
                     resource_type,
                     resource_version,
                 )
@@ -1098,7 +1098,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Event watch: stream ended cleanly, reconnecting")
             except ResourceVersionExpired:
                 _LOGGER.info(
-                    "Event watch: resource version %r expired (HTTP 410), relisting",
+                    "Event watch: resource version %r expired (410), relisting",
                     resource_version,
                 )
                 resource_version = "0"
