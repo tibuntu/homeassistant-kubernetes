@@ -105,6 +105,21 @@ jobs:
           echo "K8S_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           echo "K8S_SERVER=${SERVER}" >> "$GITHUB_ENV"
 
+      # test_watch_stream_expired_resource_version_raises watches events from
+      # resourceVersion 1 and expects the HTTP 200 + ERROR/410 response of
+      # issue #431. The apiserver compacts etcd only every 5 minutes; a fresh
+      # cluster has not done so yet and would replay history instead of
+      # expiring the watch. Force a compaction up to the current revision.
+      - name: Compact etcd so an old resourceVersion is really expired
+        run: |
+          ETCD_POD=$(kubectl -n kube-system get pods -l component=etcd -o jsonpath='{.items[0].metadata.name}')
+          ETCDCTL=(etcdctl --endpoints=https://127.0.0.1:2379
+            --cacert=/etc/kubernetes/pki/etcd/ca.crt
+            --cert=/etc/kubernetes/pki/etcd/server.crt
+            --key=/etc/kubernetes/pki/etcd/server.key)
+          REV=$(kubectl -n kube-system exec "$ETCD_POD" -- "${ETCDCTL[@]}" endpoint status -w json | jq '.[0].Status.header.revision')
+          kubectl -n kube-system exec "$ETCD_POD" -- "${ETCDCTL[@]}" compact "$REV"
+
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
