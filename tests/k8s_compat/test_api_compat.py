@@ -197,6 +197,25 @@ class TestWatch:
         except TimeoutError:
             pass
 
+    async def test_watch_stream_expired_resource_version_raises(self, k8s_client):
+        """A compacted resourceVersion must surface as ResourceVersionExpired.
+
+        The API server does not answer HTTP 410 here: it returns HTTP 200 and
+        a single ``ERROR`` event carrying ``code: 410``, then closes (issue
+        #431). resourceVersion 1 is older than anything the watch cache still
+        holds, so this provokes that response on every cluster. Mocked unit
+        tests cannot prove the real response shape; this test does.
+        """
+        import sys
+
+        expired = sys.modules[type(k8s_client).__module__].ResourceVersionExpired
+        url = f"https://{k8s_client.host}:{k8s_client.port}/api/v1/pods"
+
+        with pytest.raises(expired):
+            async with asyncio.timeout(10):
+                async for _ in k8s_client.watch_stream(url, "1"):
+                    pass
+
 
 class TestMutations:
     """Write operations against the real cluster."""
