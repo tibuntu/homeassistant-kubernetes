@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.2...v1.13.3) (2026-10-09)
+
+
+### Bug Fixes
+
+* treat an empty watch stream that closes at once as a failure ([34f1b34](https://github.com/tibuntu/homeassistant-kubernetes/commit/34f1b34744f7cf5d2b59325c02dfb87c7cc357ba)), closes [#431](https://github.com/tibuntu/homeassistant-kubernetes/issues/431)
+* treat an ERROR watch event with code 410 as an expired resourceVersion ([5ce18e8](https://github.com/tibuntu/homeassistant-kubernetes/commit/5ce18e8e7849e0632e06d0583b75cac1b45b1230)), closes [#431](https://github.com/tibuntu/homeassistant-kubernetes/issues/431)
+
 ## [1.13.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.1...v1.13.2) (2026-10-07)
 
 
