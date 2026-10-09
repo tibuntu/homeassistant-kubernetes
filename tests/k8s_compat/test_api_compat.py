@@ -202,14 +202,17 @@ class TestWatch:
 
         The API server does not answer HTTP 410 here: it returns HTTP 200 and
         a single ``ERROR`` event carrying ``code: 410``, then closes (issue
-        #431). resourceVersion 1 is older than anything the watch cache still
-        holds, so this provokes that response on every cluster. Mocked unit
+        #431). Events have no watch cache, so a watch from resourceVersion 1
+        goes straight to etcd — and the k8s-compat workflow compacts etcd right
+        before the tests, so that revision is guaranteed gone (the apiserver
+        itself only compacts every 5 minutes; without the forced compaction
+        etcd simply replays history and this test times out). Mocked unit
         tests cannot prove the real response shape; this test does.
         """
         import sys
 
         expired = sys.modules[type(k8s_client).__module__].ResourceVersionExpired
-        url = f"https://{k8s_client.host}:{k8s_client.port}/api/v1/pods"
+        url = f"https://{k8s_client.host}:{k8s_client.port}/api/v1/events"
 
         with pytest.raises(expired):
             async with asyncio.timeout(10):
