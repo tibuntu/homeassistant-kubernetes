@@ -3043,6 +3043,32 @@ class TestWatchStream:
 
         assert collected == [added]
 
+    @pytest.mark.parametrize("event_type", ["ADDED", "MODIFIED", "DELETED", "BOOKMARK"])
+    async def test_watch_stream_yields_every_data_event_type(
+        self, mock_client, event_type
+    ):
+        """The API defines five watch event types; the four data types pass through.
+
+        ERROR, the fifth, is covered by the raising tests above. Enumerating
+        the closed set here means a type can no longer fall through unnoticed
+        the way ERROR did in issue #431.
+        """
+        import json as _json
+
+        event = {"type": event_type, "object": {"metadata": {"resourceVersion": "9"}}}
+        mock_session = _make_aiohttp_stream_mock([_json.dumps(event).encode()])
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            collected = [
+                e
+                async for e in mock_client.watch_stream("https://host/api/v1/pods", "1")
+            ]
+
+        assert collected == [event]
+
     async def test_watch_stream_skips_empty_lines(self, mock_client):
         """Empty lines in the stream should be silently ignored."""
         import json as _json

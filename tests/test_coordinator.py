@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import timedelta
+import itertools
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -23,6 +24,7 @@ from custom_components.kubernetes.const import (
     DOMAIN,
     EVENT_TYPES_ALL,
     EVENT_TYPES_WARNING,
+    WATCH_EARLY_CLOSE_SECONDS,
     WATCH_MAX_FAILURE_STREAK,
 )
 from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
@@ -2103,8 +2105,14 @@ class TestRunWatchLoopExtended:
             mock_client._parse_pod_item,
         )
 
-    async def test_stream_end_reconnects_immediately(self, coord, mock_client):
-        """When the stream ends cleanly, the loop should reconnect without backoff."""
+    async def test_stream_end_after_full_timeout_reconnects_immediately(
+        self, coord, mock_client
+    ):
+        """An empty stream that stayed open until the server timeout is a clean end.
+
+        Quiet resources legitimately deliver nothing for the whole 300 s; that
+        must reconnect at once, without backoff.
+        """
         mock_client.list_resource_with_version.return_value = ([], "100")
 
         stream_count = 0
@@ -2119,15 +2127,73 @@ class TestRunWatchLoopExtended:
 
         mock_client.watch_stream = _empty_stream
 
-        await coord._run_watch_loop(
-            "pods",
-            "https://host/api/v1/pods",
-            mock_client._parse_pod_item,
-        )
+        with (
+            # Every clock read advances by the early-close threshold, so each
+            # stream appears to have lasted exactly that long — not "early".
+            patch(
+                "custom_components.kubernetes.coordinator.monotonic",
+                side_effect=itertools.count(0, WATCH_EARLY_CLOSE_SECONDS),
+            ),
+            patch("asyncio.wait_for", side_effect=AssertionError("backoff ran")),
+        ):
+            await coord._run_watch_loop(
+                "pods",
+                "https://host/api/v1/pods",
+                mock_client._parse_pod_item,
+            )
 
-        # The stream ended cleanly the first time, so it reconnected.
         # The second stream set the stop event, proving reconnection happened.
         assert stream_count == 2
+
+    async def test_empty_stream_closing_early_backs_off_and_raises_issue(
+        self, coord, mock_client
+    ):
+        """An empty stream that closes at once counts as a failure, not a clean end.
+
+        Regression for issue #431: an unhandled server-side close used to be
+        treated as a clean timeout and reconnected immediately, forever. Now it
+        feeds the backoff and, after WATCH_MAX_FAILURE_STREAK in a row, the
+        watch_connection_failing repair issue.
+        """
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        stream_count = 0
+
+        async def _empty_stream(url, rv):
+            nonlocal stream_count
+            stream_count += 1
+            if stream_count > WATCH_MAX_FAILURE_STREAK:
+                coord._watch_stop_event.set()
+            return
+            yield
+
+        mock_client.watch_stream = _empty_stream
+
+        waits, created = [], []
+
+        async def _wait_for(coro, timeout):
+            waits.append(timeout)
+            raise TimeoutError
+
+        with (
+            patch("asyncio.wait_for", side_effect=_wait_for),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_create_issue",
+                side_effect=lambda *a, **k: created.append(a),
+            ),
+            patch("custom_components.kubernetes.coordinator.ir.async_delete_issue"),
+        ):
+            await coord._run_watch_loop(
+                "pods",
+                "https://host/api/v1/pods",
+                mock_client._parse_pod_item,
+            )
+
+        assert len(waits) == WATCH_MAX_FAILURE_STREAK
+        assert waits[0] >= DEFAULT_WATCH_RECONNECT_DELAY
+        assert any("watch_connection_failing" in str(a) for a in created)
+        # The initial list is not repeated: rv stays valid across early closes.
+        mock_client.list_resource_with_version.assert_called_once()
 
     async def test_backoff_is_jittered_and_grows(self, coord, mock_client):
         """Each consecutive failure waits longer and includes a jitter component."""
@@ -3220,6 +3286,51 @@ class TestEventWatchLoop:
             )
 
         mock_client.list_resource_with_version.assert_called_once()
+
+    async def test_event_empty_stream_closing_early_backs_off_and_raises_issue(
+        self, coord_warning, mock_client
+    ):
+        """An events stream that closes at once without events is a failure.
+
+        This is the exact shape of issue #431 on the events watch: the loop
+        must back off and surface the repair issue instead of reconnecting
+        in a tight loop with the same resourceVersion.
+        """
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        stream_count = 0
+
+        async def _empty_stream(url, rv):
+            nonlocal stream_count
+            stream_count += 1
+            if stream_count > WATCH_MAX_FAILURE_STREAK:
+                coord_warning._watch_stop_event.set()
+            return
+            yield
+
+        mock_client.watch_stream = _empty_stream
+
+        waits, created = [], []
+
+        async def _wait_for(coro, timeout):
+            waits.append(timeout)
+            raise TimeoutError
+
+        with (
+            patch("asyncio.wait_for", side_effect=_wait_for),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_create_issue",
+                side_effect=lambda *a, **k: created.append(a),
+            ),
+            patch("custom_components.kubernetes.coordinator.ir.async_delete_issue"),
+        ):
+            await coord_warning._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        assert len(waits) == WATCH_MAX_FAILURE_STREAK
+        assert waits[0] >= DEFAULT_WATCH_RECONNECT_DELAY
+        assert any("watch_connection_failing" in str(a) for a in created)
 
     async def test_event_stop_check_before_dispatch(self, coord_warning, mock_client):
         """Stop event set before iteration of stream prevents dispatch."""

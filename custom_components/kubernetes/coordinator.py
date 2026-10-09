@@ -9,6 +9,7 @@ from datetime import timedelta
 import logging
 import random
 import time
+from time import monotonic
 from typing import Any
 
 import aiohttp
@@ -36,6 +37,7 @@ from .const import (
     DOMAIN,
     EVENT_TYPES_ALL,
     FULLY_DISABLEABLE_RESOURCES,
+    WATCH_EARLY_CLOSE_SECONDS,
     WATCH_MAX_FAILURE_STREAK,
     WATCH_MAX_RECONNECT_DELAY,
     WATCH_RECONNECT_JITTER,
@@ -53,6 +55,19 @@ from .kubernetes_client import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class WatchStreamClosedEarly(Exception):
+    """A watch stream closed within WATCH_EARLY_CLOSE_SECONDS without any event.
+
+    A healthy stream stays open until the server's ``timeoutSeconds`` even on
+    a quiet resource, so an HTTP 200 stream that ends almost at once with
+    nothing in it is a server-side failure the status line did not show.
+    Raising it inside the watch loops routes it through their backoff and
+    failure streak instead of the immediate "clean end" reconnect, which is
+    what turned issue #431 into a tight loop.
+    """
+
 
 ISSUE_METRICS_SERVER_UNAVAILABLE = "metrics_server_unavailable"
 METRICS_SERVER_LEARN_MORE_URL = "https://github.com/kubernetes-sigs/metrics-server"
@@ -920,6 +935,20 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self.data["last_update"] = time.time()
         self.async_update_listeners()
 
+    def _check_stream_not_closed_early(self, started: float, got_event: bool) -> None:
+        """Raise WatchStreamClosedEarly for an empty stream that ended almost at once.
+
+        Shared by both watch loops; the raise lands in their generic exception
+        handler, which owns the backoff and the failure streak.
+        """
+        elapsed = monotonic() - started
+        if got_event or self._watch_stop_event.is_set():
+            return
+        if elapsed < WATCH_EARLY_CLOSE_SECONDS:
+            raise WatchStreamClosedEarly(
+                f"stream closed after {elapsed:.1f} s without delivering any event"
+            )
+
     async def _run_watch_loop(
         self,
         resource_type: str,
@@ -956,7 +985,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     failure_streak = 0
                     self._sync_watch_repair_issue(loop_key, failing=False)
 
+                started = monotonic()
+                got_event = False
                 async for event in self.client.watch_stream(url, resource_version):
+                    got_event = True
                     if self._watch_stop_event.is_set():
                         return
 
@@ -976,6 +1008,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             resource_type, event_type, obj, parse_fn
                         )
 
+                self._check_stream_not_closed_early(started, got_event)
                 # Stream ended cleanly (timeoutSeconds expired); reconnect immediately
                 failure_streak = 0
                 self._sync_watch_repair_issue(loop_key, failing=False)
@@ -1084,7 +1117,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     ) = await self.client.list_resource_with_version(url)
                     failure_streak = 0
                     self._sync_watch_repair_issue(rt, failing=False)
+                started = monotonic()
+                got_event = False
                 async for event in self.client.watch_stream(url, resource_version):
+                    got_event = True
                     if self._watch_stop_event.is_set():
                         return
                     obj = event.get("object", {})
@@ -1093,6 +1129,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         resource_version = new_rv
                     if event.get("type", "") in ("ADDED", "MODIFIED"):
                         self._dispatch_event(obj)
+                self._check_stream_not_closed_early(started, got_event)
                 failure_streak = 0
                 self._sync_watch_repair_issue(rt, failing=False)
                 _LOGGER.debug("Event watch: stream ended cleanly, reconnecting")
