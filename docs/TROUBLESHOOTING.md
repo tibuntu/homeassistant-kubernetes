@@ -103,7 +103,9 @@ Home Assistant shows a repair issue titled **Missing permissions for `<resources
 
 ### Solution
 
-The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named resource — typically after upgrading to a release that monitors a new resource type. Re-apply the bundled RBAC (`helm upgrade` with the chart, or `kubectl apply -f manifests/full/`), or add the rule to your custom manifest, then reload the integration (**Settings → Devices & Services → Kubernetes → ⋮ → Reload**). The issue clears on reload. See the [RBAC Reference](RBAC.md) for the full permission matrix.
+The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named resource — typically after upgrading to a release that monitors a new resource type. Re-apply the bundled RBAC (`helm upgrade` with the chart, or `kubectl apply -f manifests/full/`), or add the rule to your custom manifest. Each affected watch retries once a minute, and the issue clears on its own once every retry succeeds; reload the integration (**Settings → Devices & Services → Kubernetes → ⋮ → Reload**) if you don't want to wait.
+
+If the issue appears right after restarting the API server (for example a k3s restart) although the RBAC is complete, it's transient: the authorizer denies requests until it has loaded its rules. It clears within about a minute without any action. See the [RBAC Reference](RBAC.md) for the full permission matrix.
 
 ## Connection Issues
 

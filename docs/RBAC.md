@@ -104,7 +104,7 @@ Read-only access to every resource the integration monitors. No write permission
 - No switches (scaling, CronJob control, or node cordon/uncordon)
 - No rollout restart, pod deletion, or Job deletion
 - No Cluster Events platform (`events` not granted)
-- No Watch API support (`watch` verb not granted) — each stream gets HTTP 403 on connect and stops, a **Missing permissions** repair issue names the affected resource(s), and once every stream is forbidden the integration polls at the regular interval instead; disable the Watch API under **Configure** to silence the repair issue
+- No Watch API support (`watch` verb not granted) — each stream gets HTTP 403 on connect and retries once a minute, a **Missing permissions** repair issue names the affected resource(s), and once every stream is forbidden the integration polls at the regular interval instead; disable the Watch API under **Configure** to silence the repair issue
 - Sensors and binary sensors only
 
 ## Complete Permission Matrix
@@ -333,7 +333,7 @@ kubectl auth can-i patch nodes --as=system:serviceaccount:homeassistant:homeassi
 
 #### 3. "Real-time updates not working" / Watch API failing
 
-The **Watch API** (enabled by default; toggled via **Configure → Enable Watch API**) uses long-lived HTTP streams and requires the `watch` verb on all monitored resources. The `manifests/minimal/` set does **not** include `watch` verbs — without them each stream gets HTTP 403 on connect and stops immediately, and a **Missing permissions** repair issue names the affected resource(s). Once every stream is forbidden, the integration falls back to polling at the regular interval instead of the slow watch fallback.
+The **Watch API** (enabled by default; toggled via **Configure → Enable Watch API**) uses long-lived HTTP streams and requires the `watch` verb on all monitored resources. The `manifests/minimal/` set does **not** include `watch` verbs — without them each stream gets HTTP 403 on connect and retries once a minute, and a **Missing permissions** repair issue names the affected resource(s) until the retry succeeds (it clears on its own after the rule is added). Once every stream is forbidden, the integration falls back to polling at the regular interval instead of the slow watch fallback.
 
 ```bash
 # Verify watch permissions for key resources
