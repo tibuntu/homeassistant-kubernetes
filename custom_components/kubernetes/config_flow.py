@@ -163,6 +163,10 @@ def _ensure_kubernetes_imported() -> bool:
     return KUBERNETES_AVAILABLE
 
 
+class TokenRequired(ValueError):
+    """No API token was entered and none could be read from the pod."""
+
+
 class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Handle a config flow for Kubernetes."""
 
@@ -239,6 +243,8 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             except AbortFlow:
                 # Re-raise AbortFlow exceptions to let them propagate
                 raise
+            except TokenRequired:
+                errors["base"] = "token_required"
             except Exception as ex:  # pylint: disable=broad-except
                 _LOGGER.error("Failed to connect to Kubernetes: %s", ex)
                 errors["base"] = "cannot_connect"
@@ -451,6 +457,8 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 )
             except AbortFlow:
                 raise
+            except TokenRequired:
+                errors["base"] = "token_required"
             except Exception as ex:  # pylint: disable=broad-except
                 _LOGGER.error("Failed to connect to Kubernetes: %s", ex)
                 errors["base"] = "cannot_connect"
@@ -691,7 +699,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 user_input[CONF_API_TOKEN] = detected["api_token"]
 
         if not user_input.get(CONF_API_TOKEN):
-            raise ValueError("API token is required")
+            raise TokenRequired("API token is required")
 
         # Create a test configuration
         if client is None:
