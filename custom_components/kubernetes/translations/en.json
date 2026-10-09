@@ -93,6 +93,7 @@
       "cannot_fetch_namespaces": "Failed to fetch namespaces from cluster. Please check your connection settings and permissions.",
       "kubernetes_not_installed": "Kubernetes Python package is not installed. Please install it using: pip install kubernetes==33.1.0",
       "at_least_one_namespace_required": "At least one namespace is required when not monitoring all namespaces",
+      "token_required": "Enter an API token. It may only be left empty when 'Prefer in-cluster ServiceAccount token' is enabled and Home Assistant runs inside the cluster.",
       "invalid_auth": "The Kubernetes API rejected this token. Check that the token is valid and that its ServiceAccount still has the required RBAC permissions."
     },
     "abort": {

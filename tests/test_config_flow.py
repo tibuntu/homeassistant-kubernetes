@@ -16,6 +16,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.kubernetes.config_flow import (
     KubernetesConfigFlow,
     KubernetesOptionsFlow,
+    TokenRequired,
 )
 from custom_components.kubernetes.const import (
     CONF_API_TOKEN,
@@ -204,6 +205,53 @@ async def test_async_step_user_connection_test_fails(hass: HomeAssistant):
 
     assert result["type"] is FlowResultType.FORM
     assert result["errors"]["base"] == "cannot_connect"
+
+
+async def test_async_step_user_token_required(hass: HomeAssistant):
+    """A missing token surfaces as token_required, not cannot_connect."""
+    with patched_connection(side_effect=TokenRequired("API token is required")):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "kubernetes.example.com",
+            },
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"]["base"] == "token_required"
+
+
+async def test_async_step_user_in_cluster_without_token_stores_sa_token(
+    hass: HomeAssistant,
+):
+    """Submitting no token in in-cluster mode stores the mounted SA token."""
+    with (
+        patch(
+            "custom_components.kubernetes.config_flow.async_detect_in_cluster_config",
+            return_value={"host": "10.0.0.1", "port": 443, "api_token": "sa-token"},
+        ),
+        # A MagicMock client makes the real executor probe succeed.
+        patch("custom_components.kubernetes.config_flow.client"),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "10.0.0.1",
+                CONF_USE_IN_CLUSTER: True,
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            },
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_API_TOKEN] == "sa-token"
 
 
 async def test_async_step_user_duplicate_entry(hass: HomeAssistant):
@@ -1562,6 +1610,21 @@ class TestReconfigureFlow:
 
         assert result["type"] is FlowResultType.FORM
         assert result["errors"]["base"] == "cannot_connect"
+
+    async def test_reconfigure_token_required(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Reconfigure reports a missing token as token_required."""
+        with patched_connection(side_effect=TokenRequired("API token is required")):
+            result = await self._init_reconfigure(hass, mock_config_entry)
+
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={CONF_HOST: "host.example.com", CONF_PORT: 6443},
+            )
+
+        assert result["type"] is FlowResultType.FORM
+        assert result["errors"]["base"] == "token_required"
 
     async def test_reconfigure_abort_flow_propagates(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
