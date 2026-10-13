@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  PYTHON_VERSION: "3.14"
+  PYTHON_VERSION: "3.15"
 
 jobs:
   # Skip the post-merge re-run on main when the commit already arrived via a
