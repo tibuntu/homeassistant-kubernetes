@@ -21,7 +21,7 @@ status=0
 for ref in "$minimum" "$latest"; do
   curl -fsSL -o "$tmp/constraints.txt" \
     "https://raw.githubusercontent.com/home-assistant/core/$ref/homeassistant/package_constraints.txt"
-  if uv pip compile -q --python-version 3.14 -c "$tmp/constraints.txt" \
+  if uv pip compile -q --python-version 3.15 -c "$tmp/constraints.txt" \
     "$tmp/requirements.txt" -o "$tmp/resolved.txt"; then
     echo "OK   Home Assistant $ref"
   else
