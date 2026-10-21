@@ -68,23 +68,23 @@ repos:
     hooks:
       - id: frontend-eslint
         name: Lint frontend TypeScript with ESLint
-        entry: bash -c 'cd frontend && ./node_modules/.bin/eslint src/'
+        entry: bash -c 'cd frontend && ./node_modules/.bin/eslint src/ e2e/'
         language: system
-        files: ^frontend/src/.*\.ts$
+        files: ^frontend/(src|e2e)/.*\.ts$
         pass_filenames: false
 
       - id: frontend-prettier
         name: Check frontend formatting with Prettier
-        entry: bash -c 'cd frontend && ./node_modules/.bin/prettier --check "src/**/*.ts"'
+        entry: bash -c 'cd frontend && ./node_modules/.bin/prettier --check "{src,e2e}/**/*.ts"'
         language: system
-        files: ^frontend/src/.*\.ts$
+        files: ^frontend/(src|e2e)/.*\.ts$
         pass_filenames: false
 
       - id: frontend-typecheck
         name: Typecheck frontend TypeScript
         entry: bash -c 'cd frontend && ./node_modules/.bin/tsc --noEmit -p tsconfig.json'
         language: system
-        files: ^frontend/src/.*\.ts$
+        files: ^frontend/(src|e2e)/.*\.ts$
         pass_filenames: false
 
 # Pre-commit configuration

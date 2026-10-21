@@ -7,15 +7,17 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev": "vite build --watch --outDir ../.vite-dev",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write 'src/**/*.ts'",
-    "format:check": "prettier --check 'src/**/*.ts'"
+    "lint": "eslint src/ e2e/",
+    "lint:fix": "eslint src/ e2e/ --fix",
+    "format": "prettier --write '{src,e2e}/**/*.ts'",
+    "format:check": "prettier --check '{src,e2e}/**/*.ts'",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "lit": "^3.3.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@typescript-eslint/eslint-plugin": "^8.72.0",
     "@typescript-eslint/parser": "^8.72.0",
     "eslint": "^10.13.0",
