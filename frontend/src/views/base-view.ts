@@ -170,6 +170,13 @@ export abstract class K8sDataView<T> extends LitElement {
    * so focus (and therefore the Escape keydown) needs to be requested
    * explicitly. Pair with `tabindex="-1"` on the same element.
    *
+   * The focus call is deferred to a microtask: on the render that creates
+   * the overlay, Lit commits directive values (and so invokes this callback)
+   * *before* it inserts the cloned template into the DOM, and `focus()` on a
+   * disconnected element is a no-op. Without the deferral the overlay only
+   * gained focus on the next re-render, so Escape did nothing right after
+   * opening a dialog (caught by the Playwright Escape flow).
+   *
    * The `:focus-within` guard matters: `ref()` re-invokes its callback on
    * every render (each call to this method returns a fresh closure), and
    * these overlays re-render on every keystroke in their form fields, every
@@ -180,7 +187,12 @@ export abstract class K8sDataView<T> extends LitElement {
   protected _autofocusOverlay() {
     return ref((el?: Element) => {
       const host = el as HTMLElement | undefined;
-      if (host && !host.matches(":focus-within")) host.focus({ preventScroll: true });
+      if (!host) return;
+      queueMicrotask(() => {
+        if (host.isConnected && !host.matches(":focus-within")) {
+          host.focus({ preventScroll: true });
+        }
+      });
     });
   }
 
