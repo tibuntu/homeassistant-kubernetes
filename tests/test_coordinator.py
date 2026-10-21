@@ -1691,6 +1691,37 @@ class TestPopulateFromList:
         assert "pods_count" not in coord.data
         assert "nodes_count" not in coord.data
 
+    async def test_relist_keeps_poll_time_metrics(self, coord, mock_client):
+        """A relist must not drop the metrics merged in by the poll cycle."""
+        coord.data = {
+            "nodes": {
+                "node-1": {
+                    "name": "node-1",
+                    "status": "NotReady",
+                    "cpu_usage_millicores": 250.0,
+                    "memory_usage_mib": 512.0,
+                }
+            }
+        }
+        mock_client._parse_node_item.side_effect = [
+            {"name": "node-1", "status": "Ready"},
+            {"name": "node-2", "status": "Ready"},
+        ]
+
+        coord._populate_from_list(
+            "nodes",
+            [{"metadata": {"name": "node-1"}}, {"metadata": {"name": "node-2"}}],
+            mock_client._parse_node_item,
+        )
+
+        assert coord.data["nodes"]["node-1"] == {
+            "name": "node-1",
+            "status": "Ready",
+            "cpu_usage_millicores": 250.0,
+            "memory_usage_mib": 512.0,
+        }
+        assert coord.data["nodes"]["node-2"] == {"name": "node-2", "status": "Ready"}
+
 
 class TestApplyWatchEventExtended:
     """Extended tests for _apply_watch_event method."""
@@ -1743,6 +1774,44 @@ class TestApplyWatchEventExtended:
         # Data unchanged, listeners not called
         assert "default_dep1" in coord.data["deployments"]
         coord.async_update_listeners.assert_not_called()
+
+    async def test_modified_keeps_poll_time_metrics(self, coord, mock_client):
+        """A MODIFIED event must not drop the metrics merged in by the poll cycle.
+
+        The Metrics API cannot be watched, so the parsed object never carries
+        usage fields; nodes emit MODIFIED every few seconds on lease renewal.
+        """
+        coord.data = {
+            "deployments": {
+                "default_dep1": {
+                    "name": "dep1",
+                    "namespace": "default",
+                    "replicas": 1,
+                    "cpu_usage": 120.0,
+                    "memory_usage": 64.0,
+                }
+            }
+        }
+        mock_client._parse_deployment_item.return_value = {
+            "name": "dep1",
+            "namespace": "default",
+            "replicas": 2,
+        }
+
+        coord._apply_watch_event(
+            "deployments",
+            "MODIFIED",
+            {"metadata": {"name": "dep1", "namespace": "default"}},
+            mock_client._parse_deployment_item,
+        )
+
+        assert coord.data["deployments"]["default_dep1"] == {
+            "name": "dep1",
+            "namespace": "default",
+            "replicas": 2,
+            "cpu_usage": 120.0,
+            "memory_usage": 64.0,
+        }
 
     async def test_last_update_timestamp_set(self, coord, mock_client):
         """_apply_watch_event should set last_update in coordinator.data."""

@@ -81,6 +81,17 @@ RBAC_LEARN_MORE_URL = (
     "https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md"
 )
 
+# Usage fields merged in by the poll cycle from the Metrics API, which cannot
+# be watched. The single-item parsers never set them, so a watch event or
+# relist must carry them over or the values vanish until the next poll.
+METRIC_KEYS = ("cpu_usage_millicores", "memory_usage_mib", "cpu_usage", "memory_usage")
+
+
+def _carry_metrics(existing: dict[str, Any] | None, parsed: dict[str, Any]) -> None:
+    """Copy poll-time metric fields from the previous object into ``parsed``."""
+    if existing:
+        parsed.update({k: existing[k] for k in METRIC_KEYS if k in existing})
+
 
 def _reconnect_delay(failure_streak: int) -> float:
     """Jittered exponential backoff for a failing watch loop, capped."""
@@ -311,12 +322,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             if name and name in node_metrics:
                                 node["cpu_usage_millicores"] = node_metrics[name]["cpu"]
                                 node["memory_usage_mib"] = node_metrics[name]["memory"]
-                            elif self.data and "nodes" in self.data and name in self.data["nodes"]:
-                                old_node = self.data["nodes"][name]
-                                if "cpu_usage_millicores" in old_node:
-                                    node["cpu_usage_millicores"] = old_node["cpu_usage_millicores"]
-                                if "memory_usage_mib" in old_node:
-                                    node["memory_usage_mib"] = old_node["memory_usage_mib"]
                     self._sync_metrics_repair_issue(nodes, node_metrics)
 
                 # Log node names for debugging
@@ -691,12 +696,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 f"k8s_watch_{resource_type}_{url}",
             )
             self._watch_tasks.append(task)
-        if "metrics" not in self._disabled:
-            task = self.hass.async_create_background_task(
-                self._run_metrics_poll_loop(),
-                f"k8s_metrics_poll_{self.name}",
-            )
-            self._watch_tasks.append(task)
         _LOGGER.debug(
             "Started %d watch tasks for coordinator %s",
             len(self._watch_tasks),
@@ -714,48 +713,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._watch_tasks.clear()
         self._watch_stop_event.clear()
         _LOGGER.debug("Stopped all watch tasks for coordinator %s", self.name)
-
-    async def _run_metrics_poll_loop(self) -> None:
-        """Periodically poll node and workload metrics when watch is enabled."""
-        while not self._watch_stop_event.is_set():
-            try:
-                await asyncio.sleep(15)
-                if self._watch_stop_event.is_set():
-                    break
-                if not self.data:
-                    continue
-
-                updated = False
-                if "nodes" in self.data:
-                    node_metrics = await self.client.get_node_metrics()
-                    if node_metrics:
-                        for name, metrics in node_metrics.items():
-                            if name in self.data["nodes"]:
-                                self.data["nodes"][name]["cpu_usage_millicores"] = metrics["cpu"]
-                                self.data["nodes"][name]["memory_usage_mib"] = metrics["memory"]
-                                updated = True
-
-                if "pods" in self.data:
-                    pod_metrics = await self.client.get_pod_metrics()
-                    if pod_metrics:
-                        pods = list(self.data["pods"].values())
-                        for workload_type in ("deployments", "statefulsets"):
-                            if workload_type in self.data:
-                                for workload in self.data[workload_type].values():
-                                    cpu_usage, memory_usage = self.client._calculate_resource_usage(
-                                        workload, pods, pod_metrics
-                                    )
-                                    workload["cpu_usage"] = cpu_usage
-                                    workload["memory_usage"] = memory_usage
-                                    updated = True
-
-                if updated:
-                    self.data["last_update"] = time.time()
-                    self.async_update_listeners()
-            except asyncio.CancelledError:
-                break
-            except Exception as ex:
-                _LOGGER.debug("Metrics poll loop exception: %s", ex)
 
     def _metrics_issue_id(self) -> str:
         """Issue id for the per-entry metrics-server-unavailable repair issue."""
@@ -970,11 +927,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     else:
                         # Namespaced resources are keyed "{namespace}_{name}"
                         key = f"{result['namespace']}_{result['name']}"
-                    existing = self.data.get(resource_type, {}).get(key)
-                    if existing and isinstance(existing, dict):
-                        for m_key in ("cpu_usage_millicores", "memory_usage_mib", "cpu_usage", "memory_usage"):
-                            if m_key in existing and m_key not in result:
-                                result[m_key] = existing[m_key]
+                    _carry_metrics(self.data.get(resource_type, {}).get(key), result)
                     parsed[key] = result
             except Exception as ex:
                 _LOGGER.warning(
@@ -1022,12 +975,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 # exclude_job_pods is on): nothing changed, so don't wake
                 # every entity for it.
                 return
-            existing = self.data.get(resource_type, {}).get(key)
-            if existing and isinstance(existing, dict):
-                for m_key in ("cpu_usage_millicores", "memory_usage_mib", "cpu_usage", "memory_usage"):
-                    if m_key in existing and m_key not in parsed:
-                        parsed[m_key] = existing[m_key]
-            self.data.setdefault(resource_type, {})[key] = parsed
+            bucket = self.data.setdefault(resource_type, {})
+            _carry_metrics(bucket.get(key), parsed)
+            bucket[key] = parsed
         elif event_type == "DELETED":
             if self.data.get(resource_type, {}).pop(key, None) is None:
                 # Never tracked (filtered or unknown) — no entity to clean up.
