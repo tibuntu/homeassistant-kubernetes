@@ -379,7 +379,7 @@ mypy custom_components/kubernetes/
 
 ### Pre-commit Hooks
 
-Install pre-commit hooks (the Python hooks run on `python3.14`, set by `default_language_version` in `.pre-commit-config.yaml` — the devcontainer already has it):
+Install pre-commit hooks (the Python hooks run on `python3.15`, set by `default_language_version` in `.pre-commit-config.yaml` — the devcontainer already has it):
 
 ```bash
 pip install pre-commit
