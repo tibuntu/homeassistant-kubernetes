@@ -185,7 +185,7 @@ Notes:
 
 - Fully-skipped categories (Pods, DaemonSets, Jobs, Ingresses, Services) also stop their watch streams when the Watch API is enabled.
 - Existing entities of a disabled category are removed from Home Assistant automatically on the next update cycle.
-- If a fully-skipped category is disabled while **Aggregate count sensors** stay enabled, its count sensor keeps working via a lightweight count API call.
+- If a fully-skipped category is disabled while **Aggregate count sensors** stay enabled, its count sensor keeps working via a lightweight count API call, and the panel's Overview count card shows the same number.
 - The `delete_job` service still works with Jobs disabled, but can no longer resolve a Job's namespace automatically — it falls back to the configured default namespace, so pass the namespace explicitly.
 
 Changing this option reloads the integration automatically.

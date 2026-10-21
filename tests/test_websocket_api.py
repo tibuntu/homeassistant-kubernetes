@@ -348,6 +348,28 @@ class TestBuildClusterOverview:
         )
         assert result["healthy"] is False
 
+    def test_prefers_count_keys_over_empty_buckets(self):
+        """A fully-disabled type leaves its bucket empty but stores
+        ``{type}_count`` from the cheap count endpoint; the overview must
+        show that number like the count sensors do, not 0."""
+        coordinator = _make_coordinator(
+            {
+                "pods": {},
+                "pods_count": 123,
+                "daemonsets": {},
+                "daemonsets_count": 7,
+                "nodes": {"n1": {"name": "n1"}},
+                "nodes_count": 5,
+            }
+        )
+        result = _build_cluster_overview(
+            "entry_1", {"cluster_name": "test"}, coordinator
+        )
+        assert result["counts"]["pods"] == 123
+        assert result["counts"]["daemonsets"] == 7
+        assert result["counts"]["nodes"] == 5
+        assert result["counts"]["deployments"] == 0
+
 
 class TestBuildNamespaceBreakdown:
     """Tests for _build_namespace_breakdown."""
