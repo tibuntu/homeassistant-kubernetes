@@ -109,6 +109,26 @@ jobs:
             exit 1
           fi
 
+      # Panel tests: Playwright drives the real panel mounted against a fake
+      # `hass` (frontend/e2e/harness.ts) — no Home Assistant, no cluster.
+      - name: Install Playwright browser
+        if: steps.changes.outputs.frontend == 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Run panel tests
+        if: steps.changes.outputs.frontend == 'true'
+        run: npm run test:e2e
+        working-directory: frontend
+
+      - name: Upload Playwright traces
+        if: failure() && steps.changes.outputs.frontend == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: frontend/test-results/
+          if-no-files-found: ignore
+
       - name: No frontend changes
         if: steps.changes.outputs.frontend != 'true'
         run: echo "No frontend files changed — skipping lint & build."

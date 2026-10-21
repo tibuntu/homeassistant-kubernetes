@@ -21,6 +21,8 @@ env/
 .coverage
 htmlcov/
 coverage.xml
+frontend/test-results/
+frontend/playwright-report/
 
 # IDE
 .vscode/

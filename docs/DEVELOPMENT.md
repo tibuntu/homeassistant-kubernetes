@@ -249,7 +249,19 @@ npm run format        # Prettier auto-fix
 npm run typecheck     # tsc --noEmit
 ```
 
-`npm run typecheck` is enforced by CI (`.github/workflows/frontend.yaml`) and by the `frontend-typecheck` pre-commit hook.
+`npm run typecheck` is enforced by CI (`.github/workflows/frontend.yaml`) and by the `frontend-typecheck` pre-commit hook. ESLint, Prettier and tsc cover `frontend/e2e/` as well as `frontend/src/`.
+
+### Panel Tests (Playwright)
+
+`frontend/e2e/` holds browser tests for the sidebar panel. They need neither Home Assistant nor a cluster: `e2e/harness.html` mounts the real `<kubernetes-panel>` against a fake `hass` object (`e2e/harness.ts`) whose `callWS` answers from the canned responses in `e2e/fixtures.ts`, and whose `callService` only records the call. Every WebSocket message and service call is kept on `window.__k8s` so a spec can assert the exact payload a view sent. `?fail=<ws type>` in the harness URL makes that call reject until the spec clears `window.__k8s.fail`, and `window.__k8s.push()` fires a `kubernetes/subscribe_updates` push.
+
+```bash
+npx playwright install --with-deps chromium   # once; downloads the browser
+npm run test:e2e                              # starts Vite's dev server itself
+npx playwright test --ui                      # interactive runner
+```
+
+`playwright.config.ts` runs Chromium only and keeps a trace for failed tests under `frontend/test-results/`; CI uploads that directory as the `playwright-traces` artifact when the job fails. Fixture shapes mirror what `websocket_api.py` sends — update `fixtures.ts` when a command's payload changes. When you change how a view is operated (a dialog, a filter, a navigation), add or adjust a flow in `e2e/panel.spec.ts`; keep the specs to user-visible behaviour rather than per-component unit tests.
 
 ## Testing
 
