@@ -56,26 +56,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        id: setup-python
-        uses: actions/setup-python@v7
+      - name: Set up uv and Python ${{ env.PYTHON_VERSION }}
+        uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          activate-environment: true
+          # setup-uv only restores on an exact key match, so every pyproject
+          # bump would rebuild the source-only wheels; actions/cache below
+          # falls back to the previous cache instead.
+          enable-cache: false
 
-      - name: Cache virtualenv
+      # Keyed on the minor version: wheels built for cp315 stay valid across
+      # Python patch releases, which runner images do not roll out in step.
+      - name: Cache uv
         uses: actions/cache@v6
-        id: cache-venv
         with:
-          path: ~/.local
-          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('pyproject.toml') }}
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-
+            uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          python -m pip install --upgrade pip
-          pip install --user -e ".[dev]"
+        run: uv pip install -e ".[dev]"
 
       - name: Lint with Ruff
         run: |
@@ -90,6 +92,10 @@ jobs:
         run: |
           bandit -c pyproject.toml -r custom_components/
 
+      # Keep only the wheels uv built from source; PyPI wheels are re-fetched.
+      - name: Prune uv cache
+        run: uv cache prune --ci
+
   test:
     name: Test & Coverage
     needs: gate
@@ -101,30 +107,36 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        id: setup-python
-        uses: actions/setup-python@v7
+      - name: Set up uv and Python ${{ env.PYTHON_VERSION }}
+        uses: astral-sh/setup-uv@v10.3.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          activate-environment: true
+          # setup-uv only restores on an exact key match, so every pyproject
+          # bump would rebuild the source-only wheels; actions/cache below
+          # falls back to the previous cache instead.
+          enable-cache: false
 
-      - name: Cache virtualenv
+      # Keyed on the minor version: wheels built for cp315 stay valid across
+      # Python patch releases, which runner images do not roll out in step.
+      - name: Cache uv
         uses: actions/cache@v6
-        id: cache-venv
         with:
-          path: ~/.local
-          key: venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('pyproject.toml') }}
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            venv-${{ runner.os }}-py${{ steps.setup-python.outputs.python-version }}-
+            uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        if: steps.cache-venv.outputs.cache-hit != 'true'
-        run: |
-          python -m pip install --upgrade pip
-          pip install --user -e ".[dev]"
+        run: uv pip install -e ".[dev]"
 
       - name: Test with pytest
         run: |
           pytest --cov-report=xml
+
+      # Keep only the wheels uv built from source; PyPI wheels are re-fetched.
+      - name: Prune uv cache
+        run: uv cache prune --ci
 
       - name: Upload coverage to Codecov
         if: github.ref != 'refs/heads/release-please--branches--main'
