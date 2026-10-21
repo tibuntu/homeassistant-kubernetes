@@ -155,10 +155,15 @@ export abstract class K8sDataView<T> extends LitElement {
    * uses to gate click-to-cancel while an action is in flight. Pair with
    * `_autofocusOverlay()` below so the overlay actually holds focus and
    * receives the keydown.
+   *
+   * `onClose` is invoked with the view as `this`, the way Lit invokes
+   * `@click=${this._cancelX}` listeners, so the same unbound method
+   * reference works for both; calling it bare left `this` undefined inside
+   * the method (caught by the Playwright Escape flow).
    */
   protected _onOverlayKeydown(onClose: (() => void) | typeof nothing) {
     return (e: KeyboardEvent): void => {
-      if (e.key === "Escape" && onClose !== nothing) onClose();
+      if (e.key === "Escape" && onClose !== nothing) onClose.call(this);
     };
   }
 
