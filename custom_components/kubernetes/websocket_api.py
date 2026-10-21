@@ -190,7 +190,11 @@ def _build_cluster_overview(
             "alerts": _empty_alerts(),
         }
 
-    counts = {key: len(data.get(key, {})) for key in _COUNT_KEYS}
+    # Same precedence as the count sensors: a fully-disabled type has an empty
+    # bucket but a ``{key}_count`` from the cheap count endpoint.
+    counts = {
+        key: data.get(f"{key}_count", len(data.get(key, {}))) for key in _COUNT_KEYS
+    }
 
     namespaces = _build_namespace_breakdown(data)
     alerts = _build_alerts(data)
