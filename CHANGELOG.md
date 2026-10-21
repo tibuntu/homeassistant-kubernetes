@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.13.5](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.4...v1.13.5) (2026-10-21)
+
+
+### Bug Fixes
+
+* **coordinator:** preserve node and workload metrics across watch events ([5dd6b82](https://github.com/tibuntu/homeassistant-kubernetes/commit/5dd6b827bfafa84e14a3baec0e0e65a998751d8d))
+* **coordinator:** trim metrics preservation to watch/relist paths, add tests ([9160bc6](https://github.com/tibuntu/homeassistant-kubernetes/commit/9160bc6ebef88caf389da701587bfe6b06be25da))
+* **frontend:** focus dialog overlays on first render so Escape closes them ([9f4b065](https://github.com/tibuntu/homeassistant-kubernetes/commit/9f4b0656def57007be24941942efeea7fd4b4e91))
+* **frontend:** invoke overlay Escape close handlers with the view as this ([54f38b0](https://github.com/tibuntu/homeassistant-kubernetes/commit/54f38b06e0f01809fbc94a794c7deaf82f4533b1))
+* **panel:** overview count cards honour {type}_count for fully-disabled resources ([3838c00](https://github.com/tibuntu/homeassistant-kubernetes/commit/3838c0084990b730d30a88b5654961adbffda3d1))
+
 ## [1.13.4](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.3...v1.13.4) (2026-10-09)
 
 
