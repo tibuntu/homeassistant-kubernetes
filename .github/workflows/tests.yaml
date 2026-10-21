@@ -94,7 +94,10 @@ jobs:
 
       # Keep only the wheels uv built from source; PyPI wheels are re-fetched.
       - name: Prune uv cache
-        run: uv cache prune --ci
+        run: |
+          uv cache dir; du -sh ~/.cache/uv
+          uv cache prune --ci
+          du -sh ~/.cache/uv; ls -la ~/.cache/uv; find ~/.cache/uv -name '*.whl' | head -20
 
   test:
     name: Test & Coverage
