@@ -1,5 +1,6 @@
 """Tests for the Kubernetes integration __init__.py module."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.const import Platform
@@ -438,6 +439,38 @@ class TestPanelRegistration:
         ) as mock_register:
             await _async_register_panel(hass)
             mock_register.assert_not_called()
+
+    async def test_concurrent_registration_registers_once(self, hass: HomeAssistant):
+        """Test two entries setting up concurrently register the panel once (#464)."""
+        hass.data[DOMAIN] = {}
+        hass.http = MagicMock()
+
+        async def yielding_static(_paths):
+            # The real call suspends, letting the other entry's setup run.
+            await asyncio.sleep(0)
+
+        hass.http.async_register_static_paths = yielding_static
+
+        with (
+            patch("custom_components.kubernetes.Path") as mock_path_cls,
+            patch(
+                "custom_components.kubernetes.async_register_built_in_panel"
+            ) as mock_register,
+        ):
+            mock_panel_dir = MagicMock()
+            mock_panel_js = MagicMock()
+            mock_panel_js.is_file.return_value = True
+            mock_path_cls.return_value.parent.__truediv__ = MagicMock(
+                return_value=mock_panel_dir
+            )
+            mock_panel_dir.__truediv__ = MagicMock(return_value=mock_panel_js)
+
+            await asyncio.gather(
+                _async_register_panel(hass), _async_register_panel(hass)
+            )
+
+            mock_register.assert_called_once()
+            assert hass.data[DOMAIN]["panel_registered"] is True
 
     async def test_panel_skipped_when_js_missing(self, hass: HomeAssistant):
         """Test panel registration skipped when JS file not found."""
