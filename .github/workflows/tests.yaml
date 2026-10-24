@@ -58,7 +58,7 @@ jobs:
 
       - name: Set up uv and Python ${{ env.PYTHON_VERSION }}
         id: setup-uv
-        uses: astral-sh/setup-uv@v10.3.0
+        uses: astral-sh/setup-uv@v10.3.2
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           activate-environment: true
@@ -112,7 +112,7 @@ jobs:
 
       - name: Set up uv and Python ${{ env.PYTHON_VERSION }}
         id: setup-uv
-        uses: astral-sh/setup-uv@v10.3.0
+        uses: astral-sh/setup-uv@v10.3.2
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           activate-environment: true
