@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.6](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.5...v1.13.6) (2026-10-24)
+
+
+### Bug Fixes
+
+* **panel:** register sidebar panel before awaiting static path ([8ef45a3](https://github.com/tibuntu/homeassistant-kubernetes/commit/8ef45a31e8547f115f6fd0a33e8db7d7b8110e61)), closes [#464](https://github.com/tibuntu/homeassistant-kubernetes/issues/464)
+
 ## [1.13.5](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.4...v1.13.5) (2026-10-21)
 
 
