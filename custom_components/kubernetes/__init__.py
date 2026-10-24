@@ -274,17 +274,11 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         )
         return
 
-    # Static paths persist in HA's HTTP server across panel remove/register
-    # cycles and across config entry reloads. Re-registering the same path
-    # may raise RuntimeError (frozen router / duplicate GET route), so we
-    # catch and ignore.
-    try:
-        await hass.http.async_register_static_paths(
-            [StaticPathConfig(PANEL_URL, str(panel_dir), False)]
-        )
-    except RuntimeError:
-        _LOGGER.debug("Static path %s already registered, skipping", PANEL_URL)
-
+    # Register the panel and set the flag before the first await: config
+    # entries set up concurrently, and a second entry passing the guard above
+    # while this one is suspended would raise "Overwriting panel" (#464).
+    # The panel's module is only fetched once a browser opens it, so the
+    # static path below is in place long before it is needed.
     async_register_built_in_panel(
         hass,
         component_name="custom",
@@ -301,8 +295,19 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
         },
         require_admin=False,
     )
-
     hass.data[DOMAIN]["panel_registered"] = True
+
+    # Static paths persist in HA's HTTP server across panel remove/register
+    # cycles and across config entry reloads. Re-registering the same path
+    # may raise RuntimeError (frozen router / duplicate GET route), so we
+    # catch and ignore.
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(PANEL_URL, str(panel_dir), False)]
+        )
+    except RuntimeError:
+        _LOGGER.debug("Static path %s already registered, skipping", PANEL_URL)
+
     _LOGGER.info("Registered Kubernetes sidebar panel")
 
 
