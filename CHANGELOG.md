@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.7](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.6...v1.13.7) (2026-10-26)
+
+
+### Bug Fixes
+
+* **hacs:** attach the integration zip to every release ([5bac676](https://github.com/tibuntu/homeassistant-kubernetes/commit/5bac6767d68e1979288cc0a67596cc93b78883bc))
+
 ## [1.13.6](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.5...v1.13.6) (2026-10-24)
 
 
