@@ -120,7 +120,7 @@ When adding a feature that needs a new verb or resource: edit `chart/templates/c
 
 Docs tell users migrating from the plain manifests to pass `--take-ownership` on the first `helm install` (Helm 3.17+; the objects already exist and are unowned), and `--reset-then-reuse-values` — not `--reuse-values` — on upgrade so newly added chart defaults actually apply.
 
-The chart version is bumped by release-please (generic updater on `chart/Chart.yaml`) and pushed to `oci://ghcr.io/tibuntu/charts` by the `publish-chart` job in `release.yaml` when a release is created.
+The chart version is bumped by release-please (generic updater on `chart/Chart.yaml`) and pushed to `oci://ghcr.io/tibuntu/charts` by the `publish-chart` job in `release.yaml` when a release is created. The `release-asset` job in the same workflow attaches `kubernetes.zip` (the contents of `custom_components/kubernetes/`, built with `git archive`) to every release: `hacs.json` sets `zip_release` + `filename`, so HACS installs from that asset and reads its download count — a release without it is not installable through HACS.
 
 ### Entity Hierarchy
 

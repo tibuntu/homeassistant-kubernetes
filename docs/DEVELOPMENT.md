@@ -217,6 +217,13 @@ git commit -m "chore: release 1.12.0" -m "Release-As: 1.12.0"
 
 The commit must not be empty: pull requests are rebase-merged, and a rebase silently drops empty commits, so the footer never reaches `main` (this happened with #404). Attach the footer to a small real change instead — a documentation note, for example.
 
+Every release carries a `kubernetes.zip` asset, built from `custom_components/kubernetes/` by the `release-asset` job in `.github/workflows/release.yaml`. `hacs.json` sets `zip_release`, so HACS installs from that asset and shows its download count. If the job fails, attach it by hand:
+
+```bash
+git archive --format=zip -o kubernetes.zip vX.Y.Z:custom_components/kubernetes ':!kubernetes'
+gh release upload vX.Y.Z kubernetes.zip --clobber
+```
+
 For minor releases the generated changelog section is rewritten as end-user prose on the `release-please--branches--main` branch before the release PR is merged (intro paragraph, `### New features` / `### Fixes & improvements`, an `> **Upgrading**` note for behaviour changes), and the release PR body is replaced with the same text.
 
 ## Frontend Development
