@@ -50,7 +50,10 @@ rules:
   docs-examples: done
   docs-known-limitations:
     status: todo
-    comment: Only the namespace-scoped setup documents its limitations.
+    comment: >-
+      Limitations are scattered (namespace-scoped setup, RBAC-dependent
+      features, metrics-server absence, HPA scale guard); consolidate them
+      into one docs section.
   docs-supported-devices: done
   docs-supported-functions: done
   docs-troubleshooting: done
