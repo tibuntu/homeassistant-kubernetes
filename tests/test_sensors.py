@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.components.sensor import SensorStateClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -1424,6 +1424,25 @@ class TestKubernetesPodSensor:
 
 class TestKubernetesWorkloadMetricSensor:
     """Test CPU/memory metric sensors for deployments and statefulsets."""
+
+    @pytest.mark.parametrize(
+        ("metric", "device_class"),
+        [("cpu", None), ("memory", SensorDeviceClass.DATA_SIZE)],
+    )
+    def test_device_class(
+        self, mock_config_entry, mock_client, mock_coordinator, metric, device_class
+    ):
+        """Memory is a data size; millicores have no device class."""
+        sensor = KubernetesWorkloadMetricSensor(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            "my-app",
+            "default",
+            "deployment",
+            metric,
+        )
+        assert sensor.device_class == device_class
 
     def test_unique_ids_are_distinct(
         self, mock_config_entry, mock_client, mock_coordinator

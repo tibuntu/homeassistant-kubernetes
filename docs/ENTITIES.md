@@ -90,6 +90,8 @@ The integration creates CPU and memory usage sensors for each deployment and sta
 | **[workload-name] CPU Usage** | Aggregated CPU usage across all pods of the workload | `142` | m (millicores) |
 | **[workload-name] Memory Usage** | Aggregated memory usage across all pods of the workload | `256` | MiB |
 
+The memory sensor uses the `data_size` device class, so Home Assistant can display it in another unit (for example GiB) via the entity settings. CPU usage has no matching device class.
+
 These sensors expose numeric values with `SensorStateClass.MEASUREMENT`, making them suitable for history tracking and use in automations:
 
 ```yaml
@@ -228,6 +230,8 @@ The cluster-wide count sensors (Pods Count, Nodes Count, Deployments Count, etc.
 | Binary Sensor | Description | States |
 |---------------|-------------|--------|
 | **Cluster Health** | Indicates if the cluster is reachable and responding | `on` (healthy) / `off` (unhealthy) |
+
+Cluster Health and the node condition binary sensors below are **diagnostic** entities (`entity_category: diagnostic`): Home Assistant lists them in the device's *Diagnostic* section and leaves them out of auto-generated dashboards, but they work in automations, history and manually built dashboards like any other entity.
 
 ### Node Condition Binary Sensors
 
