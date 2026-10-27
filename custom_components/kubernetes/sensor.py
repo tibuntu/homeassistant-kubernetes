@@ -608,6 +608,9 @@ class KubernetesAlertSensor(KubernetesBaseSensor):
     exposed under ``_list_attr``. Subclasses also list ``_list_attr`` in
     ``_unrecorded_attributes`` (HA reads it at class creation): the list changes
     with every pod restart and can grow large, and history only needs the count.
+
+    The list is computed once per coordinator update (and at construction), not
+    in the state properties, so a state write scans the bucket only once.
     """
 
     _unique_suffix: str
@@ -620,25 +623,24 @@ class KubernetesAlertSensor(KubernetesBaseSensor):
         """Initialize the alert sensor."""
         super().__init__(coordinator, client, config_entry)
         self._attr_unique_id = f"{config_entry.entry_id}_{self._unique_suffix}"
+        self._sync_from_coordinator()
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
         return get_cluster_device_info(self.config_entry)
 
-    def _items(self) -> list[dict[str, Any]]:
+    def _sync_from_coordinator(self) -> None:
         data = self.coordinator.data
-        return self._compute(data) if data else []
+        items = self._compute(data) if data else []
+        self._attr_native_value = len(items)
+        self._attr_extra_state_attributes = {self._list_attr: items}
 
-    @property
-    def native_value(self) -> int:
-        """Return the number of offending resources."""
-        return len(self._items())
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return the offending resources."""
-        return {self._list_attr: self._items()}
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Recompute the alert list, then write state."""
+        self._sync_from_coordinator()
+        self.async_write_ha_state()
 
 
 class KubernetesDegradedWorkloadsSensor(KubernetesAlertSensor):

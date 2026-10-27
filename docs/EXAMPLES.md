@@ -478,7 +478,7 @@ automation:
             {% endfor %}
 ```
 
-*Degraded Workloads* (`workloads` attribute) and *Nodes Under Pressure* (`nodes` attribute) work the same way.
+*Degraded Workloads* (`workloads` attribute) and *Nodes Under Pressure* (`nodes` attribute) work the same way. Keep the `for:` delay on *Degraded Workloads* in particular: every rolling update briefly has fewer available replicas than desired, so without it the automation fires on each deploy.
 
 ### Cluster Health Monitoring
 

@@ -508,6 +508,25 @@ class TestDiscoverNewNodeConditionSensors:
         )
         assert len(result) == 0
 
+    def test_adds_only_ready_for_existing_node(
+        self, mock_coordinator, mock_config_entry
+    ):
+        """An upgraded install with the 4 pressure sensors gains only Ready."""
+        mock_coordinator.data = {"nodes": {"node-1": {"status": "Ready"}}}
+        existing = {
+            f"{mock_config_entry.entry_id}_node_node-1_{c}"
+            for c in (
+                "memory_pressure",
+                "disk_pressure",
+                "pid_pressure",
+                "network_unavailable",
+            )
+        }
+        result = _discover_new_node_condition_sensors(
+            mock_coordinator, mock_config_entry, existing_unique_ids=existing
+        )
+        assert [s.condition_key for s in result] == ["ready"]
+
     def test_returns_empty_when_no_data(self, mock_coordinator, mock_config_entry):
         """Test returns empty list when coordinator has no data."""
         mock_coordinator.data = None

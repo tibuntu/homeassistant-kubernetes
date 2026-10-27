@@ -4404,6 +4404,24 @@ class TestKubernetesAlertSensor:
             ("kubernetes", "test_entry_id_cluster")
         }
 
+    def test_coordinator_update_recomputes(
+        self, mock_coordinator, mock_client, mock_config_entry
+    ):
+        """The list is recomputed on each coordinator update before the write."""
+        mock_coordinator.data = {}
+        sensor = KubernetesProblemPodsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        sensor.async_write_ha_state = MagicMock()
+        assert sensor.native_value == 0
+
+        mock_coordinator.data = _ALERT_DATA
+        sensor._handle_coordinator_update()
+
+        assert sensor.native_value == 1
+        assert sensor.extra_state_attributes["pods"][0]["name"] == "crash"
+        sensor.async_write_ha_state.assert_called_once()
+
     @pytest.mark.parametrize("data", [None, {}])
     def test_no_data(self, mock_coordinator, mock_client, mock_config_entry, data):
         """Empty or missing coordinator data yields 0 and an empty list."""
