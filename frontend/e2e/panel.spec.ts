@@ -94,28 +94,34 @@ test("HPA-managed workload shows a badge and only allows scaling to 0", async ({
   await expect(page.locator("button.scale-action")).toBeEnabled();
 });
 
-for (const [query, count] of [
-  ["", (n: number) => expect(n).toBeGreaterThan(0)],
-  ["?admin=0", (n: number) => expect(n).toBe(0)],
-] as const) {
-  test(`mutation buttons ${query ? "are hidden from non-admins" : "are shown to admins"}`, async ({
-    page,
-  }) => {
-    await page.goto(`${HARNESS}${query}`);
-    await openTab(page, "Workloads");
-    await expect(page.locator(".workload-card").first()).toBeVisible();
-    count(await page.locator(".workload-card .action-btn").count());
-    count(await page.locator(".replica-info.scalable").count());
+/** Number of mutation controls on the Workloads, Pods and Nodes tabs. */
+async function countMutationControls(page: Page): Promise<number[]> {
+  await openTab(page, "Workloads");
+  await expect(page.locator(".workload-card").first()).toBeVisible();
+  const workloads = await page
+    .locator(".workload-card .action-btn, .replica-info.scalable")
+    .count();
 
-    await openTab(page, "Pods");
-    await expect(page.locator("tbody tr").first()).toBeVisible();
-    count(await page.locator(".delete-btn").count());
+  await openTab(page, "Pods");
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  const pods = await page.locator(".delete-btn").count();
 
-    await openTab(page, "Nodes");
-    await expect(page.locator(".node-card").first()).toBeVisible();
-    count(await page.locator(".node-card .action-btn").count());
-  });
+  await openTab(page, "Nodes");
+  await expect(page.locator(".node-card").first()).toBeVisible();
+  const nodes = await page.locator(".node-card .action-btn").count();
+
+  return [workloads, pods, nodes];
 }
+
+test("mutation controls are shown to admins", async ({ page }) => {
+  await page.goto(HARNESS);
+  for (const n of await countMutationControls(page)) expect(n).toBeGreaterThan(0);
+});
+
+test("mutation controls are hidden from non-admins", async ({ page }) => {
+  await page.goto(`${HARNESS}?admin=0`);
+  expect(await countMutationControls(page)).toEqual([0, 0, 0]);
+});
 
 test("error card retry refetches after a failed load", async ({ page }) => {
   await page.goto(`${HARNESS}?fail=kubernetes/cluster/overview`);
