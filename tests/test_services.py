@@ -1,5 +1,6 @@
 """Tests for the Kubernetes services."""
 
+import logging
 import os
 import re
 from unittest.mock import AsyncMock, MagicMock
@@ -93,6 +94,18 @@ def setup_domain_data(add_loaded_entry, mock_client) -> MockConfigEntry:
         },
         coordinator=mock_coordinator,
     )
+
+
+_NGINX_HPAS = {
+    "default_nginx-hpa": {
+        "name": "nginx-hpa",
+        "namespace": "default",
+        "target_kind": WORKLOAD_TYPE_DEPLOYMENT,
+        "target_name": "nginx",
+        "min_replicas": 2,
+        "max_replicas": 8,
+    }
+}
 
 
 def _set_workload_state(
@@ -914,6 +927,60 @@ class TestServiceHandlerEdgeCases:
             )
         mock_client.scale_deployment.assert_not_called()
         mock_client.scale_statefulset.assert_not_called()
+
+    async def test_scale_workload_rejects_hpa_managed(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """A non-zero count on an HPA-managed target rejects the whole call."""
+        setup_domain_data.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
+        _set_workload_state(hass, "switch.other", deployment_name="other")
+        await async_setup_services(hass)
+        with pytest.raises(
+            ServiceValidationError, match=re.escape("default/nginx (HPA nginx-hpa)")
+        ):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {
+                    ATTR_WORKLOAD_NAMES: ["switch.nginx", "switch.other"],
+                    ATTR_REPLICAS: 3,
+                },
+                blocking=True,
+            )
+        mock_client.scale_deployment.assert_not_called()
+
+    async def test_scale_workload_hpa_managed_to_zero(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Scaling an HPA-managed workload to 0 sticks, so it is allowed."""
+        setup_domain_data.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.nginx", ATTR_REPLICAS: 0},
+            blocking=True,
+        )
+        mock_client.scale_deployment.assert_called_once_with("nginx", 0, "default")
+
+    async def test_start_workload_hpa_managed_logs(
+        self, hass: HomeAssistant, mock_client, setup_domain_data, caplog
+    ):
+        """Starting an HPA-managed workload works and says the HPA takes over."""
+        setup_domain_data.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
+        _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
+        await async_setup_services(hass)
+        with caplog.at_level(logging.INFO):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_START_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "switch.nginx"},
+                blocking=True,
+            )
+        mock_client.start_deployment.assert_called_once()
+        assert "managed by HPA nginx-hpa" in caplog.text
 
     async def test_scale_workload_failure_raises(
         self, hass: HomeAssistant, mock_client, setup_domain_data

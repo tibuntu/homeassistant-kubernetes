@@ -99,11 +99,11 @@ The service account needs these permissions:
 
 ### Problem
 
-Home Assistant shows a repair issue titled **Missing permissions for `<resources>` on `<cluster>`**. If the ServiceAccount also lacks `list` on that resource, every poll fails and all of the integration's entities become unavailable until the permission is granted — the integration never shows a partial or empty cluster.
+Home Assistant shows a repair issue titled **Missing permissions for `<resources>` on `<cluster>`**. If the ServiceAccount also lacks `list` on that resource, every poll fails and all of the integration's entities become unavailable until the permission is granted — the integration never shows a partial or empty cluster. The one exception is `hpas`: HPA detection only adds information to the workload entities, so a forbidden HPA list just turns detection off (with a single warning in the log) and everything else keeps working.
 
 ### Solution
 
-The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named resource — typically after upgrading to a release that monitors a new resource type. Re-apply the bundled RBAC (`helm upgrade` with the chart, or `kubectl apply -f manifests/full/`), or add the rule to your custom manifest. Each affected watch retries once a minute, and the issue clears on its own once every retry succeeds; reload the integration (**Settings → Devices & Services → Kubernetes → ⋮ → Reload**) if you don't want to wait.
+The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named resource — typically after upgrading to a release that monitors a new resource type. Re-apply the bundled RBAC (`helm upgrade` with the chart, or `kubectl apply -f manifests/full/`), or add the rule to your custom manifest. For `hpas` you can instead opt out under **Configure → Disable data collection for → HorizontalPodAutoscalers** if you don't want to grant the `autoscaling` rule; that also silences the repair issue. Each affected watch retries once a minute, and the issue clears on its own once every retry succeeds; reload the integration (**Settings → Devices & Services → Kubernetes → ⋮ → Reload**) if you don't want to wait.
 
 If the issue appears right after restarting the API server (for example a k3s restart) although the RBAC is complete, it's transient: the authorizer denies requests until it has loaded its rules. It clears within about a minute without any action. See the [RBAC Reference](RBAC.md) for the full permission matrix.
 
@@ -133,6 +133,10 @@ Cannot connect to Kubernetes API server. While the API is unreachable (network o
    - For custom CA certificates, provide the certificate path in the configuration
 
 ## Deployment Scaling Issues
+
+### Problem: "managed by HPA … adjust the HPA's min/max replicas instead"
+
+A HorizontalPodAutoscaler targets the workload and would reset any replica count other than 0 within seconds, so `scale_workload` and the replica number reject it up front. Change the HPA instead (`kubectl edit hpa NAME -n NAMESPACE`), or scale to 0 / turn the switch off, which the HPA leaves alone. See [HPA-managed workloads](ENTITIES.md#hpa-managed-workloads).
 
 ### Problem
 

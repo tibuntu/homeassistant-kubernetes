@@ -979,6 +979,106 @@ async def test_get_services_api_exception(mock_client):
         await mock_client.get_services()
 
 
+async def test_get_hpas_success(mock_client):
+    """HPAs are fetched from autoscaling/v2 with the HPA parser."""
+    mock_client._fetch_resource_list = AsyncMock(
+        return_value=[{"name": "web-hpa", "namespace": "default"}]
+    )
+
+    hpas = await mock_client.get_hpas()
+
+    assert hpas == [{"name": "web-hpa", "namespace": "default"}]
+    mock_client._fetch_resource_list.assert_awaited_once_with(
+        "apis/autoscaling/v2", "horizontalpodautoscalers", mock_client._parse_hpa_item
+    )
+
+
+async def test_get_hpas_empty(mock_client):
+    """HPA retrieval when none exist."""
+    mock_client._fetch_resource_list = AsyncMock(return_value=[])
+
+    assert await mock_client.get_hpas() == []
+
+
+async def test_get_hpas_api_exception(mock_client):
+    """HPA retrieval propagates API exceptions."""
+    mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
+
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_hpas()
+
+
+def _hpa_item():
+    """Build a raw autoscaling/v2 HPA object for parse tests."""
+    return {
+        "metadata": {
+            "name": "web-hpa",
+            "namespace": "default",
+            "creationTimestamp": "2026-01-01T00:00:00Z",
+        },
+        "spec": {
+            "scaleTargetRef": {
+                "apiVersion": "apps/v1",
+                "kind": "Deployment",
+                "name": "web",
+            },
+            "minReplicas": 2,
+            "maxReplicas": 10,
+        },
+        "status": {
+            "currentReplicas": 3,
+            "desiredReplicas": 4,
+            "conditions": [
+                {"type": "AbleToScale", "status": "True"},
+                {"type": "ScalingActive", "status": "True"},
+                {"type": "ScalingLimited", "status": "False"},
+            ],
+        },
+    }
+
+
+async def test_parse_hpa_item(mock_client):
+    """A full HPA is parsed into target, bounds, status and boolean conditions."""
+    assert mock_client._parse_hpa_item(_hpa_item()) == {
+        "name": "web-hpa",
+        "namespace": "default",
+        "target_kind": "Deployment",
+        "target_name": "web",
+        "min_replicas": 2,
+        "max_replicas": 10,
+        "current_replicas": 3,
+        "desired_replicas": 4,
+        "conditions": {
+            "AbleToScale": True,
+            "ScalingActive": True,
+            "ScalingLimited": False,
+        },
+        "creation_timestamp": "2026-01-01T00:00:00Z",
+    }
+
+
+async def test_parse_hpa_item_defaults(mock_client):
+    """minReplicas defaults to 1; a fresh HPA without status parses to zeros."""
+    item = _hpa_item()
+    del item["spec"]["minReplicas"]
+    del item["status"]
+
+    result = mock_client._parse_hpa_item(item)
+
+    assert result["min_replicas"] == 1
+    assert result["current_replicas"] == 0
+    assert result["desired_replicas"] == 0
+    assert result["conditions"] == {}
+
+
+async def test_parse_hpa_item_malformed(mock_client):
+    """An HPA without scaleTargetRef is dropped."""
+    item = _hpa_item()
+    del item["spec"]["scaleTargetRef"]
+
+    assert mock_client._parse_hpa_item(item) is None
+
+
 def _service_item(**overrides):
     """Build a raw Service API object for parse tests."""
     item = {
@@ -3979,13 +4079,14 @@ class TestFetchResourceListExtended:
             ),
             pytest.raises(
                 KubernetesApiError, match="deployments request failed with status 500"
-            ),
+            ) as exc_info,
         ):
             await mock_client._fetch_resource_list(
                 "apis/apps/v1",
                 "deployments",
                 mock_client._parse_replica_workload_item,
             )
+        assert exc_info.value.status == 500
 
 
 class TestScaleDeploymentExtended:

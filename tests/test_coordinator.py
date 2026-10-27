@@ -28,7 +28,11 @@ from custom_components.kubernetes.const import (
     WATCH_MAX_FAILURE_STREAK,
     WATCH_MAX_RECONNECT_DELAY,
 )
-from custom_components.kubernetes.coordinator import KubernetesDataCoordinator
+from custom_components.kubernetes.coordinator import (
+    KubernetesDataCoordinator,
+    get_hpa_for,
+    hpa_attributes,
+)
 from custom_components.kubernetes.device import get_or_create_cluster_device
 from custom_components.kubernetes.kubernetes_client import (
     KubernetesApiError,
@@ -62,6 +66,7 @@ def mock_client():
     client.get_jobs = AsyncMock(return_value=[])
     client.get_ingresses = AsyncMock(return_value=[])
     client.get_services = AsyncMock(return_value=[])
+    client.get_hpas = AsyncMock(return_value=[])
     client.get_deployments_count = AsyncMock(return_value=0)
     client.get_statefulsets_count = AsyncMock(return_value=0)
     client.get_daemonsets_count = AsyncMock(return_value=0)
@@ -166,6 +171,9 @@ class TestKubernetesDataCoordinator:
             }
         ]
         mock_client.get_services.return_value = mock_services
+        mock_client.get_hpas.return_value = [
+            {"name": "web-hpa", "namespace": "default", "target_name": "web"}
+        ]
 
         mock_nodes = [
             {
@@ -254,6 +262,8 @@ class TestKubernetesDataCoordinator:
         assert "default_web" in result["services"]
         assert result["services"]["default_web"]["type"] == "LoadBalancer"
         assert result["services"]["default_web"]["external_ips"] == ["192.168.1.50"]
+
+        assert result["hpas"]["default_web-hpa"]["target_name"] == "web"
 
         assert "worker-node-1" in result["nodes"]
         assert result["nodes"]["worker-node-1"]["name"] == "worker-node-1"
@@ -2687,6 +2697,7 @@ class TestBuildWatchConfigs:
         client._format_job_from_dict = MagicMock()
         client._parse_ingress_item = MagicMock()
         client._parse_service_item = MagicMock()
+        client._parse_hpa_item = MagicMock()
         return client
 
     @pytest.fixture
@@ -2720,13 +2731,14 @@ class TestBuildWatchConfigs:
         assert "jobs" in resource_types
         assert "ingresses" in resource_types
         assert "services" in resource_types
+        assert "hpas" in resource_types
 
         # All URLs should be cluster-wide (no /namespaces/ in them)
         for url in urls:
             assert "/namespaces/" not in url
 
-        # 9 resource types total
-        assert len(configs) == 9
+        # 10 resource types total
+        assert len(configs) == 10
 
     async def test_per_namespace_configs_when_not_monitor_all(self, coord, mock_client):
         """When monitor_all_namespaces=False, should return per-namespace URLs."""
@@ -2736,8 +2748,8 @@ class TestBuildWatchConfigs:
 
         configs = coord._build_watch_configs(base_url)
 
-        # Nodes is always cluster-scoped (1 config) plus 8 resource types * 2 namespaces
-        assert len(configs) == 1 + 8 * 2
+        # Nodes is always cluster-scoped (1 config) plus 9 resource types * 2 namespaces
+        assert len(configs) == 1 + 9 * 2
 
         # The nodes URL should be cluster-wide
         nodes_configs = [(rt, url) for rt, url, _ in configs if rt == "nodes"]
@@ -2751,15 +2763,15 @@ class TestBuildWatchConfigs:
         assert any("/namespaces/kube-system/pods" in url for _, url in pod_configs)
 
     async def test_single_namespace_config(self, coord, mock_client):
-        """With one namespace and not monitoring all, should have 9 configs."""
+        """With one namespace and not monitoring all, should have 10 configs."""
         mock_client.monitor_all_namespaces = False
         mock_client.namespaces = ["production"]
         base_url = "https://test-cluster.example.com:6443"
 
         configs = coord._build_watch_configs(base_url)
 
-        # 1 nodes (cluster-wide) + 8 per-namespace resources * 1 namespace
-        assert len(configs) == 9
+        # 1 nodes (cluster-wide) + 9 per-namespace resources * 1 namespace
+        assert len(configs) == 10
 
         # Verify namespace appears in URLs for namespace-scoped resources
         ns_urls = [url for rt, url, _ in configs if rt != "nodes"]
@@ -2784,6 +2796,7 @@ class TestBuildWatchConfigs:
         assert parse_fn_map["jobs"] is mock_client._format_job_from_dict
         assert parse_fn_map["ingresses"] is mock_client._parse_ingress_item
         assert parse_fn_map["services"] is mock_client._parse_service_item
+        assert parse_fn_map["hpas"] is mock_client._parse_hpa_item
 
     async def test_watch_configs_include_ingresses_all_namespaces(
         self, coord, mock_client
@@ -2839,6 +2852,10 @@ class TestBuildWatchConfigs:
             ("jobs", "https://host:6443/apis/batch/v1/jobs"),
             ("ingresses", "https://host:6443/apis/networking.k8s.io/v1/ingresses"),
             ("services", "https://host:6443/api/v1/services"),
+            (
+                "hpas",
+                "https://host:6443/apis/autoscaling/v2/horizontalpodautoscalers",
+            ),
         }
         assert got == expected
         assert len(configs) == len(expected)
@@ -2884,6 +2901,10 @@ class TestBuildWatchConfigs:
                 (
                     "services",
                     f"https://host:6443/api/v1/namespaces/{ns}/services",
+                ),
+                (
+                    "hpas",
+                    f"https://host:6443/apis/autoscaling/v2/namespaces/{ns}/horizontalpodautoscalers",
                 ),
             }
         assert got == expected
@@ -2936,6 +2957,7 @@ class TestStartStopWatchTasksExtended:
         client._format_job_from_dict = MagicMock()
         client._parse_ingress_item = MagicMock()
         client._parse_service_item = MagicMock()
+        client._parse_hpa_item = MagicMock()
         client.list_resource_with_version = AsyncMock(return_value=([], "123"))
 
         async def _empty_stream(url, rv):
@@ -2969,8 +2991,8 @@ class TestStartStopWatchTasksExtended:
         ):
             await coord.async_start_watch_tasks()
 
-        # 9 resource types for monitor_all_namespaces=True
-        assert len(coord._watch_tasks) == 9
+        # 10 resource types for monitor_all_namespaces=True
+        assert len(coord._watch_tasks) == 10
 
         for coro in created_coros:
             coro.close()
@@ -3812,7 +3834,9 @@ class TestDisabledResources:
     ):
         """Fully-off resources are not fetched and their buckets stay empty."""
         coordinator = self._make_coordinator(
-            hass, mock_client, ["pods", "daemonsets", "jobs", "ingresses", "services"]
+            hass,
+            mock_client,
+            ["pods", "daemonsets", "jobs", "ingresses", "services", "hpas"],
         )
         mock_client.get_daemonsets_count.return_value = 4
         mock_client.get_jobs_count.return_value = 2
@@ -3826,11 +3850,13 @@ class TestDisabledResources:
         mock_client.get_jobs.assert_not_called()
         mock_client.get_ingresses.assert_not_called()
         mock_client.get_services.assert_not_called()
+        mock_client.get_hpas.assert_not_called()
         assert data["pods"] == {}
         assert data["daemonsets"] == {}
         assert data["jobs"] == {}
         assert data["ingresses"] == {}
         assert data["services"] == {}
+        assert data["hpas"] == {}
         # Counts stay on by default and fall back to the cheap count endpoints
         mock_client.get_pods_count.assert_called_once()
         assert data["daemonsets_count"] == 4
@@ -3949,6 +3975,7 @@ class TestDisabledResources:
                 "jobs",
                 "ingresses",
                 "services",
+                "hpas",
                 "deployments",
                 "nodes",
             ],
@@ -3963,6 +3990,7 @@ class TestDisabledResources:
         assert "jobs" not in resource_types
         assert "ingresses" not in resource_types
         assert "services" not in resource_types
+        assert "hpas" not in resource_types
         # Sensors-off resources keep their watch (switches consume the data)
         assert "deployments" in resource_types
         assert "nodes" in resource_types
@@ -4048,3 +4076,87 @@ class TestDisabledResources:
         assert f"{eid}_degraded_workloads" not in expected
         assert f"{eid}_problem_pods" not in expected
         assert f"{eid}_nodes_under_pressure" in expected
+
+
+class TestFetchHpas:
+    """HPA detection must not take the whole poll down on a missing RBAC rule."""
+
+    async def test_forbidden_means_no_hpas(self, coordinator, mock_client, caplog):
+        """HTTP 403 yields an empty bucket and warns once, not every poll."""
+        mock_client.get_hpas.side_effect = KubernetesApiError("forbidden", 403)
+
+        data = await coordinator._async_update_data()
+        await coordinator._async_update_data()
+
+        assert data["hpas"] == {}
+        assert caplog.text.count("HorizontalPodAutoscalers is forbidden") == 1
+
+    async def test_recovery_rearms_warning(self, coordinator, mock_client, caplog):
+        """A successful list clears the flag, so a later 403 warns again."""
+        forbidden = KubernetesApiError("forbidden", 403)
+        hpa = {"name": "web-hpa", "namespace": "default"}
+        mock_client.get_hpas.side_effect = [forbidden, [hpa], forbidden]
+
+        await coordinator._async_update_data()
+        data = await coordinator._async_update_data()
+        await coordinator._async_update_data()
+
+        assert data["hpas"] == {"default_web-hpa": hpa}
+        assert caplog.text.count("HorizontalPodAutoscalers is forbidden") == 2
+
+    async def test_other_errors_fail_the_poll(self, coordinator, mock_client):
+        """Any other failure still raises, like every other fetch."""
+        mock_client.auth_failed = False
+        mock_client.is_cluster_healthy = AsyncMock(return_value=True)
+        mock_client.get_hpas.side_effect = KubernetesApiError("boom", 500)
+
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+
+class TestGetHpaFor:
+    """Tests for the get_hpa_for reverse lookup."""
+
+    def test_lookup(self):
+        """The HPA is found by its scaleTargetRef kind, namespace and name."""
+        hpa = {
+            "name": "web-hpa",
+            "namespace": "default",
+            "target_kind": "Deployment",
+            "target_name": "web",
+        }
+        data = {"hpas": {"default_web-hpa": hpa}}
+
+        assert get_hpa_for(data, "Deployment", "default", "web") is hpa
+        # Kind, namespace and name must all match
+        assert get_hpa_for(data, "StatefulSet", "default", "web") is None
+        assert get_hpa_for(data, "Deployment", "prod", "web") is None
+        assert get_hpa_for(data, "Deployment", "default", "api") is None
+
+    def test_no_data(self):
+        """Missing bucket or data yields None."""
+        assert get_hpa_for({}, "Deployment", "default", "web") is None
+        assert get_hpa_for(None, "Deployment", "default", "web") is None
+
+
+class TestHpaAttributes:
+    """Tests for the hpa_attributes helper."""
+
+    def test_managed(self):
+        """An HPA yields its name and bounds."""
+        hpa = {"name": "web-hpa", "min_replicas": 2, "max_replicas": 5}
+        assert hpa_attributes(hpa) == {
+            "hpa_managed": True,
+            "hpa_name": "web-hpa",
+            "hpa_min_replicas": 2,
+            "hpa_max_replicas": 5,
+        }
+
+    def test_unmanaged(self):
+        """No HPA yields hpa_managed False and empty fields."""
+        assert hpa_attributes(None) == {
+            "hpa_managed": False,
+            "hpa_name": None,
+            "hpa_min_replicas": None,
+            "hpa_max_replicas": None,
+        }

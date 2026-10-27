@@ -75,6 +75,25 @@ test("scale dialog calls scale_workload with the new replica count", async ({
   ]);
 });
 
+test("HPA-managed workload shows a badge and only allows scaling to 0", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Workloads");
+  const db = page.locator(".workload-card", { hasText: "db" });
+  await expect(db.locator(".badge-hpa")).toBeVisible();
+  await expect(
+    page.locator(".workload-card", { hasText: "web" }).locator(".badge-hpa"),
+  ).toHaveCount(0);
+
+  await db.locator(".replica-info.scalable").click();
+  await expect(page.locator(".hpa-warning")).toContainText("db-hpa");
+  await page.locator(".scale-input").fill("3");
+  await expect(page.locator("button.scale-action")).toBeDisabled();
+  await page.locator(".scale-input").fill("0");
+  await expect(page.locator("button.scale-action")).toBeEnabled();
+});
+
 test("error card retry refetches after a failed load", async ({ page }) => {
   await page.goto(`${HARNESS}?fail=kubernetes/cluster/overview`);
   await expect(page.locator(".error-card")).toBeVisible();

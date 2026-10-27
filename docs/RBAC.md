@@ -147,6 +147,12 @@ Read-only access to every resource the integration monitors. No write permission
 |----------|-------|:----:|:-------:|---------|
 | **ingresses** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Ingresses count sensor + Network tab in the sidebar panel |
 
+### Autoscaling API Group (`autoscaling`)
+
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **horizontalpodautoscalers** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Detects HPA-managed Deployments/StatefulSets: `hpa_*` attributes, the panel's HPA badge, and the guard that rejects scaling them to a non-zero count. Optional: without it, HPA detection is simply off |
+
 ### Metrics API Group (`metrics.k8s.io`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
@@ -301,6 +307,9 @@ rules:
   verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
   verbs: ["get", "list", "watch"]
 ```
 

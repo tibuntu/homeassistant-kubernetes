@@ -865,6 +865,52 @@ class TestWebsocketWorkloadsList:
         assert nginx["replicas"] == 3
         assert nginx["available_replicas"] == 3
         assert nginx["is_running"] is True
+        assert nginx["hpa_managed"] is False
+        assert nginx["hpa_name"] is None
+
+    def test_hpa_fields(self, mock_hass):
+        """HPA-managed Deployments/StatefulSets carry the HPA name and bounds."""
+        coordinator = _make_coordinator(
+            {
+                "deployments": {
+                    "default_web": {"name": "web", "namespace": "default"},
+                    "default_api": {"name": "api", "namespace": "default"},
+                },
+                "statefulsets": {"default_db": {"name": "db", "namespace": "default"}},
+                "hpas": {
+                    "default_web-hpa": {
+                        "name": "web-hpa",
+                        "namespace": "default",
+                        "target_kind": "Deployment",
+                        "target_name": "web",
+                        "min_replicas": 2,
+                        "max_replicas": 6,
+                    },
+                    "default_db-hpa": {
+                        "name": "db-hpa",
+                        "namespace": "default",
+                        "target_kind": "StatefulSet",
+                        "target_name": "db",
+                        "min_replicas": 1,
+                        "max_replicas": 3,
+                    },
+                },
+            }
+        )
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
+
+        cluster = _get_workloads_list_data(mock_hass)["clusters"][0]
+        by_name = {d["name"]: d for d in cluster["deployments"]}
+        assert by_name["web"]["hpa_managed"] is True
+        assert by_name["web"]["hpa_name"] == "web-hpa"
+        assert by_name["web"]["hpa_min_replicas"] == 2
+        assert by_name["web"]["hpa_max_replicas"] == 6
+        assert by_name["api"]["hpa_managed"] is False
+        assert cluster["statefulsets"][0]["hpa_name"] == "db-hpa"
+        # The coordinator's cached dicts are not mutated
+        assert "hpa_managed" not in coordinator.data["deployments"]["default_web"]
 
     def test_cronjob_fields(self, mock_hass):
         """Test that cronjob data includes expected fields."""

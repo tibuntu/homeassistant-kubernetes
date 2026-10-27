@@ -40,6 +40,8 @@ Scale one or more Kubernetes workloads (Deployments or StatefulSets) to a specif
 
 **Note**: CronJobs are not supported. If a CronJob is provided, the call fails with a validation error and no workload is scaled.
 
+**HPA-managed workloads**: if a HorizontalPodAutoscaler targets any of the workloads and `replicas` is not `0`, the whole call is rejected with a validation error — the HPA would revert the count within seconds. Change the HPA's `minReplicas`/`maxReplicas` instead. Scaling to `0` is allowed (the HPA controller leaves targets at 0 replicas alone). See [HPA-managed workloads](ENTITIES.md#hpa-managed-workloads).
+
 **Examples**:
 
 ```yaml
@@ -84,6 +86,8 @@ Start one or more Kubernetes workloads by scaling them to the specified number o
 - **Deployments**: Scales to the specified number of replicas
 - **StatefulSets**: Scales to the specified number of replicas
 - **CronJobs**: Triggers the CronJob immediately (creates a job from the CronJob template)
+
+Starting an HPA-managed Deployment/StatefulSet works, but it hands control back to the HPA, which then chooses the replica count instead of `replicas`.
 
 **Examples**:
 
@@ -290,6 +294,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 - None of the given `workload_name` / `workload_names` resolve to a known workload (e.g. the entity ID does not exist, or the switch has no `namespace`/`workload_type` attributes)
 - `delete_job` / `cordon_node` / `uncordon_node` are called without a usable name
 - A workload's type does not support the requested operation — for example scaling, stopping, or restarting a CronJob. The whole call is rejected; no target in the call is touched.
+- `scale_workload` targets an HPA-managed workload with `replicas` other than `0`. The whole call is rejected; no target in the call is touched.
 
 **Failed operations** raise a regular error *after* every target has been attempted:
 

@@ -108,6 +108,10 @@ export const RESPONSES: Record<string, unknown> = {
             replicas: 2,
             available_replicas: 2,
             ready_replicas: 2,
+            hpa_managed: false,
+            hpa_name: null,
+            hpa_min_replicas: null,
+            hpa_max_replicas: null,
           },
         ],
         statefulsets: [
@@ -117,6 +121,10 @@ export const RESPONSES: Record<string, unknown> = {
             replicas: 1,
             available_replicas: 1,
             ready_replicas: 1,
+            hpa_managed: true,
+            hpa_name: "db-hpa",
+            hpa_min_replicas: 1,
+            hpa_max_replicas: 5,
           },
         ],
         daemonsets: [

@@ -3,7 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 import pytest
 
@@ -40,6 +40,17 @@ def _data():
         "statefulsets": {
             "db_pg": {"name": "pg", "namespace": "db", "replicas": 1},
         },
+    }
+
+
+def _web_hpa():
+    return {
+        "name": "web-hpa",
+        "namespace": "default",
+        "target_kind": WORKLOAD_TYPE_DEPLOYMENT,
+        "target_name": "web",
+        "min_replicas": 2,
+        "max_replicas": 5,
     }
 
 
@@ -205,7 +216,21 @@ class TestKubernetesReplicaNumber:
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_DEPLOYMENT,
             "ready_replicas": 2,
             "available_replicas": 1,
+            "hpa_managed": False,
+            "hpa_name": None,
+            "hpa_min_replicas": None,
+            "hpa_max_replicas": None,
         }
+
+    def test_hpa_attributes(self, deployment_number, coordinator):
+        """An HPA targeting the workload shows up in the attributes."""
+        coordinator.data["hpas"] = {"default_web-hpa": _web_hpa()}
+
+        attrs = deployment_number.extra_state_attributes
+        assert attrs["hpa_managed"] is True
+        assert attrs["hpa_name"] == "web-hpa"
+        assert attrs["hpa_min_replicas"] == 2
+        assert attrs["hpa_max_replicas"] == 5
 
     def test_missing_workload(self, deployment_number, coordinator):
         """A workload that vanished has no value."""
@@ -257,6 +282,25 @@ class TestKubernetesReplicaNumber:
             "pg", 0, namespace="db"
         )
         coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_set_value_rejected_for_hpa(self, deployment_number, coordinator):
+        """A non-zero count on an HPA-managed workload is rejected up front."""
+        coordinator.data["hpas"] = {"default_web-hpa": _web_hpa()}
+
+        with pytest.raises(ServiceValidationError, match="managed by HPA web-hpa"):
+            await deployment_number.async_set_native_value(4)
+
+        coordinator.client.scale_deployment.assert_not_awaited()
+
+    async def test_set_value_zero_allowed_for_hpa(self, deployment_number, coordinator):
+        """Scaling an HPA-managed workload to 0 sticks, so it is allowed."""
+        coordinator.data["hpas"] = {"default_web-hpa": _web_hpa()}
+
+        await deployment_number.async_set_native_value(0)
+
+        coordinator.client.scale_deployment.assert_awaited_once_with(
+            "web", 0, namespace="default"
+        )
 
     async def test_set_value_failure_raises(self, deployment_number, coordinator):
         """A failed scale raises instead of failing silently."""

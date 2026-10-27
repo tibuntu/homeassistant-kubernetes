@@ -59,6 +59,11 @@ rules:
     resources: ["ingresses"]
     verbs: ["get", "list", "watch"]
 
+  # Autoscaling — detect HPA-managed workloads (scale guard + HPA badge)
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+
   # Metrics API — real-time CPU and memory usage (requires metrics-server)
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]
@@ -93,6 +98,10 @@ rules:
   # Networking resources — monitoring only
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
+    verbs: ["get", "list"]
+  # Autoscaling — detect HPA-managed workloads
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list"]
   # Metrics API — real-time CPU and memory usage (requires metrics-server)
   - apiGroups: ["metrics.k8s.io"]

@@ -7,7 +7,7 @@ from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -21,6 +21,8 @@ from .coordinator import (
     KubernetesConfigEntry,
     KubernetesDataCoordinator,
     disabled_resources,
+    get_hpa_for,
+    hpa_attributes,
 )
 from .device import get_namespace_device_info, get_or_create_namespace_device
 
@@ -170,7 +172,17 @@ class KubernetesReplicaNumber(NumberEntity):
             ATTR_WORKLOAD_TYPE: self._workload_type,
             "ready_replicas": data.get("ready_replicas", 0),
             "available_replicas": data.get("available_replicas", 0),
+            **hpa_attributes(self._hpa()),
         }
+
+    def _hpa(self) -> dict[str, Any] | None:
+        """Return the HPA managing this workload, if any."""
+        return get_hpa_for(
+            self.coordinator.data,
+            self._workload_type,
+            self.namespace,
+            self.workload_name,
+        )
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to coordinator updates."""
@@ -182,6 +194,12 @@ class KubernetesReplicaNumber(NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Scale the workload to the requested replica count."""
         replicas = int(value)
+        # The HPA controller skips targets at 0 replicas, so only 0 sticks.
+        if replicas and (hpa := self._hpa()):
+            raise ServiceValidationError(
+                f"{self.namespace}/{self.workload_name} is managed by HPA "
+                f"{hpa['name']}; adjust the HPA's min/max replicas instead"
+            )
         scale = getattr(self.coordinator.client, self._scale_method)
         if not await scale(self.workload_name, replicas, namespace=self.namespace):
             raise HomeAssistantError(

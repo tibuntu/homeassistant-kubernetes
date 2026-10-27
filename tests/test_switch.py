@@ -591,6 +591,16 @@ class TestKubernetesCronJobSwitch:
 # ---------------------------------------------------------------------------
 
 
+_NGINX_HPA = {
+    "name": "nginx-hpa",
+    "namespace": "default",
+    "target_kind": WORKLOAD_TYPE_DEPLOYMENT,
+    "target_name": "nginx",
+    "min_replicas": 2,
+    "max_replicas": 8,
+}
+
+
 @pytest.fixture
 def deployment_coordinator():
     """Mock coordinator for deployment tests."""
@@ -664,6 +674,20 @@ class TestKubernetesDeploymentSwitch:
         assert attrs["namespace"] == "default"
         assert attrs["replicas"] == 3
         assert attrs[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_DEPLOYMENT
+        assert attrs["hpa_managed"] is False
+        assert attrs["hpa_name"] is None
+
+    def test_extra_state_attributes_hpa(
+        self, deployment_switch, deployment_coordinator
+    ):
+        """An HPA targeting the Deployment shows up in the attributes."""
+        deployment_coordinator.data["hpas"] = {"default_nginx-hpa": _NGINX_HPA}
+
+        attrs = deployment_switch.extra_state_attributes
+        assert attrs["hpa_managed"] is True
+        assert attrs["hpa_name"] == "nginx-hpa"
+        assert attrs["hpa_min_replicas"] == 2
+        assert attrs["hpa_max_replicas"] == 8
 
     def test_extra_state_attributes_with_metrics(self, mock_config_entry):
         """Test extra state attributes include CPU and memory metrics."""
@@ -832,6 +856,21 @@ class TestKubernetesDeploymentSwitch:
         assert deployment_switch._is_on is True
         assert deployment_switch._replicas == 1
         assert deployment_switch._last_scale_attempt_failed is False
+
+    async def test_async_turn_on_hpa_skips_verification(
+        self, deployment_switch, deployment_coordinator
+    ):
+        """With an HPA the count is the HPA's choice, so don't wait for 1."""
+        deployment_coordinator.data["hpas"] = {"default_nginx-hpa": _NGINX_HPA}
+        deployment_switch.async_write_ha_state = MagicMock()
+        deployment_switch._verify_scaling = AsyncMock()
+
+        await deployment_switch.async_turn_on()
+
+        deployment_coordinator.client.start_deployment.assert_called_once()
+        deployment_switch._verify_scaling.assert_not_called()
+        deployment_coordinator.async_request_refresh.assert_awaited_once()
+        assert deployment_switch._is_on is True
 
     async def test_async_turn_on_failure(
         self, deployment_switch, deployment_coordinator

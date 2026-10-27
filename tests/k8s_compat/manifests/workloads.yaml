@@ -152,3 +152,44 @@ spec:
     - port: 80
       targetPort: 80
   type: ClusterIP
+---
+# Parked at 0 replicas: the HPA controller skips such targets, so this HPA
+# never interferes with the scaling tests and costs no pods.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-hpa-target
+  namespace: default
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: test-hpa-target
+  template:
+    metadata:
+      labels:
+        app: test-hpa-target
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: test-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: test-hpa-target
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
