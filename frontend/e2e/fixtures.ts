@@ -64,6 +64,7 @@ export const RESPONSES: Record<string, unknown> = {
       {
         entry_id: "entry_1",
         cluster_name: "test-cluster",
+        pod_logs_enabled: true,
         pods: [
           {
             name: "web-7d9f8b-abc12",
@@ -77,6 +78,7 @@ export const RESPONSES: Record<string, unknown> = {
             creation_timestamp: "2026-01-01T00:00:00Z",
             owner_kind: "ReplicaSet",
             owner_name: "web-7d9f8b",
+            containers: ["web"],
           },
           {
             name: "db-0",
@@ -90,10 +92,16 @@ export const RESPONSES: Record<string, unknown> = {
             creation_timestamp: "2026-01-01T00:00:00Z",
             owner_kind: "StatefulSet",
             owner_name: "db",
+            containers: ["db", "metrics-exporter"],
           },
         ],
       },
     ],
+  },
+
+  "kubernetes/pods/logs": {
+    logs: "starting server\nlistening on :8080\n",
+    truncated: false,
   },
 
   "kubernetes/workloads/list": {
@@ -217,6 +225,7 @@ export const RESPONSES: Record<string, unknown> = {
         scale_cooldown: 30,
         panel_enabled: true,
         watch_enabled: true,
+        pod_logs_enabled: true,
         healthy: true,
       },
     ],

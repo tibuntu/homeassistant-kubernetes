@@ -11,6 +11,7 @@ metadata:
 #     node cordon/uncordon)
 #   - Workload rollout restart (deployments, statefulsets, daemonsets)
 #   - Pod and Job deletion from the sidebar panel
+#   - Pod log snapshots in the sidebar panel (pods/log)
 #   - Cluster Events platform (events)
 #   - Experimental Watch API (real-time updates via ?watch=true)
 #   - Legacy API compatibility (Kubernetes < 1.16)
@@ -27,6 +28,11 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch", "delete"]
+  # Pod log snapshots in the sidebar panel (opt-in "enable_pod_logs" option).
+  # Logs can contain secrets; drop this rule if you never want them readable.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
 
   # Apps resources — monitoring + watch
   - apiGroups: ["apps"]

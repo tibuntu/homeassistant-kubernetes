@@ -150,3 +150,48 @@ test("coordinator push triggers one debounced refetch", async ({ page }) => {
   await page.waitForTimeout(1500);
   expect(await page.evaluate(() => window.__k8s.calls.length)).toBe(before + 1);
 });
+
+test("pod logs dialog shows logs, refetches per container and closes on Escape", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+
+  await expect(page.locator(".logs-output")).toContainText("listening on :8080");
+  await page
+    .locator(".logs-dialog select.filter-select")
+    .selectOption("metrics-exporter");
+  await page.locator(".logs-dialog .filter-chip", { hasText: "2000" }).click();
+  await expect(page.locator(".logs-output")).toBeVisible();
+
+  const logCalls = await page.evaluate(() =>
+    window.__k8s.calls.filter((c) => c.type === "kubernetes/pods/logs"),
+  );
+  expect(logCalls.at(-1)).toEqual({
+    type: "kubernetes/pods/logs",
+    entry_id: "entry_1",
+    pod_name: "db-0",
+    namespace: "default",
+    container: "metrics-exporter",
+    tail_lines: 2000,
+    previous: false,
+  });
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".logs-dialog")).toHaveCount(0);
+});
+
+test("pod logs failure shows an inline error in the dialog", async ({ page }) => {
+  await page.goto(`${HARNESS}?fail=kubernetes/pods/logs`);
+  await openTab(page, "Pods");
+  await page
+    .locator("tr", { hasText: "web-7d9f8b-abc12" })
+    .locator(".logs-btn")
+    .click();
+
+  await expect(page.locator(".logs-dialog .inline-error")).toContainText(
+    "kubernetes/pods/logs failed",
+  );
+  await expect(page.locator(".logs-output")).toHaveCount(0);
+});

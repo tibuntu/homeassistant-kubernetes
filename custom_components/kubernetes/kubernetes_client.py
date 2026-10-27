@@ -42,6 +42,7 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DEFAULT_WATCH_TIMEOUT_SECONDS,
     IN_CLUSTER_TOKEN_PATH,
+    POD_LOGS_LIMIT_BYTES,
     WORKLOAD_TYPE_JOB,
 )
 from .metrics_parser import parse_cpu_quantity, parse_memory_quantity
@@ -731,6 +732,7 @@ class KubernetesClient:
                     "owner_kind": owner_kind,
                     "owner_name": owner_name,
                     "uid": metadata.get("uid", ""),
+                    "containers": [c.get("name") for c in spec.get("containers", [])],
                     "container_waiting_reason": container_waiting_reason,
                     "container_terminated_reason": container_terminated_reason,
                     "container_terminated_exit_code": container_terminated_exit_code,
@@ -1464,6 +1466,56 @@ class KubernetesClient:
         except Exception as ex:
             self._log_error(f"official client delete pod {pod_name}", ex)
             return False
+
+    async def get_pod_logs(
+        self,
+        pod_name: str,
+        namespace: str,
+        *,
+        container: str | None = None,
+        tail_lines: int = 200,
+        previous: bool = False,
+    ) -> tuple[str, bool]:
+        """Fetch a log snapshot of a pod; returns ``(logs, truncated)``.
+
+        aiohttp only. The result is capped at ``POD_LOGS_LIMIT_BYTES`` so a chatty
+        pod cannot blow up the WebSocket frame; ``truncated`` is True when the
+        cap was hit. Raises KubernetesApiError on any non-200 so a 403/404
+        reaches the caller as an error, not as empty logs.
+        """
+        # The API server applies limitBytes *after* tailLines, i.e. it would cut
+        # off the newest lines. So the server limit is only a memory guard, and
+        # the cap that keeps the tail is applied below.
+        params = {
+            "tailLines": str(tail_lines),
+            "limitBytes": str(POD_LOGS_LIMIT_BYTES * 4),
+        }
+        if container:
+            params["container"] = container
+        if previous:
+            params["previous"] = "true"
+        headers = {"Authorization": f"Bearer {self.api_token}"}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods/{pod_name}/log",
+                headers=headers,
+                params=params,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as response:
+                if response.status != 200:
+                    raise KubernetesApiError(
+                        f"pod logs request failed with status {response.status}: "
+                        f"{(await response.text())[:500]}",
+                        response.status,
+                    )
+                body = await response.read()
+        truncated = len(body) > POD_LOGS_LIMIT_BYTES
+        if truncated:
+            # Keep the newest bytes, starting at the first complete line.
+            body = body[-POD_LOGS_LIMIT_BYTES:]
+            body = body[body.find(b"\n") + 1 :]
+        return body.decode("utf-8", errors="replace"), truncated
 
     async def delete_job(self, job_name: str, namespace: str | None = None) -> bool:
         """Delete a job by name (cascade-deletes its pods via Background propagation)."""

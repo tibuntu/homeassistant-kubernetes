@@ -10,6 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.kubernetes.alerts import build_alerts
 from custom_components.kubernetes.const import DOMAIN
 from custom_components.kubernetes.coordinator import KubernetesEntryData
+from custom_components.kubernetes.kubernetes_client import KubernetesApiError
 from custom_components.kubernetes.websocket_api import (
     _build_cluster_overview,
     _build_namespace_breakdown,
@@ -192,13 +193,18 @@ def add_loaded_client_entry(add_loaded_entry):
     mock hass — they must be driven through a real WebSocket connection.
     """
 
-    def _add(client: MagicMock, entry_id: str = "entry_1") -> MagicMock:
+    def _add(
+        client: MagicMock,
+        entry_id: str = "entry_1",
+        options: dict | None = None,
+    ) -> MagicMock:
         coordinator = MagicMock()
         coordinator.client = client
         coordinator.async_request_refresh = AsyncMock()
         add_loaded_entry(
             entry_id,
             config={"host": "test", "cluster_name": "test"},
+            options=options,
             client=client,
             coordinator=coordinator,
         )
@@ -1280,6 +1286,7 @@ class TestWebsocketConfigList:
         assert entry["scale_verification_timeout"] == 30
         assert entry["scale_cooldown"] == 10
         assert entry["watch_enabled"] is True
+        assert entry["pod_logs_enabled"] is False
         assert entry["healthy"] is True
         # Ensure secret is NOT exposed
         assert "api_token" not in entry
@@ -2250,6 +2257,196 @@ class TestWebsocketDeletePod:
         assert msg["success"] is False
         assert msg["error"]["code"] == "unauthorized"
         client.delete_pod.assert_not_called()
+
+
+_POD_LOGS_ENABLED = {"enable_pod_logs": True}
+
+
+class TestWebsocketPodLogs:
+    """Drive kubernetes/pods/logs through HA's real WebSocket stack.
+
+    Decorated like ``websocket_delete_pod`` — see ``TestWebsocketDeletePod``.
+    """
+
+    @staticmethod
+    def _msg(msg_id: int, entry_id: str = "entry_1", **extra) -> dict:
+        return {
+            "id": msg_id,
+            "type": "kubernetes/pods/logs",
+            "entry_id": entry_id,
+            "pod_name": "nginx-abc123",
+            "namespace": "default",
+            **extra,
+        }
+
+    async def _send(self, hass, hass_ws_client, msg, token=None) -> dict:
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass, token) if token else await hass_ws_client(hass)
+        await ws.send_json(msg)
+        return await ws.receive_json()
+
+    async def test_returns_logs_with_defaults(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """Logs and the truncated flag are returned; defaults are applied."""
+        client = MagicMock()
+        client.get_pod_logs = AsyncMock(return_value=("hello\n", True))
+        add_loaded_client_entry(client, options=_POD_LOGS_ENABLED)
+
+        msg = await self._send(hass, hass_ws_client, self._msg(1))
+
+        assert msg["success"] is True
+        assert msg["result"] == {"logs": "hello\n", "truncated": True}
+        client.get_pod_logs.assert_awaited_once_with(
+            "nginx-abc123",
+            "default",
+            container=None,
+            tail_lines=200,
+            previous=False,
+        )
+
+    async def test_passes_options(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """container, tail_lines and previous reach the client."""
+        client = MagicMock()
+        client.get_pod_logs = AsyncMock(return_value=("", False))
+        add_loaded_client_entry(client, options=_POD_LOGS_ENABLED)
+
+        msg = await self._send(
+            hass,
+            hass_ws_client,
+            self._msg(1, container="sidecar", tail_lines=2000, previous=True),
+        )
+
+        assert msg["success"] is True
+        client.get_pod_logs.assert_awaited_once_with(
+            "nginx-abc123",
+            "default",
+            container="sidecar",
+            tail_lines=2000,
+            previous=True,
+        )
+
+    async def test_disabled_by_default(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """Without the opt-in option the command refuses and fetches nothing."""
+        client = MagicMock()
+        client.get_pod_logs = AsyncMock()
+        add_loaded_client_entry(client)
+
+        msg = await self._send(hass, hass_ws_client, self._msg(1))
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "disabled"
+        client.get_pod_logs.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("status", "code"),
+        [(403, "forbidden"), (404, "logs_failed"), (None, "logs_failed")],
+    )
+    async def test_api_error_maps_to_code(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        status,
+        code,
+    ):
+        """A 403 is reported as forbidden, any other API error as logs_failed."""
+        client = MagicMock()
+        client.get_pod_logs = AsyncMock(
+            side_effect=KubernetesApiError("pod logs request failed", status)
+        )
+        add_loaded_client_entry(client, options=_POD_LOGS_ENABLED)
+
+        msg = await self._send(hass, hass_ws_client, self._msg(1))
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == code
+        assert "pod logs request failed" in msg["error"]["message"]
+
+    async def test_transport_error(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """A transport error becomes logs_failed instead of an unhandled error."""
+        client = MagicMock()
+        client.get_pod_logs = AsyncMock(side_effect=TimeoutError("timed out"))
+        add_loaded_client_entry(client, options=_POD_LOGS_ENABLED)
+
+        msg = await self._send(hass, hass_ws_client, self._msg(1))
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "logs_failed"
+
+    @pytest.mark.parametrize("tail_lines", [9, 2001])
+    async def test_tail_lines_out_of_range(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry, tail_lines
+    ):
+        """tail_lines outside the allowed range is rejected by the schema."""
+        client = MagicMock()
+        client.get_pod_logs = AsyncMock()
+        add_loaded_client_entry(client, options=_POD_LOGS_ENABLED)
+
+        msg = await self._send(
+            hass, hass_ws_client, self._msg(1, tail_lines=tail_lines)
+        )
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        client.get_pod_logs.assert_not_called()
+
+    async def test_entry_not_found(self, hass: HomeAssistant, hass_ws_client):
+        """An unknown entry_id is reported as not_found."""
+        msg = await self._send(
+            hass, hass_ws_client, self._msg(1, entry_id="nonexistent")
+        )
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "not_found"
+
+    async def test_non_admin_is_rejected(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        hass_read_only_access_token,
+        add_loaded_client_entry,
+    ):
+        """A read-only user is refused before the handler runs."""
+        client = MagicMock()
+        client.get_pod_logs = AsyncMock()
+        add_loaded_client_entry(client, options=_POD_LOGS_ENABLED)
+
+        msg = await self._send(
+            hass, hass_ws_client, self._msg(1), hass_read_only_access_token
+        )
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "unauthorized"
+        client.get_pod_logs.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("options", "expected"), [(None, False), (_POD_LOGS_ENABLED, True)]
+    )
+    async def test_pods_list_carries_flag(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        options,
+        expected,
+    ):
+        """pods/list tells the panel per cluster whether to offer the button."""
+        coordinator = add_loaded_client_entry(MagicMock(), options=options)
+        coordinator.data = {"pods": {}}
+
+        msg = await self._send(
+            hass, hass_ws_client, {"id": 1, "type": "kubernetes/pods/list"}
+        )
+
+        assert msg["success"] is True
+        assert msg["result"]["clusters"][0]["pod_logs_enabled"] is expected
 
 
 class TestWebsocketDeleteJob:

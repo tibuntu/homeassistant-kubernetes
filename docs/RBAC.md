@@ -103,6 +103,7 @@ Read-only access to every resource the integration monitors. No write permission
 
 - No switches (scaling, CronJob control, or node cordon/uncordon)
 - No rollout restart, pod deletion, or Job deletion
+- No pod logs in the sidebar panel (`pods/log` not granted)
 - No Cluster Events platform (`events` not granted)
 - No Watch API support (`watch` verb not granted) — each stream gets HTTP 403 on connect and retries once a minute, a **Missing permissions** repair issue names the affected resource(s), and once every stream is forbidden the integration polls at the regular interval instead; disable the Watch API under **Configure** to silence the repair issue
 - Sensors and binary sensors only
@@ -114,6 +115,7 @@ Read-only access to every resource the integration monitors. No write permission
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
 | **pods** | `get`, `list`, `watch`, `delete` | ✅ | `get`, `list` only | Pod count and status sensors, pod deletion |
+| **pods/log** | `get` | ✅ | ❌ | Pod log snapshots in the sidebar panel (opt-in, admin-only — logs can contain secrets; drop the rule if you never want them readable) |
 | **nodes** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Node sensors and binary sensors; `patch` enables cordon/uncordon |
 | **namespaces** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Namespace discovery |
 | **events** | `get`, `list`, `watch` | ✅ | ❌ | Enhanced troubleshooting |
@@ -291,6 +293,9 @@ rules:
   resources: ["pods"]
   verbs: ["get", "list", "watch", "delete"]
 - apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+- apiGroups: [""]
   resources: ["events", "services"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["apps"]
@@ -394,6 +399,17 @@ Pod deletion requires **both** Home Assistant admin role and Kubernetes RBAC per
 kubectl auth can-i delete pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Fix: Apply manifests/full/ — the minimal set does not grant delete permissions
+```
+
+#### 8. Pod log dialog: "pod logs request failed with status 403"
+
+The log viewer needs `get` on `pods/log`. Unlike a missing watch rule, this raises no repair issue — the error shows up in the panel's log dialog only.
+
+```bash
+# Verify pod log permissions
+kubectl auth can-i get pods/log --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+
+# Fix: re-apply manifests/full/ (or helm upgrade) — the minimal set does not grant pods/log
 ```
 
 ### Diagnostic Commands

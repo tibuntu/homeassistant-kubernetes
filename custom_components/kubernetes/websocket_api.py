@@ -15,6 +15,7 @@ from .const import (
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
     CONF_ENABLE_PANEL,
+    CONF_ENABLE_POD_LOGS,
     CONF_ENABLE_WATCH,
     CONF_HOST,
     CONF_MONITOR_ALL_NAMESPACES,
@@ -27,6 +28,7 @@ from .const import (
     DEFAULT_CLUSTER_NAME,
     DEFAULT_DEVICE_GROUPING_MODE,
     DEFAULT_ENABLE_PANEL,
+    DEFAULT_ENABLE_POD_LOGS,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_PORT,
@@ -34,6 +36,8 @@ from .const import (
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
+    POD_LOGS_MAX_TAIL_LINES,
+    POD_LOGS_MIN_TAIL_LINES,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
@@ -43,6 +47,7 @@ from .coordinator import (
     get_loaded_entries,
     hpa_attributes,
 )
+from .kubernetes_client import KubernetesApiError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,6 +84,11 @@ def _get_coordinator(
     return None
 
 
+def _pod_logs_enabled(entry: Any) -> bool:
+    """Whether the opt-in pod log viewer is enabled for this config entry."""
+    return bool(entry.options.get(CONF_ENABLE_POD_LOGS, DEFAULT_ENABLE_POD_LOGS))
+
+
 @callback
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register all Kubernetes WebSocket commands."""
@@ -90,6 +100,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_services_list)
     websocket_api.async_register_command(hass, websocket_config_list)
     websocket_api.async_register_command(hass, websocket_delete_pod)
+    websocket_api.async_register_command(hass, websocket_pod_logs)
     websocket_api.async_register_command(hass, websocket_delete_job)
     websocket_api.async_register_command(hass, websocket_suspend_cronjob)
     websocket_api.async_register_command(hass, websocket_subscribe_updates)
@@ -128,6 +139,9 @@ async def websocket_pods_list(
 ) -> None:
     """Return all pods from all config entries."""
     result = _list_data(hass, "pods")
+    entries = {e.entry_id: e for e in get_loaded_entries(hass)}
+    for cluster in result["clusters"]:
+        cluster["pod_logs_enabled"] = _pod_logs_enabled(entries[cluster["entry_id"]])
     connection.send_result(msg["id"], result)
 
 
@@ -373,6 +387,60 @@ async def websocket_delete_pod(
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): "kubernetes/pods/logs",
+        vol.Required("entry_id"): str,
+        vol.Required("pod_name"): str,
+        vol.Required("namespace"): str,
+        vol.Optional("container"): str,
+        vol.Optional("tail_lines", default=200): vol.All(
+            int, vol.Range(min=POD_LOGS_MIN_TAIL_LINES, max=POD_LOGS_MAX_TAIL_LINES)
+        ),
+        vol.Optional("previous", default=False): bool,
+    }
+)
+@websocket_api.async_response
+async def websocket_pod_logs(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return a log snapshot of a pod.
+
+    Admin-only: logs routinely contain secrets. The text is passed straight
+    through to the caller and never stored anywhere.
+    """
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+    if not _pod_logs_enabled(hass.config_entries.async_get_entry(msg["entry_id"])):
+        connection.send_error(
+            msg["id"], "disabled", "Pod logs are disabled in the integration options"
+        )
+        return
+
+    try:
+        logs, truncated = await coordinator.client.get_pod_logs(
+            msg["pod_name"],
+            msg["namespace"],
+            container=msg.get("container"),
+            tail_lines=msg["tail_lines"],
+            previous=msg["previous"],
+        )
+    except KubernetesApiError as ex:
+        code = "forbidden" if ex.status == 403 else "logs_failed"
+        connection.send_error(msg["id"], code, str(ex))
+        return
+    except Exception as ex:
+        connection.send_error(msg["id"], "logs_failed", f"Failed to fetch logs: {ex}")
+        return
+
+    connection.send_result(msg["id"], {"logs": logs, "truncated": truncated})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): "kubernetes/jobs/delete",
         vol.Required("entry_id"): str,
         vol.Required("job_name"): str,
@@ -465,6 +533,7 @@ def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
                 ),
                 "panel_enabled": panel_enabled,
                 "watch_enabled": watch_enabled,
+                "pod_logs_enabled": _pod_logs_enabled(entry),
                 "healthy": coordinator.last_update_success,
             }
         )

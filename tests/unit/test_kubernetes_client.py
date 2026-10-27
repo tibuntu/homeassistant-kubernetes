@@ -9,6 +9,7 @@ import aiohttp
 from kubernetes.client import ApiException
 import pytest
 
+from custom_components.kubernetes.const import POD_LOGS_LIMIT_BYTES
 from custom_components.kubernetes.kubernetes_client import (
     KubernetesApiError,
     KubernetesClient,
@@ -2535,6 +2536,20 @@ class TestKubernetesClientGetPods:
         assert pod["node_name"] == "worker-node-1"
         assert pod["pod_ip"] == "10.244.1.5"
         assert pod["labels"]["app"] == "test-app"
+        assert pod["containers"] == []
+
+    def test_parse_pods_data_container_names(self, mock_client):
+        """Container names come from spec.containers (also before they start)."""
+        raw = {
+            "metadata": {"name": "p", "namespace": "default"},
+            "spec": {"containers": [{"name": "app"}, {"name": "sidecar"}]},
+            "status": {"phase": "Pending"},
+        }
+
+        assert mock_client._parse_pods_data([raw])[0]["containers"] == [
+            "app",
+            "sidecar",
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -6132,3 +6147,66 @@ class TestExcludeJobPods:
         client = _make_client(mock_config)
         assert client._parse_pod_item(_pod("backup-29754648-hk8w8", "Job")) is None
         assert client._parse_pod_item(_pod("web-abc123", "ReplicaSet")) is not None
+
+
+class TestGetPodLogs:
+    """get_pod_logs: aiohttp-only log snapshot with a size cap."""
+
+    async def test_returns_logs_and_passes_params(self, mock_client):
+        """200 returns the decoded body; options map to query parameters."""
+        session = mock_aiohttp_session(get=_mock_response(200, read=b"line1\nline2\n"))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            logs, truncated = await mock_client.get_pod_logs(
+                "web-1", "apps", container="sidecar", tail_lines=50, previous=True
+            )
+
+        assert logs == "line1\nline2\n"
+        assert truncated is False
+        url = session.get.call_args[0][0]
+        assert url.endswith("/api/v1/namespaces/apps/pods/web-1/log")
+        params = session.get.call_args[1]["params"]
+        assert params["tailLines"] == "50"
+        assert params["container"] == "sidecar"
+        assert params["previous"] == "true"
+        assert params["limitBytes"] == str(POD_LOGS_LIMIT_BYTES * 4)
+
+    async def test_defaults_omit_container_and_previous(self, mock_client):
+        """Without container/previous those parameters are not sent."""
+        session = mock_aiohttp_session(get=_mock_response(200, read=b""))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            assert await mock_client.get_pod_logs("p", "default") == ("", False)
+
+        params = session.get.call_args[1]["params"]
+        assert params["tailLines"] == "200"
+        assert "container" not in params
+        assert "previous" not in params
+
+    async def test_oversized_body_keeps_newest_complete_lines(self, mock_client):
+        """Above the cap, the tail is kept, starting at a full line."""
+        line = b"x" * 99 + b"\n"
+        body = b"first\n" + line * (POD_LOGS_LIMIT_BYTES // 100 + 10) + b"last\n"
+        session = mock_aiohttp_session(get=_mock_response(200, read=body))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            logs, truncated = await mock_client.get_pod_logs("p", "default")
+
+        assert truncated is True
+        assert len(logs) <= POD_LOGS_LIMIT_BYTES
+        assert logs.endswith("last\n")
+        assert "first" not in logs
+        assert logs.startswith("x")
+
+    @pytest.mark.parametrize("status", [400, 403, 404])
+    async def test_non_200_raises_with_status(self, mock_client, status):
+        """A non-200 raises KubernetesApiError carrying the status."""
+        session = mock_aiohttp_session(get=_mock_response(status, text="denied"))
+
+        with (
+            patch("aiohttp.ClientSession", return_value=session),
+            pytest.raises(KubernetesApiError, match="denied") as exc_info,
+        ):
+            await mock_client.get_pod_logs("p", "default")
+
+        assert exc_info.value.status == status

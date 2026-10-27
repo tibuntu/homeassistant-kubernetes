@@ -65,6 +65,15 @@ WATCH_EARLY_CLOSE_SECONDS = 5  # empty stream closing faster than this = failure
 CONF_EXCLUDE_JOB_PODS = "exclude_job_pods"
 DEFAULT_EXCLUDE_JOB_PODS = True
 
+# Pod log snapshots (panel, experimental, opt-in): logs routinely contain
+# secrets, so the WebSocket command refuses unless the option is on.
+CONF_ENABLE_POD_LOGS = "enable_pod_logs"
+DEFAULT_ENABLE_POD_LOGS = False
+# Response size cap and allowed tail range
+POD_LOGS_LIMIT_BYTES = 256 * 1024
+POD_LOGS_MIN_TAIL_LINES = 10
+POD_LOGS_MAX_TAIL_LINES = 2000
+
 # Event platform (experimental, opt-in)
 CONF_ENABLE_EVENTS = "enable_events"
 DEFAULT_ENABLE_EVENTS = False
