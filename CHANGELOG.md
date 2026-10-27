@@ -2,24 +2,28 @@
 
 ## [1.14.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.7...v1.14.0) (2026-10-27)
 
+A feature release: **cluster-wide alert sensors**, a **replica count you can set directly**, **HPA awareness**, and **pod log snapshots** in the panel. Entity names, icons and service errors are now translatable. The new permissions are listed under *Upgrading*.
 
-### Features
+### New features
 
-* cluster alert sensors and per-node Ready binary sensor ([60d0694](https://github.com/tibuntu/homeassistant-kubernetes/commit/60d06941a205393d29ab2438f353ef69422989cd)), closes [#476](https://github.com/tibuntu/homeassistant-kubernetes/issues/476)
-* diagnostic entity category and data size device class (Gold quality scale) ([81b0223](https://github.com/tibuntu/homeassistant-kubernetes/commit/81b0223165da4c846699167bddd39f6d8e5aed5f))
-* HPA awareness - detect autoscaled workloads and reject scale actions that would revert ([f38721a](https://github.com/tibuntu/homeassistant-kubernetes/commit/f38721a42aebd42b31572ea174f96b1287b8487c)), closes [#478](https://github.com/tibuntu/homeassistant-kubernetes/issues/478)
-* **panel:** hide mutation buttons from non-admin users ([ef00167](https://github.com/tibuntu/homeassistant-kubernetes/commit/ef0016703ca03927159899e75487c3e5a7a2265d))
-* **panel:** opt-in pod logs viewer (admin-only snapshot dialog) ([766c90c](https://github.com/tibuntu/homeassistant-kubernetes/commit/766c90c1d9a72de99f4a1bc572ab4a8e04d79a2f))
-* replica number entity for Deployments and StatefulSets ([#477](https://github.com/tibuntu/homeassistant-kubernetes/issues/477)) ([f81dcdb](https://github.com/tibuntu/homeassistant-kubernetes/commit/f81dcdb52de2327b9e5ccbab0a42e5789758c1dd))
-* translate entity names, icons and service errors (Gold quality scale) ([c9bb4f8](https://github.com/tibuntu/homeassistant-kubernetes/commit/c9bb4f8f610cbd956c54bef5b16d9ff234128f00))
+**Cluster alert sensors.** Three new sensors on the cluster device count what needs attention: *Degraded Workloads* (Deployments, StatefulSets and DaemonSets with fewer replicas available than desired), *Problem Pods* (CrashLoopBackOff, image pull failures, failed or unschedulable pods) and *Nodes Under Pressure*. Each lists the affected resources in an attribute, so one automation covers the whole cluster. They use the same rules as the panel's Overview alerts. Each node also gets a *Ready* binary sensor next to its pressure sensors. ([#476](https://github.com/tibuntu/homeassistant-kubernetes/issues/476))
 
+**Replica count as a number entity.** Every Deployment and StatefulSet gets a `number` entity that sets an exact replica count (0–100) from a dashboard or automation. The on/off switch stays as it is. ([#477](https://github.com/tibuntu/homeassistant-kubernetes/issues/477))
 
-### Bug Fixes
+**HPA awareness.** Workloads managed by a HorizontalPodAutoscaler are now detected. Their switch and number entities carry `hpa_managed`, `hpa_name`, `hpa_min_replicas` and `hpa_max_replicas` attributes, and the panel shows an HPA badge. Scaling such a workload to a non-zero count, which the HPA would simply revert, is now rejected with an error. Scaling to 0 and turning the switch back on still work. ([#478](https://github.com/tibuntu/homeassistant-kubernetes/issues/478))
 
-* address pod logs review and update command count test ([720164b](https://github.com/tibuntu/homeassistant-kubernetes/commit/720164b47bc97442d4290c386a3ff37402d41199))
-* log a forbidden HPA list once instead of on every poll ([084226e](https://github.com/tibuntu/homeassistant-kubernetes/commit/084226e5ece8b995cc843f0a4afec956f6bc5de4))
-* lowercase number unique_id suffix and address review ([ad4eb6a](https://github.com/tibuntu/homeassistant-kubernetes/commit/ad4eb6a1cbb148535d10d1de84e7e5e806f01717))
-* serve exception translations without the HA loader and address review ([fed70ac](https://github.com/tibuntu/homeassistant-kubernetes/commit/fed70ac6f556cecf2d25393a0d269237c46f24ff))
+**Pod log snapshots in the panel (experimental).** Admins can open the recent log output of a pod from the Pods tab: pick a container, the number of lines, or the previous run of a restarted container. It is off by default; turn it on under **Configure → Enable pod logs in the panel**. Logs are fetched on demand and never stored in Home Assistant. Output is capped at 256 KiB, and there is no live streaming.
+
+**Panel actions only for admins.** Buttons that change the cluster (start/stop, restart, scale, delete, cordon, suspend, logs) are now hidden from non-admin users instead of failing when clicked. Note that Home Assistant services have no admin check, so this does not restrict automations or scripts.
+
+### Fixes & improvements
+
+* **Translated entity names, icons and errors.** Entity names and icons now come from Home Assistant's translation files, and service errors carry a translatable message. Friendly names stay the same, so existing dashboards and entity IDs are unaffected.
+* **Entity categories and device classes.** The cluster-health and node-condition binary sensors are now *diagnostic* entities, and workload memory sensors use the *data size* device class, so Home Assistant can convert their unit.
+
+> **Upgrading — RBAC:** HPA detection needs `get`/`list`/`watch` on `horizontalpodautoscalers` (`autoscaling` API group), and pod logs need `get` on `pods/log`. Helm users run `helm upgrade` with `--reset-then-reuse-values`; manifest users re-apply `manifests/full/` (or `manifests/minimal/`, which grants HPA `get`/`list` only and no pod logs). Without the HPA rule, HPA detection is off (one warning in the log) and everything else keeps working.
+>
+> **Dashboards:** because the cluster-health and node-condition binary sensors are now diagnostic, auto-generated dashboards list them under *Diagnostic* rather than with the other entities. Dashboards you built yourself are unchanged.
 
 ## [1.13.7](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.6...v1.13.7) (2026-10-26)
 
