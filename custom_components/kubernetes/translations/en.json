@@ -436,10 +436,10 @@
   },
   "exceptions": {
     "no_config_entry": {
-      "message": "No Kubernetes integration configured"
+      "message": "No Kubernetes integration configured."
     },
     "entry_not_loaded": {
-      "message": "No loaded Kubernetes config entry with entry ID {entry_id}"
+      "message": "No loaded Kubernetes config entry with entry ID {entry_id}."
     },
     "no_valid_workloads": {
       "message": "No valid workloads found for {service}. Requested: {requested}. Ensure workload_name/workload_names reference entities that exist (e.g. switch.xxx) and that those switches expose namespace and workload_type attributes."
@@ -460,7 +460,13 @@
       "message": "{service} requires at least one non-empty node name."
     },
     "operation_failed": {
-      "message": "Failed to {operation}: {failures}"
+      "message": "Failed to {operation}: {failures}."
+    },
+    "scale_failed": {
+      "message": "Failed to scale {workload_type} {workload} to {replicas} replicas."
+    },
+    "node_schedule_failed": {
+      "message": "Failed to {action} node {node}."
     }
   }
 }

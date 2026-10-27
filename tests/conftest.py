@@ -38,15 +38,24 @@ _COMPONENT_DIR = Path(__file__).parents[1] / "custom_components" / "kubernetes"
 
 
 @pytest.fixture
-async def load_translations(hass, enable_custom_integrations):
-    """Load translations/en.json so translated exceptions render their message.
+def load_translations(hass, monkeypatch):
+    """Serve the exception messages of translations/en.json to HA.
 
     Tests that set up services directly never run the integration setup that
-    would load them, and HA renders an unloaded exception as its bare key.
+    loads them, and HA renders an unloaded exception as its bare key. HA's own
+    loader cannot be used here: in CI it trips over the editable install's path
+    hook while scanning custom_components, so the cache lookup is patched.
     """
-    from homeassistant.helpers.translation import async_load_integrations
+    from homeassistant.helpers import translation
 
-    await async_load_integrations(hass, {DOMAIN})
+    strings = json.loads((_COMPONENT_DIR / "translations" / "en.json").read_text())
+    cached = {
+        f"component.{DOMAIN}.exceptions.{key}.message": value["message"]
+        for key, value in strings["exceptions"].items()
+    }
+    monkeypatch.setattr(
+        translation, "async_get_cached_translations", lambda *_, **__: cached
+    )
 
 
 @pytest.fixture

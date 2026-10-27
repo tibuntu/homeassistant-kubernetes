@@ -209,11 +209,11 @@ class KubernetesReplicaNumber(NumberEntity):
         if not await scale(self.workload_name, replicas, namespace=self.namespace):
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
-                translation_key="operation_failed",
+                translation_key="scale_failed",
                 translation_placeholders={
-                    "operation": "scale",
-                    "failures": f"{self._workload_type} "
-                    f"{self.namespace}/{self.workload_name} to {replicas} replicas",
+                    "workload_type": self._workload_type,
+                    "workload": f"{self.namespace}/{self.workload_name}",
+                    "replicas": str(replicas),
                 },
             )
         # replicas is spec.replicas, which the API just accepted — show it
