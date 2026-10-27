@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.0...v1.14.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* list pods live in the panel when pod collection is disabled ([137e58a](https://github.com/tibuntu/homeassistant-kubernetes/commit/137e58ae7f8b3ae9c84a3dde0278f33459d18a44))
+
 ## [1.14.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.7...v1.14.0) (2026-10-27)
 
 A feature release: **cluster-wide alert sensors**, a **replica count you can set directly**, **HPA awareness**, and **pod log snapshots** in the panel. Entity names, icons and service errors are now translatable. The new permissions are listed under *Upgrading*.
