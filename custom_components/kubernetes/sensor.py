@@ -422,8 +422,8 @@ async def _async_discover_and_add_new_sensors(
 
         # Ensure namespace devices exist for every namespaced new sensor
         # (node sensors have no namespace and hang off the cluster device).
-        namespaces = {getattr(e, "namespace", None) for e in new_entities}
-        for namespace in namespaces - {None}:
+        namespaces = {ns for e in new_entities if (ns := getattr(e, "namespace", None))}
+        for namespace in namespaces:
             await get_or_create_namespace_device(hass, config_entry, namespace)
 
         # Add new entities if any were found
