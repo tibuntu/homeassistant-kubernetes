@@ -6,8 +6,13 @@ from collections.abc import Callable
 import logging
 from typing import Any, NamedTuple
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfInformation
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -832,7 +837,12 @@ class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
 
         self._attr_translation_key = f"workload_{metric}"
         self._attr_translation_placeholders = {"name": workload_name}
-        self._attr_native_unit_of_measurement = "m" if metric == "cpu" else "MiB"
+        if metric == "cpu":
+            # Millicores have no matching device class
+            self._attr_native_unit_of_measurement = "m"
+        else:
+            self._attr_device_class = SensorDeviceClass.DATA_SIZE
+            self._attr_native_unit_of_measurement = UnitOfInformation.MEBIBYTES
 
         self._attr_unique_id = f"{config_entry.entry_id}_{namespace}_{workload_name}_{workload_type}_{metric}"
 

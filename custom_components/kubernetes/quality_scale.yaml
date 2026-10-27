@@ -59,15 +59,15 @@ rules:
   docs-troubleshooting: done
   docs-use-cases: done
   dynamic-devices: done
-  entity-category:
-    status: todo
-    comment: No entity sets an entity category yet.
-  entity-device-class:
-    status: todo
-    comment: Memory sensors could use the data size device class.
+  entity-category: done
+  entity-device-class: done
   entity-disabled-by-default:
-    status: todo
-    comment: Every entity is enabled by default.
+    status: exempt
+    comment: >-
+      Users already opt out per resource type via the disabled_resources
+      option, which skips the fetch as well; disabling entities by default
+      would silently hide new pods and workloads that existing installs
+      expect to appear.
   entity-translations: done
   exception-translations: done
   icon-translations: done

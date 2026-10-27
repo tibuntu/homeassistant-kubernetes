@@ -10,6 +10,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -176,6 +177,7 @@ class KubernetesClusterHealthSensor(KubernetesBaseBinarySensor):
         self._attr_translation_key = "cluster_health"
         self._attr_unique_id = f"{config_entry.entry_id}_cluster_health"
         self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -223,6 +225,7 @@ class KubernetesNodeConditionBinarySensor(BinarySensorEntity):
             if condition_key == _NODE_READY
             else BinarySensorDeviceClass.PROBLEM
         )
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
     def device_info(self) -> DeviceInfo:

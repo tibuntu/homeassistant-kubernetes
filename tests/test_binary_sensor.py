@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 import pytest
@@ -194,6 +195,7 @@ class TestKubernetesClusterHealthSensor:
         assert entity_name(sensor, "binary_sensor") == "Cluster Health"
         assert sensor.unique_id == "test_entry_id_cluster_health"
         assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
+        assert sensor.entity_category == EntityCategory.DIAGNOSTIC
         assert sensor._attr_has_entity_name is True
         # The one deliberately polled entity: HA's 30 s poll is its live probe.
         assert sensor.should_poll is True
@@ -336,6 +338,7 @@ class TestKubernetesNodeConditionBinarySensor:
         assert entity_name(sensor, "binary_sensor") == "node-1 Memory Pressure"
         assert sensor.unique_id == "test_entry_id_node_node-1_memory_pressure"
         assert sensor.device_class == BinarySensorDeviceClass.PROBLEM
+        assert sensor.entity_category == EntityCategory.DIAGNOSTIC
         assert sensor._attr_has_entity_name is True
         # Listener-driven; only the cluster health sensor is polled.
         assert sensor.should_poll is False
