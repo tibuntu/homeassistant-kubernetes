@@ -93,7 +93,7 @@ The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `n
 
 1. Go to **Settings → Devices & Services → Kubernetes**, open the ⋮ menu of each cluster entry and choose **Delete**. This removes its devices, entities and repair issues; the sidebar panel disappears with the last entry.
 2. Uninstall the integration in HACS (or delete `custom_components/kubernetes/`) and restart Home Assistant.
-3. Remove the cluster-side RBAC: `helm uninstall ha-k8s-rbac --namespace homeassistant`, or `kubectl delete -f` on the four manifest URLs from step 1 of [Setup](#setup).
+3. Remove the cluster-side RBAC: `helm uninstall ha-k8s-rbac --namespace homeassistant`, or `kubectl delete -f` on the four manifest URLs from step 1 of [Setup](#setup). Either way the token Secret is deleted and the token stops working; the `homeassistant` namespace itself stays (`kubectl delete namespace homeassistant` if nothing else lives there).
 
 ## Documentation
 
