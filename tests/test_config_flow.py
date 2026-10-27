@@ -26,6 +26,7 @@ from custom_components.kubernetes.const import (
     CONF_DISABLED_RESOURCES,
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
+    CONF_ENABLE_POD_LOGS,
     CONF_ENABLE_WATCH,
     CONF_EVENT_TYPES,
     CONF_EXCLUDE_JOB_PODS,
@@ -1408,6 +1409,16 @@ class TestKubernetesOptionsFlow:
         schema_keys = [str(k) for k in result["data_schema"].schema]
         assert any(CONF_ENABLE_EVENTS in k for k in schema_keys)
         assert any(CONF_EVENT_TYPES in k for k in schema_keys)
+
+    async def test_options_flow_pod_logs_defaults_off(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """enable_pod_logs is offered and is off unless the user opts in."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        key = next(k for k in result["data_schema"].schema if k == CONF_ENABLE_POD_LOGS)
+        assert key.default() is False
 
     def test_options_flow_defaults_events_disabled(self):
         """Default value for enable_events should be False."""

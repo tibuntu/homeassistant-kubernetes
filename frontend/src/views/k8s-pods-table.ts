@@ -23,6 +23,7 @@ interface PodData {
   creation_timestamp: string;
   owner_kind: string;
   owner_name: string;
+  containers?: string[];
 }
 
 interface PodIdentifier {
@@ -31,10 +32,24 @@ interface PodIdentifier {
   namespace: string;
 }
 
+interface LogsTarget extends PodIdentifier {
+  containers: string[];
+}
+
+interface LogsResponse {
+  logs: string;
+  truncated: boolean;
+}
+
+const TAIL_OPTIONS = [100, 500, 2000] as const;
+const RBAC_DOCS_URL =
+  "https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md";
+
 interface ClusterPods {
   entry_id: string;
   cluster_name: string;
   pods: PodData[];
+  pod_logs_enabled?: boolean;
 }
 
 interface PodsResponse {
@@ -97,6 +112,16 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   @state() private _visibleColumns: Set<ColumnKey> = loadColumnPrefs();
   @state() private _columnMenuOpen = false;
   @state() private _actionError: string | null = null;
+  @state() private _logsTarget: LogsTarget | null = null;
+  @state() private _logsContainer = "";
+  @state() private _logsTail: number = 500;
+  @state() private _logsPrevious = false;
+  @state() private _logsResult: LogsResponse | null = null;
+  @state() private _logsLoading = false;
+  @state() private _logsError: { message: string; forbidden: boolean } | null = null;
+  @state() private _logsCopied = false;
+  // Drops responses of a request that a newer one has superseded.
+  private _logsRequest = 0;
 
   protected loadErrorFallback = "Failed to load pods data";
 
@@ -213,6 +238,83 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       this._deleteConfirm = null;
     } finally {
       this._deleting = false;
+    }
+  }
+
+  private _openLogs(entryId: string, pod: PodData): void {
+    const containers = pod.containers ?? [];
+    this._logsTarget = {
+      entry_id: entryId,
+      pod_name: pod.name,
+      namespace: pod.namespace,
+      containers,
+    };
+    this._logsContainer = containers[0] ?? "";
+    this._logsPrevious = false;
+    this._logsResult = null;
+    void this._fetchLogs();
+  }
+
+  private _closeLogs(): void {
+    this._logsTarget = null;
+    this._logsRequest++;
+  }
+
+  private async _fetchLogs(): Promise<void> {
+    const target = this._logsTarget;
+    if (!target) return;
+    const request = ++this._logsRequest;
+    this._logsLoading = true;
+    this._logsError = null;
+    this._logsCopied = false;
+    try {
+      const result: LogsResponse = await this.hass.callWS({
+        type: "kubernetes/pods/logs",
+        entry_id: target.entry_id,
+        pod_name: target.pod_name,
+        namespace: target.namespace,
+        ...(this._logsContainer ? { container: this._logsContainer } : {}),
+        tail_lines: this._logsTail,
+        previous: this._logsPrevious,
+      });
+      if (request !== this._logsRequest) return;
+      this._logsResult = result;
+    } catch (err: unknown) {
+      if (request !== this._logsRequest) return;
+      this._logsResult = null;
+      this._logsError = {
+        message: errorMessage(err, "Failed to fetch logs"),
+        forbidden:
+          typeof err === "object" &&
+          err !== null &&
+          "code" in err &&
+          err.code === "forbidden",
+      };
+    } finally {
+      if (request === this._logsRequest) this._logsLoading = false;
+    }
+  }
+
+  private _setLogsOption(apply: () => void): void {
+    apply();
+    void this._fetchLogs();
+  }
+
+  private async _copyLogs(): Promise<void> {
+    if (!this._logsResult) return;
+    try {
+      await navigator.clipboard.writeText(this._logsResult.logs);
+      this._logsCopied = true;
+    } catch {
+      // Clipboard API needs a secure context (HTTPS); text stays selectable.
+    }
+  }
+
+  protected updated(changedProps: PropertyValues): void {
+    super.updated(changedProps);
+    if (changedProps.has("_logsResult") && this._logsResult) {
+      const pre = this.renderRoot.querySelector<HTMLElement>(".logs-output");
+      if (pre) pre.scrollTop = pre.scrollHeight;
     }
   }
 
@@ -333,6 +435,69 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
       }
 
+      .delete-btn.logs-btn:hover {
+        color: var(--primary-color);
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
+      }
+
+      .row-actions {
+        display: flex;
+        align-items: center;
+      }
+
+      .confirm-dialog.logs-dialog {
+        max-width: 960px;
+      }
+
+      .logs-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .logs-previous {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--primary-text-color);
+        cursor: pointer;
+      }
+
+      .logs-output {
+        margin: 0 0 12px;
+        padding: 12px;
+        height: 60vh;
+        overflow: auto;
+        border-radius: 8px;
+        background: var(--secondary-background-color, #f5f5f5);
+        color: var(--primary-text-color);
+        font-family: monospace;
+        font-size: 12px;
+        white-space: pre;
+      }
+
+      .logs-note {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        margin-bottom: 8px;
+      }
+
+      .inline-error {
+        padding: 10px 16px;
+        margin-bottom: 12px;
+        border-radius: 8px;
+        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+        color: var(--error-color, #f44336);
+        font-size: 14px;
+      }
+
+      .inline-error a {
+        color: inherit;
+      }
+
       .column-menu-wrapper {
         position: relative;
         margin-left: auto;
@@ -416,6 +581,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       }
       ${this._data!.clusters.map((c) => this._renderCluster(c))}
       ${this._deleteConfirm ? this._renderDeleteDialog() : nothing}
+      ${this._logsTarget ? this._renderLogsDialog() : nothing}
     `;
   }
 
@@ -587,9 +753,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
                         </tr>
                       </thead>
                       <tbody>
-                        ${filtered.map((pod) =>
-                          this._renderPodRow(cluster.entry_id, pod),
-                        )}
+                        ${filtered.map((pod) => this._renderPodRow(cluster, pod))}
                       </tbody>
                     </table>
                   </div>
@@ -652,7 +816,8 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     `;
   }
 
-  private _renderPodRow(entryId: string, pod: PodData) {
+  private _renderPodRow(cluster: ClusterPods, pod: PodData) {
+    const entryId = cluster.entry_id;
     const phaseClass = PHASE_CLASSES[pod.phase] || "badge-unknown";
 
     return html`
@@ -669,13 +834,26 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         <td>
           ${
             isAdmin(this.hass)
-              ? html`<button
-                  class="delete-btn"
-                  title="Delete pod"
-                  @click=${() => this._requestDelete(entryId, pod)}
-                >
-                  <ha-icon icon="mdi:delete-outline"></ha-icon>
-                </button>`
+              ? html`<div class="row-actions">
+                  ${
+                    cluster.pod_logs_enabled
+                      ? html`<button
+                          class="delete-btn logs-btn"
+                          title="Show logs"
+                          @click=${() => this._openLogs(entryId, pod)}
+                        >
+                          <ha-icon icon="mdi:text-box-outline"></ha-icon>
+                        </button>`
+                      : nothing
+                  }
+                  <button
+                    class="delete-btn"
+                    title="Delete pod"
+                    @click=${() => this._requestDelete(entryId, pod)}
+                  >
+                    <ha-icon icon="mdi:delete-outline"></ha-icon>
+                  </button>
+                </div>`
               : nothing
           }
         </td>
@@ -711,6 +889,117 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
             >
               ${this._deleting ? "Deleting..." : "Delete"}
             </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderLogsDialog() {
+    const target = this._logsTarget!;
+    const result = this._logsResult;
+    return html`
+      <div
+        class="confirm-overlay"
+        tabindex="-1"
+        ${this._autofocusOverlay()}
+        @click=${this._closeLogs}
+        @keydown=${this._onOverlayKeydown(this._closeLogs)}
+      >
+        <div
+          class="confirm-dialog logs-dialog"
+          @click=${(e: Event) => e.stopPropagation()}
+        >
+          <h3>
+            Logs
+            <span class="confirm-ref">${target.namespace}/${target.pod_name}</span>
+          </h3>
+          <div class="logs-controls">
+            ${
+              target.containers.length > 1
+                ? html`
+                    <select
+                      class="filter-select"
+                      title="Container"
+                      .value=${this._logsContainer}
+                      @change=${(e: Event) =>
+                        this._setLogsOption(() => {
+                          this._logsContainer = (e.target as HTMLSelectElement).value;
+                        })}
+                    >
+                      ${target.containers.map(
+                        (c) => html`<option value=${c}>${c}</option>`,
+                      )}
+                    </select>
+                  `
+                : nothing
+            }
+            ${TAIL_OPTIONS.map(
+              (n) => html`
+                <button
+                  class="filter-chip"
+                  ?active=${this._logsTail === n}
+                  @click=${() =>
+                    this._setLogsOption(() => {
+                      this._logsTail = n;
+                    })}
+                >
+                  ${n} lines
+                </button>
+              `,
+            )}
+            <label class="logs-previous">
+              <input
+                type="checkbox"
+                .checked=${this._logsPrevious}
+                @change=${(e: Event) =>
+                  this._setLogsOption(() => {
+                    this._logsPrevious = (e.target as HTMLInputElement).checked;
+                  })}
+              />
+              Previous container
+            </label>
+          </div>
+          ${
+            this._logsError
+              ? html`
+                  <div class="inline-error">
+                    ${this._logsError.message}
+                    ${
+                      this._logsError.forbidden
+                        ? html`<br />The integration's ServiceAccount needs
+                            <code>get</code> on <code>pods/log</code> — see the
+                            <a href=${RBAC_DOCS_URL} target="_blank" rel="noreferrer"
+                              >RBAC docs</a
+                            >.`
+                        : nothing
+                    }
+                  </div>
+                `
+              : nothing
+          }
+          ${
+            result?.truncated
+              ? html`<div class="logs-note">
+                  Output truncated — showing the newest part only.
+                </div>`
+              : nothing
+          }
+          ${
+            this._logsLoading && !result
+              ? html`<ha-circular-progress indeterminate></ha-circular-progress>`
+              : result
+                ? html`<pre class="logs-output">${result.logs || "(no output)"}</pre>`
+                : nothing
+          }
+          <div class="confirm-actions">
+            <button @click=${this._fetchLogs} ?disabled=${this._logsLoading}>
+              ${this._logsLoading ? "Loading..." : "Refresh"}
+            </button>
+            <button @click=${this._copyLogs} ?disabled=${!result}>
+              ${this._logsCopied ? "Copied" : "Copy"}
+            </button>
+            <button @click=${this._closeLogs}>Close</button>
           </div>
         </div>
       </div>

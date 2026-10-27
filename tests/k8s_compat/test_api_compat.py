@@ -10,6 +10,7 @@ and the k8s-compat workflow runs only these.
 from __future__ import annotations
 
 import asyncio
+import sys
 
 import pytest
 
@@ -43,6 +44,35 @@ class TestPods:
         assert "name" in pod
         assert "namespace" in pod
         assert "phase" in pod
+
+    async def test_get_pod_logs(self, k8s_client):
+        # The nginx image logs its entrypoint steps on start.
+        pods = await k8s_client.get_pods()
+        pod = next(
+            p
+            for p in pods
+            if p["owner_name"].startswith("test-nginx-") and p["phase"] == "Running"
+        )
+        logs, truncated = await k8s_client.get_pod_logs(
+            pod["name"], pod["namespace"], tail_lines=50
+        )
+        assert logs.strip()
+        assert truncated is False
+
+    async def test_get_pod_logs_previous_without_restart_raises(self, k8s_client):
+        # No previous container exists: the API server answers 400, which must
+        # surface as KubernetesApiError rather than empty logs or a crash.
+        pods = await k8s_client.get_pods()
+        pod = next(
+            p
+            for p in pods
+            if p["owner_name"].startswith("test-nginx-") and p["restart_count"] == 0
+        )
+        # conftest loads the client module standalone; use its exception class.
+        api_error = sys.modules[type(k8s_client).__module__].KubernetesApiError
+        with pytest.raises(api_error) as exc_info:
+            await k8s_client.get_pod_logs(pod["name"], pod["namespace"], previous=True)
+        assert exc_info.value.status == 400
 
     async def test_get_pods_count(self, k8s_client):
         count = await k8s_client.get_pods_count()

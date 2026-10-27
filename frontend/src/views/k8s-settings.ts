@@ -17,6 +17,7 @@ interface ConfigEntry {
   scale_cooldown: number;
   panel_enabled: boolean;
   watch_enabled: boolean;
+  pod_logs_enabled: boolean;
   healthy: boolean | null;
 }
 
@@ -321,6 +322,10 @@ export class K8sSettings extends K8sDataView<ConfigResponse> {
         <div class="setting-row">
           <span class="setting-label">Sidebar Panel</span>
           <span class="setting-value">${this._renderBool(entry.panel_enabled)}</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Pod Logs (experimental)</span>
+          <span class="setting-value">${this._renderBool(entry.pod_logs_enabled)}</span>
         </div>
       </ha-card>
     `;

@@ -27,6 +27,7 @@ from .const import (
     CONF_DISABLED_RESOURCES,
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
+    CONF_ENABLE_POD_LOGS,
     CONF_ENABLE_WATCH,
     CONF_EVENT_TYPES,
     CONF_EXCLUDE_JOB_PODS,
@@ -41,6 +42,7 @@ from .const import (
     DEFAULT_DEVICE_GROUPING_MODE,
     DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_PANEL,
+    DEFAULT_ENABLE_POD_LOGS,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_EVENT_TYPES,
     DEFAULT_EXCLUDE_JOB_PODS,
@@ -911,6 +913,10 @@ class KubernetesOptionsFlow(config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
                 ),
+                vol.Optional(
+                    CONF_ENABLE_POD_LOGS,
+                    default=current.get(CONF_ENABLE_POD_LOGS, DEFAULT_ENABLE_POD_LOGS),
+                ): bool,
                 vol.Optional(
                     CONF_EXCLUDE_JOB_PODS,
                     default=current.get(

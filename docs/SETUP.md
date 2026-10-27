@@ -240,7 +240,7 @@ Then combine with namespace-specific roles for actual workload control.
 
 ### Permission Scope
 
-- `full` mode follows least privilege for its feature set, not a read-only model: it grants `delete` on `pods` and `jobs` (pod/Job deletion from the panel and the `delete_job` service), `create` on `jobs`/`cronjobs` (CronJob triggering), and `patch` on workloads (`deployments`, `statefulsets`, `daemonsets`) and `nodes` (rollout restart, scaling, cordon/uncordon)
+- `full` mode follows least privilege for its feature set, not a read-only model: it grants `delete` on `pods` and `jobs` (pod/Job deletion from the panel and the `delete_job` service), `create` on `jobs`/`cronjobs` (CronJob triggering), and `patch` on workloads (`deployments`, `statefulsets`, `daemonsets`) and `nodes` (rollout restart, scaling, cordon/uncordon), plus `get` on `pods/log` (the opt-in panel log viewer — logs can contain secrets, so drop that rule if they must never be readable)
 - `minimal` mode is fully read-only: `get` and `list` only, no `watch`, `patch`, `create`, or `delete`
 - Start with `minimal` if you only need sensors and binary sensors, and move to `full` only when you need switches, rollout restart, deletion, or the Watch API
 

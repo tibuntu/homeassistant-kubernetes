@@ -67,11 +67,11 @@ Once the integration is set up, a **Kubernetes** entry appears in the Home Assis
 - **Overview** — Cluster health badge, Kubernetes version (shown verbatim from the API server, including distro suffixes like `-eks-…` or `+k3s1`), resource count cards (click one to open the matching tab, pre-filtered — e.g. Ingresses opens Network filtered to Ingresses), namespace breakdown, Watch API status, and alerts (nodes with pressure, degraded workloads, problem pods — the same lists the [cluster alert sensors](ENTITIES.md#cluster-alert-sensors) expose). Updates live whenever cluster data changes — immediately via the Watch API (enabled by default), otherwise on each coordinator poll cycle — with a 60-second fallback refresh.
 - **Nodes** — Expandable list of all cluster nodes with status, real-time CPU/memory usage (requires metrics-server), and, when expanded, IPs, capacity, OS/kernel/runtime/kubelet details and conditions. Filterable by name and status. Each node has a **Cordon** / **Uncordon** button (the equivalent of the *Schedulable* switch).
 - **Workloads** — Management view for Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. Deployments and StatefulSets can be started (scale to 1), stopped (scale to 0), and rolling-restarted; an **HPA** badge marks HPA-managed ones, whose scale dialog only allows scaling to 0; DaemonSets rolling-restarted; CronJobs suspended, resumed, and triggered; Jobs deleted (requires HA admin role). Filterable by type, namespace, and status.
-- **Pods** — Sortable table of all pods with phase, containers, restarts, node, IP, and age. Filterable by name, namespace, and phase; each pod can be deleted (requires HA admin role).
+- **Pods** — Sortable table of all pods with phase, containers, restarts, node, IP, and age. Filterable by name, namespace, and phase; each pod can be deleted (requires HA admin role). With the experimental [pod logs](#pod-logs-experimental) option on, admins can also open a read-only log snapshot per pod.
 - **Network** — Two tables. Ingresses with class, clickable URLs (derived from TLS coverage), backing service, TLS status, and age. Services with type, cluster IP, external addresses, ports, and age — LoadBalancer and external IPs render as clickable links using a simple rule (port 443 → https, port 80 → http, any other TCP port → http://address:port). Filter by type with the dropdown (Ingress, Services, or a single Service type); the search box matches both tables by name, namespace, Ingress host, or Service external address. Auto-refreshes every 30 seconds.
 - **Settings** — Read-only view of current integration configuration (connection, namespaces, timing, features). Links to the HA integration page for editing settings.
 
-**Who sees the action buttons:** every mutation control in the panel (start, stop, restart, scale, delete pod, delete Job, suspend/resume and trigger CronJob, cordon/uncordon node) is shown only to Home Assistant **administrators**; non-admin users get the same tables without the buttons. The hiding is a convenience, not a security boundary: pod deletion, Job deletion and CronJob suspend/resume are also enforced server-side (admin-only WebSocket commands), but start/stop/restart/scale and cordon/uncordon go through the integration's [services](SERVICES.md), and Home Assistant has no per-service admin restriction — a non-admin user can still call them from Developer Tools, a script or an automation. If you need a hard boundary, keep non-admin users away from the panel and the services via Home Assistant's user and dashboard settings.
+**Who sees the action buttons:** every mutation control in the panel (start, stop, restart, scale, delete pod, delete Job, suspend/resume and trigger CronJob, cordon/uncordon node) is shown only to Home Assistant **administrators**, and so is the opt-in **Logs** button; non-admin users get the same tables without the buttons. The hiding is a convenience, not a security boundary: pod deletion, Job deletion and CronJob suspend/resume are also enforced server-side (admin-only WebSocket commands), but start/stop/restart/scale and cordon/uncordon go through the integration's [services](SERVICES.md), and Home Assistant has no per-service admin restriction — a non-admin user can still call them from Developer Tools, a script or an automation. If you need a hard boundary, keep non-admin users away from the panel and the services via Home Assistant's user and dashboard settings.
 
 The panel is registered automatically by default. To disable it, go to **Settings > Devices & Services > Kubernetes > Configure** and set **Enable Panel** to off. The panel is shown if any configured cluster entry has it enabled.
 
@@ -158,6 +158,21 @@ rbac:
 With the plain manifests, add the same rule to `manifests/minimal/clusterrole.yaml` by hand. See the [RBAC guide](RBAC.md) for details.
 
 Changing these options reloads the integration automatically.
+
+### Pod Logs (experimental)
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| **Enable pod logs in the panel (experimental)** | Adds a **Logs** button to each row of the panel's Pods tab | `false` |
+
+The button opens a read-only snapshot of the pod's logs: pick the container (multi-container pods), the number of lines (100 / 500 / 2000), or the **Previous container** (the run before the last restart — usually where a crash is explained), then refresh or copy. There is no live streaming. A snapshot is capped at 256 KiB; when the cap is hit, the newest part is shown and the dialog says so.
+
+**Security:** logs routinely contain tokens, connection strings and personal data, which is why this is off by default. When it is on:
+
+- only Home Assistant **administrators** can fetch logs — the panel shows the button only to them, the WebSocket command rejects everyone else, and it refuses for every user while the option is off;
+- logs are fetched on demand and passed straight to the browser — they are never stored in the integration's data, never exposed as an entity or attribute, and not part of diagnostics.
+
+**RBAC:** needs `get` on `pods/log`, which `mode: full` / `manifests/full/` grants. The `minimal` set does not — add it via `rbac.extraRules` if you want logs there too, or remove the rule from your `full` ClusterRole if logs must never be readable. A missing rule shows up as an error in the log dialog, not as a repair issue.
 
 ### Data Collection Opt-Out
 
