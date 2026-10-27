@@ -13,6 +13,10 @@ interface ReplicaWorkloadData {
   replicas: number;
   available_replicas: number;
   ready_replicas: number;
+  hpa_managed?: boolean;
+  hpa_name?: string | null;
+  hpa_min_replicas?: number | null;
+  hpa_max_replicas?: number | null;
 }
 
 interface DaemonSetData {
@@ -119,6 +123,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     workload_name: string;
     namespace: string;
     current: number;
+    /** Set when an HPA manages the workload — only 0 sticks then. */
+    hpa: string | null;
   } | null = null;
   @state() private _scaleValue: number = 0;
   @state() private _scaling = false;
@@ -357,6 +363,11 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
       .last-schedule {
         font-size: 12px;
         color: var(--secondary-text-color);
+      }
+
+      .hpa-warning {
+        color: var(--warning-color, #ff9800);
+        font-size: 13px;
       }
 
       .scale-controls {
@@ -656,17 +667,11 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             role="button"
             tabindex="0"
             title="Click to scale"
-            @click=${() =>
-              this._openScaleDialog(entryId, item.name, item.namespace, item.replicas)}
+            @click=${() => this._openScaleDialog(entryId, item)}
             @keydown=${(e: KeyboardEvent) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                this._openScaleDialog(
-                  entryId,
-                  item.name,
-                  item.namespace,
-                  item.replicas,
-                );
+                this._openScaleDialog(entryId, item);
               }
             }}
           >
@@ -675,6 +680,15 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           <span class="badge ${STATUS_META[status].badgeClass}">
             ${STATUS_META[status].label}
           </span>
+          ${
+            item.hpa_managed
+              ? html`<span
+                  class="badge badge-hpa"
+                  title="Managed by HPA ${item.hpa_name} (${item.hpa_min_replicas}–${item.hpa_max_replicas} replicas)"
+                  >HPA</span
+                >`
+              : nothing
+          }
           <div class="workload-actions">
             ${
               item.replicas === 0
@@ -1021,19 +1035,15 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     `;
   }
 
-  private _openScaleDialog(
-    entryId: string,
-    name: string,
-    namespace: string,
-    current: number,
-  ): void {
+  private _openScaleDialog(entryId: string, item: ReplicaWorkloadData): void {
     this._scaleTarget = {
       entry_id: entryId,
-      workload_name: name,
-      namespace,
-      current,
+      workload_name: item.name,
+      namespace: item.namespace,
+      current: item.replicas,
+      hpa: item.hpa_managed ? (item.hpa_name ?? null) : null,
     };
-    this._scaleValue = current;
+    this._scaleValue = item.replicas;
   }
 
   private _cancelScale(): void {
@@ -1075,6 +1085,15 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           <p>
             <span class="confirm-ref">${target.namespace}/${target.workload_name}</span>
           </p>
+          ${
+            target.hpa
+              ? html`<p class="hpa-warning">
+                  Managed by HPA <strong>${target.hpa}</strong>, which reverts any other
+                  count. Only scaling to 0 sticks; adjust the HPA's min/max replicas
+                  instead.
+                </p>`
+              : nothing
+          }
           <div class="scale-controls">
             <button
               class="scale-btn"
@@ -1109,7 +1128,11 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             <button
               class="scale-action"
               @click=${this._confirmScale}
-              ?disabled=${this._scaling || this._scaleValue === target.current}
+              ?disabled=${
+                this._scaling ||
+                this._scaleValue === target.current ||
+                (target.hpa !== null && this._scaleValue !== 0)
+              }
             >
               ${this._scaling ? "Scaling..." : "Scale"}
             </button>

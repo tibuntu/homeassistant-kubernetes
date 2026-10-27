@@ -303,6 +303,9 @@ The integration automatically creates switches for controlling Kubernetes worklo
 | **last_scale_attempt_failed** | `true` if the most recent scale operation failed | `false` |
 | **cpu_usage_(millicores)** | Aggregated CPU usage across the workload's pods | `142` |
 | **memory_usage_(MiB)** | Aggregated memory usage across the workload's pods | `256` |
+| **hpa_managed** | `true` if a HorizontalPodAutoscaler targets the workload | `true` |
+| **hpa_name** | Name of that HPA (`null` when unmanaged) | `web-app` |
+| **hpa_min_replicas** / **hpa_max_replicas** | The HPA's replica bounds (`null` when unmanaged) | `2` / `10` |
 
 **CronJob switches** expose: `namespace`, `cronjob_name`, `schedule`, `suspend`, `suspended` (alias of `suspend`), `active_jobs_count`, `last_schedule_time`, `next_schedule_time`, `last_suspend_time`, `last_resume_time`, `workload_type`.
 
@@ -318,7 +321,7 @@ Every Deployment and StatefulSet also gets a `number` entity for setting an exac
 - **Value**: the desired replica count (`spec.replicas`), range 0–100, step 1
 - **Setting a value** scales the workload through the `scale` subresource; a failed scale raises an error instead of failing silently
 - **Device**: same device as the workload's switch (namespace device, or the cluster device in `cluster` grouping mode)
-- **Attributes**: `namespace`, `workload_type`, `ready_replicas`, `available_replicas`
+- **Attributes**: `namespace`, `workload_type`, `ready_replicas`, `available_replicas`, plus the `hpa_*` attributes listed under [Switch Attributes](#switch-attributes)
 - **Opt-out**: removed when the workload type is in **Disable data collection for** (unlike the switch, which stays)
 - **Requires**: the `patch` verb on `deployments/scale` / `statefulsets/scale` (included in `manifests/full/`)
 
@@ -326,7 +329,15 @@ The switch and the number are two views of the same field: setting the number to
 
 > **Replica limit:** the range tops out at 100. A workload running more replicas still shows its real count, but Home Assistant rejects setting a value above 100.
 
-> **HPA caveat:** if a HorizontalPodAutoscaler manages the workload, it will revert a manually set replica count — the same applies to the switch.
+### HPA-managed workloads
+
+A HorizontalPodAutoscaler resets `spec.replicas` within its sync period (15 s by default), so a manually set count would silently revert. The integration therefore detects HPAs (`hpa_managed` attribute) and:
+
+- **rejects** setting the number, or calling `kubernetes.scale_workload`, to any value other than `0` with a validation error — adjust the HPA's `minReplicas`/`maxReplicas` instead;
+- **allows** scaling to `0` (switch off, `stop_workload`, number `0`): the HPA controller skips targets at 0 replicas, so this sticks;
+- **allows** turning the switch on / `start_workload`: this re-enables the HPA, which then picks its own count (the switch does not wait for exactly 1 replica).
+
+HPA detection needs the `autoscaling` RBAC rule (see [RBAC](RBAC.md)). Opting out of **HorizontalPodAutoscalers** under **Disable data collection for** turns detection off.
 
 ## Cluster Events
 

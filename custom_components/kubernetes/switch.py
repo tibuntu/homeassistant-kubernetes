@@ -25,7 +25,12 @@ from .const import (
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
-from .coordinator import KubernetesConfigEntry, KubernetesDataCoordinator
+from .coordinator import (
+    KubernetesConfigEntry,
+    KubernetesDataCoordinator,
+    get_hpa_for,
+    hpa_attributes,
+)
 from .device import get_cluster_device_info, get_namespace_device_info
 
 _LOGGER = logging.getLogger(__name__)
@@ -332,7 +337,17 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
             "last_scale_attempt_failed": self._last_scale_attempt_failed,
             "cpu_usage_(millicores)": f"{int(self._cpu_usage)}",
             "memory_usage_(MiB)": f"{int(self._memory_usage)}",
+            **hpa_attributes(self._get_hpa()),
         }
+
+    def _get_hpa(self) -> dict[str, Any] | None:
+        """Return the HPA managing this workload, if any."""
+        return get_hpa_for(
+            self.coordinator.data,
+            self._workload_type,
+            self.namespace,
+            self.workload_name,
+        )
 
     @property
     def available(self) -> bool:
@@ -411,7 +426,18 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
                 self._log_label,
                 self.workload_name,
             )
-            await self._verify_scaling(1)
+            if hpa := self._get_hpa():
+                # Scaling up from 0 re-enables the HPA, which picks its own
+                # count — waiting for exactly 1 replica would never succeed.
+                _LOGGER.info(
+                    "%s %s is managed by HPA %s, which now chooses the replica count",
+                    self._log_label,
+                    self.workload_name,
+                    hpa["name"],
+                )
+                await self.coordinator.async_request_refresh()
+            else:
+                await self._verify_scaling(1)
         else:
             _LOGGER.error("Failed to start %s %s", self._log_label, self.workload_name)
             self._last_scale_attempt_failed = True

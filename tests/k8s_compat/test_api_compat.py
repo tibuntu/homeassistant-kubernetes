@@ -173,6 +173,24 @@ class TestServices:
         assert count >= 1
 
 
+class TestHPAs:
+    async def test_get_hpas_finds_target_deployment(self, k8s_client):
+        hpas = await k8s_client.get_hpas()
+        hpa = next(h for h in hpas if h["name"] == "test-hpa")
+        assert hpa["namespace"] == "default"
+        assert hpa["target_kind"] == "Deployment"
+        assert hpa["min_replicas"] == 1
+        assert hpa["max_replicas"] == 3
+        assert isinstance(hpa["conditions"], dict)
+
+        # The reverse lookup key (kind, namespace, name) matches a real workload
+        deployments = await k8s_client.get_deployments(include_metrics=False)
+        assert any(
+            d["namespace"] == hpa["namespace"] and d["name"] == hpa["target_name"]
+            for d in deployments
+        )
+
+
 class TestMetrics:
     async def test_get_node_metrics_no_crash(self, k8s_client):
         """Metrics API may or may not be available — must not raise."""

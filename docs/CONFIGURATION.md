@@ -66,7 +66,7 @@ Once the integration is set up, a **Kubernetes** entry appears in the Home Assis
 
 - **Overview** — Cluster health badge, Kubernetes version (shown verbatim from the API server, including distro suffixes like `-eks-…` or `+k3s1`), resource count cards (click one to open the matching tab, pre-filtered — e.g. Ingresses opens Network filtered to Ingresses), namespace breakdown, Watch API status, and alerts (nodes with pressure, degraded workloads, problem pods — the same lists the [cluster alert sensors](ENTITIES.md#cluster-alert-sensors) expose). Updates live whenever cluster data changes — immediately via the Watch API (enabled by default), otherwise on each coordinator poll cycle — with a 60-second fallback refresh.
 - **Nodes** — Expandable list of all cluster nodes with status, real-time CPU/memory usage (requires metrics-server), and, when expanded, IPs, capacity, OS/kernel/runtime/kubelet details and conditions. Filterable by name and status. Each node has a **Cordon** / **Uncordon** button (the equivalent of the *Schedulable* switch).
-- **Workloads** — Management view for Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. Deployments and StatefulSets can be started (scale to 1), stopped (scale to 0), and rolling-restarted; DaemonSets rolling-restarted; CronJobs suspended, resumed, and triggered; Jobs deleted (requires HA admin role). Filterable by type, namespace, and status.
+- **Workloads** — Management view for Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. Deployments and StatefulSets can be started (scale to 1), stopped (scale to 0), and rolling-restarted; an **HPA** badge marks HPA-managed ones, whose scale dialog only allows scaling to 0; DaemonSets rolling-restarted; CronJobs suspended, resumed, and triggered; Jobs deleted (requires HA admin role). Filterable by type, namespace, and status.
 - **Pods** — Sortable table of all pods with phase, containers, restarts, node, IP, and age. Filterable by name, namespace, and phase; each pod can be deleted (requires HA admin role).
 - **Network** — Two tables. Ingresses with class, clickable URLs (derived from TLS coverage), backing service, TLS status, and age. Services with type, cluster IP, external addresses, ports, and age — LoadBalancer and external IPs render as clickable links using a simple rule (port 443 → https, port 80 → http, any other TCP port → http://address:port). Filter by type with the dropdown (Ingress, Services, or a single Service type); the search box matches both tables by name, namespace, Ingress host, or Service external address. Auto-refreshes every 30 seconds.
 - **Settings** — Read-only view of current integration configuration (connection, namespaces, timing, features). Links to the HA integration page for editing settings.
@@ -174,6 +174,7 @@ The categories come in two tiers:
 | **Jobs** | Fetch skipped entirely; no Job sensors |
 | **Ingresses** | Fetch skipped entirely; ingress data disappears from the panel |
 | **Services** | Fetch skipped entirely; service data disappears from the panel |
+| **HorizontalPodAutoscalers** | Fetch skipped entirely; workloads are never reported as HPA-managed, so the HPA scale guard and the panel's HPA badge are off. Use this if you don't want to grant the `autoscaling` RBAC rule |
 | **Node sensors** | Node status sensors, the 5 condition binary sensors (Ready + pressure) and the Nodes Under Pressure sensor are removed; the fetch continues so the cordon/uncordon switches keep working |
 | **Deployment sensors** | Status and CPU/memory sensors and the replica number entities removed; scale switches keep working |
 | **StatefulSet sensors** | Same as Deployment sensors |
@@ -183,7 +184,7 @@ The categories come in two tiers:
 
 Notes:
 
-- Fully-skipped categories (Pods, DaemonSets, Jobs, Ingresses, Services) also stop their watch streams when the Watch API is enabled.
+- Fully-skipped categories (Pods, DaemonSets, Jobs, Ingresses, Services, HorizontalPodAutoscalers) also stop their watch streams when the Watch API is enabled.
 - The Degraded Workloads sensor is removed only when Deployment sensors, StatefulSet sensors and DaemonSets are all disabled.
 - Existing entities of a disabled category are removed from Home Assistant automatically on the next update cycle.
 - If a fully-skipped category is disabled while **Aggregate count sensors** stay enabled, its count sensor keeps working via a lightweight count API call, and the panel's Overview count card shows the same number.

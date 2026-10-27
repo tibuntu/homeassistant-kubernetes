@@ -34,8 +34,15 @@ from .const import (
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
+    WORKLOAD_TYPE_DEPLOYMENT,
+    WORKLOAD_TYPE_STATEFULSET,
 )
-from .coordinator import KubernetesDataCoordinator, get_loaded_entries
+from .coordinator import (
+    KubernetesDataCoordinator,
+    get_hpa_for,
+    get_loaded_entries,
+    hpa_attributes,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,6 +61,10 @@ _NAMESPACED_KEYS: tuple[str, ...] = (
 )
 # All resource buckets counted in the cluster-wide overview (nodes are
 # cluster-scoped, so they're not part of the namespace breakdown above).
+_HPA_TARGET_KINDS = {
+    "deployments": WORKLOAD_TYPE_DEPLOYMENT,
+    "statefulsets": WORKLOAD_TYPE_STATEFULSET,
+}
 _COUNT_KEYS: tuple[str, ...] = ("pods", "nodes", *_NAMESPACED_KEYS[1:])
 
 
@@ -266,6 +277,18 @@ def _list_data(hass: HomeAssistant, key: str) -> dict[str, Any]:
     return {"clusters": clusters}
 
 
+def _with_hpa(data: dict[str, Any], bucket: str) -> list[dict[str, Any]]:
+    """List a Deployment/StatefulSet bucket with the HPA fields merged in."""
+    kind = _HPA_TARGET_KINDS[bucket]
+    return [
+        {
+            **w,
+            **hpa_attributes(get_hpa_for(data, kind, w["namespace"], w["name"])),
+        }
+        for w in data.get(bucket, {}).values()
+    ]
+
+
 def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
     """Gather workload data from all config entries."""
     clusters: list[dict[str, Any]] = []
@@ -279,8 +302,8 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
         data = coordinator.data
 
         if data:
-            deployments = list(data.get("deployments", {}).values())
-            statefulsets = list(data.get("statefulsets", {}).values())
+            deployments = _with_hpa(data, "deployments")
+            statefulsets = _with_hpa(data, "statefulsets")
             daemonsets = list(data.get("daemonsets", {}).values())
             cronjobs = list(data.get("cronjobs", {}).values())
             jobs = list(data.get("jobs", {}).values())

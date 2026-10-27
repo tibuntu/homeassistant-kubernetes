@@ -116,6 +116,11 @@ class KubernetesApiError(Exception):
     empty cluster and prune the user's entities.
     """
 
+    def __init__(self, message: str, status: int | None = None) -> None:
+        """Store the HTTP status (when there was one) next to the message."""
+        super().__init__(message)
+        self.status = status
+
 
 class KubernetesClient:
     """Kubernetes client for Home Assistant integration."""
@@ -1043,6 +1048,33 @@ class KubernetesClient:
             _LOGGER.warning("Failed to parse service item: %s", ex)
             return None
 
+    def _parse_hpa_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw autoscaling/v2 HorizontalPodAutoscaler object."""
+        try:
+            metadata = item["metadata"]
+            spec = item["spec"]
+            target = spec["scaleTargetRef"]
+            status = item.get("status") or {}
+            return {
+                "name": metadata["name"],
+                "namespace": metadata["namespace"],
+                "target_kind": target["kind"],
+                "target_name": target["name"],
+                # minReplicas is optional and defaults to 1 server-side
+                "min_replicas": spec.get("minReplicas", 1),
+                "max_replicas": spec["maxReplicas"],
+                "current_replicas": status.get("currentReplicas", 0),
+                "desired_replicas": status.get("desiredReplicas", 0),
+                "conditions": {
+                    c["type"]: c.get("status") == "True"
+                    for c in status.get("conditions") or []
+                },
+                "creation_timestamp": metadata.get("creationTimestamp", ""),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse HPA item: %s", ex)
+            return None
+
     async def _fetch_resource_items(
         self,
         api_path: str,
@@ -1088,7 +1120,8 @@ class KubernetesClient:
                         )
                         raise KubernetesApiError(
                             f"{resource_name} {label} failed{scope} "
-                            f"with status {response.status}"
+                            f"with status {response.status}",
+                            response.status,
                         )
                     data = await response.json()
                     items.extend(data.get("items", []))
@@ -2083,6 +2116,19 @@ class KubernetesClient:
             return result
         except Exception as ex:
             self._log_error("get services", ex)
+            raise
+
+    async def get_hpas(self) -> list[dict[str, Any]]:
+        """Get all HorizontalPodAutoscalers in the namespace(s)."""
+        try:
+            result = await self._fetch_resource_list(
+                "apis/autoscaling/v2", "horizontalpodautoscalers", self._parse_hpa_item
+            )
+            if result:
+                self._log_success("get hpas", f"retrieved {len(result)} HPAs")
+            return result
+        except Exception as ex:
+            self._log_error("get hpas", ex)
             raise
 
     # CronJob methods

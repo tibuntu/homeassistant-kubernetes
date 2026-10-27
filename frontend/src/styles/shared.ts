@@ -164,7 +164,8 @@ export const badgeStyles = css`
   }
 
   .badge-succeeded,
-  .badge-active {
+  .badge-active,
+  .badge-hpa {
     background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
     color: var(--info-color, #2196f3);
   }

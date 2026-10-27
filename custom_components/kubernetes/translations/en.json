@@ -144,6 +144,7 @@
         "jobs": "Jobs (sensors + API fetch)",
         "ingresses": "Ingresses (count + panel data)",
         "services": "Services (count + panel data)",
+        "hpas": "HorizontalPodAutoscalers (HPA detection + scale guard)",
         "metrics": "CPU/memory metrics (Metrics API)",
         "counts": "Aggregate count sensors"
       }

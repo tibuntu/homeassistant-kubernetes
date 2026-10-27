@@ -127,6 +127,7 @@ _NAMESPACED_WATCH_RESOURCES: tuple[tuple[str, str, str, str], ...] = (
         "_parse_ingress_item",
     ),
     ("services", "api/v1", "services", "_parse_service_item"),
+    ("hpas", "apis/autoscaling/v2", "horizontalpodautoscalers", "_parse_hpa_item"),
 )
 
 
@@ -165,6 +166,31 @@ def get_loaded_entries(hass: HomeAssistant) -> list[KubernetesConfigEntry]:
 def disabled_resources(entry: ConfigEntry) -> frozenset[str]:
     """Return the data categories the user opted out of collecting."""
     return frozenset(entry.options.get(CONF_DISABLED_RESOURCES, ()))
+
+
+def get_hpa_for(
+    data: dict[str, Any] | None, kind: str, namespace: str, name: str
+) -> dict[str, Any] | None:
+    """Return the HPA whose scaleTargetRef points at this workload, if any."""
+    # ponytail: linear scan, HPA counts are tiny; index by target if not
+    for hpa in (data or {}).get("hpas", {}).values():
+        if (
+            hpa["namespace"] == namespace
+            and hpa["target_kind"] == kind
+            and hpa["target_name"] == name
+        ):
+            return hpa
+    return None
+
+
+def hpa_attributes(hpa: dict[str, Any] | None) -> dict[str, Any]:
+    """HPA fields shown on Deployment/StatefulSet entities and in the panel."""
+    return {
+        "hpa_managed": hpa is not None,
+        "hpa_name": hpa["name"] if hpa else None,
+        "hpa_min_replicas": hpa["min_replicas"] if hpa else None,
+        "hpa_max_replicas": hpa["max_replicas"] if hpa else None,
+    }
 
 
 class KubernetesDataCoordinator(DataUpdateCoordinator):
@@ -221,6 +247,32 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # issue and detects when *every* watch task is forbidden; a loop drops
         # out again once its retry lists successfully.
         self._forbidden_loops: dict[str, str] = {}
+        # Set while the HPA list gets HTTP 403, so the warning logs once.
+        self._hpas_forbidden = False
+
+    async def _fetch_hpas(self) -> list[dict[str, Any]]:
+        """Fetch HPAs, treating HTTP 403 as "no HPAs".
+
+        HPA detection is an add-on to the workload entities. A ServiceAccount
+        without the autoscaling rule (an upgrade without re-applying the RBAC)
+        must not fail the whole poll and take every entity down with it.
+        Pruning is no concern: no entity is derived from the HPA bucket.
+        """
+        try:
+            hpas = await self.client.get_hpas()
+        except KubernetesApiError as ex:
+            if ex.status != 403:
+                raise
+            if not self._hpas_forbidden:
+                self._hpas_forbidden = True
+                _LOGGER.warning(
+                    "Listing HorizontalPodAutoscalers is forbidden — HPA "
+                    "detection is off. Re-apply the RBAC (chart or manifests) "
+                    "or disable HorizontalPodAutoscalers under Configure"
+                )
+            return []
+        self._hpas_forbidden = False
+        return hpas
 
     @property
     def _forbidden_resources(self) -> set[str]:
@@ -263,6 +315,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 services = (
                     [] if "services" in disabled else await self.client.get_services()
                 )
+                hpas = [] if "hpas" in disabled else await self._fetch_hpas()
 
                 _LOGGER.debug("Starting to fetch detailed node information")
                 nodes = await self.client.get_nodes()
@@ -358,6 +411,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         f"{i['namespace']}_{i['name']}": i for i in ingresses
                     },
                     "services": {f"{s['namespace']}_{s['name']}": s for s in services},
+                    "hpas": {f"{h['namespace']}_{h['name']}": h for h in hpas},
                     "nodes": {node["name"]: node for node in nodes},
                     "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                     "pods_count": pods_count,

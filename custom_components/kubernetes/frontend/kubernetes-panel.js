@@ -162,7 +162,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
   }
 
   .badge-succeeded,
-  .badge-active {
+  .badge-active,
+  .badge-hpa {
     background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
     color: var(--info-color, #2196f3);
   }
@@ -1749,6 +1750,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         color: var(--secondary-text-color);
       }
 
+      .hpa-warning {
+        color: var(--warning-color, #ff9800);
+        font-size: 13px;
+      }
+
       .scale-controls {
         display: flex;
         align-items: center;
@@ -1925,14 +1931,19 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             role="button"
             tabindex="0"
             title="Click to scale"
-            @click=${()=>this._openScaleDialog(n,t.name,t.namespace,t.replicas)}
-            @keydown=${e=>{(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._openScaleDialog(n,t.name,t.namespace,t.replicas))}}
+            @click=${()=>this._openScaleDialog(n,t)}
+            @keydown=${e=>{(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._openScaleDialog(n,t))}}
           >
             ${s}/${t.replicas} ready
           </span>
           <span class="badge ${Z[i].badgeClass}">
             ${Z[i].label}
           </span>
+          ${t.hpa_managed?E`<span
+                  class="badge badge-hpa"
+                  title="Managed by HPA ${t.hpa_name} (${t.hpa_min_replicas}–${t.hpa_max_replicas} replicas)"
+                  >HPA</span
+                >`:O}
           <div class="workload-actions">
             ${t.replicas===0?E`
                     <button
@@ -2112,7 +2123,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </ha-card>
-    `}_openScaleDialog(e,t,n,r){this._scaleTarget={entry_id:e,workload_name:t,namespace:n,current:r},this._scaleValue=r}_cancelScale(){this._scaleTarget=null}async _confirmScale(){if(this._scaleTarget){this._scaling=!0;try{await this.hass.callService(`kubernetes`,`scale_workload`,{workload_name:this._scaleTarget.workload_name,namespace:this._scaleTarget.namespace,entry_id:this._scaleTarget.entry_id,replicas:this._scaleValue}),this._scaleTarget=null,this._scheduleReload(2e3)}catch(e){this._actionError=H(e,`Failed to scale workload`),this._scaleTarget=null}finally{this._scaling=!1}}}_renderScaleDialog(){let e=this._scaleTarget;return E`
+    `}_openScaleDialog(e,t){this._scaleTarget={entry_id:e,workload_name:t.name,namespace:t.namespace,current:t.replicas,hpa:t.hpa_managed?t.hpa_name??null:null},this._scaleValue=t.replicas}_cancelScale(){this._scaleTarget=null}async _confirmScale(){if(this._scaleTarget){this._scaling=!0;try{await this.hass.callService(`kubernetes`,`scale_workload`,{workload_name:this._scaleTarget.workload_name,namespace:this._scaleTarget.namespace,entry_id:this._scaleTarget.entry_id,replicas:this._scaleValue}),this._scaleTarget=null,this._scheduleReload(2e3)}catch(e){this._actionError=H(e,`Failed to scale workload`),this._scaleTarget=null}finally{this._scaling=!1}}}_renderScaleDialog(){let e=this._scaleTarget;return E`
       <div
         class="confirm-overlay"
         tabindex="-1"
@@ -2125,6 +2136,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           <p>
             <span class="confirm-ref">${e.namespace}/${e.workload_name}</span>
           </p>
+          ${e.hpa?E`<p class="hpa-warning">
+                  Managed by HPA <strong>${e.hpa}</strong>, which reverts any other
+                  count. Only scaling to 0 sticks; adjust the HPA's min/max replicas
+                  instead.
+                </p>`:O}
           <div class="scale-controls">
             <button
               class="scale-btn"
@@ -2156,7 +2172,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <button
               class="scale-action"
               @click=${this._confirmScale}
-              ?disabled=${this._scaling||this._scaleValue===e.current}
+              ?disabled=${this._scaling||this._scaleValue===e.current||e.hpa!==null&&this._scaleValue!==0}
             >
               ${this._scaling?`Scaling...`:`Scale`}
             </button>

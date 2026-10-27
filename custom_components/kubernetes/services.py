@@ -34,7 +34,7 @@ from .const import (
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
-from .coordinator import KubernetesEntryData, get_loaded_entries
+from .coordinator import KubernetesEntryData, get_hpa_for, get_loaded_entries
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.debug("Kubernetes services module loaded")
@@ -539,7 +539,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         entry_data = _get_entry_data(hass, call.data)
         config_data = entry_data.config
-        client = entry_data.coordinator.client
+        coordinator = entry_data.coordinator
+        client = coordinator.client
+
+        # The HPA controller reverts any count except 0 (it skips targets at 0
+        # replicas), so reject the whole call before touching any target.
+        if replicas:
+            managed = [
+                f"{ns}/{name} (HPA {hpa['name']})"
+                for name, raw_ns, wtype in workloads
+                if (ns := raw_ns or config_data.get("namespace", "default"))
+                and (hpa := get_hpa_for(coordinator.data, wtype, ns, name))
+            ]
+            if managed:
+                raise ServiceValidationError(
+                    f"Cannot scale {', '.join(managed)}: managed by a "
+                    "HorizontalPodAutoscaler; adjust the HPA's min/max "
+                    "replicas instead"
+                )
+
         scale_methods = {
             WORKLOAD_TYPE_DEPLOYMENT: client.scale_deployment,
             WORKLOAD_TYPE_STATEFULSET: client.scale_statefulset,
@@ -583,7 +601,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         entry_data = _get_entry_data(hass, call.data)
         config_data = entry_data.config
-        client = entry_data.coordinator.client
+        coordinator = entry_data.coordinator
+        client = coordinator.client
         start_methods = {
             WORKLOAD_TYPE_DEPLOYMENT: client.start_deployment,
             WORKLOAD_TYPE_STATEFULSET: client.start_statefulset,
@@ -613,6 +632,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 _LOGGER.info(
                     "Successfully started %s with %d replicas", label, replicas
                 )
+                if hpa := get_hpa_for(
+                    coordinator.data, workload_type, namespace, workload_name
+                ):
+                    _LOGGER.info(
+                        "%s is managed by HPA %s, which now chooses the replica count",
+                        label,
+                        hpa["name"],
+                    )
 
         _raise_failures(failures, "start")
 

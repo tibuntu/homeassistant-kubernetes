@@ -104,7 +104,7 @@ CONF_DISABLED_RESOURCES = "disabled_resources"
 # fetch because switches read the coordinator data — disabling them only
 # suppresses their sensor entities.
 FULLY_DISABLEABLE_RESOURCES = frozenset(
-    {"pods", "daemonsets", "jobs", "ingresses", "services"}
+    {"pods", "daemonsets", "jobs", "ingresses", "services", "hpas"}
 )
 # All categories offered in the options flow. "metrics" gates the Metrics API
 # (node usage + workload CPU/memory sensors); "counts" gates the aggregate
@@ -119,6 +119,7 @@ DISABLABLE_RESOURCES = (
     "jobs",
     "ingresses",
     "services",
+    "hpas",
     "metrics",
     "counts",
 )

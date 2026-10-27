@@ -27,6 +27,10 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "list"]
+  # Autoscaling — detect HPA-managed workloads
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list"]
   # Metrics API — real-time CPU and memory usage (requires metrics-server)
   - apiGroups: ["metrics.k8s.io"]
     resources: ["nodes", "pods"]
