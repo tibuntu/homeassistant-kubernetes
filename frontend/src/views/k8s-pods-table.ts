@@ -9,7 +9,7 @@ import {
   dialogStyles,
   tableStyles,
 } from "../styles/shared";
-import { formatAge, errorMessage } from "../utils/format";
+import { formatAge, errorMessage, isAdmin } from "../utils/format";
 
 interface PodData {
   name: string;
@@ -667,13 +667,17 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         ${this._colVisible("owner") ? html`<td>${pod.owner_kind !== "N/A" ? html`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>` : html`<span class="owner-info">-</span>`}</td>` : nothing}
         ${this._colVisible("age") ? html`<td>${formatAge(pod.creation_timestamp)}</td>` : nothing}
         <td>
-          <button
-            class="delete-btn"
-            title="Delete pod"
-            @click=${() => this._requestDelete(entryId, pod)}
-          >
-            <ha-icon icon="mdi:delete-outline"></ha-icon>
-          </button>
+          ${
+            isAdmin(this.hass)
+              ? html`<button
+                  class="delete-btn"
+                  title="Delete pod"
+                  @click=${() => this._requestDelete(entryId, pod)}
+                >
+                  <ha-icon icon="mdi:delete-outline"></ha-icon>
+                </button>`
+              : nothing
+          }
         </td>
       </tr>
     `;

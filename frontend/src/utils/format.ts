@@ -1,4 +1,14 @@
 /** Pure helpers shared by the panel views. */
+import type { HomeAssistant } from "../types/homeassistant";
+
+/**
+ * Whether the current user may see mutation buttons. A UX hint only: the
+ * server enforces `require_admin` on the WebSocket mutations. Unknown user
+ * counts as non-admin.
+ */
+export function isAdmin(hass: HomeAssistant | undefined): boolean {
+  return hass?.user?.is_admin ?? false;
+}
 
 /** Human-readable node condition names, keyed by the API's snake_case flags. */
 export const CONDITION_LABELS: Record<string, string> = {

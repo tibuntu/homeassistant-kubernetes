@@ -387,7 +387,7 @@ kubectl auth can-i create jobs --as=system:serviceaccount:homeassistant:homeassi
 
 #### 7. "Forbidden: User cannot delete pods"
 
-Pod deletion requires **both** Home Assistant admin role and Kubernetes RBAC permissions. Non-admin HA users will not see the delete action succeed, as the WebSocket command enforces admin access.
+Pod deletion requires **both** Home Assistant admin role and Kubernetes RBAC permissions. The panel hides the delete button from non-admin HA users, and the WebSocket command enforces admin access as well.
 
 ```bash
 # Verify pod deletion permissions

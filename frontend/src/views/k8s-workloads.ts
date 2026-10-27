@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
-import { formatAge, errorMessage } from "../utils/format";
+import { formatAge, errorMessage, isAdmin } from "../utils/format";
 
 /** Shape shared by Deployments and StatefulSets; they differ only in which
  * field reports ready replicas (see `REPLICA_KIND_META`). */
@@ -662,21 +662,27 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             <div class="workload-name">${item.name}</div>
             <div class="workload-namespace">${item.namespace}</div>
           </div>
-          <span
-            class="replica-info scalable"
-            role="button"
-            tabindex="0"
-            title="Click to scale"
-            @click=${() => this._openScaleDialog(entryId, item)}
-            @keydown=${(e: KeyboardEvent) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                this._openScaleDialog(entryId, item);
-              }
-            }}
-          >
-            ${ready}/${item.replicas} ready
-          </span>
+          ${
+            isAdmin(this.hass)
+              ? html`<span
+                  class="replica-info scalable"
+                  role="button"
+                  tabindex="0"
+                  title="Click to scale"
+                  @click=${() => this._openScaleDialog(entryId, item)}
+                  @keydown=${(e: KeyboardEvent) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      this._openScaleDialog(entryId, item);
+                    }
+                  }}
+                >
+                  ${ready}/${item.replicas} ready
+                </span>`
+              : html`<span class="replica-info">
+                  ${ready}/${item.replicas} ready
+                </span>`
+          }
           <span class="badge ${STATUS_META[status].badgeClass}">
             ${STATUS_META[status].label}
           </span>
@@ -691,15 +697,56 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           }
           <div class="workload-actions">
             ${
-              item.replicas === 0
+              isAdmin(this.hass)
                 ? html`
+                    ${
+                      item.replicas === 0
+                        ? html`
+                            <button
+                              class="action-btn start"
+                              title="Start (scale to 1)"
+                              ?disabled=${busy}
+                              @click=${() =>
+                                this._callService(
+                                  "start_workload",
+                                  {
+                                    workload_name: item.name,
+                                    namespace: item.namespace,
+                                    entry_id: entryId,
+                                  },
+                                  actionKey,
+                                )}
+                            >
+                              <ha-icon icon="mdi:play"></ha-icon>
+                            </button>
+                          `
+                        : html`
+                            <button
+                              class="action-btn stop"
+                              title="Stop (scale to 0)"
+                              ?disabled=${busy}
+                              @click=${() =>
+                                this._callService(
+                                  "stop_workload",
+                                  {
+                                    workload_name: item.name,
+                                    namespace: item.namespace,
+                                    entry_id: entryId,
+                                  },
+                                  actionKey,
+                                )}
+                            >
+                              <ha-icon icon="mdi:stop"></ha-icon>
+                            </button>
+                          `
+                    }
                     <button
-                      class="action-btn start"
-                      title="Start (scale to 1)"
+                      class="action-btn restart"
+                      title="Rolling restart"
                       ?disabled=${busy}
                       @click=${() =>
                         this._callService(
-                          "start_workload",
+                          "restart_workload",
                           {
                             workload_name: item.name,
                             namespace: item.namespace,
@@ -708,46 +755,11 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                           actionKey,
                         )}
                     >
-                      <ha-icon icon="mdi:play"></ha-icon>
+                      <ha-icon icon="mdi:restart"></ha-icon>
                     </button>
                   `
-                : html`
-                    <button
-                      class="action-btn stop"
-                      title="Stop (scale to 0)"
-                      ?disabled=${busy}
-                      @click=${() =>
-                        this._callService(
-                          "stop_workload",
-                          {
-                            workload_name: item.name,
-                            namespace: item.namespace,
-                            entry_id: entryId,
-                          },
-                          actionKey,
-                        )}
-                    >
-                      <ha-icon icon="mdi:stop"></ha-icon>
-                    </button>
-                  `
+                : nothing
             }
-            <button
-              class="action-btn restart"
-              title="Rolling restart"
-              ?disabled=${busy}
-              @click=${() =>
-                this._callService(
-                  "restart_workload",
-                  {
-                    workload_name: item.name,
-                    namespace: item.namespace,
-                    entry_id: entryId,
-                  },
-                  actionKey,
-                )}
-            >
-              <ha-icon icon="mdi:restart"></ha-icon>
-            </button>
           </div>
         </div>
       </ha-card>
@@ -809,23 +821,29 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             ${STATUS_META[status].label}
           </span>
           <div class="workload-actions">
-            <button
-              class="action-btn restart"
-              title="Rolling restart"
-              ?disabled=${busy}
-              @click=${() =>
-                this._callService(
-                  "restart_workload",
-                  {
-                    workload_name: ds.name,
-                    namespace: ds.namespace,
-                    entry_id: entryId,
-                  },
-                  actionKey,
-                )}
-            >
-              <ha-icon icon="mdi:restart"></ha-icon>
-            </button>
+            ${
+              isAdmin(this.hass)
+                ? html`
+                    <button
+                      class="action-btn restart"
+                      title="Rolling restart"
+                      ?disabled=${busy}
+                      @click=${() =>
+                        this._callService(
+                          "restart_workload",
+                          {
+                            workload_name: ds.name,
+                            namespace: ds.namespace,
+                            entry_id: entryId,
+                          },
+                          actionKey,
+                        )}
+                    >
+                      <ha-icon icon="mdi:restart"></ha-icon>
+                    </button>
+                  `
+                : nothing
+            }
           </div>
         </div>
       </ha-card>
@@ -907,34 +925,40 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
               : nothing
           }
           <div class="workload-actions">
-            <button
-              class="action-btn ${cj.suspend ? "start" : "suspend"}"
-              title=${cj.suspend ? "Resume schedule" : "Suspend schedule"}
-              ?disabled=${busy}
-              @click=${() =>
-                this._setCronJobSuspend(entryId, cj, !cj.suspend, actionKey)}
-            >
-              <ha-icon
-                icon=${cj.suspend ? "mdi:play-circle-outline" : "mdi:pause-circle-outline"}
-              ></ha-icon>
-            </button>
-            <button
-              class="action-btn start"
-              title="Trigger now"
-              ?disabled=${busy}
-              @click=${() =>
-                this._callService(
-                  "start_workload",
-                  {
-                    workload_name: cj.name,
-                    namespace: cj.namespace,
-                    entry_id: entryId,
-                  },
-                  actionKey,
-                )}
-            >
-              <ha-icon icon="mdi:play"></ha-icon>
-            </button>
+            ${
+              isAdmin(this.hass)
+                ? html`
+                    <button
+                      class="action-btn ${cj.suspend ? "start" : "suspend"}"
+                      title=${cj.suspend ? "Resume schedule" : "Suspend schedule"}
+                      ?disabled=${busy}
+                      @click=${() =>
+                        this._setCronJobSuspend(entryId, cj, !cj.suspend, actionKey)}
+                    >
+                      <ha-icon
+                        icon=${cj.suspend ? "mdi:play-circle-outline" : "mdi:pause-circle-outline"}
+                      ></ha-icon>
+                    </button>
+                    <button
+                      class="action-btn start"
+                      title="Trigger now"
+                      ?disabled=${busy}
+                      @click=${() =>
+                        this._callService(
+                          "start_workload",
+                          {
+                            workload_name: cj.name,
+                            namespace: cj.namespace,
+                            entry_id: entryId,
+                          },
+                          actionKey,
+                        )}
+                    >
+                      <ha-icon icon="mdi:play"></ha-icon>
+                    </button>
+                  `
+                : nothing
+            }
           </div>
         </div>
       </ha-card>
@@ -1021,14 +1045,20 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
               : nothing
           }
           <div class="workload-actions">
-            <button
-              class="action-btn delete"
-              title="Delete Job"
-              ?disabled=${this._deletingJob}
-              @click=${() => this._requestJobDelete(entryId, j)}
-            >
-              <ha-icon icon="mdi:delete-outline"></ha-icon>
-            </button>
+            ${
+              isAdmin(this.hass)
+                ? html`
+                    <button
+                      class="action-btn delete"
+                      title="Delete Job"
+                      ?disabled=${this._deletingJob}
+                      @click=${() => this._requestJobDelete(entryId, j)}
+                    >
+                      <ha-icon icon="mdi:delete-outline"></ha-icon>
+                    </button>
+                  `
+                : nothing
+            }
           </div>
         </div>
       </ha-card>
