@@ -20,6 +20,10 @@ from custom_components.kubernetes.number import (
     _async_add_new_entities,
     async_setup_entry,
 )
+from custom_components.kubernetes.switch import (
+    KubernetesDeploymentSwitch,
+    KubernetesStatefulSetSwitch,
+)
 
 
 def _data():
@@ -179,6 +183,19 @@ class TestKubernetesReplicaNumber:
         assert deployment_number.native_max_value == 100
         assert deployment_number.native_step == 1
         assert deployment_number.should_poll is False
+
+    def test_unique_id_matches_switch(self, mock_config_entry, coordinator):
+        """The id is the switch's id plus _replicas (lowercase type, as the
+        orphan cleanup expects — the WORKLOAD_TYPE_* constants are capitalised)."""
+        for workload_type, switch_cls in (
+            (WORKLOAD_TYPE_DEPLOYMENT, KubernetesDeploymentSwitch),
+            (WORKLOAD_TYPE_STATEFULSET, KubernetesStatefulSetSwitch),
+        ):
+            number = KubernetesReplicaNumber(
+                coordinator, mock_config_entry, "web", "default", workload_type
+            )
+            switch = switch_cls(coordinator, mock_config_entry, "web", "default")
+            assert number.unique_id == f"{switch.unique_id}_replicas"
 
     def test_value_and_attributes(self, deployment_number):
         """Value and attributes come straight from coordinator data."""
