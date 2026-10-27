@@ -89,6 +89,12 @@ The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `n
    - Enter your cluster details and the token from step 1
    - Uncheck **Prefer in-cluster ServiceAccount token** if it is enabled — while it is on, the integration authenticates with the token file mounted into the Home Assistant pod and only uses the token you entered as a fallback
 
+## Removal
+
+1. Go to **Settings → Devices & Services → Kubernetes**, open the ⋮ menu of each cluster entry and choose **Delete**. This removes its devices, entities and repair issues; the sidebar panel disappears with the last entry.
+2. Uninstall the integration in HACS (or delete `custom_components/kubernetes/`) and restart Home Assistant.
+3. Remove the cluster-side RBAC: `helm uninstall ha-k8s-rbac --namespace homeassistant`, or `kubectl delete -f` on the four manifest URLs from step 1 of [Setup](#setup).
+
 ## Documentation
 
 For full documentation, visit the [documentation site](https://tibuntu.github.io/homeassistant-kubernetes/).
@@ -102,7 +108,7 @@ Custom integrations are not part of Home Assistant's official [Integration Quali
 - An enforced test-coverage gate of 95% overall; the config flow is kept at 100% by convention
 - Clean config entry lifecycle handling (typed runtime data, proper unload, no leftovers)
 
-These requirements are maintained for every change as part of code review.
+These requirements are maintained for every change as part of code review. The status of every rule, including the open Gold and Platinum ones, is tracked in [`quality_scale.yaml`](custom_components/kubernetes/quality_scale.yaml).
 
 ## Contributing
 
