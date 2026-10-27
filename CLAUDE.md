@@ -155,7 +155,7 @@ When adding features, check the current rule set at the link above before implem
 ## Code Style
 
 - **Ruff** for linting and formatting (replaces black, isort, flake8). 88-char line length. Selected rule groups: `E,W,F,I,C4,B,UP,SIM,RUF,PIE,PLE,PLW,G,TID252` (see `pyproject.toml`'s `[tool.ruff.lint]` for the per-rule ignores and their reasons).
-- Type hints encouraged but mypy is not strict (`disallow_untyped_defs = false`)
+- Type hints encouraged but mypy is not strict (`disallow_untyped_defs = false`); `strict_optional = true` is on, so `X | None` must be narrowed before it is passed where `X` is expected. All mypy settings live in `[tool.mypy]` in `pyproject.toml`, shared by CI and the pre-commit hook — the hook adds only `--ignore-missing-imports` (its isolated env has no Home Assistant), so never add other flags to the hook's `args`
 - Prefer `aiohttp` over the blocking kubernetes client for new async HTTP calls
 - All integration code must use `async`/`await` — no blocking calls
 - Inside coroutines always use `asyncio.get_running_loop()`, never `asyncio.get_event_loop()` (deprecated in Python 3.10+ within a running loop)

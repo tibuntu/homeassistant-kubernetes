@@ -48,11 +48,11 @@ repos:
     hooks:
       - id: mypy
         name: Type check with mypy
+        # All other settings come from [tool.mypy] in pyproject.toml, shared
+        # with CI. Only this flag differs: the hook's isolated env has no
+        # Home Assistant, so its imports must resolve to Any.
         args:
           - --ignore-missing-imports
-          - --strict-optional
-          - --warn-redundant-casts
-          - --warn-unused-ignores
         files: ^custom_components/
 
   # Security linting
