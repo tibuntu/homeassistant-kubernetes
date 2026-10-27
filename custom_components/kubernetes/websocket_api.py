@@ -43,6 +43,7 @@ from .const import (
 )
 from .coordinator import (
     KubernetesDataCoordinator,
+    disabled_resources,
     get_hpa_for,
     get_loaded_entries,
     hpa_attributes,
@@ -143,10 +144,19 @@ async def websocket_pods_list(
 ) -> None:
     """Return all pods from all config entries."""
     result = _list_data(hass, "pods")
-    entries = {e.entry_id: e for e in get_loaded_entries(hass)}
-    for cluster in result["clusters"]:
-        entry = entries.get(cluster["entry_id"])
-        cluster["pod_logs_enabled"] = entry is not None and _pod_logs_enabled(entry)
+    # _list_data builds one cluster per loaded entry, in the same order.
+    for cluster, entry in zip(
+        result["clusters"], get_loaded_entries(hass), strict=True
+    ):
+        cluster["pod_logs_enabled"] = _pod_logs_enabled(entry)
+        # With pod collection disabled the coordinator never fetches pods, so
+        # list them live for the panel (Pods tab, logs, delete). Not stored.
+        if "pods" in disabled_resources(entry):
+            try:
+                cluster["pods"] = await entry.runtime_data.client.get_pods()
+            except Exception:
+                # The client already logged it (deduplicated).
+                _LOGGER.debug("Live pod list failed for %s", entry.entry_id)
     connection.send_result(msg["id"], result)
 
 
