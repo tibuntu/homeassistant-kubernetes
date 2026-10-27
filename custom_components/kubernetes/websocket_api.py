@@ -10,6 +10,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 import voluptuous as vol
 
+from .alerts import build_alerts
 from .const import (
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
@@ -197,7 +198,7 @@ def _build_cluster_overview(
     }
 
     namespaces = _build_namespace_breakdown(data)
-    alerts = _build_alerts(data)
+    alerts = build_alerts(data)
 
     return {
         "entry_id": entry_id,
@@ -222,88 +223,6 @@ def _build_namespace_breakdown(data: dict[str, Any]) -> dict[str, dict[str, int]
             ns_counts[ns][key] += 1
 
     return ns_counts
-
-
-def _build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    """Build alert lists for nodes with pressure, degraded workloads, failed pods."""
-    nodes_with_pressure: list[dict[str, Any]] = []
-    degraded_workloads: list[dict[str, Any]] = []
-    failed_pods: list[dict[str, Any]] = []
-
-    # Check node conditions
-    pressure_keys = [
-        "memory_pressure",
-        "disk_pressure",
-        "pid_pressure",
-        "network_unavailable",
-    ]
-    for node_name, node in data.get("nodes", {}).items():
-        conditions = [k for k in pressure_keys if node.get(k)]
-        if conditions:
-            nodes_with_pressure.append({"name": node_name, "conditions": conditions})
-
-    # Check degraded deployments
-    for deploy in data.get("deployments", {}).values():
-        desired = deploy.get("replicas", 0)
-        available = deploy.get("available_replicas") or 0
-        if desired > 0 and available < desired:
-            degraded_workloads.append(
-                {
-                    "name": deploy.get("name", ""),
-                    "type": "Deployment",
-                    "namespace": deploy.get("namespace", "unknown"),
-                    "ready": available,
-                    "desired": desired,
-                }
-            )
-
-    # Check degraded statefulsets
-    for sts in data.get("statefulsets", {}).values():
-        desired = sts.get("replicas", 0)
-        ready = sts.get("ready_replicas") or 0
-        if desired > 0 and ready < desired:
-            degraded_workloads.append(
-                {
-                    "name": sts.get("name", ""),
-                    "type": "StatefulSet",
-                    "namespace": sts.get("namespace", "unknown"),
-                    "ready": ready,
-                    "desired": desired,
-                }
-            )
-
-    # Check degraded daemonsets
-    for ds in data.get("daemonsets", {}).values():
-        desired = ds.get("desired_number_scheduled", 0)
-        available = ds.get("number_available") or 0
-        if desired > 0 and available < desired:
-            degraded_workloads.append(
-                {
-                    "name": ds.get("name", ""),
-                    "type": "DaemonSet",
-                    "namespace": ds.get("namespace", "unknown"),
-                    "ready": available,
-                    "desired": desired,
-                }
-            )
-
-    # Check failed pods
-    for pod in data.get("pods", {}).values():
-        phase = pod.get("phase", "")
-        if phase in ("Failed", "Unknown"):
-            failed_pods.append(
-                {
-                    "name": pod.get("name", ""),
-                    "namespace": pod.get("namespace", "unknown"),
-                    "phase": phase,
-                }
-            )
-
-    return {
-        "nodes_with_pressure": nodes_with_pressure,
-        "degraded_workloads": degraded_workloads,
-        "failed_pods": failed_pods,
-    }
 
 
 def _empty_counts() -> dict[str, int]:

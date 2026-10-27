@@ -64,7 +64,7 @@ Entries using **Prefer in-cluster ServiceAccount token** re-read the projected t
 
 Once the integration is set up, a **Kubernetes** entry appears in the Home Assistant sidebar. The panel provides a built-in cluster dashboard with six tabs:
 
-- **Overview** — Cluster health badge, Kubernetes version (shown verbatim from the API server, including distro suffixes like `-eks-…` or `+k3s1`), resource count cards (click one to open the matching tab, pre-filtered — e.g. Ingresses opens Network filtered to Ingresses), namespace breakdown, Watch API status, and alerts (nodes with pressure, degraded workloads, failed pods). Updates live whenever cluster data changes — immediately via the Watch API (enabled by default), otherwise on each coordinator poll cycle — with a 60-second fallback refresh.
+- **Overview** — Cluster health badge, Kubernetes version (shown verbatim from the API server, including distro suffixes like `-eks-…` or `+k3s1`), resource count cards (click one to open the matching tab, pre-filtered — e.g. Ingresses opens Network filtered to Ingresses), namespace breakdown, Watch API status, and alerts (nodes with pressure, degraded workloads, problem pods — the same lists the [cluster alert sensors](ENTITIES.md#cluster-alert-sensors) expose). Updates live whenever cluster data changes — immediately via the Watch API (enabled by default), otherwise on each coordinator poll cycle — with a 60-second fallback refresh.
 - **Nodes** — Expandable list of all cluster nodes with status, real-time CPU/memory usage (requires metrics-server), and, when expanded, IPs, capacity, OS/kernel/runtime/kubelet details and conditions. Filterable by name and status. Each node has a **Cordon** / **Uncordon** button (the equivalent of the *Schedulable* switch).
 - **Workloads** — Management view for Deployments, StatefulSets, DaemonSets, CronJobs, and Jobs. Deployments and StatefulSets can be started (scale to 1), stopped (scale to 0), and rolling-restarted; DaemonSets rolling-restarted; CronJobs suspended, resumed, and triggered; Jobs deleted (requires HA admin role). Filterable by type, namespace, and status.
 - **Pods** — Sortable table of all pods with phase, containers, restarts, node, IP, and age. Filterable by name, namespace, and phase; each pod can be deleted (requires HA admin role).
@@ -169,12 +169,12 @@ The categories come in two tiers:
 
 | Category | Effect when disabled |
 |----------|----------------------|
-| **Pods** | Pod detail fetch skipped entirely; no per-pod sensors |
+| **Pods** | Pod detail fetch skipped entirely; no per-pod sensors and no Problem Pods sensor |
 | **DaemonSets** | Fetch skipped entirely; no DaemonSet sensors |
 | **Jobs** | Fetch skipped entirely; no Job sensors |
 | **Ingresses** | Fetch skipped entirely; ingress data disappears from the panel |
 | **Services** | Fetch skipped entirely; service data disappears from the panel |
-| **Node sensors** | Node status sensors and the 4 condition binary sensors are removed; the fetch continues so the cordon/uncordon switches keep working |
+| **Node sensors** | Node status sensors, the 5 condition binary sensors (Ready + pressure) and the Nodes Under Pressure sensor are removed; the fetch continues so the cordon/uncordon switches keep working |
 | **Deployment sensors** | Status and CPU/memory sensors removed; scale switches keep working |
 | **StatefulSet sensors** | Same as Deployment sensors |
 | **CronJob sensors** | CronJob status sensors removed; suspend switches keep working |
@@ -184,6 +184,7 @@ The categories come in two tiers:
 Notes:
 
 - Fully-skipped categories (Pods, DaemonSets, Jobs, Ingresses, Services) also stop their watch streams when the Watch API is enabled.
+- The Degraded Workloads sensor is removed only when Deployment sensors, StatefulSet sensors and DaemonSets are all disabled.
 - Existing entities of a disabled category are removed from Home Assistant automatically on the next update cycle.
 - If a fully-skipped category is disabled while **Aggregate count sensors** stay enabled, its count sensor keeps working via a lightweight count API call, and the panel's Overview count card shows the same number.
 - The `delete_job` service still works with Jobs disabled, but can no longer resolve a Job's namespace automatically — it falls back to the configured default namespace, so pass the namespace explicitly.

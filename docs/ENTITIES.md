@@ -18,6 +18,18 @@ The integration provides the following sensors to monitor your Kubernetes cluste
 | **Ingresses Count** | Number of ingresses in the monitored namespace(s) | `4` | ingresses |
 | **Services Count** | Number of services in the monitored namespace(s) | `12` | services |
 
+### Cluster Alert Sensors
+
+Three per-cluster sensors count resources that currently need attention, so a single automation can cover the whole cluster. They use the same rules as the sidebar panel's Overview alerts, so both always agree. The offending resources are listed in an attribute; that list is excluded from the recorder (history keeps the count only).
+
+| Sensor | Counts | Attribute | Unit |
+|--------|--------|-----------|------|
+| **Degraded Workloads** | Deployments with fewer available, StatefulSets with fewer ready, and DaemonSets with fewer available replicas than desired (workloads scaled to 0 are ignored) | `workloads`: list of `{name, type, namespace, ready, desired}` | workloads |
+| **Problem Pods** | Pods whose `problem` flag is set (CrashLoopBackOff, ImagePullBackOff, non-zero exit, phase `Failed`, Unschedulable — see [Pod sensors](#individual-pod-sensors)) plus pods in phase `Unknown` | `pods`: list of `{name, namespace, phase, reason}` | pods |
+| **Nodes Under Pressure** | Nodes with Memory/Disk/PID Pressure or Network Unavailable | `nodes`: list of `{name, conditions}` | nodes |
+
+Gating: *Problem Pods* is not created when **Pods** is disabled under **Configure → Disable data collection for**, *Nodes Under Pressure* when **Node sensors** is disabled, and *Degraded Workloads* only when Deployment sensors, StatefulSet sensors **and** DaemonSets are all disabled.
+
 ### Individual Node Sensors
 
 The integration creates a separate sensor for each Kubernetes node in the cluster:
@@ -223,12 +235,13 @@ The integration creates binary sensors for each node condition on every node in 
 
 | Binary Sensor | Description | Device Class |
 |---------------|-------------|--------------|
+| **[node-name] Ready** | Node reports the `Ready` condition | `connectivity` |
 | **[node-name] Memory Pressure** | Node is running low on memory | `problem` |
 | **[node-name] Disk Pressure** | Node is running low on disk space | `problem` |
 | **[node-name] PID Pressure** | Node is running too many processes | `problem` |
 | **[node-name] Network Unavailable** | Node network is not correctly configured | `problem` |
 
-- **States**: `on` means the condition is active (problem detected), `off` means normal operation
+- **States**: for the pressure / network sensors `on` means the condition is active (problem detected) and `off` means normal operation; **Ready** is the other way round — `on` while the node is Ready, `off` when it is NotReady
 - **Device assignment**: Assigned to the cluster device alongside individual node sensors
 
 ## Switches
@@ -390,9 +403,10 @@ Cluster Device (e.g., "production-cluster")
 │   ├── Jobs Count (sensor)
 │   ├── Ingresses Count (sensor)
 │   ├── Services Count (sensor)
+│   ├── Degraded Workloads / Problem Pods / Nodes Under Pressure (sensors)
 │   ├── Cluster events (event — opt-in, only when enable_events is on)
 │   ├── Individual Node sensors (one per node)
-│   ├── Node condition binary sensors (4 per node: Memory/Disk/PID Pressure, Network Unavailable)
+│   ├── Node condition binary sensors (5 per node: Ready, Memory/Disk/PID Pressure, Network Unavailable)
 │   └── Node schedulable switches (one per node: cordon / uncordon)
 │
 └── Namespace Devices (e.g., "production-cluster: default")
@@ -452,9 +466,10 @@ The integration automatically discovers and creates entities for:
 - All jobs in monitored namespaces (status sensor)
 - Individual Kubernetes pods in monitored namespaces
 - Individual Kubernetes nodes in the cluster
-- Node condition binary sensors (4 per node: Memory Pressure, Disk Pressure, PID Pressure, Network Unavailable)
+- Node condition binary sensors (5 per node: Ready, Memory Pressure, Disk Pressure, PID Pressure, Network Unavailable)
 - Node schedulable switches (one per node, for cordon / uncordon)
 - Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs, jobs, ingresses, services count)
+- Cluster alert sensors (degraded workloads, problem pods, nodes under pressure)
 - Overall cluster health
 
 Entities are automatically added when new resources are created and removed when resources are deleted from the cluster.

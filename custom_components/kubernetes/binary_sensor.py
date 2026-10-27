@@ -28,8 +28,11 @@ _LOGGER = logging.getLogger(__name__)
 # Data updates are centralized in the coordinator (quality scale: parallel-updates)
 PARALLEL_UPDATES = 0
 
-# Node conditions exposed as binary sensors: condition_key -> display name
+# Node conditions exposed as binary sensors: condition_key -> display name.
+# All are "on = problem" except _NODE_READY, which is on while the node is Ready.
+_NODE_READY = "ready"
 _NODE_CONDITIONS: dict[str, str] = {
+    _NODE_READY: "Ready",
     "memory_pressure": "Memory Pressure",
     "disk_pressure": "Disk Pressure",
     "pid_pressure": "PID Pressure",
@@ -213,7 +216,11 @@ class KubernetesNodeConditionBinarySensor(BinarySensorEntity):
         self._attr_unique_id = (
             f"{config_entry.entry_id}_node_{node_name}_{condition_key}"
         )
-        self._attr_device_class = BinarySensorDeviceClass.PROBLEM
+        self._attr_device_class = (
+            BinarySensorDeviceClass.CONNECTIVITY
+            if condition_key == _NODE_READY
+            else BinarySensorDeviceClass.PROBLEM
+        )
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -227,7 +234,7 @@ class KubernetesNodeConditionBinarySensor(BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True when the condition is active (problem detected)."""
+        """Return True when the condition is active (Ready: node is Ready)."""
         if not self.coordinator.data:
             return None
         node_data: dict[str, Any] | None = self.coordinator.data.get("nodes", {}).get(
@@ -235,6 +242,8 @@ class KubernetesNodeConditionBinarySensor(BinarySensorEntity):
         )
         if node_data is None:
             return None
+        if self.condition_key == _NODE_READY:
+            return node_data.get("status") == "Ready"
         return bool(node_data.get(self.condition_key, False))
 
     async def async_added_to_hass(self) -> None:

@@ -455,6 +455,31 @@ automation:
             priority: high
 ```
 
+### Problem Pod Alerts
+
+The *Problem Pods* sensor counts every pod that is currently broken (CrashLoopBackOff, ImagePullBackOff, failed, unschedulable, …) and lists them in its `pods` attribute, so one automation covers the whole cluster:
+
+```yaml
+automation:
+  - alias: "Notify on problem pods"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.production_problem_pods
+      above: 0
+      for:
+        minutes: 5
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Kubernetes: problem pods"
+          message: >
+            {% for pod in state_attr('sensor.production_problem_pods', 'pods') %}
+            {{ pod.namespace }}/{{ pod.name }}: {{ pod.reason }}
+            {% endfor %}
+```
+
+*Degraded Workloads* (`workloads` attribute) and *Nodes Under Pressure* (`nodes` attribute) work the same way.
+
 ### Cluster Health Monitoring
 
 ```yaml

@@ -7,10 +7,10 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.kubernetes.alerts import build_alerts
 from custom_components.kubernetes.const import DOMAIN
 from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.websocket_api import (
-    _build_alerts,
     _build_cluster_overview,
     _build_namespace_breakdown,
     _get_cluster_overview_data,
@@ -403,25 +403,25 @@ class TestBuildNamespaceBreakdown:
 
 
 class TestBuildAlerts:
-    """Tests for _build_alerts."""
+    """Tests for build_alerts."""
 
     def test_empty_data(self):
         """Test with empty data."""
-        result = _build_alerts({})
+        result = build_alerts({})
         assert result["nodes_with_pressure"] == []
         assert result["degraded_workloads"] == []
         assert result["failed_pods"] == []
 
     def test_detects_node_pressure(self, sample_coordinator_data):
         """Test detects nodes with pressure conditions."""
-        result = _build_alerts(sample_coordinator_data)
+        result = build_alerts(sample_coordinator_data)
         assert len(result["nodes_with_pressure"]) == 1
         assert result["nodes_with_pressure"][0]["name"] == "node-2"
         assert "memory_pressure" in result["nodes_with_pressure"][0]["conditions"]
 
     def test_detects_degraded_deployment(self, sample_coordinator_data):
         """Test detects deployments where available < desired."""
-        result = _build_alerts(sample_coordinator_data)
+        result = build_alerts(sample_coordinator_data)
         degraded = result["degraded_workloads"]
         assert len(degraded) == 1
         assert degraded[0]["name"] == "api"
@@ -445,7 +445,7 @@ class TestBuildAlerts:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["degraded_workloads"]) == 1
         assert result["degraded_workloads"][0]["type"] == "StatefulSet"
 
@@ -465,13 +465,13 @@ class TestBuildAlerts:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["degraded_workloads"]) == 1
         assert result["degraded_workloads"][0]["type"] == "DaemonSet"
 
     def test_detects_failed_pods(self, sample_coordinator_data):
         """Test detects pods in Failed or Unknown phase."""
-        result = _build_alerts(sample_coordinator_data)
+        result = build_alerts(sample_coordinator_data)
         assert len(result["failed_pods"]) == 1
         assert result["failed_pods"][0]["name"] == "api-xyz789"
         assert result["failed_pods"][0]["phase"] == "Failed"
@@ -491,7 +491,7 @@ class TestBuildAlerts:
                 },
             },
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["failed_pods"]) == 1
         assert result["failed_pods"][0]["phase"] == "Unknown"
 
@@ -525,7 +525,7 @@ class TestBuildAlerts:
                 },
             },
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["nodes_with_pressure"] == []
         assert result["degraded_workloads"] == []
         assert result["failed_pods"] == []
@@ -546,7 +546,7 @@ class TestBuildAlerts:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["degraded_workloads"] == []
 
     def test_multiple_node_conditions(self):
@@ -566,7 +566,7 @@ class TestBuildAlerts:
             },
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["nodes_with_pressure"]) == 1
         conditions = result["nodes_with_pressure"][0]["conditions"]
         assert "memory_pressure" in conditions
@@ -1418,7 +1418,7 @@ class TestBuildNamespaceBreakdownEdgeCases:
 
 
 class TestBuildAlertsEdgeCases:
-    """Additional edge-case tests for _build_alerts."""
+    """Additional edge-case tests for build_alerts."""
 
     def test_node_with_all_pressure_conditions_true(self):
         """Test node with all four pressure conditions set to True."""
@@ -1437,7 +1437,7 @@ class TestBuildAlertsEdgeCases:
             },
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["nodes_with_pressure"]) == 1
         conditions = result["nodes_with_pressure"][0]["conditions"]
         assert len(conditions) == 4
@@ -1461,7 +1461,7 @@ class TestBuildAlertsEdgeCases:
             },
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["nodes_with_pressure"] == []
 
     def test_node_pressure_keys_with_none_values(self):
@@ -1481,7 +1481,7 @@ class TestBuildAlertsEdgeCases:
             },
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["nodes_with_pressure"] == []
 
     def test_node_pressure_keys_with_false_values(self):
@@ -1501,7 +1501,7 @@ class TestBuildAlertsEdgeCases:
             },
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["nodes_with_pressure"] == []
 
     def test_multiple_nodes_with_different_pressure_conditions(self):
@@ -1535,7 +1535,7 @@ class TestBuildAlertsEdgeCases:
             },
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["nodes_with_pressure"]) == 2
         names = {n["name"] for n in result["nodes_with_pressure"]}
         assert names == {"node-a", "node-b"}
@@ -1556,7 +1556,7 @@ class TestBuildAlertsEdgeCases:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["degraded_workloads"]) == 1
         assert result["degraded_workloads"][0]["name"] == "new-deploy"
         assert result["degraded_workloads"][0]["ready"] == 0
@@ -1578,7 +1578,7 @@ class TestBuildAlertsEdgeCases:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["degraded_workloads"]) == 1
         assert result["degraded_workloads"][0]["type"] == "StatefulSet"
         assert result["degraded_workloads"][0]["ready"] == 0
@@ -1600,7 +1600,7 @@ class TestBuildAlertsEdgeCases:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["degraded_workloads"]) == 1
         assert result["degraded_workloads"][0]["type"] == "DaemonSet"
         assert result["degraded_workloads"][0]["ready"] == 0
@@ -1621,7 +1621,7 @@ class TestBuildAlertsEdgeCases:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         # replicas defaults to 0, so desired=0, condition desired>0 is False
         assert result["degraded_workloads"] == []
 
@@ -1641,7 +1641,7 @@ class TestBuildAlertsEdgeCases:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["degraded_workloads"] == []
 
     def test_daemonset_scaled_to_zero_not_degraded(self):
@@ -1660,7 +1660,7 @@ class TestBuildAlertsEdgeCases:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["degraded_workloads"] == []
 
     def test_pod_with_missing_phase_not_failed(self):
@@ -1678,7 +1678,7 @@ class TestBuildAlertsEdgeCases:
                 },
             },
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["failed_pods"] == []
 
     def test_pod_with_empty_string_phase_not_failed(self):
@@ -1696,7 +1696,7 @@ class TestBuildAlertsEdgeCases:
                 },
             },
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["failed_pods"] == []
 
     def test_pod_pending_and_succeeded_not_failed(self):
@@ -1719,7 +1719,7 @@ class TestBuildAlertsEdgeCases:
                 },
             },
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert result["failed_pods"] == []
 
     def test_multiple_failed_and_unknown_pods(self):
@@ -1747,7 +1747,7 @@ class TestBuildAlertsEdgeCases:
                 },
             },
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["failed_pods"]) == 3
         names = {p["name"] for p in result["failed_pods"]}
         assert names == {"fail-1", "fail-2", "unknown-1"}
@@ -1767,7 +1767,7 @@ class TestBuildAlertsEdgeCases:
                 },
             },
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["failed_pods"]) == 1
         assert result["failed_pods"][0]["name"] == ""
 
@@ -1801,7 +1801,7 @@ class TestBuildAlertsEdgeCases:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["degraded_workloads"]) == 3
         for workload in result["degraded_workloads"]:
             assert workload["namespace"] == "unknown"
@@ -1842,7 +1842,7 @@ class TestBuildAlertsEdgeCases:
             "nodes": {},
             "pods": {},
         }
-        result = _build_alerts(data)
+        result = build_alerts(data)
         assert len(result["degraded_workloads"]) == 1
         assert result["degraded_workloads"][0]["name"] == "sick-deploy"
 

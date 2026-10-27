@@ -18,19 +18,23 @@ from custom_components.kubernetes.const import (
 from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.sensor import (
     _SIMPLE_DISCOVERY,
+    KubernetesAlertSensor,
     KubernetesCountSensor,
     KubernetesCronJobSensor,
     KubernetesCronJobsSensor,
     KubernetesDaemonSetSensor,
     KubernetesDaemonSetsSensor,
+    KubernetesDegradedWorkloadsSensor,
     KubernetesDeploymentsSensor,
     KubernetesIngressesSensor,
     KubernetesJobSensor,
     KubernetesJobsSensor,
     KubernetesNodeSensor,
     KubernetesNodesSensor,
+    KubernetesNodesUnderPressureSensor,
     KubernetesPodSensor,
     KubernetesPodsSensor,
+    KubernetesProblemPodsSensor,
     KubernetesServicesSensor,
     KubernetesStatefulSetsSensor,
     KubernetesWorkloadMetricSensor,
@@ -361,8 +365,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 9 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses, Services) + number of node sensors from coordinator
-        expected_count = 9 + len(mock_coordinator.get_all_nodes_data())
+        # 9 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses, Services) + 3 alert sensors + number of node sensors from coordinator
+        expected_count = 9 + 3 + len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
@@ -472,7 +476,7 @@ class TestDisabledResourceGating:
     async def test_setup_skips_counts_and_node_sensors(
         self, hass: HomeAssistant, mock_client, mock_coordinator
     ):
-        """Disabling counts and nodes creates no sensors at all."""
+        """Disabling counts and nodes leaves only the pod/workload alerts."""
         from custom_components.kubernetes.sensor import async_setup_entry
 
         entry = self._entry(hass, ["counts", "nodes"])
@@ -484,7 +488,10 @@ class TestDisabledResourceGating:
         await async_setup_entry(hass, entry, mock_add_entities)
 
         sensors = mock_add_entities.call_args[0][0]
-        assert len(sensors) == 0
+        assert {s.unique_id for s in sensors} == {
+            "test_entry_id_degraded_workloads",
+            "test_entry_id_problem_pods",
+        }
 
     async def test_setup_skips_disabled_workload_sensors(
         self, hass: HomeAssistant, mock_client, mock_coordinator
@@ -509,7 +516,11 @@ class TestDisabledResourceGating:
         mock_add_entities = AsyncMock()
         await async_setup_entry(hass, entry, mock_add_entities)
 
-        sensors = mock_add_entities.call_args[0][0]
+        sensors = [
+            s
+            for s in mock_add_entities.call_args[0][0]
+            if not isinstance(s, KubernetesAlertSensor)
+        ]
         # Only the statefulset status sensor remains: deployments and cronjobs
         # are disabled, and metrics removes the CPU/memory sensors.
         assert len(sensors) == 1
@@ -3493,8 +3504,8 @@ class TestAsyncSetupEntryWithResources:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         sensors = mock_add_entities.call_args[0][0]
-        # 9 aggregate + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 21
-        assert len(sensors) == 21
+        # 9 aggregate + 3 alerts + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 24
+        assert len(sensors) == 24
 
     async def test_stores_add_entities_callback(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
@@ -4303,3 +4314,130 @@ class TestDiscoverSimple:
         )
         assert [s.unique_id for s in new] == ["test_entry_id_job_ops_b"]
         assert new[0].namespace == "ops"
+
+
+_ALERT_DATA = {
+    "nodes": {"n1": {"memory_pressure": True}, "n2": {}},
+    "deployments": {
+        "default_web": {
+            "name": "web",
+            "namespace": "default",
+            "replicas": 2,
+            "available_replicas": 1,
+        }
+    },
+    "pods": {
+        "default_crash": {
+            "name": "crash",
+            "namespace": "default",
+            "phase": "Running",
+            "problem": True,
+            "problem_reason": "CrashLoopBackOff",
+        },
+        "default_ok": {"name": "ok", "namespace": "default", "phase": "Running"},
+    },
+}
+
+
+class TestKubernetesAlertSensor:
+    """Test the cluster alert sensors."""
+
+    @pytest.mark.parametrize(
+        ("cls", "suffix", "attr", "expected"),
+        [
+            (
+                KubernetesDegradedWorkloadsSensor,
+                "degraded_workloads",
+                "workloads",
+                [
+                    {
+                        "name": "web",
+                        "type": "Deployment",
+                        "namespace": "default",
+                        "ready": 1,
+                        "desired": 2,
+                    }
+                ],
+            ),
+            (
+                KubernetesProblemPodsSensor,
+                "problem_pods",
+                "pods",
+                [
+                    {
+                        "name": "crash",
+                        "namespace": "default",
+                        "phase": "Running",
+                        "reason": "CrashLoopBackOff",
+                    }
+                ],
+            ),
+            (
+                KubernetesNodesUnderPressureSensor,
+                "nodes_under_pressure",
+                "nodes",
+                [{"name": "n1", "conditions": ["memory_pressure"]}],
+            ),
+        ],
+    )
+    def test_value_and_attributes(
+        self,
+        mock_coordinator,
+        mock_client,
+        mock_config_entry,
+        cls,
+        suffix,
+        attr,
+        expected,
+    ):
+        """State is the list length, the list is exposed but not recorded."""
+        mock_coordinator.data = _ALERT_DATA
+        sensor = cls(mock_coordinator, mock_client, mock_config_entry)
+
+        assert isinstance(sensor, KubernetesAlertSensor)
+        assert sensor.unique_id == f"test_entry_id_{suffix}"
+        assert sensor.native_value == 1
+        assert sensor.extra_state_attributes == {attr: expected}
+        assert attr in sensor._unrecorded_attributes
+        assert sensor.should_poll is False
+        assert sensor.device_info["identifiers"] == {
+            ("kubernetes", "test_entry_id_cluster")
+        }
+
+    @pytest.mark.parametrize("data", [None, {}])
+    def test_no_data(self, mock_coordinator, mock_client, mock_config_entry, data):
+        """Empty or missing coordinator data yields 0 and an empty list."""
+        mock_coordinator.data = data
+        sensor = KubernetesProblemPodsSensor(
+            mock_coordinator, mock_client, mock_config_entry
+        )
+        assert sensor.native_value == 0
+        assert sensor.extra_state_attributes == {"pods": []}
+
+    async def test_setup_skips_alerts_when_inputs_disabled(
+        self, hass: HomeAssistant, mock_client, mock_coordinator, make_config_entry
+    ):
+        """Each alert sensor is skipped once all of its inputs are disabled."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        entry = make_config_entry(
+            options={
+                CONF_DISABLED_RESOURCES: [
+                    "counts",
+                    "nodes",
+                    "pods",
+                    "deployments",
+                    "statefulsets",
+                    "daemonsets",
+                ]
+            }
+        )
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data, client=mock_client, coordinator=mock_coordinator
+        )
+
+        mock_add_entities = AsyncMock()
+        await async_setup_entry(hass, entry, mock_add_entities)
+
+        sensors = mock_add_entities.call_args[0][0]
+        assert not any(isinstance(s, KubernetesAlertSensor) for s in sensors)

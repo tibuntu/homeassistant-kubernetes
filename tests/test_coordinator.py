@@ -3993,6 +3993,11 @@ class TestDisabledResources:
         # Sensors of disabled categories are no longer expected
         assert f"{eid}_node_n1" not in expected
         assert f"{eid}_node_n1_memory_pressure" not in expected
+        assert f"{eid}_node_n1_ready" not in expected
+        assert f"{eid}_nodes_under_pressure" not in expected
+        # Alert sensors whose inputs are still (partly) enabled stay
+        assert f"{eid}_problem_pods" in expected
+        assert f"{eid}_degraded_workloads" in expected
         assert f"{eid}_default_web_deployment_status" not in expected
         assert f"{eid}_default_web_deployment_cpu" not in expected
         assert f"{eid}_cronjob_default_cj" not in expected
@@ -4019,6 +4024,24 @@ class TestDisabledResources:
 
         assert f"{eid}_node_n1" in expected
         assert f"{eid}_node_n1_memory_pressure" in expected
+        assert f"{eid}_node_n1_ready" in expected
         assert f"{eid}_default_web_deployment_status" in expected
         assert f"{eid}_default_web_deployment_cpu" in expected
         assert f"{eid}_pods_count" in expected
+        for suffix in ("degraded_workloads", "problem_pods", "nodes_under_pressure"):
+            assert f"{eid}_{suffix}" in expected
+
+    async def test_expected_unique_ids_alert_sensors_disabled(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Alert sensors drop out once every input category is disabled."""
+        coordinator = self._make_coordinator(
+            hass, mock_client, ["pods", "deployments", "statefulsets", "daemonsets"]
+        )
+
+        expected = coordinator._build_expected_unique_ids({})
+        eid = coordinator.config_entry.entry_id
+
+        assert f"{eid}_degraded_workloads" not in expected
+        assert f"{eid}_problem_pods" not in expected
+        assert f"{eid}_nodes_under_pressure" in expected
