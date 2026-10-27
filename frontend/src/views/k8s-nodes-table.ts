@@ -8,6 +8,7 @@ import {
   toggleInSet,
   errorMessage,
   CONDITION_LABELS,
+  isAdmin,
 } from "../utils/format";
 
 interface NodeData {
@@ -450,19 +451,23 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
             }
           </div>
           <span class="node-age">${formatAge(node.creation_timestamp)}</span>
-          <button
-            class="action-btn ${node.schedulable ? "cordon" : "uncordon"}"
-            title=${node.schedulable ? "Cordon (stop scheduling new pods)" : "Uncordon"}
-            ?disabled=${this._actionInProgress.has(nodeKey)}
-            @click=${(e: Event) => {
-              e.stopPropagation();
-              this._setSchedulable(entryId, node, !node.schedulable);
-            }}
-          >
-            <ha-icon
-              icon=${node.schedulable ? "mdi:server-off" : "mdi:server"}
-            ></ha-icon>
-          </button>
+          ${
+            isAdmin(this.hass)
+              ? html`<button
+                  class="action-btn ${node.schedulable ? "cordon" : "uncordon"}"
+                  title=${node.schedulable ? "Cordon (stop scheduling new pods)" : "Uncordon"}
+                  ?disabled=${this._actionInProgress.has(nodeKey)}
+                  @click=${(e: Event) => {
+                    e.stopPropagation();
+                    this._setSchedulable(entryId, node, !node.schedulable);
+                  }}
+                >
+                  <ha-icon
+                    icon=${node.schedulable ? "mdi:server-off" : "mdi:server"}
+                  ></ha-icon>
+                </button>`
+              : html`<span></span>`
+          }
         </div>
         ${expanded ? this._renderNodeDetails(node, conditions) : nothing}
       </ha-card>

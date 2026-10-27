@@ -5,6 +5,7 @@
  * package, so we maintain a slim local copy instead.
  */
 export interface HomeAssistant {
+  user?: { id: string; name: string; is_admin: boolean };
   callWS: <T>(msg: Record<string, unknown>) => Promise<T>;
   callService: (
     domain: string,

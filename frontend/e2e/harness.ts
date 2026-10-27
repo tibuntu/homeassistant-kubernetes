@@ -4,7 +4,8 @@
  * message and service call is recorded on `window.__k8s` for assertions.
  *
  * Query string: `?fail=<ws type>` (repeatable) makes those WebSocket calls
- * reject until the spec clears `window.__k8s.fail`.
+ * reject until the spec clears `window.__k8s.fail`. `?admin=0` mounts the
+ * panel as a non-admin user.
  */
 import { KubernetesPanel } from "../src/kubernetes-panel";
 import type { HomeAssistant } from "../src/types/homeassistant";
@@ -45,6 +46,11 @@ for (const tag of ["ha-card", "ha-icon", "ha-circular-progress"]) {
 }
 
 const hass: HomeAssistant = {
+  user: {
+    id: "harness",
+    name: "Harness",
+    is_admin: new URLSearchParams(location.search).get("admin") !== "0",
+  },
   async callWS<T>(msg: Record<string, unknown>): Promise<T> {
     calls.push(msg);
     const type = String(msg.type);
