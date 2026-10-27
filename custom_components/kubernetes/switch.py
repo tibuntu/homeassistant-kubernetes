@@ -21,6 +21,7 @@ from .const import (
     CONF_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
+    DOMAIN,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
@@ -288,11 +289,11 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         self._log_label = log_label
         self._attr_name_key = attr_name_key
         self._attr_has_entity_name = True
-        self._attr_name = workload_name
+        self._attr_translation_key = unique_id_suffix
+        self._attr_translation_placeholders = {"name": workload_name}
         self._attr_unique_id = (
             f"{config_entry.entry_id}_{namespace}_{workload_name}_{unique_id_suffix}"
         )
-        self._attr_icon = "mdi:kubernetes"
         self._is_on = False
         self._replicas = 0
         # Coordinator refreshes inside this window (after a scale call) do not
@@ -594,11 +595,11 @@ class KubernetesCronJobSwitch(SwitchEntity):
         self.cronjob_name = cronjob_name
         self.namespace = namespace
         self._attr_has_entity_name = True
-        self._attr_name = cronjob_name
+        self._attr_translation_key = "cronjob"
+        self._attr_translation_placeholders = {"name": cronjob_name}
         self._attr_unique_id = (
             f"{config_entry.entry_id}_{namespace}_{cronjob_name}_cronjob"
         )
-        self._attr_icon = "mdi:clock-outline"
         self._is_on = False  # True = enabled (not suspended), False = suspended
         self._active_jobs_count = 0
         self._schedule = ""
@@ -804,7 +805,8 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
         self.config_entry = config_entry
         self.node_name = node_name
         self._attr_has_entity_name = True
-        self._attr_name = f"{node_name} Schedulable"
+        self._attr_translation_key = "node_schedulable"
+        self._attr_translation_placeholders = {"name": node_name}
         self._attr_unique_id = f"{config_entry.entry_id}_node_{node_name}_schedulable"
         # Purely listener-driven; HA's 30 s poll would be a no-op write per node.
         self._attr_should_poll = False
@@ -840,11 +842,6 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
         if node_data:
             return bool(node_data.get("schedulable", True))
         return True
-
-    @property
-    def icon(self) -> str:
-        """Return the icon based on the schedulable state."""
-        return "mdi:server" if self.is_on else "mdi:server-off"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -887,7 +884,14 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
 
             result = await client.uncordon_node(self.node_name)
             if not result:
-                raise HomeAssistantError(f"Failed to uncordon node {self.node_name}")
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="operation_failed",
+                    translation_placeholders={
+                        "operation": "uncordon",
+                        "failures": f"node {self.node_name}",
+                    },
+                )
 
             self._last_uncordon_time = time.time()
             self._optimistic_is_on = True
@@ -906,7 +910,14 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
 
             result = await client.cordon_node(self.node_name)
             if not result:
-                raise HomeAssistantError(f"Failed to cordon node {self.node_name}")
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="operation_failed",
+                    translation_placeholders={
+                        "operation": "cordon",
+                        "failures": f"node {self.node_name}",
+                    },
+                )
 
             self._last_cordon_time = time.time()
             self._optimistic_is_on = False

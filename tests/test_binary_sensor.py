@@ -187,11 +187,11 @@ class TestKubernetesBaseBinarySensor:
 class TestKubernetesClusterHealthSensor:
     """Test Kubernetes cluster health binary sensor."""
 
-    def test_sensor_initialization(self, mock_config_entry, mock_client):
+    def test_sensor_initialization(self, mock_config_entry, mock_client, entity_name):
         """Test cluster health sensor initialization."""
         sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
 
-        assert sensor.name == "Cluster Health"
+        assert entity_name(sensor, "binary_sensor") == "Cluster Health"
         assert sensor.unique_id == "test_entry_id_cluster_health"
         assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
         assert sensor._attr_has_entity_name is True
@@ -305,13 +305,13 @@ class TestKubernetesClusterHealthSensor:
         sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
 
         # Test that the sensor has the expected attributes
-        assert hasattr(sensor, "_attr_name")
+        assert hasattr(sensor, "_attr_translation_key")
         assert hasattr(sensor, "_attr_unique_id")
         assert hasattr(sensor, "_attr_device_class")
         assert hasattr(sensor, "_attr_has_entity_name")
         assert hasattr(sensor, "_attr_is_on")
 
-        assert sensor._attr_name == "Cluster Health"
+        assert sensor._attr_translation_key == "cluster_health"
         assert sensor._attr_unique_id == "test_entry_id_cluster_health"
         assert sensor._attr_device_class == BinarySensorDeviceClass.CONNECTIVITY
         assert sensor._attr_has_entity_name is True
@@ -327,13 +327,13 @@ class TestKubernetesNodeConditionBinarySensor:
             mock_coordinator, mock_config_entry, "node-1", condition
         )
 
-    def test_initialization(self, mock_coordinator, mock_config_entry):
+    def test_initialization(self, mock_coordinator, mock_config_entry, entity_name):
         """Test name, unique_id, device_class, and has_entity_name."""
         sensor = self._make_sensor(
             mock_coordinator, mock_config_entry, "memory_pressure"
         )
 
-        assert sensor.name == "node-1 Memory Pressure"
+        assert entity_name(sensor, "binary_sensor") == "node-1 Memory Pressure"
         assert sensor.unique_id == "test_entry_id_node_node-1_memory_pressure"
         assert sensor.device_class == BinarySensorDeviceClass.PROBLEM
         assert sensor._attr_has_entity_name is True
@@ -357,7 +357,9 @@ class TestKubernetesNodeConditionBinarySensor:
         unique_ids = {s.unique_id for s in sensors}
         assert len(unique_ids) == 4
 
-    def test_names_for_all_conditions(self, mock_coordinator, mock_config_entry):
+    def test_names_for_all_conditions(
+        self, mock_coordinator, mock_config_entry, entity_name
+    ):
         """Test display names for all four conditions."""
         expected = {
             "memory_pressure": "node-1 Memory Pressure",
@@ -367,7 +369,7 @@ class TestKubernetesNodeConditionBinarySensor:
         }
         for condition, name in expected.items():
             sensor = self._make_sensor(mock_coordinator, mock_config_entry, condition)
-            assert sensor.name == name
+            assert entity_name(sensor, "binary_sensor") == name
 
     def test_device_info_uses_cluster_device(self, mock_coordinator, mock_config_entry):
         """Test sensor is attached to the cluster device."""
@@ -416,10 +418,10 @@ class TestKubernetesNodeConditionBinarySensor:
         mock_coordinator.last_update_success = False
         assert sensor.available is False
 
-    def test_ready_sensor(self, mock_coordinator, mock_config_entry):
+    def test_ready_sensor(self, mock_coordinator, mock_config_entry, entity_name):
         """Ready is on while the node status is Ready (connectivity semantics)."""
         sensor = self._make_sensor(mock_coordinator, mock_config_entry, "ready")
-        assert sensor.name == "node-1 Ready"
+        assert entity_name(sensor, "binary_sensor") == "node-1 Ready"
         assert sensor.unique_id == "test_entry_id_node_node-1_ready"
         assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
 

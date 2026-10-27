@@ -1,0 +1,52 @@
+{
+  "entity": {
+    "number": {
+      "replicas": {
+        "default": "mdi:counter"
+      }
+    },
+    "sensor": {
+      "node": {
+        "default": "mdi:server"
+      },
+      "pod": {
+        "default": "mdi:kubernetes"
+      },
+      "workload_cpu": {
+        "default": "mdi:cpu-64-bit"
+      },
+      "workload_memory": {
+        "default": "mdi:memory"
+      },
+      "workload_status": {
+        "default": "mdi:kubernetes"
+      },
+      "daemonset": {
+        "default": "mdi:layers"
+      },
+      "cronjob": {
+        "default": "mdi:clock-outline"
+      },
+      "job": {
+        "default": "mdi:briefcase-outline"
+      }
+    },
+    "switch": {
+      "deployment": {
+        "default": "mdi:kubernetes"
+      },
+      "statefulset": {
+        "default": "mdi:kubernetes"
+      },
+      "cronjob": {
+        "default": "mdi:clock-outline"
+      },
+      "node_schedulable": {
+        "default": "mdi:server",
+        "state": {
+          "off": "mdi:server-off"
+        }
+      }
+    }
+  }
+}

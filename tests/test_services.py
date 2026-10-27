@@ -137,6 +137,7 @@ class TestServiceRegistration:
         assert hass.services.has_service(DOMAIN, SERVICE_STOP_WORKLOAD)
 
 
+@pytest.mark.usefixtures("load_translations")
 class TestGenericWorkloadServices:
     """Test generic workload services (scale_workload, start_workload, stop_workload)."""
 
@@ -279,6 +280,7 @@ class TestGenericWorkloadServices:
         mock_client.stop_deployment.assert_any_call("cert-manager", "cert-manager")
 
 
+@pytest.mark.usefixtures("load_translations")
 class TestRestartWorkloadService:
     """Tests for the restart_workload service."""
 
@@ -838,35 +840,36 @@ class TestNoWorkloadsError:
             {ATTR_WORKLOAD_NAME: "switch.nginx"}, "scale_workload"
         )
         assert isinstance(err, ServiceValidationError)
-        assert "scale_workload" in str(err)
-        assert "switch.nginx" in str(err)
+        assert err.translation_placeholders["service"] == "scale_workload"
+        assert "switch.nginx" in err.translation_placeholders["requested"]
 
     def test_names_workload_names_list(self):
         err = _no_workloads_error(
             {ATTR_WORKLOAD_NAMES: ["switch.a", "switch.b"]}, "stop_workload"
         )
-        assert "switch.a" in str(err)
-        assert "switch.b" in str(err)
+        assert "switch.a" in err.translation_placeholders["requested"]
+        assert "switch.b" in err.translation_placeholders["requested"]
 
     def test_names_workload_names_dict(self):
         err = _no_workloads_error(
             {ATTR_WORKLOAD_NAMES: {"entity_id": "switch.x"}}, "start_workload"
         )
-        assert "switch.x" in str(err)
+        assert "switch.x" in err.translation_placeholders["requested"]
 
     def test_names_workload_names_dict_list_entity_id(self):
         err = _no_workloads_error(
             {ATTR_WORKLOAD_NAMES: {"entity_id": ["switch.x", "switch.y"]}},
             "start_workload",
         )
-        assert "switch.x" in str(err)
-        assert "switch.y" in str(err)
+        assert "switch.x" in err.translation_placeholders["requested"]
+        assert "switch.y" in err.translation_placeholders["requested"]
 
     def test_no_relevant_keys(self):
         err = _no_workloads_error({}, "scale_workload")
-        assert "(none)" in str(err)
+        assert "(none)" in err.translation_placeholders["requested"]
 
 
+@pytest.mark.usefixtures("load_translations")
 class TestServiceHandlerEdgeCases:
     """Test edge cases in the service handler functions."""
 
@@ -1416,6 +1419,7 @@ class TestResolveRawWorkloadName:
         assert result is None
 
 
+@pytest.mark.usefixtures("load_translations")
 class TestGetEntryData:
     """Tests for _get_entry_data helper."""
 
@@ -1772,6 +1776,7 @@ class TestCollectJobNames:
         assert result == []
 
 
+@pytest.mark.usefixtures("load_translations")
 class TestDeleteJobService:
     """Tests for the delete_job service."""
 
@@ -2052,6 +2057,7 @@ class TestCollectNodeNames:
         assert _collect_node_names({}) == []
 
 
+@pytest.mark.usefixtures("load_translations")
 class TestNodeCordonServices:
     """Tests for the cordon_node / uncordon_node services."""
 

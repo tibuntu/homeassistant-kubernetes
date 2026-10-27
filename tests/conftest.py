@@ -1,6 +1,8 @@
 """Test configuration and fixtures for the Kubernetes integration."""
 
+import json
 import logging
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -30,6 +32,45 @@ def fail_on_ha_deprecations(caplog):
             and "deprecated" in record.message.lower()
         ):
             pytest.fail(f"HA deprecation warning: {record.message}")
+
+
+_COMPONENT_DIR = Path(__file__).parents[1] / "custom_components" / "kubernetes"
+
+
+@pytest.fixture
+async def load_translations(hass, enable_custom_integrations):
+    """Load translations/en.json so translated exceptions render their message.
+
+    Tests that set up services directly never run the integration setup that
+    would load them, and HA renders an unloaded exception as its bare key.
+    """
+    from homeassistant.helpers.translation import async_load_integrations
+
+    await async_load_integrations(hass, {DOMAIN})
+
+
+@pytest.fixture
+def entity_name():
+    """Resolve an entity's name from translations/en.json the way HA does."""
+    strings = json.loads((_COMPONENT_DIR / "translations" / "en.json").read_text())
+
+    def _name(entity, platform: str) -> str:
+        name = strings["entity"][platform][entity.translation_key]["name"]
+        return name.format(**entity.translation_placeholders)
+
+    return _name
+
+
+@pytest.fixture
+def entity_icon():
+    """Resolve an entity's icon from icons.json the way HA does."""
+    icons = json.loads((_COMPONENT_DIR / "icons.json").read_text())
+
+    def _icon(entity, platform: str, state: str | None = None) -> str:
+        entry = icons["entity"][platform][entity.translation_key]
+        return entry.get("state", {}).get(state, entry["default"])
+
+    return _icon
 
 
 @pytest.fixture

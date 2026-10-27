@@ -271,10 +271,12 @@ def _no_workloads_error(
             break
     sample = entity_ids_snippet[:5] if entity_ids_snippet else ["(none)"]
     return ServiceValidationError(
-        f"No valid workloads found for {service_name}. Requested: "
-        f"{', '.join(sample)}. Ensure workload_name/workload_names reference "
-        "entities that exist (e.g. switch.xxx) and that those switches expose "
-        "namespace and workload_type attributes."
+        translation_domain=DOMAIN,
+        translation_key="no_valid_workloads",
+        translation_placeholders={
+            "service": service_name,
+            "requested": ", ".join(sample),
+        },
     )
 
 
@@ -282,7 +284,7 @@ def _validate_workload_types(
     workloads: list[tuple[str, str | None, str]],
     supported: tuple[str, ...],
     operation: str,
-    hint: str = "",
+    translation_key: str = "unsupported_workload_type",
 ) -> None:
     """Raise when any workload's type does not support *operation*."""
     unsupported = [
@@ -290,8 +292,13 @@ def _validate_workload_types(
     ]
     if unsupported:
         raise ServiceValidationError(
-            f"Cannot {operation} {', '.join(unsupported)}: only "
-            f"{', '.join(supported)} are supported.{hint}"
+            translation_domain=DOMAIN,
+            translation_key=translation_key,
+            translation_placeholders={
+                "operation": operation,
+                "workloads": ", ".join(unsupported),
+                "supported": ", ".join(supported),
+            },
         )
 
 
@@ -324,7 +331,14 @@ async def _attempt(
 def _raise_failures(failures: list[str], operation: str) -> None:
     """Raise a single error naming every target the operation failed for."""
     if failures:
-        raise HomeAssistantError(f"Failed to {operation}: {'; '.join(failures)}")
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="operation_failed",
+            translation_placeholders={
+                "operation": operation,
+                "failures": "; ".join(failures),
+            },
+        )
 
 
 def _validate_workload_schema(data: dict) -> dict:
@@ -508,13 +522,17 @@ def _get_entry_data(
             if entry.entry_id == entry_id:
                 return entry.runtime_data
         raise ServiceValidationError(
-            f"No loaded Kubernetes config entry with entry_id '{entry_id}'"
+            translation_domain=DOMAIN,
+            translation_key="entry_not_loaded",
+            translation_placeholders={"entry_id": entry_id},
         )
 
     # Fallback: first loaded config entry
     if entries:
         return entries[0].runtime_data
-    raise ServiceValidationError("No Kubernetes integration configured")
+    raise ServiceValidationError(
+        translation_domain=DOMAIN, translation_key="no_config_entry"
+    )
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -553,9 +571,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             ]
             if managed:
                 raise ServiceValidationError(
-                    f"Cannot scale {', '.join(managed)}: managed by a "
-                    "HorizontalPodAutoscaler; adjust the HPA's min/max "
-                    "replicas instead"
+                    translation_domain=DOMAIN,
+                    translation_key="hpa_managed",
+                    translation_placeholders={"workloads": ", ".join(managed)},
                 )
 
         scale_methods = {
@@ -657,7 +675,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             workloads,
             (WORKLOAD_TYPE_DEPLOYMENT, WORKLOAD_TYPE_STATEFULSET),
             "stop",
-            hint=" Use the switch entity to suspend CronJobs.",
+            translation_key="unsupported_workload_type_stop",
         )
 
         entry_data = _get_entry_data(hass, call.data)
@@ -732,7 +750,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         job_names = _collect_job_names(call.data)
         if not job_names:
             raise ServiceValidationError(
-                "delete_job requires at least one non-empty job name"
+                translation_domain=DOMAIN, translation_key="no_job_names"
             )
         entry_data = _get_entry_data(hass, call.data)
         coordinator = entry_data.coordinator
@@ -769,7 +787,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         node_names = _collect_node_names(call.data)
         if not node_names:
             raise ServiceValidationError(
-                f"{action}_node requires at least one non-empty node name"
+                translation_domain=DOMAIN,
+                translation_key="no_node_names",
+                translation_placeholders={"service": f"{action}_node"},
             )
         entry_data = _get_entry_data(hass, call.data)
         coordinator = entry_data.coordinator
