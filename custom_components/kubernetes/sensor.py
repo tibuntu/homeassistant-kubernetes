@@ -13,6 +13,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
+from .alerts import degraded_workloads, nodes_under_pressure, problem_pods
 from .const import (
     ATTR_WORKLOAD_TYPE,
     WORKLOAD_TYPE_CRONJOB,
@@ -61,6 +62,20 @@ async def async_setup_entry(
                     KubernetesIngressesSensor(coordinator, client, config_entry),
                     KubernetesServicesSensor(coordinator, client, config_entry),
                 ]
+            )
+
+        # Alert sensors, skipped when every input category is opted out
+        if not {"deployments", "statefulsets", "daemonsets"} <= disabled:
+            sensors.append(
+                KubernetesDegradedWorkloadsSensor(coordinator, client, config_entry)
+            )
+        if "pods" not in disabled:
+            sensors.append(
+                KubernetesProblemPodsSensor(coordinator, client, config_entry)
+            )
+        if "nodes" not in disabled:
+            sensors.append(
+                KubernetesNodesUnderPressureSensor(coordinator, client, config_entry)
             )
 
         # Ensure cluster device exists (coordinator already refreshed in __init__.py)
@@ -583,6 +598,86 @@ class KubernetesServicesSensor(KubernetesCountSensor):
     _unique_suffix = "services_count"
     _count_key = "services_count"
     _bucket = "services"
+
+
+class KubernetesAlertSensor(KubernetesBaseSensor):
+    """Cluster-wide alert count; subclasses only set the class attributes.
+
+    ``_compute`` is one of the ``alerts`` helpers (shared with the panel
+    overview); the state is the length of its list and the list itself is
+    exposed under ``_list_attr``. Subclasses also list ``_list_attr`` in
+    ``_unrecorded_attributes`` (HA reads it at class creation): the list changes
+    with every pod restart and can grow large, and history only needs the count.
+    """
+
+    _unique_suffix: str
+    _list_attr: str
+    _compute: Callable[[dict[str, Any]], list[dict[str, Any]]]
+
+    def __init__(
+        self, coordinator: KubernetesDataCoordinator, client, config_entry: ConfigEntry
+    ) -> None:
+        """Initialize the alert sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self._attr_unique_id = f"{config_entry.entry_id}_{self._unique_suffix}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    def _items(self) -> list[dict[str, Any]]:
+        data = self.coordinator.data
+        return self._compute(data) if data else []
+
+    @property
+    def native_value(self) -> int:
+        """Return the number of offending resources."""
+        return len(self._items())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the offending resources."""
+        return {self._list_attr: self._items()}
+
+
+class KubernetesDegradedWorkloadsSensor(KubernetesAlertSensor):
+    """Deployments/StatefulSets/DaemonSets with fewer ready replicas than desired."""
+
+    _attr_name = "Degraded Workloads"
+    _attr_native_unit_of_measurement = "workloads"
+    _unique_suffix = "degraded_workloads"
+    _list_attr = "workloads"
+    _unrecorded_attributes = frozenset({"workloads"})
+
+    def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        return degraded_workloads(data)
+
+
+class KubernetesProblemPodsSensor(KubernetesAlertSensor):
+    """Pods currently in a problem state (see ``alerts.problem_pods``)."""
+
+    _attr_name = "Problem Pods"
+    _attr_native_unit_of_measurement = "pods"
+    _unique_suffix = "problem_pods"
+    _list_attr = "pods"
+    _unrecorded_attributes = frozenset({"pods"})
+
+    def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        return problem_pods(data)
+
+
+class KubernetesNodesUnderPressureSensor(KubernetesAlertSensor):
+    """Nodes with a pressure or network-unavailable condition."""
+
+    _attr_name = "Nodes Under Pressure"
+    _attr_native_unit_of_measurement = "nodes"
+    _unique_suffix = "nodes_under_pressure"
+    _list_attr = "nodes"
+    _unrecorded_attributes = frozenset({"nodes"})
+
+    def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        return nodes_under_pressure(data)
 
 
 class KubernetesNodeSensor(KubernetesBaseSensor):

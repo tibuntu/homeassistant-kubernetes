@@ -92,7 +92,7 @@ class TestKubernetesBinarySensorSetup:
         mock_coordinator,
         setup_domain_data,
     ):
-        """Test setup creates 4 condition sensors per node."""
+        """Test setup creates 5 condition sensors per node (incl. Ready)."""
         mock_coordinator.data = {
             "nodes": {
                 "node-1": {
@@ -114,14 +114,14 @@ class TestKubernetesBinarySensorSetup:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         added_entities = mock_add_entities.call_args[0][0]
-        # 1 cluster health + 2 nodes x 4 conditions = 9
-        assert len(added_entities) == 9
+        # 1 cluster health + 2 nodes x 5 conditions = 11
+        assert len(added_entities) == 11
         condition_sensors = [
             e
             for e in added_entities
             if isinstance(e, KubernetesNodeConditionBinarySensor)
         ]
-        assert len(condition_sensors) == 8
+        assert len(condition_sensors) == 10
 
     async def test_async_setup_entry_nodes_disabled(
         self,
@@ -416,6 +416,20 @@ class TestKubernetesNodeConditionBinarySensor:
         mock_coordinator.last_update_success = False
         assert sensor.available is False
 
+    def test_ready_sensor(self, mock_coordinator, mock_config_entry):
+        """Ready is on while the node status is Ready (connectivity semantics)."""
+        sensor = self._make_sensor(mock_coordinator, mock_config_entry, "ready")
+        assert sensor.name == "node-1 Ready"
+        assert sensor.unique_id == "test_entry_id_node_node-1_ready"
+        assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
+
+        mock_coordinator.data = {"nodes": {"node-1": {"status": "Ready"}}}
+        assert sensor.is_on is True
+        mock_coordinator.data = {"nodes": {"node-1": {"status": "NotReady"}}}
+        assert sensor.is_on is False
+        mock_coordinator.data = {"nodes": {}}
+        assert sensor.is_on is None
+
     def test_all_four_conditions_readable(self, mock_coordinator, mock_config_entry):
         """Test that all four condition fields are read correctly."""
         mock_coordinator.data = {
@@ -457,9 +471,10 @@ class TestDiscoverNewNodeConditionSensors:
         result = _discover_new_node_condition_sensors(
             mock_coordinator, mock_config_entry, existing_unique_ids=set()
         )
-        assert len(result) == 4
+        assert len(result) == 5
         conditions = {s.condition_key for s in result}
         assert conditions == {
+            "ready",
             "memory_pressure",
             "disk_pressure",
             "pid_pressure",
@@ -481,6 +496,7 @@ class TestDiscoverNewNodeConditionSensors:
         existing = {
             f"{mock_config_entry.entry_id}_node_node-1_{c}"
             for c in [
+                "ready",
                 "memory_pressure",
                 "disk_pressure",
                 "pid_pressure",
@@ -519,6 +535,7 @@ class TestDiscoverNewNodeConditionSensors:
         existing = {
             f"{mock_config_entry.entry_id}_node_old-node_{c}"
             for c in [
+                "ready",
                 "memory_pressure",
                 "disk_pressure",
                 "pid_pressure",
@@ -528,7 +545,7 @@ class TestDiscoverNewNodeConditionSensors:
         result = _discover_new_node_condition_sensors(
             mock_coordinator, mock_config_entry, existing_unique_ids=existing
         )
-        assert len(result) == 4
+        assert len(result) == 5
         assert all(s.node_name == "new-node" for s in result)
 
 
@@ -597,7 +614,7 @@ class TestDynamicBinarySensorDiscovery:
 
         mock_add_entities.assert_called_once()
         added = mock_add_entities.call_args[0][0]
-        assert len(added) == 4
+        assert len(added) == 5
         assert all(isinstance(s, KubernetesNodeConditionBinarySensor) for s in added)
 
     async def test_discover_skips_already_registered_nodes(
@@ -615,6 +632,7 @@ class TestDynamicBinarySensorDiscovery:
         # Register existing entities in the registry
         registry = er.async_get(hass)
         for condition in [
+            "ready",
             "memory_pressure",
             "disk_pressure",
             "pid_pressure",
@@ -650,6 +668,7 @@ class TestDynamicBinarySensorDiscovery:
         pending = {
             f"{mock_config_entry.entry_id}_node_pending-node_{c}"
             for c in [
+                "ready",
                 "memory_pressure",
                 "disk_pressure",
                 "pid_pressure",

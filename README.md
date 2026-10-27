@@ -15,7 +15,8 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 - **Cluster Monitoring**: Monitor pods, nodes, deployments, statefulsets, daemonsets, cronjobs, ingresses, and services
 - **Real-Time Updates**: The Kubernetes Watch API streams resource changes into Home Assistant within seconds (enabled by default; falls back to interval polling automatically when watch is unavailable; a missing `watch` permission surfaces as a *Missing permissions* repair issue)
-- **Node Sensors**: Per-node sensors for status, IP addresses, memory/CPU resources, real-time usage metrics, and system information
+- **Node Sensors**: Per-node sensors for status, IP addresses, memory/CPU resources, real-time usage metrics, and system information, plus per-node Ready and pressure binary sensors
+- **Cluster Alert Sensors**: *Degraded Workloads*, *Problem Pods*, and *Nodes Under Pressure* count what needs attention cluster-wide and list the offending resources in an attribute — one automation covers the whole cluster
 - **Multi-Namespace Support**: Monitor a single namespace or all namespaces
 - **Workload Control**: Scale, start, stop, and rolling-restart deployments, statefulsets, and daemonsets from Home Assistant
 - **Pod Management**: Delete individual pods directly from the sidebar panel (requires HA admin role); per-pod sensors expose container-state diagnostics — CrashLoopBackOff, ImagePullBackOff, OOMKilled (including a recovered OOMKill that already restarted, via `last_terminated_reason`), and scheduling failures — plus a derived `problem`/`problem_reason` attribute for easy automations and alerts

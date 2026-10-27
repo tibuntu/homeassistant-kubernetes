@@ -520,6 +520,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Cluster health binary sensor
         expected.add(f"{eid}_cluster_health")
 
+        # Alert sensors: same gating as sensor.async_setup_entry
+        if not {"deployments", "statefulsets", "daemonsets"} <= disabled:
+            expected.add(f"{eid}_degraded_workloads")
+        if "pods" not in disabled:
+            expected.add(f"{eid}_problem_pods")
+        if "nodes" not in disabled:
+            expected.add(f"{eid}_nodes_under_pressure")
+
         # Node sensors + schedulable switches + node condition binary sensors.
         # The schedulable switch survives the "nodes" opt-out.
         for node_name in current_data.get("nodes", {}):
@@ -528,6 +536,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 continue
             expected.add(f"{eid}_node_{node_name}")
             for condition in (
+                "ready",
                 "memory_pressure",
                 "disk_pressure",
                 "pid_pressure",
