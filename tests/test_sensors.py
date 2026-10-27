@@ -290,12 +290,12 @@ class TestKubernetesClusterHealthSensor:
     """Test Kubernetes cluster health binary sensor."""
 
     def test_binary_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator
+        self, mock_config_entry, mock_client, mock_coordinator, entity_name
     ):
         """Test binary sensor initialization."""
         sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
 
-        assert sensor.name == "Cluster Health"
+        assert entity_name(sensor, "binary_sensor") == "Cluster Health"
         assert sensor.unique_id == "test_entry_id_cluster_health"
         assert sensor.device_class == "connectivity"
 
@@ -4121,6 +4121,7 @@ class TestCountSensorTable:
         suffix,
         unit,
         expected,
+        entity_name,
     ):
         """Name, unique_id suffix, unit, device and value match the old classes."""
         mock_coordinator.data = dict(_COUNT_DATA)
@@ -4128,7 +4129,7 @@ class TestCountSensorTable:
 
         assert isinstance(sensor, KubernetesCountSensor)
         assert sensor.has_entity_name is True
-        assert sensor.name == name
+        assert entity_name(sensor, "sensor") == name
         assert sensor.unique_id == f"test_entry_id_{suffix}"
         assert sensor.native_unit_of_measurement == unit
         assert sensor.state_class == SensorStateClass.MEASUREMENT
@@ -4255,14 +4256,16 @@ class TestItemSensorIdentityTable:
         unit,
         icon,
         state_class,
+        entity_name,
+        entity_icon,
     ):
         """Name, unique_id, unit, icon and state_class match the old per-class tests."""
         sensor = cls(mock_coordinator, mock_client, mock_config_entry, *extra_args)
 
-        assert sensor.name == name
+        assert entity_name(sensor, "sensor") == name
         assert sensor.unique_id == unique_id
         assert sensor.native_unit_of_measurement == unit
-        assert sensor.icon == icon
+        assert entity_icon(sensor, "sensor") == icon
         assert sensor.state_class == state_class
 
 

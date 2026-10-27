@@ -202,16 +202,16 @@ class TestSwitchSetup:
 class TestKubernetesCronJobSwitch:
     """Test Kubernetes CronJob switch."""
 
-    def test_initialization(self, cronjob_switch):
+    def test_initialization(self, cronjob_switch, entity_name, entity_icon):
         """Test switch initialization."""
         assert cronjob_switch.cronjob_name == "test-cronjob"
         assert cronjob_switch.namespace == "default"
-        assert cronjob_switch._attr_name == "test-cronjob"
+        assert entity_name(cronjob_switch, "switch") == "test-cronjob"
         assert (
             cronjob_switch._attr_unique_id
             == "test_entry_id_default_test-cronjob_cronjob"
         )
-        assert cronjob_switch._attr_icon == "mdi:clock-outline"
+        assert entity_icon(cronjob_switch, "switch") == "mdi:clock-outline"
         assert cronjob_switch._is_on is False
         assert cronjob_switch._suspend is False
 
@@ -637,16 +637,16 @@ def deployment_switch(deployment_coordinator, mock_config_entry):
 class TestKubernetesDeploymentSwitch:
     """Test Kubernetes Deployment switch."""
 
-    def test_initialization(self, deployment_switch):
+    def test_initialization(self, deployment_switch, entity_name, entity_icon):
         """Test deployment switch initialization."""
         assert deployment_switch.deployment_name == "nginx"
         assert deployment_switch.namespace == "default"
-        assert deployment_switch._attr_name == "nginx"
+        assert entity_name(deployment_switch, "switch") == "nginx"
         assert (
             deployment_switch._attr_unique_id
             == "test_entry_id_default_nginx_deployment"
         )
-        assert deployment_switch._attr_icon == "mdi:kubernetes"
+        assert entity_icon(deployment_switch, "switch") == "mdi:kubernetes"
         assert deployment_switch._is_on is False
         assert deployment_switch._replicas == 0
 
@@ -1016,16 +1016,16 @@ def statefulset_switch(statefulset_coordinator, mock_config_entry):
 class TestKubernetesStatefulSetSwitch:
     """Test Kubernetes StatefulSet switch."""
 
-    def test_initialization(self, statefulset_switch):
+    def test_initialization(self, statefulset_switch, entity_name, entity_icon):
         """Test statefulset switch initialization."""
         assert statefulset_switch.statefulset_name == "redis"
         assert statefulset_switch.namespace == "default"
-        assert statefulset_switch._attr_name == "redis"
+        assert entity_name(statefulset_switch, "switch") == "redis"
         assert (
             statefulset_switch._attr_unique_id
             == "test_entry_id_default_redis_statefulset"
         )
-        assert statefulset_switch._attr_icon == "mdi:kubernetes"
+        assert entity_icon(statefulset_switch, "switch") == "mdi:kubernetes"
         assert statefulset_switch._is_on is False
         assert statefulset_switch._replicas == 0
 
@@ -2033,10 +2033,10 @@ class TestKubernetesNodeSchedulableSwitch:
         client.uncordon_node = AsyncMock(return_value=True)
         return client
 
-    def test_initialization(self, node_switch):
+    def test_initialization(self, node_switch, entity_name):
         """Test switch initialization."""
         assert node_switch.node_name == "worker-node-1"
-        assert node_switch._attr_name == "worker-node-1 Schedulable"
+        assert entity_name(node_switch, "switch") == "worker-node-1 Schedulable"
         assert (
             node_switch._attr_unique_id
             == "test_entry_id_node_worker-node-1_schedulable"
@@ -2055,17 +2055,17 @@ class TestKubernetesNodeSchedulableSwitch:
         mock_coordinator.get_node_data.return_value = {"schedulable": True}
         assert node_switch.available is False
 
-    def test_is_on_schedulable(self, node_switch, mock_coordinator):
+    def test_is_on_schedulable(self, node_switch, mock_coordinator, entity_icon):
         """Test is_on when the node is schedulable."""
         mock_coordinator.get_node_data.return_value = {"schedulable": True}
         assert node_switch.is_on is True
-        assert node_switch.icon == "mdi:server"
+        assert entity_icon(node_switch, "switch", "on") == "mdi:server"
 
-    def test_is_on_cordoned(self, node_switch, mock_coordinator):
+    def test_is_on_cordoned(self, node_switch, mock_coordinator, entity_icon):
         """Test is_on when the node is cordoned."""
         mock_coordinator.get_node_data.return_value = {"schedulable": False}
         assert node_switch.is_on is False
-        assert node_switch.icon == "mdi:server-off"
+        assert entity_icon(node_switch, "switch", "off") == "mdi:server-off"
 
     def test_is_on_no_data_defaults_schedulable(self, node_switch, mock_coordinator):
         """Test is_on defaults to True when node data is missing."""
@@ -2120,6 +2120,7 @@ class TestKubernetesNodeSchedulableSwitch:
         assert node_switch._last_uncordon_time is not None
         mock_coordinator.async_request_refresh.assert_called_once()
 
+    @pytest.mark.usefixtures("load_translations")
     async def test_async_turn_off_failure_raises(
         self, node_switch, mock_config_entry, node_client
     ):
@@ -2133,6 +2134,7 @@ class TestKubernetesNodeSchedulableSwitch:
         with pytest.raises(Exception, match="Failed to cordon node"):
             await node_switch.async_turn_off()
 
+    @pytest.mark.usefixtures("load_translations")
     async def test_async_turn_on_failure_raises(
         self, node_switch, mock_config_entry, node_client
     ):

@@ -68,15 +68,9 @@ rules:
   entity-disabled-by-default:
     status: todo
     comment: Every entity is enabled by default.
-  entity-translations:
-    status: todo
-    comment: Entity names are hard-coded via _attr_name.
-  exception-translations:
-    status: todo
-    comment: Service errors are raised with English messages.
-  icon-translations:
-    status: todo
-    comment: Icons are set via _attr_icon.
+  entity-translations: done
+  exception-translations: done
+  icon-translations: done
   reconfiguration-flow: done
   repair-issues: done
   stale-devices: done

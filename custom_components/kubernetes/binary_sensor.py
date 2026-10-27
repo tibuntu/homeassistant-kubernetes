@@ -28,16 +28,17 @@ _LOGGER = logging.getLogger(__name__)
 # Data updates are centralized in the coordinator (quality scale: parallel-updates)
 PARALLEL_UPDATES = 0
 
-# Node conditions exposed as binary sensors: condition_key -> display name.
+# Node conditions exposed as binary sensors; the name of each is translated
+# under entity.binary_sensor.node_<condition_key> in translations/en.json.
 # All are "on = problem" except _NODE_READY, which is on while the node is Ready.
 _NODE_READY = "ready"
-_NODE_CONDITIONS: dict[str, str] = {
-    _NODE_READY: "Ready",
-    "memory_pressure": "Memory Pressure",
-    "disk_pressure": "Disk Pressure",
-    "pid_pressure": "PID Pressure",
-    "network_unavailable": "Network Unavailable",
-}
+_NODE_CONDITIONS = (
+    _NODE_READY,
+    "memory_pressure",
+    "disk_pressure",
+    "pid_pressure",
+    "network_unavailable",
+)
 
 
 def _discover_new_node_condition_sensors(
@@ -172,7 +173,7 @@ class KubernetesClusterHealthSensor(KubernetesBaseBinarySensor):
     def __init__(self, client: KubernetesClient, config_entry: ConfigEntry) -> None:
         """Initialize the cluster health sensor."""
         super().__init__(client, config_entry)
-        self._attr_name = "Cluster Health"
+        self._attr_translation_key = "cluster_health"
         self._attr_unique_id = f"{config_entry.entry_id}_cluster_health"
         self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
 
@@ -212,7 +213,8 @@ class KubernetesNodeConditionBinarySensor(BinarySensorEntity):
         self.node_name = node_name
         self.condition_key = condition_key
         self._attr_has_entity_name = True
-        self._attr_name = f"{node_name} {_NODE_CONDITIONS[condition_key]}"
+        self._attr_translation_key = f"node_{condition_key}"
+        self._attr_translation_placeholders = {"name": node_name}
         self._attr_unique_id = (
             f"{config_entry.entry_id}_node_{node_name}_{condition_key}"
         )

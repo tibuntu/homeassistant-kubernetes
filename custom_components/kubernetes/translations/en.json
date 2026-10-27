@@ -325,5 +325,142 @@
       "title": "Missing permissions for {resources} on {cluster}",
       "description": "The ServiceAccount used for cluster `{cluster}` is not allowed to list or watch: {resources} (HTTP 403 Forbidden). Real-time updates for these resources are off, and the related count sensors and panel views show no data. Grant `get`, `list` and `watch` on them — the chart's `full` mode and manifests/full/ already do (run `helm upgrade` or re-apply the manifests) — the integration retries every minute and this message clears on its own once access works again (a short-lived 403 right after an API server restart resolves the same way). To use interval polling only, disable the Watch API under Configure."
     }
+  },
+  "entity": {
+    "binary_sensor": {
+      "cluster_health": {
+        "name": "Cluster Health"
+      },
+      "node_ready": {
+        "name": "{name} Ready"
+      },
+      "node_memory_pressure": {
+        "name": "{name} Memory Pressure"
+      },
+      "node_disk_pressure": {
+        "name": "{name} Disk Pressure"
+      },
+      "node_pid_pressure": {
+        "name": "{name} PID Pressure"
+      },
+      "node_network_unavailable": {
+        "name": "{name} Network Unavailable"
+      }
+    },
+    "event": {
+      "cluster_events": {
+        "name": "Cluster events"
+      }
+    },
+    "number": {
+      "replicas": {
+        "name": "{name} replicas"
+      }
+    },
+    "sensor": {
+      "pods_count": {
+        "name": "Pods Count"
+      },
+      "nodes_count": {
+        "name": "Nodes Count"
+      },
+      "deployments_count": {
+        "name": "Deployments Count"
+      },
+      "statefulsets_count": {
+        "name": "StatefulSets Count"
+      },
+      "daemonsets_count": {
+        "name": "DaemonSets Count"
+      },
+      "cronjobs_count": {
+        "name": "CronJobs Count"
+      },
+      "jobs_count": {
+        "name": "Jobs Count"
+      },
+      "ingresses_count": {
+        "name": "Ingresses Count"
+      },
+      "services_count": {
+        "name": "Services Count"
+      },
+      "degraded_workloads": {
+        "name": "Degraded Workloads"
+      },
+      "problem_pods": {
+        "name": "Problem Pods"
+      },
+      "nodes_under_pressure": {
+        "name": "Nodes Under Pressure"
+      },
+      "node": {
+        "name": "{name}"
+      },
+      "pod": {
+        "name": "{name}"
+      },
+      "workload_cpu": {
+        "name": "{name} CPU Usage"
+      },
+      "workload_memory": {
+        "name": "{name} Memory Usage"
+      },
+      "workload_status": {
+        "name": "{name}"
+      },
+      "daemonset": {
+        "name": "{name}"
+      },
+      "cronjob": {
+        "name": "{name}"
+      },
+      "job": {
+        "name": "{name}"
+      }
+    },
+    "switch": {
+      "deployment": {
+        "name": "{name}"
+      },
+      "statefulset": {
+        "name": "{name}"
+      },
+      "cronjob": {
+        "name": "{name}"
+      },
+      "node_schedulable": {
+        "name": "{name} Schedulable"
+      }
+    }
+  },
+  "exceptions": {
+    "no_config_entry": {
+      "message": "No Kubernetes integration configured"
+    },
+    "entry_not_loaded": {
+      "message": "No loaded Kubernetes config entry with entry ID {entry_id}"
+    },
+    "no_valid_workloads": {
+      "message": "No valid workloads found for {service}. Requested: {requested}. Ensure workload_name/workload_names reference entities that exist (e.g. switch.xxx) and that those switches expose namespace and workload_type attributes."
+    },
+    "unsupported_workload_type": {
+      "message": "Cannot {operation} {workloads}: only {supported} are supported."
+    },
+    "unsupported_workload_type_stop": {
+      "message": "Cannot {operation} {workloads}: only {supported} are supported. Use the switch entity to suspend CronJobs."
+    },
+    "hpa_managed": {
+      "message": "Cannot scale {workloads}: managed by a HorizontalPodAutoscaler; adjust the HPA's min/max replicas instead."
+    },
+    "no_job_names": {
+      "message": "delete_job requires at least one non-empty job name."
+    },
+    "no_node_names": {
+      "message": "{service} requires at least one non-empty node name."
+    },
+    "operation_failed": {
+      "message": "Failed to {operation}: {failures}"
+    }
   }
 }

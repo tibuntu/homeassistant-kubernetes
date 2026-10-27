@@ -1,5 +1,6 @@
 """Tests for the Kubernetes number platform (replica count)."""
 
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 from homeassistant.core import HomeAssistant
@@ -187,9 +188,10 @@ class TestNumberSetup:
 class TestKubernetesReplicaNumber:
     """Entity state and scaling."""
 
-    def test_static_attributes(self, deployment_number):
-        """Name, unique id and limits."""
-        assert deployment_number.name == "web replicas"
+    def test_static_attributes(self, deployment_number, entity_name, entity_icon):
+        """Name, icon and limits."""
+        assert entity_name(deployment_number, "number") == "web replicas"
+        assert entity_icon(deployment_number, "number") == "mdi:counter"
         assert deployment_number.native_min_value == 0
         assert deployment_number.native_max_value == 100
         assert deployment_number.native_step == 1
@@ -283,11 +285,15 @@ class TestKubernetesReplicaNumber:
         )
         coordinator.async_request_refresh.assert_awaited_once()
 
+    @pytest.mark.usefixtures("load_translations")
     async def test_set_value_rejected_for_hpa(self, deployment_number, coordinator):
         """A non-zero count on an HPA-managed workload is rejected up front."""
         coordinator.data["hpas"] = {"default_web-hpa": _web_hpa()}
 
-        with pytest.raises(ServiceValidationError, match="managed by HPA web-hpa"):
+        with pytest.raises(
+            ServiceValidationError,
+            match=re.escape("default/web (HPA web-hpa): managed by"),
+        ):
             await deployment_number.async_set_native_value(4)
 
         coordinator.client.scale_deployment.assert_not_awaited()
@@ -302,6 +308,7 @@ class TestKubernetesReplicaNumber:
             "web", 0, namespace="default"
         )
 
+    @pytest.mark.usefixtures("load_translations")
     async def test_set_value_failure_raises(self, deployment_number, coordinator):
         """A failed scale raises instead of failing silently."""
         coordinator.client.scale_deployment.return_value = False

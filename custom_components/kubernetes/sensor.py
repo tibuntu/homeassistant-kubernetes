@@ -484,6 +484,7 @@ class KubernetesCountSensor(KubernetesBaseSensor):
     ``_bucket`` when present, else 0. Pods/nodes set only ``_count_key`` and
     deployments/statefulsets/cronjobs only ``_bucket``; the fully-disableable
     types set both because the bucket is empty when the type is off.
+    ``_unique_suffix`` doubles as the translation key of the entity name.
     """
 
     _unique_suffix: str
@@ -496,6 +497,7 @@ class KubernetesCountSensor(KubernetesBaseSensor):
         """Initialize the count sensor."""
         super().__init__(coordinator, client, config_entry)
         self._attr_unique_id = f"{config_entry.entry_id}_{self._unique_suffix}"
+        self._attr_translation_key = self._unique_suffix
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -518,7 +520,6 @@ class KubernetesCountSensor(KubernetesBaseSensor):
 class KubernetesPodsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes pods count."""
 
-    _attr_name = "Pods Count"
     _attr_native_unit_of_measurement = "pods"
     _unique_suffix = "pods_count"
     _count_key = "pods_count"
@@ -527,7 +528,6 @@ class KubernetesPodsSensor(KubernetesCountSensor):
 class KubernetesNodesSensor(KubernetesCountSensor):
     """Sensor for Kubernetes nodes count."""
 
-    _attr_name = "Nodes Count"
     _attr_native_unit_of_measurement = "nodes"
     _unique_suffix = "nodes_count"
     _count_key = "nodes_count"
@@ -536,7 +536,6 @@ class KubernetesNodesSensor(KubernetesCountSensor):
 class KubernetesDeploymentsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes deployments count."""
 
-    _attr_name = "Deployments Count"
     _attr_native_unit_of_measurement = "deployments"
     _unique_suffix = "deployments_count"
     _bucket = "deployments"
@@ -545,7 +544,6 @@ class KubernetesDeploymentsSensor(KubernetesCountSensor):
 class KubernetesStatefulSetsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes StatefulSets count."""
 
-    _attr_name = "StatefulSets Count"
     _attr_native_unit_of_measurement = "statefulsets"
     _unique_suffix = "statefulsets_count"
     _bucket = "statefulsets"
@@ -554,7 +552,6 @@ class KubernetesStatefulSetsSensor(KubernetesCountSensor):
 class KubernetesDaemonSetsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes DaemonSets count."""
 
-    _attr_name = "DaemonSets Count"
     _attr_native_unit_of_measurement = "daemonsets"
     _unique_suffix = "daemonsets_count"
     _count_key = "daemonsets_count"
@@ -564,7 +561,6 @@ class KubernetesDaemonSetsSensor(KubernetesCountSensor):
 class KubernetesCronJobsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes CronJobs count."""
 
-    _attr_name = "CronJobs Count"
     _attr_native_unit_of_measurement = "cronjobs"
     _unique_suffix = "cronjobs_count"
     _bucket = "cronjobs"
@@ -573,7 +569,6 @@ class KubernetesCronJobsSensor(KubernetesCountSensor):
 class KubernetesJobsSensor(KubernetesCountSensor):
     """Sensor for Kubernetes Jobs count."""
 
-    _attr_name = "Jobs Count"
     _attr_native_unit_of_measurement = "jobs"
     _unique_suffix = "jobs_count"
     _count_key = "jobs_count"
@@ -583,7 +578,6 @@ class KubernetesJobsSensor(KubernetesCountSensor):
 class KubernetesIngressesSensor(KubernetesCountSensor):
     """Sensor for Kubernetes Ingresses count."""
 
-    _attr_name = "Ingresses Count"
     _attr_native_unit_of_measurement = "ingresses"
     _unique_suffix = "ingresses_count"
     _count_key = "ingresses_count"
@@ -593,7 +587,6 @@ class KubernetesIngressesSensor(KubernetesCountSensor):
 class KubernetesServicesSensor(KubernetesCountSensor):
     """Sensor for Kubernetes Services count."""
 
-    _attr_name = "Services Count"
     _attr_native_unit_of_measurement = "services"
     _unique_suffix = "services_count"
     _count_key = "services_count"
@@ -611,6 +604,7 @@ class KubernetesAlertSensor(KubernetesBaseSensor):
 
     The list is computed once per coordinator update (and at construction), not
     in the state properties, so a state write scans the bucket only once.
+    ``_unique_suffix`` doubles as the translation key of the entity name.
     """
 
     _unique_suffix: str
@@ -623,6 +617,7 @@ class KubernetesAlertSensor(KubernetesBaseSensor):
         """Initialize the alert sensor."""
         super().__init__(coordinator, client, config_entry)
         self._attr_unique_id = f"{config_entry.entry_id}_{self._unique_suffix}"
+        self._attr_translation_key = self._unique_suffix
         self._sync_from_coordinator()
 
     @property
@@ -646,7 +641,6 @@ class KubernetesAlertSensor(KubernetesBaseSensor):
 class KubernetesDegradedWorkloadsSensor(KubernetesAlertSensor):
     """Deployments/StatefulSets/DaemonSets with fewer ready replicas than desired."""
 
-    _attr_name = "Degraded Workloads"
     _attr_native_unit_of_measurement = "workloads"
     _unique_suffix = "degraded_workloads"
     _list_attr = "workloads"
@@ -659,7 +653,6 @@ class KubernetesDegradedWorkloadsSensor(KubernetesAlertSensor):
 class KubernetesProblemPodsSensor(KubernetesAlertSensor):
     """Pods currently in a problem state (see ``alerts.problem_pods``)."""
 
-    _attr_name = "Problem Pods"
     _attr_native_unit_of_measurement = "pods"
     _unique_suffix = "problem_pods"
     _list_attr = "pods"
@@ -672,7 +665,6 @@ class KubernetesProblemPodsSensor(KubernetesAlertSensor):
 class KubernetesNodesUnderPressureSensor(KubernetesAlertSensor):
     """Nodes with a pressure or network-unavailable condition."""
 
-    _attr_name = "Nodes Under Pressure"
     _attr_native_unit_of_measurement = "nodes"
     _unique_suffix = "nodes_under_pressure"
     _list_attr = "nodes"
@@ -695,10 +687,10 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
         """Initialize the node sensor."""
         super().__init__(coordinator, client, config_entry)
         self.node_name = node_name
-        self._attr_name = f"{node_name}"
+        self._attr_translation_key = "node"
+        self._attr_translation_placeholders = {"name": node_name}
         self._attr_unique_id = f"{config_entry.entry_id}_node_{node_name}"
         self._attr_native_unit_of_measurement = None
-        self._attr_icon = "mdi:server"
         # Override state class since this sensor returns string values, not measurements
         self._attr_state_class = None
 
@@ -757,10 +749,10 @@ class KubernetesPodSensor(KubernetesBaseSensor):
         super().__init__(coordinator, client, config_entry)
         self.namespace = namespace
         self.pod_name = pod_name
-        self._attr_name = f"{pod_name}"
+        self._attr_translation_key = "pod"
+        self._attr_translation_placeholders = {"name": pod_name}
         self._attr_unique_id = f"{config_entry.entry_id}_pod_{namespace}_{pod_name}"
         self._attr_native_unit_of_measurement = None
-        self._attr_icon = "mdi:kubernetes"
         # Override state class since this sensor returns string values, not measurements
         self._attr_state_class = None
 
@@ -838,14 +830,9 @@ class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
         self._workload_type = workload_type
         self._metric = metric
 
-        if metric == "cpu":
-            self._attr_name = f"{workload_name} CPU Usage"
-            self._attr_native_unit_of_measurement = "m"
-            self._attr_icon = "mdi:cpu-64-bit"
-        else:
-            self._attr_name = f"{workload_name} Memory Usage"
-            self._attr_native_unit_of_measurement = "MiB"
-            self._attr_icon = "mdi:memory"
+        self._attr_translation_key = f"workload_{metric}"
+        self._attr_translation_placeholders = {"name": workload_name}
+        self._attr_native_unit_of_measurement = "m" if metric == "cpu" else "MiB"
 
         self._attr_unique_id = f"{config_entry.entry_id}_{namespace}_{workload_name}_{workload_type}_{metric}"
 
@@ -888,10 +875,10 @@ class KubernetesWorkloadStatusSensor(KubernetesBaseSensor):
         self.workload_name = workload_name
         self.namespace = namespace
         self._workload_type = workload_type
-        self._attr_name = workload_name
+        self._attr_translation_key = "workload_status"
+        self._attr_translation_placeholders = {"name": workload_name}
         self._attr_unique_id = f"{config_entry.entry_id}_{namespace}_{workload_name}_{workload_type}_status"
         self._attr_native_unit_of_measurement = None
-        self._attr_icon = "mdi:kubernetes"
         self._attr_state_class = None
 
     @property
@@ -955,12 +942,12 @@ class KubernetesDaemonSetSensor(KubernetesBaseSensor):
         super().__init__(coordinator, client, config_entry)
         self.daemonset_name = daemonset_name
         self.namespace = namespace
-        self._attr_name = daemonset_name
+        self._attr_translation_key = "daemonset"
+        self._attr_translation_placeholders = {"name": daemonset_name}
         self._attr_unique_id = (
             f"{config_entry.entry_id}_daemonset_{namespace}_{daemonset_name}"
         )
         self._attr_native_unit_of_measurement = None
-        self._attr_icon = "mdi:layers"
         self._attr_state_class = None
 
     @property
@@ -1027,12 +1014,12 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
         super().__init__(coordinator, client, config_entry)
         self.cronjob_name = cronjob_name
         self.namespace = namespace
-        self._attr_name = cronjob_name
+        self._attr_translation_key = "cronjob"
+        self._attr_translation_placeholders = {"name": cronjob_name}
         self._attr_unique_id = (
             f"{config_entry.entry_id}_cronjob_{namespace}_{cronjob_name}"
         )
         self._attr_native_unit_of_measurement = None
-        self._attr_icon = "mdi:clock-outline"
         self._attr_state_class = None
 
     @property
@@ -1097,10 +1084,10 @@ class KubernetesJobSensor(KubernetesBaseSensor):
         super().__init__(coordinator, client, config_entry)
         self.job_name = job_name
         self.namespace = namespace
-        self._attr_name = job_name
+        self._attr_translation_key = "job"
+        self._attr_translation_placeholders = {"name": job_name}
         self._attr_unique_id = f"{config_entry.entry_id}_job_{namespace}_{job_name}"
         self._attr_native_unit_of_measurement = None
-        self._attr_icon = "mdi:briefcase-outline"
         self._attr_state_class = None
 
     @property

@@ -139,10 +139,11 @@ homeassistant-kubernetes/
 │       ├── device.py                # Device registry management
 │       ├── kubernetes_client.py     # Kubernetes API client
 │       ├── websocket_api.py         # WebSocket API for the sidebar panel
+│       ├── icons.json               # Entity icons (icon translations)
 │       ├── frontend/
 │       │   └── kubernetes-panel.js  # Built panel JS bundle (committed)
 │       └── translations/
-│           └── en.json              # English translations
+│           └── en.json              # Entity names, exceptions, config flow strings
 ├── frontend/                        # Panel source (Lit + TypeScript + Vite)
 │   ├── package.json
 │   ├── tsconfig.json

@@ -14,6 +14,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 
 from .const import (
     ATTR_WORKLOAD_TYPE,
+    DOMAIN,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
@@ -111,7 +112,7 @@ class KubernetesReplicaNumber(NumberEntity):
 
     _attr_should_poll = False
     _attr_has_entity_name = True
-    _attr_icon = "mdi:counter"
+    _attr_translation_key = "replicas"
     _attr_mode = NumberMode.BOX
     _attr_native_min_value = 0
     # Fixed max; add an option if anyone needs more than 100 replicas
@@ -133,7 +134,7 @@ class KubernetesReplicaNumber(NumberEntity):
         self.namespace = namespace
         self._workload_type = workload_type
         self._bucket, self._scale_method, id_suffix = _WORKLOADS[workload_type]
-        self._attr_name = f"{workload_name} replicas"
+        self._attr_translation_placeholders = {"name": workload_name}
         # Same format as the matching switch, plus a "_replicas" suffix
         self._attr_unique_id = (
             f"{config_entry.entry_id}_{namespace}_{workload_name}_{id_suffix}_replicas"
@@ -197,14 +198,23 @@ class KubernetesReplicaNumber(NumberEntity):
         # The HPA controller skips targets at 0 replicas, so only 0 sticks.
         if replicas and (hpa := self._hpa()):
             raise ServiceValidationError(
-                f"{self.namespace}/{self.workload_name} is managed by HPA "
-                f"{hpa['name']}; adjust the HPA's min/max replicas instead"
+                translation_domain=DOMAIN,
+                translation_key="hpa_managed",
+                translation_placeholders={
+                    "workloads": f"{self.namespace}/{self.workload_name} "
+                    f"(HPA {hpa['name']})"
+                },
             )
         scale = getattr(self.coordinator.client, self._scale_method)
         if not await scale(self.workload_name, replicas, namespace=self.namespace):
             raise HomeAssistantError(
-                f"Failed to scale {self._workload_type} "
-                f"{self.namespace}/{self.workload_name} to {replicas} replicas"
+                translation_domain=DOMAIN,
+                translation_key="operation_failed",
+                translation_placeholders={
+                    "operation": "scale",
+                    "failures": f"{self._workload_type} "
+                    f"{self.namespace}/{self.workload_name} to {replicas} replicas",
+                },
             )
         # replicas is spec.replicas, which the API just accepted — show it
         # now instead of waiting for the refresh/watch event to confirm it.
