@@ -50,11 +50,13 @@ def degraded_workloads(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def problem_pods(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return pods the parser flagged as ``problem`` or whose phase is Unknown.
+    """Return pods the parser flagged as ``problem`` or in phase Failed/Unknown.
 
     The ``problem`` flag covers CrashLoopBackOff, image pull errors, non-zero
     exit codes, phase Failed and Unschedulable pods; phase Unknown (node lost)
-    is the one case it does not derive from container state.
+    is the one case it does not derive from container state. ``Failed`` is
+    checked again on purpose, so pod data parsed without the flag still alerts.
+    ``reason`` is ``problem_reason``, falling back to the phase.
     """
     alerts = []
     for pod in data.get("pods", {}).values():

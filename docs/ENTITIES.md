@@ -25,7 +25,7 @@ Three per-cluster sensors count resources that currently need attention, so a si
 | Sensor | Counts | Attribute | Unit |
 |--------|--------|-----------|------|
 | **Degraded Workloads** | Deployments with fewer available, StatefulSets with fewer ready, and DaemonSets with fewer available replicas than desired (workloads scaled to 0 are ignored) | `workloads`: list of `{name, type, namespace, ready, desired}` | workloads |
-| **Problem Pods** | Pods whose `problem` flag is set (CrashLoopBackOff, ImagePullBackOff, non-zero exit, phase `Failed`, Unschedulable — see [Pod sensors](#individual-pod-sensors)) plus pods in phase `Unknown` | `pods`: list of `{name, namespace, phase, reason}` | pods |
+| **Problem Pods** | Pods whose `problem` flag is set (CrashLoopBackOff, ImagePullBackOff, non-zero exit, phase `Failed`, Unschedulable — see [Pod sensors](#individual-pod-sensors)) plus pods in phase `Unknown` | `pods`: list of `{name, namespace, phase, reason}` (`reason` is the pod's `problem_reason`, or the phase when there is none — e.g. `Unknown`) | pods |
 | **Nodes Under Pressure** | Nodes with Memory/Disk/PID Pressure or Network Unavailable | `nodes`: list of `{name, conditions}` | nodes |
 
 Gating: *Problem Pods* is not created when **Pods** is disabled under **Configure → Disable data collection for**, *Nodes Under Pressure* when **Node sensors** is disabled, and *Degraded Workloads* only when Deployment sensors, StatefulSet sensors **and** DaemonSets are all disabled.
