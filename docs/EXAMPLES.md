@@ -69,6 +69,22 @@ automation:
           namespace: "default"
 ```
 
+#### Set an Exact Replica Count
+
+```yaml
+automation:
+  - alias: "Scale web app up for business hours"
+    trigger:
+      platform: time
+      at: "08:00:00"
+    action:
+      - service: number.set_value
+        target:
+          entity_id: number.production_default_web_app_replicas
+        data:
+          value: 3
+```
+
 ### Resource-Based Automations
 
 #### Scale Up on High Load
@@ -321,6 +337,11 @@ views:
           - switch.production_default_web_app
           - switch.production_default_api_server
           - switch.production_default_cache_service
+      - type: entities
+        title: "Replica Counts"
+        entities:
+          - number.production_default_web_app_replicas
+          - number.production_default_api_server_replicas
       - type: entities
         title: "Development Services"
         entities:

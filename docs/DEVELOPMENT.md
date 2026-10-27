@@ -134,6 +134,7 @@ homeassistant-kubernetes/
 │       ├── sensor.py                # Sensor platform
 │       ├── binary_sensor.py         # Binary sensor platform
 │       ├── switch.py                # Switch platform (workload control)
+│       ├── number.py                # Number platform (replica count)
 │       ├── services.py              # HA services (scale, start, stop)
 │       ├── device.py                # Device registry management
 │       ├── kubernetes_client.py     # Kubernetes API client

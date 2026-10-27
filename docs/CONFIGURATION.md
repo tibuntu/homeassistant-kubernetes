@@ -175,7 +175,7 @@ The categories come in two tiers:
 | **Ingresses** | Fetch skipped entirely; ingress data disappears from the panel |
 | **Services** | Fetch skipped entirely; service data disappears from the panel |
 | **Node sensors** | Node status sensors, the 5 condition binary sensors (Ready + pressure) and the Nodes Under Pressure sensor are removed; the fetch continues so the cordon/uncordon switches keep working |
-| **Deployment sensors** | Status and CPU/memory sensors removed; scale switches keep working |
+| **Deployment sensors** | Status and CPU/memory sensors and the replica number entities removed; scale switches keep working |
 | **StatefulSet sensors** | Same as Deployment sensors |
 | **CronJob sensors** | CronJob status sensors removed; suspend switches keep working |
 | **CPU/memory metrics** | The Kubernetes Metrics API is never called — removes all workload CPU/memory sensors and node usage data (the "metrics server unavailable" repair issue is suppressed too) |

@@ -4000,12 +4000,14 @@ class TestDisabledResources:
         assert f"{eid}_degraded_workloads" in expected
         assert f"{eid}_default_web_deployment_status" not in expected
         assert f"{eid}_default_web_deployment_cpu" not in expected
+        assert f"{eid}_default_web_deployment_replicas" not in expected
         assert f"{eid}_cronjob_default_cj" not in expected
         assert f"{eid}_pods_count" not in expected
         assert f"{eid}_nodes_count" not in expected
         # Statefulsets stay enabled: status kept, metric sensors dropped
         # because metrics are disabled
         assert f"{eid}_default_db_statefulset_status" in expected
+        assert f"{eid}_default_db_statefulset_replicas" in expected
         assert f"{eid}_default_db_statefulset_cpu" not in expected
         assert f"{eid}_default_db_statefulset_memory" not in expected
 
@@ -4026,6 +4028,7 @@ class TestDisabledResources:
         assert f"{eid}_node_n1_memory_pressure" in expected
         assert f"{eid}_node_n1_ready" in expected
         assert f"{eid}_default_web_deployment_status" in expected
+        assert f"{eid}_default_web_deployment_replicas" in expected
         assert f"{eid}_default_web_deployment_cpu" in expected
         assert f"{eid}_pods_count" in expected
         for suffix in ("degraded_workloads", "problem_pods", "nodes_under_pressure"):
