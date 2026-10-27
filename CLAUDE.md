@@ -141,7 +141,7 @@ Cluster device → (optional) Namespace devices → Entity instances. Grouping m
 
 ## Quality Scale
 
-The integration voluntarily complies with Home Assistant's [Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/) at **Bronze and Silver** level (custom integrations cannot be officially certified — the rules are treated as binding conventions here). `custom_components/kubernetes/quality_scale.yaml` (core format) records the status of every rule — `done`, `exempt` or `todo` with a reason — including the open Gold/Platinum ones; update it when a change completes or breaks a rule, and when HA adds new rules. Removal instructions live in the README's **Removal** section (Bronze `docs-removal-instructions`). Any change must preserve these invariants:
+The integration voluntarily complies with Home Assistant's [Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/) at **Bronze, Silver and Gold** level (custom integrations cannot be officially certified — the rules are treated as binding conventions here). `custom_components/kubernetes/quality_scale.yaml` (core format) records the status of every rule — `done`, `exempt` or `todo` with a reason — including the open Platinum ones; update it when a change completes or breaks a rule, and when HA adds new rules. Removal instructions live in the README's **Removal** section (Bronze `docs-removal-instructions`) and limitations in its **Known limitations** section (Gold `docs-known-limitations`) — add a bullet there when a feature ships with a known gap. Any change must preserve these invariants:
 
 - **action-setup / action-exceptions**: services are registered in `async_setup` (never per config entry, never unregistered) and handlers raise `ServiceValidationError` (caller mistakes) or `HomeAssistantError` (failed operations) — no silent failures. Multi-target calls attempt every target, then raise one aggregated error.
 - **runtime-data**: per-entry state lives on `entry.runtime_data` (`KubernetesEntryData` in `coordinator.py`); `hass.data[DOMAIN]` holds only the global `panel_registered` flag. Enumerate entries via `get_loaded_entries(hass)`, never by iterating `hass.data`.
@@ -153,7 +153,7 @@ The integration voluntarily complies with Home Assistant's [Integration Quality 
 - **entity-category / entity-device-class** (Gold): the cluster-health and node-condition binary sensors are `EntityCategory.DIAGNOSTIC`; the workload memory sensors are `SensorDeviceClass.DATA_SIZE` in `UnitOfInformation.MEBIBYTES` (CPU millicores have no device class). `entity-disabled-by-default` is exempt (see `quality_scale.yaml`) — every entity stays enabled by default, and `disabled_resources` is the opt-out.
 - **exception-translations** (Gold): every `ServiceValidationError` / `HomeAssistantError` the integration raises passes `translation_domain=DOMAIN`, `translation_key` and `translation_placeholders`, with the message under `exceptions` in `en.json` (no `'{placeholder}'` quoting — hassfest rejects it). HA renders an exception from cached translations only, so tests that set up services directly and assert on the message use the `load_translations` fixture.
 
-When adding features, check the current rule set at the link above before implementing — new Bronze/Silver rules apply here too.
+When adding features, check the current rule set at the link above before implementing — new Bronze/Silver/Gold rules apply here too.
 
 ## Code Style
 

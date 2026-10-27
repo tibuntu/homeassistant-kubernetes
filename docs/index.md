@@ -33,4 +33,4 @@ For installation instructions, please refer to the main [README](https://github.
 
 ## Support
 
-If you encounter issues, please check the [Troubleshooting](TROUBLESHOOTING.md) guide first, then feel free to open an issue on the GitHub repository.
+If you encounter issues, please check the [known limitations](https://github.com/tibuntu/homeassistant-kubernetes#known-limitations) and the [Troubleshooting](TROUBLESHOOTING.md) guide first, then feel free to open an issue on the GitHub repository.

@@ -48,12 +48,7 @@ rules:
     comment: No discovery.
   docs-data-update: done
   docs-examples: done
-  docs-known-limitations:
-    status: todo
-    comment: >-
-      Limitations are scattered (namespace-scoped setup, RBAC-dependent
-      features, metrics-server absence, HPA scale guard); consolidate them
-      into one docs section.
+  docs-known-limitations: done
   docs-supported-devices: done
   docs-supported-functions: done
   docs-troubleshooting: done
