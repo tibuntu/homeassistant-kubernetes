@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.14.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.7...v1.14.0) (2026-10-27)
+
+
+### Features
+
+* cluster alert sensors and per-node Ready binary sensor ([60d0694](https://github.com/tibuntu/homeassistant-kubernetes/commit/60d06941a205393d29ab2438f353ef69422989cd)), closes [#476](https://github.com/tibuntu/homeassistant-kubernetes/issues/476)
+* diagnostic entity category and data size device class (Gold quality scale) ([81b0223](https://github.com/tibuntu/homeassistant-kubernetes/commit/81b0223165da4c846699167bddd39f6d8e5aed5f))
+* HPA awareness - detect autoscaled workloads and reject scale actions that would revert ([f38721a](https://github.com/tibuntu/homeassistant-kubernetes/commit/f38721a42aebd42b31572ea174f96b1287b8487c)), closes [#478](https://github.com/tibuntu/homeassistant-kubernetes/issues/478)
+* **panel:** hide mutation buttons from non-admin users ([ef00167](https://github.com/tibuntu/homeassistant-kubernetes/commit/ef0016703ca03927159899e75487c3e5a7a2265d))
+* **panel:** opt-in pod logs viewer (admin-only snapshot dialog) ([766c90c](https://github.com/tibuntu/homeassistant-kubernetes/commit/766c90c1d9a72de99f4a1bc572ab4a8e04d79a2f))
+* replica number entity for Deployments and StatefulSets ([#477](https://github.com/tibuntu/homeassistant-kubernetes/issues/477)) ([f81dcdb](https://github.com/tibuntu/homeassistant-kubernetes/commit/f81dcdb52de2327b9e5ccbab0a42e5789758c1dd))
+* translate entity names, icons and service errors (Gold quality scale) ([c9bb4f8](https://github.com/tibuntu/homeassistant-kubernetes/commit/c9bb4f8f610cbd956c54bef5b16d9ff234128f00))
+
+
+### Bug Fixes
+
+* address pod logs review and update command count test ([720164b](https://github.com/tibuntu/homeassistant-kubernetes/commit/720164b47bc97442d4290c386a3ff37402d41199))
+* log a forbidden HPA list once instead of on every poll ([084226e](https://github.com/tibuntu/homeassistant-kubernetes/commit/084226e5ece8b995cc843f0a4afec956f6bc5de4))
+* lowercase number unique_id suffix and address review ([ad4eb6a](https://github.com/tibuntu/homeassistant-kubernetes/commit/ad4eb6a1cbb148535d10d1de84e7e5e806f01717))
+* serve exception translations without the HA loader and address review ([fed70ac](https://github.com/tibuntu/homeassistant-kubernetes/commit/fed70ac6f556cecf2d25393a0d269237c46f24ff))
+
 ## [1.13.7](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.13.6...v1.13.7) (2026-10-26)
 
 
