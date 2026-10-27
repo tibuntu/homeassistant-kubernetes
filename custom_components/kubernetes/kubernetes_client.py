@@ -12,6 +12,7 @@ import logging
 import ssl
 import time
 from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 
@@ -732,7 +733,9 @@ class KubernetesClient:
                     "owner_kind": owner_kind,
                     "owner_name": owner_name,
                     "uid": metadata.get("uid", ""),
-                    "containers": [c.get("name") for c in spec.get("containers", [])],
+                    "containers": [
+                        c["name"] for c in spec.get("containers", []) if c.get("name")
+                    ],
                     "container_waiting_reason": container_waiting_reason,
                     "container_terminated_reason": container_terminated_reason,
                     "container_terminated_exit_code": container_terminated_exit_code,
@@ -1483,9 +1486,10 @@ class KubernetesClient:
         cap was hit. Raises KubernetesApiError on any non-200 so a 403/404
         reaches the caller as an error, not as empty logs.
         """
-        # The API server applies limitBytes *after* tailLines, i.e. it would cut
-        # off the newest lines. So the server limit is only a memory guard, and
-        # the cap that keeps the tail is applied below.
+        # The API server applies limitBytes *after* tailLines, i.e. it cuts off
+        # the newest lines. So the server limit is only a memory guard (if it
+        # is ever hit, the newest lines are missing, but `truncated` is still
+        # set), and the cap that keeps the tail is applied below.
         params = {
             "tailLines": str(tail_lines),
             "limitBytes": str(POD_LOGS_LIMIT_BYTES * 4),
@@ -1497,7 +1501,8 @@ class KubernetesClient:
         headers = {"Authorization": f"Bearer {self.api_token}"}
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods/{pod_name}/log",
+                f"https://{self.host}:{self.port}/api/v1/namespaces/"
+                f"{quote(namespace, safe='')}/pods/{quote(pod_name, safe='')}/log",
                 headers=headers,
                 params=params,
                 ssl=await self._get_ssl_param(),
@@ -1512,9 +1517,12 @@ class KubernetesClient:
                 body = await response.read()
         truncated = len(body) > POD_LOGS_LIMIT_BYTES
         if truncated:
-            # Keep the newest bytes, starting at the first complete line.
-            body = body[-POD_LOGS_LIMIT_BYTES:]
-            body = body[body.find(b"\n") + 1 :]
+            # Keep the newest bytes, starting at the first complete line. One
+            # extra byte so a cut right after a newline keeps that full line.
+            tail = body[-(POD_LOGS_LIMIT_BYTES + 1) :]
+            newline = tail.find(b"\n")
+            # No newline at all (one huge line): keep the cap, starting mid-line.
+            body = tail[newline + 1 :] if newline != -1 else tail[1:]
         return body.decode("utf-8", errors="replace"), truncated
 
     async def delete_job(self, job_name: str, namespace: str | None = None) -> bool:

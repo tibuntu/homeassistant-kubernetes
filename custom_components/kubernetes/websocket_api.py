@@ -51,6 +51,10 @@ from .kubernetes_client import KubernetesApiError
 
 _LOGGER = logging.getLogger(__name__)
 
+# Kubernetes object names (DNS-1123 subdomain). Rejects "..", "/" and the like
+# before a name is put into an API path.
+_K8S_NAME = vol.All(str, vol.Match(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"))
+
 # Resource buckets that are keyed "{namespace}_{name}" in coordinator.data and
 # broken down per-namespace in the cluster overview. Order matches the
 # previous hand-written counts dicts.
@@ -141,7 +145,8 @@ async def websocket_pods_list(
     result = _list_data(hass, "pods")
     entries = {e.entry_id: e for e in get_loaded_entries(hass)}
     for cluster in result["clusters"]:
-        cluster["pod_logs_enabled"] = _pod_logs_enabled(entries[cluster["entry_id"]])
+        entry = entries.get(cluster["entry_id"])
+        cluster["pod_logs_enabled"] = entry is not None and _pod_logs_enabled(entry)
     connection.send_result(msg["id"], result)
 
 
@@ -389,8 +394,8 @@ async def websocket_delete_pod(
     {
         vol.Required("type"): "kubernetes/pods/logs",
         vol.Required("entry_id"): str,
-        vol.Required("pod_name"): str,
-        vol.Required("namespace"): str,
+        vol.Required("pod_name"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAME,
         vol.Optional("container"): str,
         vol.Optional("tail_lines", default=200): vol.All(
             int, vol.Range(min=POD_LOGS_MIN_TAIL_LINES, max=POD_LOGS_MAX_TAIL_LINES)
@@ -431,8 +436,10 @@ async def websocket_pod_logs(
         code = "forbidden" if ex.status == 403 else "logs_failed"
         connection.send_error(msg["id"], code, str(ex))
         return
-    except Exception as ex:
-        connection.send_error(msg["id"], "logs_failed", f"Failed to fetch logs: {ex}")
+    except Exception:
+        # Transport errors can carry hosts/URLs; keep them in the log only.
+        _LOGGER.exception("Failed to fetch logs of pod %s", msg["pod_name"])
+        connection.send_error(msg["id"], "logs_failed", "Failed to fetch logs")
         return
 
     connection.send_result(msg["id"], {"logs": logs, "truncated": truncated})
