@@ -89,6 +89,19 @@ The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `n
    - Enter your cluster details and the token from step 1
    - Uncheck **Prefer in-cluster ServiceAccount token** if it is enabled — while it is on, the integration authenticates with the token file mounted into the Home Assistant pod and only uses the token you entered as a fallback
 
+## Known limitations
+
+- **CPU and memory need metrics-server.** Without it the workload CPU/memory sensors stay empty and a repair issue says so. With the Watch API on (the default), metrics refresh every 5 minutes, because the Metrics API cannot be watched.
+- **HPA-managed workloads cannot be scaled to a fixed count.** The HorizontalPodAutoscaler would revert it, so scaling to anything but 0 is rejected; change the HPA's min/max replicas instead. Turning the switch back on hands control back to the HPA. See [HPA-managed workloads](https://tibuntu.github.io/homeassistant-kubernetes/ENTITIES/#hpa-managed-workloads).
+- **Ingresses and Services have no per-resource entities** — only count sensors and the sidebar panel's Network tab. There are no PersistentVolumeClaim / storage sensors.
+- **Pods of Jobs and CronJobs are hidden by default**, so a failed Job run does not show up as a problem pod. Use the Job sensor or the Cluster Events entity instead, or switch the filter off ([details](https://tibuntu.github.io/homeassistant-kubernetes/CONFIGURATION/#job-and-cronjob-pods)).
+- **The `minimal` RBAC set is read-only:** no switches, restarts, deletions, pod logs, cluster events or Watch API ([details](https://tibuntu.github.io/homeassistant-kubernetes/RBAC/#minimal-manifestsminimal)).
+- **A namespace-scoped ServiceAccount sees no cluster-wide resources** such as nodes ([details](https://tibuntu.github.io/homeassistant-kubernetes/SETUP/#limitations-of-namespace-specific-setup)).
+- **Services have no admin check.** The sidebar panel hides mutation buttons from non-admin users, but Home Assistant cannot restrict who calls `scale_workload`, `cordon_node` and the other services ([details](https://tibuntu.github.io/homeassistant-kubernetes/CONFIGURATION/#dashboard-panel)).
+- **Large clusters create many entities** — one sensor per pod, plus per-workload, per-node and per-Job entities. Turn off categories you don't need under **Configure → Disable data collection for** ([details](https://tibuntu.github.io/homeassistant-kubernetes/CONFIGURATION/#data-collection-opt-out)).
+- **Replica numbers go up to 100**, and **pod logs are snapshots** (experimental, no live streaming, capped at 256 KiB).
+- **The cluster name cannot be changed** after setup; it identifies the config entry. Remove and re-add the integration to rename it.
+
 ## Removal
 
 1. Go to **Settings → Devices & Services → Kubernetes**, open the ⋮ menu of each cluster entry and choose **Delete**. This removes its devices, entities and repair issues; the sidebar panel disappears with the last entry.
@@ -101,14 +114,15 @@ For full documentation, visit the [documentation site](https://tibuntu.github.io
 
 ## Quality
 
-Custom integrations are not part of Home Assistant's official [Integration Quality Scale](https://www.home-assistant.io/docs/quality_scale/), but this integration voluntarily meets all **Bronze** and **Silver** tier requirements. In practice this means:
+Custom integrations are not part of Home Assistant's official [Integration Quality Scale](https://www.home-assistant.io/docs/quality_scale/), but this integration voluntarily meets all **Bronze**, **Silver** and **Gold** tier requirements. In practice this means:
 
 - Fully UI-based setup with connection validation, duplicate detection, a reconfigure flow, and a re-authentication prompt when the API token becomes invalid
 - Service calls that surface errors in the UI and in automation traces instead of failing silently
 - An enforced test-coverage gate of 95% overall; the config flow is kept at 100% by convention
 - Clean config entry lifecycle handling (typed runtime data, proper unload, no leftovers)
+- Translated entity names, icons and error messages, diagnostic entity categories, and automatic removal of devices and entities for resources that no longer exist
 
-These requirements are maintained for every change as part of code review. The status of every rule, including the open Gold and Platinum ones, is tracked in [`quality_scale.yaml`](custom_components/kubernetes/quality_scale.yaml).
+These requirements are maintained for every change as part of code review. The status of every rule, including the open Platinum ones, is tracked in [`quality_scale.yaml`](custom_components/kubernetes/quality_scale.yaml).
 
 ## Contributing
 
