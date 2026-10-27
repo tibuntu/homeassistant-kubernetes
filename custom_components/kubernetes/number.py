@@ -29,10 +29,11 @@ _LOGGER = logging.getLogger(__name__)
 # Data updates are centralized in the coordinator (quality scale: parallel-updates)
 PARALLEL_UPDATES = 0
 
-# workload type -> (coordinator bucket / disabled_resources key, client scale method)
+# workload type -> (coordinator bucket / disabled_resources key, client scale
+# method, unique_id suffix shared with the switch and _build_expected_unique_ids)
 _WORKLOADS = {
-    WORKLOAD_TYPE_DEPLOYMENT: ("deployments", "scale_deployment"),
-    WORKLOAD_TYPE_STATEFULSET: ("statefulsets", "scale_statefulset"),
+    WORKLOAD_TYPE_DEPLOYMENT: ("deployments", "scale_deployment", "deployment"),
+    WORKLOAD_TYPE_STATEFULSET: ("statefulsets", "scale_statefulset", "statefulset"),
 }
 
 
@@ -82,7 +83,7 @@ async def _async_add_new_entities(
 
     disabled = disabled_resources(config_entry)
     new_entities: list[KubernetesReplicaNumber] = []
-    for workload_type, (bucket, _) in _WORKLOADS.items():
+    for workload_type, (bucket, _, _) in _WORKLOADS.items():
         if bucket in disabled:
             continue
         for workload in coordinator.data.get(bucket, {}).values():
@@ -111,7 +112,7 @@ class KubernetesReplicaNumber(NumberEntity):
     _attr_icon = "mdi:counter"
     _attr_mode = NumberMode.BOX
     _attr_native_min_value = 0
-    # ponytail: fixed max, add an option only if someone needs > 100 replicas
+    # Fixed max; add an option if anyone needs more than 100 replicas
     _attr_native_max_value = 100
     _attr_native_step = 1
 
@@ -129,12 +130,11 @@ class KubernetesReplicaNumber(NumberEntity):
         self.workload_name = workload_name
         self.namespace = namespace
         self._workload_type = workload_type
-        self._bucket, self._scale_method = _WORKLOADS[workload_type]
+        self._bucket, self._scale_method, id_suffix = _WORKLOADS[workload_type]
         self._attr_name = f"{workload_name} replicas"
         # Same format as the matching switch, plus a "_replicas" suffix
         self._attr_unique_id = (
-            f"{config_entry.entry_id}_{namespace}_{workload_name}"
-            f"_{workload_type}_replicas"
+            f"{config_entry.entry_id}_{namespace}_{workload_name}_{id_suffix}_replicas"
         )
 
     def _workload_data(self) -> dict[str, Any] | None:
@@ -189,7 +189,9 @@ class KubernetesReplicaNumber(NumberEntity):
                 f"{self.namespace}/{self.workload_name} to {replicas} replicas"
             )
         # replicas is spec.replicas, which the API just accepted — show it
-        # now instead of waiting for the refresh/watch event to confirm it
+        # now instead of waiting for the refresh/watch event to confirm it.
+        # Written without _data_lock: there is no await between the lookup
+        # and the write, so no poll or watch event can interleave.
         if data := self._workload_data():
             data["replicas"] = replicas
         self.async_write_ha_state()

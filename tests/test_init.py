@@ -367,8 +367,9 @@ def test_constants():
     assert Platform.SENSOR in PLATFORMS
     assert Platform.BINARY_SENSOR in PLATFORMS
     assert Platform.SWITCH in PLATFORMS
+    assert Platform.NUMBER in PLATFORMS
     assert Platform.EVENT in PLATFORMS
-    assert len(PLATFORMS) == 4
+    assert len(PLATFORMS) == 5
 
 
 class TestLoadedEntriesExcept:

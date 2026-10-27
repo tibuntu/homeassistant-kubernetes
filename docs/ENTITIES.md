@@ -324,6 +324,8 @@ Every Deployment and StatefulSet also gets a `number` entity for setting an exac
 
 The switch and the number are two views of the same field: setting the number to `0` turns the switch off, and switching off shows `0` after the next refresh.
 
+> **Replica limit:** the range tops out at 100. A workload running more replicas still shows its real count, but Home Assistant rejects setting a value above 100.
+
 > **HPA caveat:** if a HorizontalPodAutoscaler manages the workload, it will revert a manually set replica count — the same applies to the switch.
 
 ## Cluster Events
