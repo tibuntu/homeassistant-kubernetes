@@ -1,6 +1,6 @@
 # Entities Documentation
 
-This document describes all sensors, binary sensors, and switches provided by the Kubernetes integration.
+This document describes all sensors, binary sensors, switches, and number entities provided by the Kubernetes integration.
 
 ## Sensors
 
@@ -308,6 +308,24 @@ The integration automatically creates switches for controlling Kubernetes worklo
 
 **Node schedulable switches** expose the attributes listed under [Node Schedulable Switches](#node-schedulable-switches) above: `node_name`, `status`, `schedulable`, `cordoned`, `last_cordon_time`, `last_uncordon_time`.
 
+## Number Entities
+
+### Replica Numbers
+
+Every Deployment and StatefulSet also gets a `number` entity for setting an exact replica count, from a dashboard (input box) or an automation (`number.set_value`).
+
+- **Entity ID Format**: `number.[cluster_name]_[namespace]_[workload_name]_replicas` (e.g. `number.production_default_web_app_replicas`)
+- **Value**: the desired replica count (`spec.replicas`), range 0–100, step 1
+- **Setting a value** scales the workload through the `scale` subresource; a failed scale raises an error instead of failing silently
+- **Device**: same device as the workload's switch (namespace device, or the cluster device in `cluster` grouping mode)
+- **Attributes**: `namespace`, `workload_type`, `ready_replicas`, `available_replicas`
+- **Opt-out**: removed when the workload type is in **Disable data collection for** (unlike the switch, which stays)
+- **Requires**: the `patch` verb on `deployments/scale` / `statefulsets/scale` (included in `manifests/full/`)
+
+The switch and the number are two views of the same field: setting the number to `0` turns the switch off, and switching off shows `0` after the next refresh.
+
+> **HPA caveat:** if a HorizontalPodAutoscaler manages the workload, it will revert a manually set replica count — the same applies to the switch.
+
 ## Cluster Events
 
 The integration provides an opt-in `event` entity per cluster that fires Home Assistant events whenever the Kubernetes cluster emits an event (e.g. a pod is OOM-killed, scheduling fails, a container enters CrashLoopBackOff).
@@ -411,10 +429,10 @@ Cluster Device (e.g., "production-cluster")
 │
 └── Namespace Devices (e.g., "production-cluster: default")
     ├── Pod sensors (all pods in this namespace)
-    ├── Deployment switches (all deployments in this namespace)
+    ├── Deployment switches and replica numbers (all deployments in this namespace)
     ├── Deployment status sensors (one per deployment)
     ├── Deployment CPU/memory sensors (one pair per deployment)
-    ├── StatefulSet switches (all statefulsets in this namespace)
+    ├── StatefulSet switches and replica numbers (all statefulsets in this namespace)
     ├── StatefulSet status sensors (one per statefulset)
     ├── StatefulSet CPU/memory sensors (one pair per statefulset)
     ├── DaemonSet sensors (all daemonsets in this namespace)
@@ -450,8 +468,9 @@ With device-based grouping, entities are automatically named using the following
 - **Node Schedulable Switches**: `switch.[cluster_name]_[node_name]_schedulable` (e.g., `switch.production_worker_node_1_schedulable`)
 - **Namespace-level Pod Sensors**: `sensor.[cluster_name]_[namespace]_[pod_name]` (e.g., `sensor.production_default_my_app_pod`)
 - **Namespace-level Switches**: `switch.[cluster_name]_[namespace]_[resource_name]` (e.g., `switch.production_default_web_app`)
+- **Replica Numbers**: `number.[cluster_name]_[namespace]_[workload_name]_replicas` (e.g., `number.production_default_web_app_replicas`)
 
-In `cluster` grouping mode there is no namespace device, so the namespace segment is absent from namespace-level switch entity IDs (e.g. `switch.production_web_app`).
+In `cluster` grouping mode there is no namespace device, so the namespace segment is absent from namespace-level switch and number entity IDs (e.g. `switch.production_web_app`, `number.production_web_app_replicas`).
 
 The device hierarchy ensures that entity names include cluster and namespace context, making it clear what each entity represents.
 
@@ -459,8 +478,8 @@ The device hierarchy ensures that entity names include cluster and namespace con
 
 The integration automatically discovers and creates entities for:
 
-- All deployments in monitored namespaces (switch + status sensor + CPU/memory sensors)
-- All statefulsets in monitored namespaces (switch + status sensor + CPU/memory sensors)
+- All deployments in monitored namespaces (switch + replica number + status sensor + CPU/memory sensors)
+- All statefulsets in monitored namespaces (switch + replica number + status sensor + CPU/memory sensors)
 - All daemonsets in monitored namespaces (status sensor)
 - All cronjobs in monitored namespaces (switch + status sensor)
 - All jobs in monitored namespaces (status sensor)

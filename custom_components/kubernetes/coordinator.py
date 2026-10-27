@@ -148,6 +148,8 @@ class KubernetesEntryData:
     binary_sensor_pending_unique_ids: set[str] = field(default_factory=set)
     switch_add_entities: AddEntitiesCallback | None = None
     switch_pending_unique_ids: set[str] = field(default_factory=set)
+    number_add_entities: AddEntitiesCallback | None = None
+    number_pending_unique_ids: set[str] = field(default_factory=set)
 
 
 type KubernetesConfigEntry = ConfigEntry[KubernetesEntryData]
@@ -553,7 +555,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Deployment/StatefulSet switches: {namespace}_{name}_{type}
         # Status sensors: {namespace}_{name}_{type}_status
         # Metric sensors: {namespace}_{name}_{type}_{metric}
-        # Switches survive the per-type opt-out; sensors don't.
+        # Replica numbers: {namespace}_{name}_{type}_replicas
+        # Switches survive the per-type opt-out; sensors and numbers don't.
         for workload_type in ("deployment", "statefulset"):
             sensors_disabled = f"{workload_type}s" in disabled
             for data in current_data.get(f"{workload_type}s", {}).values():
@@ -562,6 +565,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 expected.add(f"{eid}_{namespace}_{name}_{workload_type}")
                 if sensors_disabled:
                     continue
+                expected.add(f"{eid}_{namespace}_{name}_{workload_type}_replicas")
                 expected.add(f"{eid}_{namespace}_{name}_{workload_type}_status")
                 if "metrics" not in disabled:
                     for metric in ("cpu", "memory"):
