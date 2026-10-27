@@ -2529,6 +2529,29 @@ class TestWebsocketPodLogs:
         assert msg["result"]["clusters"][0]["pods"] == [{"name": "a"}]
         client.get_pods.assert_not_called()
 
+    async def test_pods_list_mixed_entries(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """Each cluster gets its own source: live for disabled, cached otherwise."""
+        cached_client = MagicMock()
+        cached_client.get_pods = AsyncMock()
+        cached = add_loaded_client_entry(cached_client, entry_id="entry_1")
+        cached.data = {"pods": {"default_a": {"name": "a"}}}
+        live_client = MagicMock()
+        live_client.get_pods = AsyncMock(return_value=[{"name": "b"}])
+        live = add_loaded_client_entry(
+            live_client, entry_id="entry_2", options={"disabled_resources": ["pods"]}
+        )
+        live.data = {"pods": {}}
+
+        msg = await self._send(
+            hass, hass_ws_client, {"id": 1, "type": "kubernetes/pods/list"}
+        )
+
+        pods = {c["entry_id"]: c["pods"] for c in msg["result"]["clusters"]}
+        assert pods == {"entry_1": [{"name": "a"}], "entry_2": [{"name": "b"}]}
+        cached_client.get_pods.assert_not_called()
+
 
 class TestWebsocketDeleteJob:
     """Drive kubernetes/jobs/delete through HA's real WebSocket stack.
