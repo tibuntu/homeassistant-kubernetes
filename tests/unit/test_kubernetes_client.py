@@ -993,6 +993,19 @@ async def test_get_hpas_success(mock_client):
     )
 
 
+async def test_get_hpas_forbidden_not_logged(mock_client):
+    """A 403 is re-raised without _log_error; the coordinator warns once."""
+    mock_client._fetch_resource_list = AsyncMock(
+        side_effect=KubernetesApiError("forbidden", 403)
+    )
+    mock_client._log_error = MagicMock()
+
+    with pytest.raises(KubernetesApiError):
+        await mock_client.get_hpas()
+
+    mock_client._log_error.assert_not_called()
+
+
 async def test_get_hpas_empty(mock_client):
     """HPA retrieval when none exist."""
     mock_client._fetch_resource_list = AsyncMock(return_value=[])
@@ -1004,8 +1017,12 @@ async def test_get_hpas_api_exception(mock_client):
     """HPA retrieval propagates API exceptions."""
     mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
 
+    mock_client._log_error = MagicMock()
+
     with pytest.raises(Exception, match="API Error"):
         await mock_client.get_hpas()
+
+    mock_client._log_error.assert_called_once()
 
 
 def _hpa_item():

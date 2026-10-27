@@ -61,11 +61,12 @@ _NAMESPACED_KEYS: tuple[str, ...] = (
 )
 # All resource buckets counted in the cluster-wide overview (nodes are
 # cluster-scoped, so they're not part of the namespace breakdown above).
+_COUNT_KEYS: tuple[str, ...] = ("pods", "nodes", *_NAMESPACED_KEYS[1:])
+# Workload kind each HPA-targetable bucket is matched against (scaleTargetRef).
 _HPA_TARGET_KINDS = {
     "deployments": WORKLOAD_TYPE_DEPLOYMENT,
     "statefulsets": WORKLOAD_TYPE_STATEFULSET,
 }
-_COUNT_KEYS: tuple[str, ...] = ("pods", "nodes", *_NAMESPACED_KEYS[1:])
 
 
 def _get_coordinator(

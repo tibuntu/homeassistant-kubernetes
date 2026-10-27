@@ -2128,7 +2128,10 @@ class KubernetesClient:
                 self._log_success("get hpas", f"retrieved {len(result)} HPAs")
             return result
         except Exception as ex:
-            self._log_error("get hpas", ex)
+            # A 403 is reported once by the coordinator, which turns HPA
+            # detection off — logging it here would repeat on every poll.
+            if not (isinstance(ex, KubernetesApiError) and ex.status == 403):
+                self._log_error("get hpas", ex)
             raise
 
     # CronJob methods
