@@ -1,0 +1,90 @@
+rules:
+  # Bronze
+  action-setup: done
+  appropriate-polling: done
+  brands: done
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency: done
+  docs-actions: done
+  docs-conditions:
+    status: exempt
+    comment: The integration provides no conditions.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  docs-triggers:
+    status: exempt
+    comment: The integration provides no triggers.
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # Silver
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow: done
+  test-coverage: done
+
+  # Gold
+  devices: done
+  diagnostics: done
+  discovery:
+    status: exempt
+    comment: A Kubernetes API server is not discoverable on the local network.
+  discovery-update-info:
+    status: exempt
+    comment: No discovery.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations:
+    status: todo
+    comment: Only the namespace-scoped setup documents its limitations.
+  docs-supported-devices: done
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices: done
+  entity-category:
+    status: todo
+    comment: No entity sets an entity category yet.
+  entity-device-class:
+    status: todo
+    comment: Memory sensors could use the data size device class.
+  entity-disabled-by-default:
+    status: todo
+    comment: Every entity is enabled by default.
+  entity-translations:
+    status: todo
+    comment: Entity names are hard-coded via _attr_name.
+  exception-translations:
+    status: todo
+    comment: Service errors are raised with English messages.
+  icon-translations:
+    status: todo
+    comment: Icons are set via _attr_icon.
+  reconfiguration-flow: done
+  repair-issues: done
+  stale-devices: done
+
+  # Platinum
+  async-dependency:
+    status: todo
+    comment: The kubernetes package is synchronous; it remains as a fallback behind the aiohttp calls.
+  inject-websession:
+    status: todo
+    comment: The client opens its own aiohttp sessions.
+  strict-typing:
+    status: todo
+    comment: mypy runs without strict mode.
