@@ -235,7 +235,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 11
+            assert mock_ws_api.async_register_command.call_count == 12
 
 
 class TestWebsocketClusterOverview:
@@ -2372,13 +2372,17 @@ class TestWebsocketPodLogs:
     ):
         """A transport error becomes logs_failed instead of an unhandled error."""
         client = MagicMock()
-        client.get_pod_logs = AsyncMock(side_effect=TimeoutError("timed out"))
+        client.get_pod_logs = AsyncMock(
+            side_effect=TimeoutError("https://10.0.0.1:6443 timed out")
+        )
         add_loaded_client_entry(client, options=_POD_LOGS_ENABLED)
 
         msg = await self._send(hass, hass_ws_client, self._msg(1))
 
         assert msg["success"] is False
         assert msg["error"]["code"] == "logs_failed"
+        # Transport details stay in the log, not in the browser.
+        assert msg["error"]["message"] == "Failed to fetch logs"
 
     @pytest.mark.parametrize("tail_lines", [9, 2001])
     async def test_tail_lines_out_of_range(
@@ -2392,6 +2396,29 @@ class TestWebsocketPodLogs:
         msg = await self._send(
             hass, hass_ws_client, self._msg(1, tail_lines=tail_lines)
         )
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        client.get_pod_logs.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("pod_name", ".."), ("namespace", "a/b"), ("pod_name", "X")],
+    )
+    async def test_invalid_names_rejected(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        field,
+        value,
+    ):
+        """Names that are not valid Kubernetes names never reach the client."""
+        client = MagicMock()
+        client.get_pod_logs = AsyncMock()
+        add_loaded_client_entry(client, options=_POD_LOGS_ENABLED)
+
+        msg = await self._send(hass, hass_ws_client, {**self._msg(1), field: value})
 
         assert msg["success"] is False
         assert msg["error"]["code"] == "invalid_format"

@@ -2539,10 +2539,10 @@ class TestKubernetesClientGetPods:
         assert pod["containers"] == []
 
     def test_parse_pods_data_container_names(self, mock_client):
-        """Container names come from spec.containers (also before they start)."""
+        """Container names come from spec.containers; nameless ones are dropped."""
         raw = {
             "metadata": {"name": "p", "namespace": "default"},
-            "spec": {"containers": [{"name": "app"}, {"name": "sidecar"}]},
+            "spec": {"containers": [{"name": "app"}, {}, {"name": "sidecar"}]},
             "status": {"phase": "Pending"},
         }
 
@@ -6197,6 +6197,40 @@ class TestGetPodLogs:
         assert logs.endswith("last\n")
         assert "first" not in logs
         assert logs.startswith("x")
+
+    async def test_cut_right_after_newline_keeps_that_line(self, mock_client):
+        """A cut landing on a line boundary keeps the complete line after it."""
+        kept = b"k" * (POD_LOGS_LIMIT_BYTES - 1) + b"\n"
+        session = mock_aiohttp_session(get=_mock_response(200, read=b"old\n" + kept))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            logs, truncated = await mock_client.get_pod_logs("p", "default")
+
+        assert truncated is True
+        assert logs.encode() == kept
+
+    async def test_single_huge_line_stays_within_cap(self, mock_client):
+        """Without any newline the newest cap-sized slice is kept."""
+        body = b"a" * 10 + b"b" * POD_LOGS_LIMIT_BYTES
+        session = mock_aiohttp_session(get=_mock_response(200, read=body))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            logs, truncated = await mock_client.get_pod_logs("p", "default")
+
+        assert truncated is True
+        assert logs == "b" * POD_LOGS_LIMIT_BYTES
+
+    async def test_path_segments_are_quoted(self, mock_client):
+        """Names cannot escape their path segment and address another API."""
+        session = mock_aiohttp_session(get=_mock_response(200, read=b""))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            await mock_client.get_pod_logs("../secrets/x?y#z", "a/b")
+
+        url = session.get.call_args[0][0]
+        assert url.endswith(
+            "/api/v1/namespaces/a%2Fb/pods/..%2Fsecrets%2Fx%3Fy%23z/log"
+        )
 
     @pytest.mark.parametrize("status", [400, 403, 404])
     async def test_non_200_raises_with_status(self, mock_client, status):
