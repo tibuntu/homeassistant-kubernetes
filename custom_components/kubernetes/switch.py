@@ -886,10 +886,10 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
             if not result:
                 raise HomeAssistantError(
                     translation_domain=DOMAIN,
-                    translation_key="operation_failed",
+                    translation_key="node_schedule_failed",
                     translation_placeholders={
-                        "operation": "uncordon",
-                        "failures": f"node {self.node_name}",
+                        "action": "uncordon",
+                        "node": self.node_name,
                     },
                 )
 
@@ -912,10 +912,10 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
             if not result:
                 raise HomeAssistantError(
                     translation_domain=DOMAIN,
-                    translation_key="operation_failed",
+                    translation_key="node_schedule_failed",
                     translation_placeholders={
-                        "operation": "cordon",
-                        "failures": f"node {self.node_name}",
+                        "action": "cordon",
+                        "node": self.node_name,
                     },
                 )
 
