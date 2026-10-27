@@ -186,7 +186,7 @@ The categories come in two tiers:
 
 | Category | Effect when disabled |
 |----------|----------------------|
-| **Pods** | Pod detail fetch skipped entirely; no per-pod sensors and no Problem Pods sensor |
+| **Pods** | Pod detail fetch skipped entirely; no per-pod sensors and no Problem Pods sensor. The panel's Pods tab still works: it lists pods live from the API on each refresh while the tab is open (nothing is stored), so pod deletion and pod logs stay available |
 | **DaemonSets** | Fetch skipped entirely; no DaemonSet sensors |
 | **Jobs** | Fetch skipped entirely; no Job sensors |
 | **Ingresses** | Fetch skipped entirely; ingress data disappears from the panel |

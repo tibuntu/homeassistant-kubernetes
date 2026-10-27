@@ -2475,6 +2475,60 @@ class TestWebsocketPodLogs:
         assert msg["success"] is True
         assert msg["result"]["clusters"][0]["pod_logs_enabled"] is expected
 
+    async def test_pods_list_fetches_live_when_pods_disabled(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """With pod collection off, pods/list lists pods live from the API."""
+        pod = {"name": "web-1", "namespace": "default", "containers": ["web"]}
+        client = MagicMock()
+        client.get_pods = AsyncMock(return_value=[pod])
+        coordinator = add_loaded_client_entry(
+            client, options={**_POD_LOGS_ENABLED, "disabled_resources": ["pods"]}
+        )
+        coordinator.data = {"pods": {}}
+
+        msg = await self._send(
+            hass, hass_ws_client, {"id": 1, "type": "kubernetes/pods/list"}
+        )
+
+        assert msg["success"] is True
+        assert msg["result"]["clusters"][0]["pods"] == [pod]
+        client.get_pods.assert_awaited_once()
+
+    async def test_pods_list_live_fetch_failure_returns_empty(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """A failing live fetch leaves that cluster empty instead of failing."""
+        client = MagicMock()
+        client.get_pods = AsyncMock(side_effect=KubernetesApiError("boom"))
+        coordinator = add_loaded_client_entry(
+            client, options={"disabled_resources": ["pods"]}
+        )
+        coordinator.data = {"pods": {}}
+
+        msg = await self._send(
+            hass, hass_ws_client, {"id": 1, "type": "kubernetes/pods/list"}
+        )
+
+        assert msg["success"] is True
+        assert msg["result"]["clusters"][0]["pods"] == []
+
+    async def test_pods_list_uses_coordinator_when_pods_enabled(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """With pod collection on, no live API call is made."""
+        client = MagicMock()
+        client.get_pods = AsyncMock()
+        coordinator = add_loaded_client_entry(client)
+        coordinator.data = {"pods": {"default_a": {"name": "a"}}}
+
+        msg = await self._send(
+            hass, hass_ws_client, {"id": 1, "type": "kubernetes/pods/list"}
+        )
+
+        assert msg["result"]["clusters"][0]["pods"] == [{"name": "a"}]
+        client.get_pods.assert_not_called()
+
 
 class TestWebsocketDeleteJob:
     """Drive kubernetes/jobs/delete through HA's real WebSocket stack.
