@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.1...v1.14.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* provide existing replica number entities again after a restart ([86fd37b](https://github.com/tibuntu/homeassistant-kubernetes/commit/86fd37bfdd735b5e0421804e34ec8c33347d6212))
+
 ## [1.14.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.0...v1.14.1) (2026-10-27)
 
 
