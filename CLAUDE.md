@@ -185,7 +185,7 @@ Whenever changes are implemented to any integration code, always add or update t
 
 ### Reload guard
 
-`tests/test_reload.py` is the one test that loads the real integration through HA (an `Integration` built from the component dir seeded into `loader.DATA_CUSTOM_COMPONENTS` — HA's own `custom_components` scan crashes on the editable install's path hook in CI, so never use `enable_custom_integrations` — `http`/`frontend` pre-marked in `hass.config.components`, mocked `KubernetesClient`, panel sync patched), reloads the entry, and asserts every registered entity of the entry has a live, non-`restored` state again. It catches any platform that deduplicates its setup against the entity registry (the 1.14.1 replica-number bug). When adding a platform or a resource type, extend its client mock so the new entities exist and are covered.
+`tests/test_reload.py` is the one test that loads the real integration through HA (an `Integration` built from the component dir seeded into `loader.DATA_CUSTOM_COMPONENTS` — HA's own `custom_components` scan crashes on the editable install's path hook in CI, so never use `enable_custom_integrations` — plus `KubernetesConfigFlow` put into `config_entries.HANDLERS`, `http`/`frontend` pre-marked in `hass.config.components`, mocked `KubernetesClient`, panel sync patched), reloads the entry, and asserts every registered entity of the entry has a live, non-`restored` state again. It catches any platform that deduplicates its setup against the entity registry (the 1.14.1 replica-number bug). When adding a platform or a resource type, extend its client mock so the new entities exist and are covered.
 
 ### HA deprecation guard
 
