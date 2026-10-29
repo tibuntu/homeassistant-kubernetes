@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 from .const import (
     ATTR_WORKLOAD_TYPE,
@@ -72,17 +71,13 @@ async def _async_add_new_entities(
     if not add_entities or not coordinator.data:
         return
 
-    registry = async_get_entity_registry(hass)
-    known = {
-        entity.unique_id
-        for entity in registry.entities.get_entries_for_config_entry_id(
-            config_entry.entry_id
-        )
-    }
-    pending = entry_data.number_pending_unique_ids
-    # Prune IDs that are now in the registry — keeps the set bounded
-    pending -= known
-    known |= pending
+    # Unique IDs handed to add_entities during *this* setup. Deliberately not
+    # seeded from the entity registry: registry entries persist across
+    # restarts, so treating them as "already added" means an entity created on
+    # an earlier run is never provided again and shows as "no longer provided".
+    # runtime_data is rebuilt on every setup, so this set starts empty.
+    added = entry_data.number_pending_unique_ids
+    current: set[str] = set()
 
     disabled = disabled_resources(config_entry)
     new_entities: list[KubernetesReplicaNumber] = []
@@ -97,13 +92,21 @@ async def _async_add_new_entities(
                 workload.get("namespace", "default"),
                 workload_type,
             )
-            if entity.unique_id in known:
+            # Always set in __init__; cast only narrows the str | None property
+            unique_id = cast(str, entity.unique_id)
+            current.add(unique_id)
+            if unique_id in added:
                 continue
+            # Claim it before the await below so an overlapping run can't add
+            # the same entity twice
+            added.add(unique_id)
             await get_or_create_namespace_device(hass, config_entry, entity.namespace)
             new_entities.append(entity)
 
+    # Forget workloads that are gone (the coordinator's orphan cleanup removes
+    # their entities), so one recreated under the same name is added again
+    added &= current
     if new_entities:
-        pending.update(e.unique_id for e in new_entities if e.unique_id)
         add_entities(new_entities)
 
 
