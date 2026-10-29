@@ -133,10 +133,14 @@ class TestNumberSetup:
             "test_entry_id_default_api_deployment_replicas"
         ]
 
-    async def test_registered_entities_are_skipped(
+    async def test_registered_entities_are_provided_again(
         self, hass: HomeAssistant, mock_config_entry, coordinator
     ):
-        """Entities already in the registry are not re-added; pending is pruned."""
+        """Registry entries from an earlier run are provided again on setup.
+
+        Regression test: the registry outlives a restart, so deduplicating
+        against it left every existing number entity "no longer provided".
+        """
         _attach(mock_config_entry, coordinator)
         registry = er.async_get(hass)
         for unique_id in (
@@ -146,16 +150,40 @@ class TestNumberSetup:
             registry.async_get_or_create(
                 "number", DOMAIN, unique_id, config_entry=mock_config_entry
             )
+        add_entities = MagicMock()
+
+        await async_setup_entry(hass, mock_config_entry, add_entities)
+
+        assert {e.unique_id for e in add_entities.call_args[0][0]} == {
+            "test_entry_id_default_web_deployment_replicas",
+            "test_entry_id_db_pg_statefulset_replicas",
+        }
+
+    async def test_recreated_workload_is_added_again(
+        self, hass: HomeAssistant, mock_config_entry, coordinator
+    ):
+        """A workload that disappears is forgotten, so its return re-adds it."""
+        _attach(mock_config_entry, coordinator)
+        add_entities = MagicMock()
+        await async_setup_entry(hass, mock_config_entry, add_entities)
+        listener = coordinator.async_add_listener.call_args[0][0]
         entry_data = mock_config_entry.runtime_data
-        entry_data.number_pending_unique_ids.add(
+
+        web = coordinator.data["deployments"].pop("default_web")
+        listener()
+        await hass.async_block_till_done()
+        assert entry_data.number_pending_unique_ids == {
+            "test_entry_id_db_pg_statefulset_replicas"
+        }
+
+        coordinator.data["deployments"]["default_web"] = web
+        listener()
+        await hass.async_block_till_done()
+
+        assert add_entities.call_count == 2
+        assert [e.unique_id for e in add_entities.call_args[0][0]] == [
             "test_entry_id_default_web_deployment_replicas"
-        )
-        entry_data.number_add_entities = add_entities = MagicMock()
-
-        await _async_add_new_entities(hass, mock_config_entry, coordinator)
-
-        add_entities.assert_not_called()
-        assert entry_data.number_pending_unique_ids == set()
+        ]
 
     async def test_disabled_resources_gate(
         self, hass: HomeAssistant, make_config_entry, coordinator
