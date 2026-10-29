@@ -10,11 +10,12 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant import loader
+from homeassistant import config_entries, loader
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.kubernetes.config_flow import KubernetesConfigFlow
 from custom_components.kubernetes.const import DOMAIN
 
 _COMPONENT_DIR = Path(__file__).parents[1] / "custom_components" / "kubernetes"
@@ -53,12 +54,15 @@ def _client() -> MagicMock:
     return client
 
 
-def _register_integration(hass: HomeAssistant) -> None:
-    """Hand HA's loader the integration directly.
+def _register_integration(hass: HomeAssistant, monkeypatch) -> None:
+    """Hand HA's loader the integration and its config flow directly.
 
     HA's own custom_components scan trips over the editable install's path
     hook in CI (see load_translations in conftest.py), so seed its cache.
+    The flow handler registers on first import only, which an earlier test
+    has already done (see register_config_flow in test_config_flow.py).
     """
+    monkeypatch.setitem(config_entries.HANDLERS, DOMAIN, KubernetesConfigFlow)
     manifest = json.loads((_COMPONENT_DIR / "manifest.json").read_text())
     integration = loader.Integration(
         hass,
@@ -71,10 +75,10 @@ def _register_integration(hass: HomeAssistant) -> None:
 
 
 async def test_all_entities_provided_after_reload(
-    hass: HomeAssistant, make_config_entry
+    hass: HomeAssistant, make_config_entry, monkeypatch
 ):
     """A reload must provide every registered entity of the entry again."""
-    _register_integration(hass)
+    _register_integration(hass, monkeypatch)
     # Satisfy the manifest dependencies without loading the real frontend.
     hass.config.components.update({"http", "frontend"})
     entry = make_config_entry(options={"enable_watch": False})
@@ -108,3 +112,7 @@ async def test_all_entities_provided_after_reload(
         if (state := hass.states.get(eid)) is None or state.attributes.get("restored")
     ]
     assert not_provided == []
+
+    # Stop the coordinator and the polled health sensor (lingering timers)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
