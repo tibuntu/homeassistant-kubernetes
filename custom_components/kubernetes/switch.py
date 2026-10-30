@@ -674,6 +674,8 @@ class KubernetesCronJobSwitch(SwitchEntity):
                     "Successfully resumed CronJob '%s'",
                     self.cronjob_name,
                 )
+                # should_poll is False, so HA will not write state for us.
+                self.async_write_ha_state()
             else:
                 _LOGGER.error(
                     "Failed to resume CronJob '%s': %s",
@@ -704,6 +706,7 @@ class KubernetesCronJobSwitch(SwitchEntity):
                     "Successfully suspended CronJob '%s'",
                     self.cronjob_name,
                 )
+                self.async_write_ha_state()
             else:
                 _LOGGER.error(
                     "Failed to suspend CronJob '%s': %s",
