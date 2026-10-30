@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import UTC, datetime
 import functools
 import ipaddress
@@ -915,6 +915,10 @@ class KubernetesClient:
     ) -> dict[str, Any] | None:
         """Parse a single raw replica-based workload (Deployment/StatefulSet) API object."""
         try:
+            selector_spec = item.get("spec", {}).get("selector") or {}
+            selector_expressions = selector_spec.get("matchExpressions")
+            if not isinstance(selector_expressions, list):
+                selector_expressions = []
             return {
                 "name": item["metadata"]["name"],
                 "namespace": item["metadata"]["namespace"],
@@ -922,9 +926,8 @@ class KubernetesClient:
                 "available_replicas": item["status"].get("availableReplicas", 0),
                 "ready_replicas": item["status"].get("readyReplicas", 0),
                 "is_running": item["status"].get("availableReplicas", 0) > 0,
-                "selector": item.get("spec", {})
-                .get("selector", {})
-                .get("matchLabels", {}),
+                "selector": selector_spec.get("matchLabels") or {},
+                "selector_expressions": selector_expressions,
             }
         except Exception as ex:
             _LOGGER.warning("Failed to parse replica workload item: %s", ex)
@@ -1998,13 +2001,41 @@ class KubernetesClient:
             _LOGGER.warning("Exception in _get_node_metrics_aiohttp: %s", ex)
             return {}
 
-    def _pod_matches_selector(
-        self, pod_labels: dict[str, Any], selector: dict[str, Any]
-    ) -> bool:
-        """Check if a pod matches a selector."""
-        if not selector:
+    @staticmethod
+    def _expression_matches(pod_labels: dict[str, Any], expression: Any) -> bool:
+        """Evaluate one selector matchExpressions entry; unknown forms never match."""
+        if not isinstance(expression, dict):
             return False
-        return all(pod_labels.get(key) == value for key, value in selector.items())
+        key = expression.get("key")
+        if not isinstance(key, str):
+            return False
+        operator = expression.get("operator")
+        values = expression.get("values") or []
+        if not isinstance(values, list):
+            return False
+        present = key in pod_labels
+        if operator == "In":
+            return present and pod_labels[key] in values
+        if operator == "NotIn":
+            return not present or pod_labels[key] not in values
+        if operator == "Exists":
+            return present
+        if operator == "DoesNotExist":
+            return not present
+        return False
+
+    def _pod_matches_selector(
+        self,
+        pod_labels: dict[str, Any],
+        selector: dict[str, Any],
+        expressions: Sequence[Any] = (),
+    ) -> bool:
+        """Check if a pod matches matchLabels and every matchExpressions entry."""
+        if not selector and not expressions:
+            return False
+        return all(
+            pod_labels.get(key) == value for key, value in selector.items()
+        ) and all(self._expression_matches(pod_labels, expr) for expr in expressions)
 
     def _calculate_resource_usage(
         self,
@@ -2013,7 +2044,8 @@ class KubernetesClient:
         metrics: dict[str, dict[str, float]],
     ) -> tuple[float, float]:
         """Calculate CPU and memory usage for a workload from its pods."""
-        selector = workload.get("selector", {})
+        selector = workload.get("selector") or {}
+        expressions = workload.get("selector_expressions") or ()
         namespace = workload.get("namespace")
         workload_name = workload.get("name", "unknown")
 
@@ -2026,7 +2058,9 @@ class KubernetesClient:
             pod_ns = pod.get("namespace")
             pod_labels = pod.get("labels", {})
 
-            if pod_ns == namespace and self._pod_matches_selector(pod_labels, selector):
+            if pod_ns == namespace and self._pod_matches_selector(
+                pod_labels, selector, expressions
+            ):
                 matched_pods += 1
                 pod_metric_key = f"{namespace}/{pod_name}"
                 pod_metric = metrics.get(pod_metric_key)
@@ -2045,8 +2079,9 @@ class KubernetesClient:
 
         if matched_pods == 0:
             _LOGGER.debug(
-                "No pods matched selector %s for workload %s/%s",
+                "No pods matched selector %s (expressions %s) for workload %s/%s",
                 selector,
+                expressions,
                 namespace,
                 workload_name,
             )
