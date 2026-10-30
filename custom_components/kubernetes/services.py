@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 import voluptuous as vol
 
 from .const import (
@@ -83,12 +84,29 @@ def _get_workload_info_from_entity(
         return None, None, None
 
 
-def _resolve_raw_workload_name(
-    hass: HomeAssistant, name: str, namespace: str | None
-) -> tuple[str, str | None, str] | None:
-    """Resolve a raw workload name to (name, namespace, workload_type) via coordinator data.
+def _entity_entry_id(hass: HomeAssistant, entity_id: str) -> str | None:
+    """Return the config entry that owns a Kubernetes entity, if registered.
 
-    Searches all coordinator data for a matching workload by name and optional namespace.
+    Only entities of this integration's platform count; unregistered entities
+    and entities of other integrations yield ``None``.
+    """
+    entity = async_get_entity_registry(hass).async_get(entity_id)
+    if entity is None or entity.platform != DOMAIN:
+        return None
+    return entity.config_entry_id
+
+
+def _find_raw_workloads(
+    hass: HomeAssistant,
+    name: str,
+    namespace: str | None,
+    entry_id: str | None = None,
+) -> list[tuple[str, tuple[str, str | None, str]]]:
+    """Find a raw workload name in coordinator data.
+
+    Returns one ``(owner_entry_id, (name, namespace, workload_type))`` per
+    loaded config entry that contains a match.  When *entry_id* is given only
+    that entry is searched.
     """
     resource_type_map = {
         "deployments": WORKLOAD_TYPE_DEPLOYMENT,
@@ -96,12 +114,16 @@ def _resolve_raw_workload_name(
         "daemonsets": WORKLOAD_TYPE_DAEMONSET,
         "cronjobs": WORKLOAD_TYPE_CRONJOB,
     }
+    found: list[tuple[str, tuple[str, str | None, str]]] = []
 
     for entry in get_loaded_entries(hass):
+        if entry_id and entry.entry_id != entry_id:
+            continue
         coordinator = entry.runtime_data.coordinator
         if not coordinator.data:
             continue
 
+        match: tuple[str, str | None, str] | None = None
         for resource_key, workload_type in resource_type_map.items():
             for _wl_name, wl_data in coordinator.data.get(resource_key, {}).items():
                 if wl_data.get("name") != name:
@@ -115,10 +137,33 @@ def _resolve_raw_workload_name(
                     workload_type,
                     wl_ns,
                 )
-                return (name, wl_ns, workload_type)
+                match = (name, wl_ns, workload_type)
+                break
+            if match:
+                break
+        if match:
+            found.append((entry.entry_id, match))
 
-    _LOGGER.debug("Could not resolve raw workload name '%s' in coordinator data", name)
-    return None
+    if not found:
+        _LOGGER.debug(
+            "Could not resolve raw workload name '%s' in coordinator data", name
+        )
+    return found
+
+
+def _resolve_raw_workload_name(
+    hass: HomeAssistant,
+    name: str,
+    namespace: str | None,
+    entry_id: str | None = None,
+) -> tuple[str, str | None, str] | None:
+    """Resolve a raw workload name to (name, namespace, workload_type) via coordinator data.
+
+    Searches coordinator data for a matching workload by name and optional
+    namespace; when *entry_id* is given only that config entry is searched.
+    """
+    found = _find_raw_workloads(hass, name, namespace, entry_id)
+    return found[0][1] if found else None
 
 
 def _normalize_entity_id_list(entity_ids_raw: Any) -> list[str]:
@@ -178,15 +223,18 @@ def _collect_entity_ids(call_data: dict[str, Any]) -> list[str]:
     return [eid for eid in entity_ids if eid.startswith("switch.")]
 
 
-def _extract_workload_info(
+def _extract_workloads_with_owners(
     call_data: dict[str, Any], hass: HomeAssistant
-) -> list[tuple[str, str | None, str]]:
-    """Extract workload information (name, namespace, workload_type) from service call data.
+) -> tuple[list[tuple[str, str | None, str]], set[str]]:
+    """Extract workloads plus the config entries that own them.
+
+    Owners are collected only for targets that produced a workload tuple.
 
     Returns:
-        List of tuples: [(workload_name, namespace, workload_type), ...]
+        Tuple of ([(workload_name, namespace, workload_type), ...], owner_entry_ids)
     """
     workloads: list[tuple[str, str | None, str]] = []
+    owners: set[str] = set()
 
     _LOGGER.debug("Extracting workload info from call data: %s", call_data)
 
@@ -197,6 +245,8 @@ def _extract_workload_info(
         )
         if workload_name and workload_type:
             workloads.append((workload_name, namespace, workload_type))
+            if owner := _entity_entry_id(hass, entity_id):
+                owners.add(owner)
         else:
             _LOGGER.warning(
                 "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
@@ -216,17 +266,40 @@ def _extract_workload_info(
             name = name["entity_id"]
 
         if isinstance(name, str):
-            namespace, workload_name, workload_type = _get_workload_info_from_entity(
-                hass, name
-            )
-            if workload_name and workload_type:
+            provided_ns = call_data.get(ATTR_NAMESPACE)
+            explicit_entry_id = call_data.get("entry_id")
+            is_entity_id = name.startswith("switch.")
+            entity_id = name if is_entity_id else f"switch.{name}"
+            scoped_raw_first = bool(explicit_entry_id) and not is_entity_id
+
+            # Panel calls send a bare name plus entry_id: resolve it in that
+            # entry before looking at a same-named switch another entry owns.
+            raw_found: list[tuple[str, tuple[str, str | None, str]]] = []
+            if scoped_raw_first:
+                raw_found = _find_raw_workloads(
+                    hass, name, provided_ns, explicit_entry_id
+                )
+
+            info: tuple[str | None, str | None, str | None] = (None, None, None)
+            if not raw_found:
+                info = _get_workload_info_from_entity(hass, name)
+            namespace, workload_name, workload_type = info
+
+            if raw_found:
+                workloads.append(raw_found[0][1])
+                owners.update(owner for owner, _ in raw_found)
+            elif workload_name and workload_type:
                 workloads.append((workload_name, namespace, workload_type))
+                if owner := _entity_entry_id(hass, entity_id):
+                    owners.add(owner)
             else:
                 # Try resolving as a raw workload name via coordinator data
-                provided_ns = call_data.get(ATTR_NAMESPACE)
-                resolved = _resolve_raw_workload_name(hass, name, provided_ns)
-                if resolved:
-                    workloads.append(resolved)
+                raw_found = _find_raw_workloads(
+                    hass, name, provided_ns, explicit_entry_id
+                )
+                if raw_found:
+                    workloads.append(raw_found[0][1])
+                    owners.update(owner for owner, _ in raw_found)
                 else:
                     _LOGGER.warning(
                         "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
@@ -244,8 +317,19 @@ def _extract_workload_info(
         )
         workloads = [(name, provided_namespace, wtype) for name, _, wtype in workloads]
 
-    _LOGGER.debug("Extracted workloads: %s", workloads)
-    return workloads
+    _LOGGER.debug("Extracted workloads: %s (owners: %s)", workloads, owners)
+    return workloads, owners
+
+
+def _extract_workload_info(
+    call_data: dict[str, Any], hass: HomeAssistant
+) -> list[tuple[str, str | None, str]]:
+    """Extract workload information (name, namespace, workload_type) from service call data.
+
+    Returns:
+        List of tuples: [(workload_name, namespace, workload_type), ...]
+    """
+    return _extract_workloads_with_owners(call_data, hass)[0]
 
 
 def _no_workloads_error(
@@ -535,6 +619,40 @@ def _get_entry_data(
     )
 
 
+def _get_workload_entry_data(
+    hass: HomeAssistant,
+    call_data: dict[str, Any],
+    owners: set[str],
+    service: str,
+) -> KubernetesEntryData:
+    """Get the runtime data of the config entry that owns the targeted workloads.
+
+    A single call runs with one client, so targets from different config
+    entries, or an explicit ``entry_id`` contradicting the targets' owner, are
+    rejected before any client call.  Without a known owner this falls back to
+    :func:`_get_entry_data`.
+
+    Raises:
+        ServiceValidationError: when the targets span several config entries.
+    """
+    candidates = set(owners)
+    if explicit_entry_id := call_data.get("entry_id"):
+        candidates.add(explicit_entry_id)
+
+    if len(candidates) > 1:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="workloads_span_entries",
+            translation_placeholders={
+                "service": service,
+                "entries": ", ".join(sorted(candidates)),
+            },
+        )
+    if candidates:
+        return _get_entry_data(hass, {"entry_id": next(iter(candidates))})
+    return _get_entry_data(hass, call_data)
+
+
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Set up the Kubernetes services."""
     _LOGGER.debug("Setting up Kubernetes services")
@@ -542,7 +660,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     # Generic service handlers
     async def scale_workload(call: ServiceCall) -> None:
         """Scale one or more Kubernetes workloads to the specified number of replicas."""
-        workloads = _extract_workload_info(call.data, hass)
+        workloads, owners = _extract_workloads_with_owners(call.data, hass)
 
         if not workloads:
             raise _no_workloads_error(call.data, "scale_workload")
@@ -555,7 +673,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         replicas = call.data[ATTR_REPLICAS]
 
-        entry_data = _get_entry_data(hass, call.data)
+        entry_data = _get_workload_entry_data(hass, call.data, owners, "scale_workload")
         config_data = entry_data.config
         coordinator = entry_data.coordinator
         client = coordinator.client
@@ -600,7 +718,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def start_workload(call: ServiceCall) -> None:
         """Start one or more Kubernetes workloads by scaling to specified replicas, or trigger CronJobs."""
-        workloads = _extract_workload_info(call.data, hass)
+        workloads, owners = _extract_workloads_with_owners(call.data, hass)
 
         if not workloads:
             raise _no_workloads_error(call.data, "start_workload")
@@ -617,7 +735,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         replicas = call.data.get(ATTR_REPLICAS, 1)
 
-        entry_data = _get_entry_data(hass, call.data)
+        entry_data = _get_workload_entry_data(hass, call.data, owners, "start_workload")
         config_data = entry_data.config
         coordinator = entry_data.coordinator
         client = coordinator.client
@@ -666,7 +784,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def stop_workload(call: ServiceCall) -> None:
         """Stop one or more Kubernetes workloads by scaling to 0 (Deployments/StatefulSets only)."""
-        workloads = _extract_workload_info(call.data, hass)
+        workloads, owners = _extract_workloads_with_owners(call.data, hass)
 
         if not workloads:
             raise _no_workloads_error(call.data, "stop_workload")
@@ -678,7 +796,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             translation_key="unsupported_workload_type_stop",
         )
 
-        entry_data = _get_entry_data(hass, call.data)
+        entry_data = _get_workload_entry_data(hass, call.data, owners, "stop_workload")
         config_data = entry_data.config
         client = entry_data.coordinator.client
         stop_methods = {
@@ -703,7 +821,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     async def restart_workload(call: ServiceCall) -> None:
         """Perform a rollout restart of one or more Kubernetes workloads."""
-        workloads = _extract_workload_info(call.data, hass)
+        workloads, owners = _extract_workloads_with_owners(call.data, hass)
 
         if not workloads:
             raise _no_workloads_error(call.data, "restart_workload")
@@ -718,7 +836,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             "restart",
         )
 
-        entry_data = _get_entry_data(hass, call.data)
+        entry_data = _get_workload_entry_data(
+            hass, call.data, owners, "restart_workload"
+        )
         config_data = entry_data.config
         client = entry_data.coordinator.client
 
