@@ -4398,6 +4398,80 @@ class TestEnrichWorkloadsWithMetricsExtended:
 class TestPodMatchesSelector:
     """Tests for _pod_matches_selector helper."""
 
+    @pytest.mark.parametrize(
+        ("operator", "labels", "values", "expected"),
+        [
+            ("In", {"env": "prod"}, ["prod", "stage"], True),
+            ("In", {"env": "dev"}, ["prod", "stage"], False),
+            ("In", {}, ["prod"], False),
+            ("NotIn", {"env": "dev"}, ["prod"], True),
+            ("NotIn", {"env": "prod"}, ["prod"], False),
+            ("NotIn", {}, ["prod"], True),
+            ("Exists", {"env": "x"}, None, True),
+            ("Exists", {}, None, False),
+            ("DoesNotExist", {}, None, True),
+            ("DoesNotExist", {"env": "x"}, None, False),
+        ],
+    )
+    def test_expression_operators(
+        self, mock_client, operator, labels, values, expected
+    ):
+        """Each matchExpressions operator follows Kubernetes semantics."""
+        expr = {"key": "env", "operator": operator}
+        if values is not None:
+            expr["values"] = values
+        assert mock_client._pod_matches_selector(labels, {}, [expr]) is expected
+
+    def test_labels_and_expressions_narrow(self, mock_client):
+        """matchLabels and matchExpressions must both match."""
+        selector = {"app": "web"}
+        exprs = [{"key": "track", "operator": "NotIn", "values": ["canary"]}]
+        assert mock_client._pod_matches_selector(
+            {"app": "web", "track": "stable"}, selector, exprs
+        )
+        assert not mock_client._pod_matches_selector(
+            {"app": "web", "track": "canary"}, selector, exprs
+        )
+        assert not mock_client._pod_matches_selector(
+            {"app": "db", "track": "stable"}, selector, exprs
+        )
+
+    def test_all_expressions_must_match(self, mock_client):
+        """Every expression is ANDed."""
+        exprs = [
+            {"key": "a", "operator": "Exists"},
+            {"key": "b", "operator": "DoesNotExist"},
+        ]
+        assert mock_client._pod_matches_selector({"a": "1"}, {}, exprs) is True
+        assert (
+            mock_client._pod_matches_selector({"a": "1", "b": "2"}, {}, exprs) is False
+        )
+
+    def test_unknown_operator_fails_closed(self, mock_client):
+        """An unknown operator never matches."""
+        exprs = [{"key": "a", "operator": "Gt", "values": ["1"]}]
+        assert mock_client._pod_matches_selector({"a": "2"}, {}, exprs) is False
+
+    def test_malformed_expressions_do_not_raise(self, mock_client):
+        """Non-dict expressions and values: None do not raise."""
+        assert mock_client._pod_matches_selector({"a": "1"}, {}, ["bogus"]) is False
+        assert (
+            mock_client._pod_matches_selector(
+                {"a": "1"}, {}, [{"key": "a", "operator": "In", "values": None}]
+            )
+            is False
+        )
+        assert (
+            mock_client._pod_matches_selector(
+                {"a": "1"}, {}, [{"key": "a", "operator": "NotIn", "values": None}]
+            )
+            is True
+        )
+
+    def test_empty_selector_and_expressions(self, mock_client):
+        """Both empty returns False."""
+        assert mock_client._pod_matches_selector({"a": "1"}, {}, []) is False
+
     def test_matching_labels(self, mock_client):
         """Matching all selector labels returns True."""
         assert (
@@ -4597,6 +4671,38 @@ class TestParseReplicaWorkloadItem:
         assert result["is_running"] is True
         assert result["available_replicas"] == 2
 
+    def test_selector_expressions_emitted(self, mock_client):
+        """_parse_deployment_item emits matchExpressions as selector_expressions."""
+        exprs = [{"key": "track", "operator": "NotIn", "values": ["canary"]}]
+        raw = {
+            "metadata": {"name": "web", "namespace": "prod"},
+            "spec": {
+                "replicas": 1,
+                "selector": {"matchLabels": {"app": "web"}, "matchExpressions": exprs},
+            },
+            "status": {"availableReplicas": 1},
+        }
+        result = mock_client._parse_deployment_item(raw)
+        assert result is not None
+        assert result["selector_expressions"] == exprs
+
+    @pytest.mark.parametrize(
+        "selector",
+        [{}, {"matchLabels": {"app": "web"}}, {"matchExpressions": None}],
+    )
+    def test_selector_expressions_default_empty(self, mock_client, selector):
+        """Missing or null matchExpressions parses to an empty list."""
+        spec = {"replicas": 1}
+        spec["selector"] = selector
+        raw = {
+            "metadata": {"name": "web", "namespace": "prod"},
+            "spec": spec,
+            "status": {"availableReplicas": 1},
+        }
+        result = mock_client._parse_deployment_item(raw)
+        assert result is not None
+        assert result["selector_expressions"] == []
+
     def test_missing_selector(self, mock_client):
         """_parse_replica_workload_item handles missing selector gracefully."""
         raw = {
@@ -4723,6 +4829,56 @@ class TestCalculateResourceUsage:
 
         assert cpu == 300.0
         assert memory == 768.0
+
+    def test_expressions_only_workload(self, mock_client):
+        """A workload with only matchExpressions sums its matching pods."""
+        workload = {
+            "name": "web-app",
+            "namespace": "prod",
+            "selector": {},
+            "selector_expressions": [
+                {"key": "app", "operator": "In", "values": ["web"]}
+            ],
+        }
+        pods = [
+            {"name": "p1", "namespace": "prod", "labels": {"app": "web"}},
+            {"name": "p2", "namespace": "prod", "labels": {"app": "web"}},
+            {"name": "p3", "namespace": "prod", "labels": {"app": "db"}},
+        ]
+        metrics = {
+            "prod/p1": {"cpu": 100.0, "memory": 256.0},
+            "prod/p2": {"cpu": 200.0, "memory": 512.0},
+            "prod/p3": {"cpu": 900.0, "memory": 999.0},
+        }
+        cpu, memory = mock_client._calculate_resource_usage(workload, pods, metrics)
+        assert cpu == 300.0
+        assert memory == 768.0
+
+    def test_labels_and_notin_excludes_canary(self, mock_client):
+        """matchLabels plus a NotIn expression excludes the canary pod."""
+        workload = {
+            "name": "web-app",
+            "namespace": "prod",
+            "selector": {"app": "web"},
+            "selector_expressions": [
+                {"key": "track", "operator": "NotIn", "values": ["canary"]}
+            ],
+        }
+        pods = [
+            {"name": "p1", "namespace": "prod", "labels": {"app": "web"}},
+            {
+                "name": "p2",
+                "namespace": "prod",
+                "labels": {"app": "web", "track": "canary"},
+            },
+        ]
+        metrics = {
+            "prod/p1": {"cpu": 100.0, "memory": 256.0},
+            "prod/p2": {"cpu": 700.0, "memory": 700.0},
+        }
+        cpu, memory = mock_client._calculate_resource_usage(workload, pods, metrics)
+        assert cpu == 100.0
+        assert memory == 256.0
 
     def test_no_matching_pods(self, mock_client):
         """_calculate_resource_usage returns zeros when no pods match."""
