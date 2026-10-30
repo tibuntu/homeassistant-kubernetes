@@ -223,6 +223,66 @@ def _collect_entity_ids(call_data: dict[str, Any]) -> list[str]:
     return [eid for eid in entity_ids if eid.startswith("switch.")]
 
 
+def _collect_raw_workload_names(call_data: dict[str, Any]) -> list[str]:
+    """Collect raw (non switch.*) workload names from workload_names only.
+
+    The top-level "target" fallback is never consulted: it only carries
+    entity IDs.
+    """
+    if ATTR_WORKLOAD_NAMES not in call_data:
+        return []
+    return [
+        item
+        for item in _extract_entity_ids_from_value(call_data[ATTR_WORKLOAD_NAMES])
+        if not item.startswith("switch.")
+    ]
+
+
+def _resolve_workload_name(
+    hass: HomeAssistant,
+    name: str,
+    provided_ns: str | None,
+    explicit_entry_id: str | None,
+) -> tuple[tuple[str, str | None, str] | None, set[str]]:
+    """Resolve a single entity ID or bare workload name.
+
+    Returns (workload or None, owning entry IDs).
+    """
+    is_entity_id = name.startswith("switch.")
+    entity_id = name if is_entity_id else f"switch.{name}"
+
+    namespace, workload_name, workload_type = _get_workload_info_from_entity(hass, name)
+    owner = (
+        _entity_entry_id(hass, entity_id) if workload_name and workload_type else None
+    )
+
+    # Panel calls send a bare name plus entry_id.  When the same-named
+    # switch belongs to a different entry, resolve the name in the
+    # explicit entry instead.
+    raw_found: list[tuple[str, tuple[str, str | None, str]]] = []
+    if explicit_entry_id and not is_entity_id and owner and owner != explicit_entry_id:
+        raw_found = _find_raw_workloads(hass, name, provided_ns, explicit_entry_id)
+
+    if raw_found:
+        return raw_found[0][1], {o for o, _ in raw_found}
+    if workload_name and workload_type:
+        return (workload_name, namespace, workload_type), ({owner} if owner else set())
+
+    # Try resolving as a raw workload name via coordinator data
+    # (the scoped search above only runs for a resolved entity).
+    raw_found = _find_raw_workloads(hass, name, provided_ns, explicit_entry_id)
+    if raw_found:
+        return raw_found[0][1], {o for o, _ in raw_found}
+    _LOGGER.warning(
+        "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
+        name,
+        namespace,
+        workload_name,
+        workload_type,
+    )
+    return None, set()
+
+
 def _extract_workloads_with_owners(
     call_data: dict[str, Any], hass: HomeAssistant
 ) -> tuple[list[tuple[str, str | None, str]], set[str]]:
@@ -270,58 +330,27 @@ def _extract_workloads_with_owners(
             name = name["entity_id"]
 
         if isinstance(name, str):
-            provided_ns = call_data.get(ATTR_NAMESPACE)
-            explicit_entry_id = call_data.get("entry_id")
-            is_entity_id = name.startswith("switch.")
-            entity_id = name if is_entity_id else f"switch.{name}"
-
-            namespace, workload_name, workload_type = _get_workload_info_from_entity(
-                hass, name
+            resolved, found_owners = _resolve_workload_name(
+                hass,
+                name,
+                call_data.get(ATTR_NAMESPACE),
+                call_data.get("entry_id"),
             )
-            owner = (
-                _entity_entry_id(hass, entity_id)
-                if workload_name and workload_type
-                else None
-            )
+            if resolved:
+                workloads.append(resolved)
+                owners.update(found_owners)
 
-            # Panel calls send a bare name plus entry_id.  When the same-named
-            # switch belongs to a different entry, resolve the name in the
-            # explicit entry instead.
-            raw_found: list[tuple[str, tuple[str, str | None, str]]] = []
-            if (
-                explicit_entry_id
-                and not is_entity_id
-                and owner
-                and owner != explicit_entry_id
-            ):
-                raw_found = _find_raw_workloads(
-                    hass, name, provided_ns, explicit_entry_id
-                )
-
-            if raw_found:
-                workloads.append(raw_found[0][1])
-                owners.update(o for o, _ in raw_found)
-            elif workload_name and workload_type:
-                workloads.append((workload_name, namespace, workload_type))
-                if owner:
-                    owners.add(owner)
-            else:
-                # Try resolving as a raw workload name via coordinator data
-                # (the scoped search above only runs for a resolved entity).
-                raw_found = _find_raw_workloads(
-                    hass, name, provided_ns, explicit_entry_id
-                )
-                if raw_found:
-                    workloads.append(raw_found[0][1])
-                    owners.update(o for o, _ in raw_found)
-                else:
-                    _LOGGER.warning(
-                        "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
-                        name,
-                        namespace,
-                        workload_name,
-                        workload_type,
-                    )
+    # Raw (non switch.*) names from workload_names
+    for raw_name in _collect_raw_workload_names(call_data):
+        resolved, found_owners = _resolve_workload_name(
+            hass,
+            raw_name,
+            call_data.get(ATTR_NAMESPACE),
+            call_data.get("entry_id"),
+        )
+        if resolved:
+            workloads.append(resolved)
+            owners.update(found_owners)
 
     # Use provided namespace if available
     provided_namespace = call_data.get(ATTR_NAMESPACE)

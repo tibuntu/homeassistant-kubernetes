@@ -445,7 +445,7 @@
       "message": "Cannot run {service}: the targeted workloads belong to different Kubernetes config entries ({entries}). Call the service once per cluster."
     },
     "no_valid_workloads": {
-      "message": "No valid workloads found for {service}. Requested: {requested}. Ensure workload_name/workload_names reference entities that exist (e.g. switch.xxx) and that those switches expose namespace and workload_type attributes."
+      "message": "No valid workloads found for {service}. Requested: {requested}. Ensure workload_name/workload_names reference existing switch entities (e.g. switch.xxx) that expose namespace and workload_type attributes, or raw workload names that exist in a loaded cluster."
     },
     "unsupported_workload_type": {
       "message": "Cannot {operation} {workloads}: only {supported} are supported."
