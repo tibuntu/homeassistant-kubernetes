@@ -59,7 +59,7 @@ Triggers one or more CronJobs immediately (creates a job from the CronJob templa
 - `workload_names` (list or target selector, optional): Multiple CronJob names or entity IDs
 - `namespace` (string, optional): Target namespace (defaults to configured namespace)
 - `replicas` (integer, optional): Ignored for CronJobs
-- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
+- `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Examples**:
 

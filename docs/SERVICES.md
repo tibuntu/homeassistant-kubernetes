@@ -282,7 +282,7 @@ workload_names:
 
 When using entity IDs, the service automatically extracts the workload name, namespace, and workload type from the entity attributes.
 
-With several clusters configured, the four workload services run against the cluster that owns the targets: for entity IDs it is the entry that registered the switch, for raw workload names the cluster that has a workload with that name. An explicit `entry_id` must be loaded, and raw names are then resolved only in that entry. `delete_job`, `cordon_node` and `uncordon_node` still default to the first configured entry.
+With several clusters configured, the four workload services run against the cluster that owns the targets: for entity IDs it is the entry that registered the switch, for raw workload names the cluster that has a workload with that name. A bare `workload_name` is first tried as the entity `switch.<name>`; only when no such switch resolves is it looked up as a raw name. An explicit `entry_id` must be loaded; raw names are then resolved only in that entry, and a bare name whose `switch.<name>` belongs to another cluster is looked up in the `entry_id` cluster instead. `delete_job`, `cordon_node` and `uncordon_node` still default to the first configured entry.
 
 ## Service Behavior
 
@@ -297,7 +297,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 - `delete_job` / `cordon_node` / `uncordon_node` are called without a usable name
 - A workload's type does not support the requested operation — for example scaling, stopping, or restarting a CronJob. The whole call is rejected; no target in the call is touched.
 - `scale_workload` targets an HPA-managed workload with `replicas` other than `0`. The whole call is rejected; no target in the call is touched.
-- `scale_workload` / `start_workload` / `stop_workload` / `restart_workload` span more than one cluster: the targets belong to different config entries, an explicit `entry_id` contradicts the targets' cluster, or a raw workload name without `entry_id` exists in more than one cluster. The whole call is rejected; call the service once per cluster (or pass `entry_id`).
+- `scale_workload` / `start_workload` / `stop_workload` / `restart_workload` span more than one cluster: the targets belong to different config entries, an explicit `entry_id` contradicts the targets' cluster, or a raw workload name without `entry_id` exists in more than one cluster. The whole call is rejected; call the service once per cluster (or pass `entry_id` to pick the cluster for an ambiguous raw name).
 
 **Failed operations** raise a regular error *after* every target has been attempted:
 
