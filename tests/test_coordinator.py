@@ -30,6 +30,7 @@ from custom_components.kubernetes.const import (
 )
 from custom_components.kubernetes.coordinator import (
     KubernetesDataCoordinator,
+    _watch_url_namespace,
     get_hpa_for,
     hpa_attributes,
 )
@@ -1547,6 +1548,7 @@ class TestWatchSupport:
             "pods",
             [{"metadata": {"name": "new-pod", "namespace": "ns2"}}],
             mock_client._parse_pod_item,
+            "ns2",
         )
 
         assert "ns1_existing" in coordinator_watch_enabled.data["pods"]
@@ -1964,6 +1966,225 @@ class TestApplyWatchEventExtended:
             await hass.async_block_till_done()
 
             m.assert_called_once()
+
+
+class TestRelistPruning:
+    """A relist is authoritative for its scope and prunes stale objects."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Mock Kubernetes client."""
+        client = MagicMock()
+        client.host = "test-cluster.example.com"
+        client.port = 6443
+        client.monitor_all_namespaces = True
+        client.namespaces = ["default"]
+        client.list_resource_with_version = AsyncMock(return_value=([], "100"))
+
+        async def _empty_stream(url, rv):
+            return
+            yield
+
+        client.watch_stream = _empty_stream
+        return client
+
+    @pytest.fixture
+    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
+        """Create coordinator with an AsyncMock orphan cleanup."""
+        entry = make_config_entry(
+            entry_id="test-entry-id",
+            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
+            options={CONF_ENABLE_WATCH: True},
+        )
+        with patch("homeassistant.helpers.frame.report_usage"):
+            c = KubernetesDataCoordinator(hass, entry, mock_client)
+        c._cleanup_orphaned_entities = AsyncMock()
+        c.async_update_listeners = MagicMock()
+        return c
+
+    @staticmethod
+    def _pod(name, namespace="default"):
+        return {"name": name, "namespace": namespace}
+
+    @staticmethod
+    def _pod_item(name, namespace="default"):
+        return {"metadata": {"name": name, "namespace": namespace}}
+
+    @staticmethod
+    def _parse_pod(item):
+        meta = item["metadata"]
+        return {"name": meta["name"], "namespace": meta["namespace"]}
+
+    async def test_cluster_scope_prunes_stale_pod_and_fixes_count(self, hass, coord):
+        """A cluster-wide relist drops pods missing from the list."""
+        coord.data = {
+            "pods": {
+                "default_keep": self._pod("keep"),
+                "default_ghost": self._pod("ghost"),
+                "other_ghost": self._pod("ghost", "other"),
+            },
+            "pods_count": 3,
+        }
+
+        coord._populate_from_list(
+            "pods", [self._pod_item("keep")], self._parse_pod, None
+        )
+        await hass.async_block_till_done()
+
+        assert set(coord.data["pods"]) == {"default_keep"}
+        assert coord.data["pods_count"] == 1
+        coord._cleanup_orphaned_entities.assert_awaited_once_with(coord.data)
+
+    async def test_nodes_relist_prunes_removed_node(self, hass, coord):
+        """A relist of nodes drops removed nodes and fixes nodes_count."""
+        coord.data = {
+            "nodes": {"node-1": {"name": "node-1"}, "node-2": {"name": "node-2"}},
+            "nodes_count": 2,
+        }
+
+        coord._populate_from_list(
+            "nodes",
+            [{"metadata": {"name": "node-1"}}],
+            lambda item: {"name": item["metadata"]["name"]},
+        )
+        await hass.async_block_till_done()
+
+        assert set(coord.data["nodes"]) == {"node-1"}
+        assert coord.data["nodes_count"] == 1
+        coord._cleanup_orphaned_entities.assert_awaited_once()
+
+    async def test_namespace_scope_prunes_only_that_namespace(self, hass, coord):
+        """A namespace relist leaves other namespaces alone, incl. prefix matches."""
+        coord.data = {
+            "pods": {
+                "ns_keep": self._pod("keep", "ns"),
+                "ns_ghost": self._pod("ghost", "ns"),
+                "ns-2_x": self._pod("x", "ns-2"),
+                "other_y": self._pod("y", "other"),
+            },
+            "pods_count": 4,
+        }
+
+        coord._populate_from_list(
+            "pods", [self._pod_item("keep", "ns")], self._parse_pod, "ns"
+        )
+        await hass.async_block_till_done()
+
+        assert set(coord.data["pods"]) == {"ns_keep", "ns-2_x", "other_y"}
+        assert coord.data["pods_count"] == 3
+        coord._cleanup_orphaned_entities.assert_awaited_once()
+
+    async def test_unparsable_item_is_absent_with_consistent_count(self, coord):
+        """An item the parser drops ends up absent from data after a relist."""
+        coord.data = {
+            "pods": {"default_job": self._pod("job"), "default_a": self._pod("a")},
+            "pods_count": 2,
+        }
+
+        def parse(item):
+            return None if item["metadata"]["name"] == "job" else self._parse_pod(item)
+
+        coord._populate_from_list(
+            "pods", [self._pod_item("job"), self._pod_item("a")], parse, None
+        )
+
+        assert set(coord.data["pods"]) == {"default_a"}
+        assert coord.data["pods_count"] == 1
+
+    async def test_prune_false_only_merges(self, hass, coord):
+        """With prune=False stale entries stay and no cleanup is scheduled."""
+        coord.data = {
+            "pods": {"default_ghost": self._pod("ghost")},
+            "pods_count": 1,
+        }
+
+        coord._populate_from_list(
+            "pods", [self._pod_item("new")], self._parse_pod, None, prune=False
+        )
+        await hass.async_block_till_done()
+
+        assert set(coord.data["pods"]) == {"default_ghost", "default_new"}
+        assert coord.data["pods_count"] == 2
+        coord._cleanup_orphaned_entities.assert_not_awaited()
+
+    async def test_no_cleanup_when_nothing_pruned(self, hass, coord):
+        """Orphan cleanup is only scheduled when something was pruned."""
+        coord.data = {"pods": {"default_a": self._pod("a")}, "pods_count": 1}
+
+        coord._populate_from_list("pods", [self._pod_item("a")], self._parse_pod)
+        await hass.async_block_till_done()
+
+        coord._cleanup_orphaned_entities.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("url", "expected"),
+        [
+            ("https://h:6443/api/v1/pods", None),
+            ("https://h:6443/api/v1/nodes", None),
+            ("https://h:6443/apis/apps/v1/deployments", None),
+            ("https://h:6443/api/v1/namespaces/web/pods", "web"),
+            ("https://h:6443/apis/apps/v1/namespaces/web/deployments", "web"),
+            ("https://h:6443/api/v1/namespaces/namespaces/pods", "namespaces"),
+            ("https://h:6443/apis/batch/v1/namespaces/ns-2/jobs", "ns-2"),
+        ],
+    )
+    def test_watch_url_namespace(self, url, expected):
+        """The namespace is read from the end of the watch URL path."""
+        assert _watch_url_namespace(url) == expected
+
+    async def test_watch_loop_namespace_url_prunes_only_that_namespace(
+        self, coord, mock_client
+    ):
+        """A per-namespace relist prunes its own ghost but keeps other namespaces."""
+        coord.data = {
+            "pods": {
+                "web_ghost": self._pod("ghost", "web"),
+                "db_pod": self._pod("pod", "db"),
+            },
+            "pods_count": 2,
+        }
+        mock_client.list_resource_with_version.return_value = (
+            [self._pod_item("live", "web")],
+            "100",
+        )
+
+        async def _stop(url, rv):
+            coord._watch_stop_event.set()
+            return
+            yield
+
+        mock_client.watch_stream = _stop
+
+        await coord._run_watch_loop(
+            "pods", "https://h/api/v1/namespaces/web/pods", self._parse_pod
+        )
+
+        assert set(coord.data["pods"]) == {"web_live", "db_pod"}
+        assert coord.data["pods_count"] == 2
+
+    async def test_watch_loop_skips_prune_when_poll_finished_during_list(
+        self, coord, mock_client
+    ):
+        """A poll finishing between the list request and the merge blocks pruning."""
+        coord.data = {"pods": {"default_new": self._pod("new")}, "pods_count": 1}
+
+        async def _list(url):
+            coord._poll_generation += 1
+            return [self._pod_item("old")], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stop(url, rv):
+            coord._watch_stop_event.set()
+            return
+            yield
+
+        mock_client.watch_stream = _stop
+
+        await coord._run_watch_loop("pods", "https://h/api/v1/pods", self._parse_pod)
+
+        assert set(coord.data["pods"]) == {"default_new", "default_old"}
+        coord._cleanup_orphaned_entities.assert_not_awaited()
 
 
 class TestRunWatchLoopExtended:
