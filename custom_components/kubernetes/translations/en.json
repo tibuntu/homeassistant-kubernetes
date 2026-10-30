@@ -441,6 +441,9 @@
     "entry_not_loaded": {
       "message": "No loaded Kubernetes config entry with entry ID {entry_id}."
     },
+    "workloads_span_entries": {
+      "message": "Cannot run {service}: the targeted workloads belong to different Kubernetes config entries ({entries}). Call the service once per cluster."
+    },
     "no_valid_workloads": {
       "message": "No valid workloads found for {service}. Requested: {requested}. Ensure workload_name/workload_names reference entities that exist (e.g. switch.xxx) and that those switches expose namespace and workload_type attributes."
     },
