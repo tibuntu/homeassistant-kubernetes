@@ -50,14 +50,19 @@ _MEMORY_OUTPUT_MULTIPLIERS = {"KiB": 1024, "MiB": 1024**2, "GiB": 1024**3}
 def _quantity_to_base(quantity: str, base_scale: int = 1) -> float:
     """Convert a quantity string to ``base_scale`` sub-units of its base unit.
 
-    ``base_scale`` (e.g. 10**9 for nanocores) is folded into the integer scale
-    before dividing, so whole-number results such as "500m" -> 500_000_000
-    nanocores stay exact. Raises ValueError/AttributeError on bad input.
+    ``base_scale`` (e.g. 10**9 for nanocores) is combined with the suffix scale
+    in integer arithmetic first; when that yields a whole factor (n/u/m CPU,
+    every memory suffix) the number is multiplied by it once, so large values
+    such as "38369075000n" are not rounded twice. Raises ValueError,
+    AttributeError or TypeError on bad input.
     """
     for suffix, (numerator, denominator) in _QUANTITY_SUFFIXES.items():
         if quantity.endswith(suffix):
             number = float(quantity[: -len(suffix)])
-            return number * numerator * base_scale / denominator
+            scale, remainder = divmod(numerator * base_scale, denominator)
+            if remainder == 0:
+                return number * scale
+            return number * (numerator * base_scale) / denominator
     return float(quantity) * base_scale
 
 
@@ -75,7 +80,7 @@ def parse_cpu_quantity(cpu_str: str, output_type: str = "cores") -> float:
         if output_type == "cores" or output_type not in _CPU_OUTPUT_DIVISORS:
             return round(value)
         return round(value, 2)
-    except (ValueError, IndexError, TypeError, AttributeError):
+    except (ValueError, IndexError, TypeError, AttributeError, OverflowError):
         _LOGGER.warning("Failed to parse CPU string: %s", cpu_str)
         return 0.0
 
@@ -89,6 +94,6 @@ def parse_memory_quantity(memory_str: str, output_type: str = "MiB") -> float:
         if output_type not in _MEMORY_OUTPUT_MULTIPLIERS:
             _LOGGER.warning("Invalid output type '%s', defaulting to MiB", output_type)
         return round(bytes_value / multiplier, 2)
-    except (ValueError, IndexError, TypeError, AttributeError):
+    except (ValueError, IndexError, TypeError, AttributeError, OverflowError):
         _LOGGER.warning("Failed to parse memory string: %s", memory_str)
         return 0.0
