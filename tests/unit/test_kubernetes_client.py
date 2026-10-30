@@ -5722,13 +5722,21 @@ class TestSetCronjobSuspend:
 class TestParsePodContainerState:
     """Tests for container-state reason extraction and problem flag in _parse_pods_data."""
 
-    def _make_raw_pod(self, phase="Running", container_statuses=None, conditions=None):
+    def _make_raw_pod(
+        self,
+        phase="Running",
+        container_statuses=None,
+        conditions=None,
+        init_container_statuses=None,
+    ):
         """Build a minimal raw pod dict for _parse_pods_data."""
         status: dict = {"phase": phase}
         if container_statuses is not None:
             status["containerStatuses"] = container_statuses
         if conditions is not None:
             status["conditions"] = conditions
+        if init_container_statuses is not None:
+            status["initContainerStatuses"] = init_container_statuses
         return {
             "metadata": {
                 "name": "test-pod",
@@ -5740,6 +5748,128 @@ class TestParsePodContainerState:
             "spec": {"nodeName": "node-1"},
             "status": status,
         }
+
+    @staticmethod
+    def _waiting(reason):
+        return {
+            "ready": False,
+            "restartCount": 0,
+            "state": {"waiting": {"reason": reason}},
+        }
+
+    @staticmethod
+    def _terminated(exit_code, reason=None):
+        term = {"exitCode": exit_code}
+        if reason is not None:
+            term["reason"] = reason
+        return {"ready": False, "restartCount": 0, "state": {"terminated": term}}
+
+    def _parse(self, mock_client, **kwargs):
+        return mock_client._parse_pods_data([self._make_raw_pod(**kwargs)])[0]
+
+    def test_init_crash_loop_back_off(self, mock_client):
+        """Init container CrashLoopBackOff → Init: prefixed problem."""
+        pod = self._parse(
+            mock_client,
+            phase="Pending",
+            container_statuses=[self._waiting("PodInitializing")],
+            init_container_statuses=[self._waiting("CrashLoopBackOff")],
+        )
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "Init:CrashLoopBackOff"
+        assert pod["container_waiting_reason"] == "PodInitializing"
+
+    def test_init_image_pull_back_off(self, mock_client):
+        """Init container ImagePullBackOff → Init: prefixed problem."""
+        pod = self._parse(
+            mock_client,
+            phase="Pending",
+            container_statuses=[self._waiting("PodInitializing")],
+            init_container_statuses=[self._waiting("ImagePullBackOff")],
+        )
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "Init:ImagePullBackOff"
+
+    def test_init_terminated_error_failed_phase(self, mock_client):
+        """Init container terminated non-zero in a Failed pod → Init:Error."""
+        pod = self._parse(
+            mock_client,
+            phase="Failed",
+            init_container_statuses=[self._terminated(1, "Error")],
+        )
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "Init:Error"
+
+    def test_init_terminated_no_reason(self, mock_client):
+        """Init container non-zero exit without a reason falls back to Error."""
+        pod = self._parse(
+            mock_client,
+            phase="Pending",
+            init_container_statuses=[self._terminated(1)],
+        )
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "Init:Error"
+
+    def test_init_completed_app_running(self, mock_client):
+        """Completed init container (exit 0) with a running app → no problem."""
+        pod = self._parse(
+            mock_client,
+            phase="Running",
+            container_statuses=[
+                {"ready": True, "restartCount": 0, "state": {"running": {}}}
+            ],
+            init_container_statuses=[self._terminated(0, "Completed")],
+        )
+        assert pod["problem"] is False
+        assert pod["problem_reason"] is None
+
+    def test_init_waiting_benign(self, mock_client):
+        """Init container waiting with a benign reason → no problem."""
+        pod = self._parse(
+            mock_client,
+            phase="Pending",
+            container_statuses=[self._waiting("PodInitializing")],
+            init_container_statuses=[self._waiting("PodInitializing")],
+        )
+        assert pod["problem"] is False
+        assert pod["problem_reason"] is None
+
+    def test_second_app_container_waiting_problem(self, mock_client):
+        """A failing second container is detected behind a benign first one."""
+        pod = self._parse(
+            mock_client,
+            phase="Running",
+            container_statuses=[
+                self._waiting("ContainerCreating"),
+                self._waiting("CrashLoopBackOff"),
+            ],
+        )
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "CrashLoopBackOff"
+        assert pod["container_waiting_reason"] == "ContainerCreating"
+
+    def test_second_app_container_terminated_problem(self, mock_client):
+        """A non-zero exit in a later container counts after an exit-0 first one."""
+        pod = self._parse(
+            mock_client,
+            phase="Running",
+            container_statuses=[
+                self._terminated(0, "Completed"),
+                self._terminated(1, "Error"),
+            ],
+        )
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "Error"
+
+    def test_app_waiting_precedes_init_failure(self, mock_client):
+        """A non-benign app waiting reason wins over an init failure."""
+        pod = self._parse(
+            mock_client,
+            phase="Running",
+            container_statuses=[self._waiting("ImagePullBackOff")],
+            init_container_statuses=[self._waiting("CrashLoopBackOff")],
+        )
+        assert pod["problem_reason"] == "ImagePullBackOff"
 
     def test_crash_loop_back_off(self, mock_client):
         """CrashLoopBackOff waiting reason → problem True."""

@@ -615,6 +615,32 @@ class KubernetesClient:
             self._log_error("aiohttp get all pods", ex)
             raise
 
+    @staticmethod
+    def _first_container_problem(statuses: list[dict[str, Any]]) -> str | None:
+        """Return the first current-state failure reason among container statuses."""
+        for cs in statuses:
+            waiting = (cs.get("state") or {}).get("waiting")
+            reason = waiting.get("reason") if waiting else None
+            if reason and reason not in _BENIGN_WAITING_REASONS:
+                return str(reason)
+        for cs in statuses:
+            terminated = (cs.get("state") or {}).get("terminated")
+            if terminated and terminated.get("exitCode") not in (None, 0):
+                return str(terminated.get("reason") or "Error")
+        return None
+
+    def _derive_container_problem(
+        self,
+        container_statuses: list[dict[str, Any]],
+        init_container_statuses: list[dict[str, Any]],
+    ) -> str | None:
+        """Return the problem reason from app containers, then init containers."""
+        reason = self._first_container_problem(container_statuses)
+        if reason is not None:
+            return reason
+        init_reason = self._first_container_problem(init_container_statuses)
+        return f"Init:{init_reason}" if init_reason is not None else None
+
     def _parse_pods_data(self, pods: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Parse raw pod data from Kubernetes API into standardized format."""
         parsed_pods = []
@@ -701,23 +727,14 @@ class KubernetesClient:
                             break
 
                 # Derive a single automation-friendly problem flag/reason (current state).
-                problem = False
-                problem_reason = None
-                if (
-                    container_waiting_reason
-                    and container_waiting_reason not in _BENIGN_WAITING_REASONS
-                ):
-                    problem = True
-                    problem_reason = container_waiting_reason
-                elif container_terminated_exit_code not in (None, 0):
-                    problem = True
-                    problem_reason = container_terminated_reason or "Error"
-                elif phase == "Failed":
-                    problem = True
+                problem_reason = self._derive_container_problem(
+                    container_statuses, status.get("initContainerStatuses") or []
+                )
+                if problem_reason is None and phase == "Failed":
                     problem_reason = "Failed"
-                elif phase == "Pending" and pending_reason:
-                    problem = True
+                elif problem_reason is None and phase == "Pending" and pending_reason:
                     problem_reason = pending_reason
+                problem = problem_reason is not None
 
                 parsed_pod = {
                     "name": metadata.get("name", "Unknown"),
