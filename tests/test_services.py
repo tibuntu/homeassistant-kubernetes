@@ -43,6 +43,7 @@ from custom_components.kubernetes.services import (
     _entity_entry_id,
     _extract_entity_ids_from_value,
     _extract_workload_info,
+    _extract_workloads_with_owners,
     _get_entry_data,
     _get_workload_info_from_entity,
     _no_workloads_error,
@@ -2557,6 +2558,47 @@ class TestMultiEntryRouting:
 
         entry_b.runtime_data.client.scale_deployment.assert_awaited_once()
         entry_a.runtime_data.client.scale_deployment.assert_not_called()
+
+    async def test_workload_names_raw_name_scoped_by_namespace(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """The namespace narrows a raw workload_names item to one entry."""
+        entry_a, entry_b = two_entries
+        entry_a.runtime_data.coordinator.data = {
+            "deployments": {"ns-a_web": {"name": "web", "namespace": "ns-a"}}
+        }
+        entry_b.runtime_data.coordinator.data = {
+            "deployments": {"ns-b_web": {"name": "web", "namespace": "ns-b"}}
+        }
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {ATTR_WORKLOAD_NAMES: ["web"], ATTR_NAMESPACE: "ns-b", ATTR_REPLICAS: 2},
+            blocking=True,
+        )
+
+        entry_b.runtime_data.client.scale_deployment.assert_awaited_once_with(
+            "web", 2, "ns-b"
+        )
+        entry_a.runtime_data.client.scale_deployment.assert_not_called()
+
+    async def test_workload_names_dict_wrapped_raw_name(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """A raw name inside a dict-wrapped workload_names value resolves."""
+        _, entry_b = two_entries
+        entry_b.runtime_data.coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}}
+        }
+
+        workloads, owners = _extract_workloads_with_owners(
+            {ATTR_WORKLOAD_NAMES: {"entity_id": ["web"]}}, hass
+        )
+
+        assert workloads == [("web", "default", WORKLOAD_TYPE_DEPLOYMENT)]
+        assert owners == {"entry_b"}
 
     async def test_workload_names_raw_name_in_both_entries_is_ambiguous(
         self, hass: HomeAssistant, two_entries
