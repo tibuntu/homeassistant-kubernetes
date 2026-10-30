@@ -93,6 +93,19 @@ def _carry_metrics(existing: dict[str, Any] | None, parsed: dict[str, Any]) -> N
         parsed.update({k: existing[k] for k in METRIC_KEYS if k in existing})
 
 
+def _watch_url_namespace(url: str) -> str | None:
+    """Return the namespace a per-namespace watch URL is scoped to, else None.
+
+    ``_build_watch_configs`` builds ``{base}/{api_group}/namespaces/{ns}/{plural}``
+    for per-namespace loops; cluster-wide and node URLs have no such segment.
+    Parsed from the end so a namespace literally named "namespaces" still works.
+    """
+    parts = url.split("?", 1)[0].rstrip("/").split("/")
+    if len(parts) >= 3 and parts[-3] == "namespaces":
+        return parts[-2]
+    return None
+
+
 def _reconnect_delay(failure_streak: int) -> float:
     """Jittered exponential backoff for a failing watch loop, capped."""
     return min(
@@ -238,6 +251,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # a replacement dict. Without this, watch changes are lost when the poll
         # overwrites self.data.
         self._data_lock: asyncio.Lock = asyncio.Lock()
+        # Bumped at the end of every successful poll. A watch relist compares it
+        # before/after its list request to detect a poll that landed in between.
+        self._poll_generation: int = 0
 
         self._metrics_issue_active: bool = False
         self._watch_issue_active: bool = False
@@ -466,6 +482,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     self.hass, self.config_entry, current_namespaces
                 )
 
+                self._poll_generation += 1
                 return data
 
             except ConfigEntryAuthFailed:
@@ -980,11 +997,24 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         resource_type: str,
         items: list[dict[str, Any]],
         parse_fn: Any,
+        namespace: str | None = None,
+        *,
+        prune: bool = True,
     ) -> None:
-        """Merge parsed items from a list response into coordinator.data[resource_type]."""
+        """Apply a list response to coordinator.data[resource_type].
+
+        The list is authoritative for its scope: the whole bucket when
+        ``namespace`` is None, otherwise only entries of that namespace. With
+        ``prune`` (default) in-scope entries missing from the list (deleted
+        during a watch gap) are removed and orphaned entities cleaned up; with
+        ``prune=False`` the list is only merged in. An item whose parser raises
+        keeps its existing entry (a full poll would fail and delete nothing);
+        an item the parser drops (None) is still pruned, like in the poll.
+        """
         if self.data is None:
             return
         parsed: dict[str, dict[str, Any]] = {}
+        failed_keys: set[str] = set()
         for item in items:
             try:
                 result = parse_fn(item)
@@ -1000,14 +1030,43 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning(
                     "Failed to parse %s item during list: %s", resource_type, ex
                 )
+                try:
+                    meta = item["metadata"]
+                    failed_keys.add(
+                        meta["name"]
+                        if resource_type == "nodes"
+                        else f"{meta['namespace']}_{meta['name']}"
+                    )
+                except Exception:
+                    _LOGGER.debug(
+                        "Cannot derive key of unparsable %s item", resource_type
+                    )
+        bucket = self.data.setdefault(resource_type, {})
+        pruned = 0
+        if prune:
+            stale = [
+                key
+                for key, value in bucket.items()
+                if key not in parsed
+                and key not in failed_keys
+                and (namespace is None or value.get("namespace") == namespace)
+            ]
+            for key in stale:
+                del bucket[key]
+            pruned = len(stale)
         # Merge into the existing dict so that tasks watching different namespaces
-        # for the same resource type don't overwrite each other's initial data.
-        self.data.setdefault(resource_type, {}).update(parsed)
+        # for the same resource type don't overwrite each other's data.
+        bucket.update(parsed)
         # Sync derived counts
         if resource_type == "pods":
             self.data["pods_count"] = len(self.data["pods"])
         elif resource_type == "nodes":
             self.data["nodes_count"] = len(self.data["nodes"])
+        if pruned:
+            _LOGGER.debug(
+                "Relist of %s pruned %d stale object(s)", resource_type, pruned
+            )
+            self.hass.async_create_task(self._cleanup_orphaned_entities(self.data))
 
     def _apply_watch_event(
         self,
@@ -1091,17 +1150,28 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # namespace recovering would clear the repair issue while another is still
         # failing. resource_type itself stays the data-bucket key.
         loop_key = f"{resource_type}:{url}"
+        namespace = _watch_url_namespace(url)
 
         while not self._watch_stop_event.is_set():
             try:
                 if resource_version == "0":
                     # Full list + extract resourceVersion to anchor the watch
+                    generation = self._poll_generation
                     (
                         items,
                         resource_version,
                     ) = await self.client.list_resource_with_version(url)
                     async with self._data_lock:
-                        self._populate_from_list(resource_type, items, parse_fn)
+                        # A poll that finished after the list request may hold
+                        # objects created after it, so its snapshot may be
+                        # fresher than this list; merge without pruning then.
+                        self._populate_from_list(
+                            resource_type,
+                            items,
+                            parse_fn,
+                            namespace,
+                            prune=self._poll_generation == generation,
+                        )
                     self.async_update_listeners()
                     _LOGGER.debug(
                         "Watch %s: initial list fetched (%d items, rv=%s)",
