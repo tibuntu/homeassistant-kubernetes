@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.14.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.2...v1.14.3) (2026-10-30)
+
+
+### Bug Fixes
+
+* accept every Kubernetes quantity suffix when parsing CPU and memory ([294f610](https://github.com/tibuntu/homeassistant-kubernetes/commit/294f610e74149320e33d013dcefb2818ea821d97))
+* flag init-container and non-first-container failures as pod problems ([5aae95a](https://github.com/tibuntu/homeassistant-kubernetes/commit/5aae95ae2ac157df77c3453a2c76dcee5418a182))
+* ignore native sidecar exit codes in the pod problem flag ([f33cea5](https://github.com/tibuntu/homeassistant-kubernetes/commit/f33cea5ed027659e5c0f6a09665e22c04a8a3fcb))
+* keep entity resolution and entry_not_loaded for explicit entry_id ([677d039](https://github.com/tibuntu/homeassistant-kubernetes/commit/677d039f70b03147dc35f8d53826feab39557e7f))
+* keep entries whose relist item fails to parse ([6c9bc81](https://github.com/tibuntu/homeassistant-kubernetes/commit/6c9bc81d9053cd7332e782e75dad5c4e7ef879aa))
+* keep large CPU quantities exact and never raise on overflow ([5a1ebd4](https://github.com/tibuntu/homeassistant-kubernetes/commit/5a1ebd44ec0d380a902e610ab8e214c385746f36))
+* prune objects deleted during a watch gap when a watch relists ([d7e7710](https://github.com/tibuntu/homeassistant-kubernetes/commit/d7e77107c3a3cc7cb43f23e7177642262699972c))
+* publish CronJob switch state after suspend/resume ([f6a890e](https://github.com/tibuntu/homeassistant-kubernetes/commit/f6a890efa7ea9b5ff2384d82a5d7f8d7880880ba))
+* resolve raw workload names in workload_names ([5fafb12](https://github.com/tibuntu/homeassistant-kubernetes/commit/5fafb1248c78833e36432346f540037ea01b9073))
+* route workload services to the cluster that owns the target ([9a2c58c](https://github.com/tibuntu/homeassistant-kubernetes/commit/9a2c58c0341cd8f1904b7ea162cd8f888ba2ead4))
+
 ## [1.14.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.1...v1.14.2) (2026-10-29)
 
 
