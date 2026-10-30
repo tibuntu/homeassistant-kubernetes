@@ -243,7 +243,7 @@ When Home Assistant detects it is running inside a cluster (the `KUBERNETES_SERV
 - A **Prefer in-cluster ServiceAccount token** checkbox is shown and defaults to enabled. Leave it on so the integration re-reads the token file on each call and survives token rotation.
 - The token entered in the form is kept only as a fallback — used if the projected volume becomes unreadable for any reason (e.g. HA was later moved out of the cluster). The pre-filled value is the current pod's bound token, which is rejected after the pod is replaced; paste a long-lived token from a `kubernetes.io/service-account-token` Secret instead if you want a fallback that keeps working.
 
-The same checkbox is also available in **Configure → Reconfigure** if you want to flip an existing entry between in-cluster and static-token modes without re-creating it.
+The same checkbox is also available via the three-dot menu (**...**) → **Reconfigure** if you want to flip an existing entry between in-cluster and static-token modes without re-creating it.
 
 ### Verifying
 

@@ -313,7 +313,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 
 The services automatically detect the workload type from entity attributes:
 - If an entity ID is provided (e.g., `switch.production_default_web_app`), the service reads the `workload_type` attribute
-- If a direct name is provided, the service attempts to determine the type from the entity registry
+- If a direct name is provided, the service attempts to determine the type from the coordinator data
 - CronJobs are automatically handled differently (triggered instead of scaled)
 
 ### Permissions Required

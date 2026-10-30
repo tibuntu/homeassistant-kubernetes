@@ -69,7 +69,7 @@ spec:
 3. Leave **Prefer in-cluster ServiceAccount token** enabled (it defaults to on when in-cluster credentials are detected). The integration will re-read the projected token file on each request, so automatic token rotation is handled transparently. While it is enabled, the **API Token** field below it is optional and only used as a fallback (left empty, the mounted token is stored) — uncheck it if you want to authenticate with a token you paste in.
 4. Pick a friendly **Cluster Name** and submit.
 
-> **Tip:** The same checkbox is available in **Configure → Reconfigure** for existing entries, so you can switch between in-cluster and static-token modes without removing the integration.
+> **Tip:** The same checkbox is available via the three-dot menu (**...**) → **Reconfigure** for existing entries, so you can switch between in-cluster and static-token modes without removing the integration.
 
 ## Quick Setup
 

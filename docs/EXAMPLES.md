@@ -370,6 +370,7 @@ views:
           - sensor.production_pods_count
           - sensor.production_deployments_count
         hours_to_show: 24
+```
 
 ### Node Monitoring Dashboard
 
