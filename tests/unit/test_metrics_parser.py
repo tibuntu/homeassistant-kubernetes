@@ -29,6 +29,9 @@ class TestParseCpuQuantity:
             ("1e3", "cores", 1000),  # exponent form, not a suffix
             ("1E", "cores", 10**18),  # bare "E" is the exa suffix
             ("0.5", "m", 500.0),
+            ("38369075000n", "m", 38369.07),  # no double float rounding
+            ("7745481795n", "u", 7745481.79),
+            ("7745481795m", "n", 7745481795000000.0),
             (
                 "100m",
                 "invalid",
@@ -39,7 +42,7 @@ class TestParseCpuQuantity:
     def test_valid(self, value, output_type, expected):
         assert parse_cpu_quantity(value, output_type) == expected
 
-    @pytest.mark.parametrize("bad", ["abc", "", None, "12x", "1K", object()])
+    @pytest.mark.parametrize("bad", ["abc", "", None, "12x", "1K", "inf", object()])
     def test_bad_input_returns_zero(self, bad):
         assert parse_cpu_quantity(bad) == 0.0
 
