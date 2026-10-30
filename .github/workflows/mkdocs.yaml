@@ -8,6 +8,7 @@ on:
     paths:
       - "docs/**"
       - "zensical.toml"
+      - "pyproject.toml"
       - ".github/workflows/mkdocs.yaml"
 
 permissions:
@@ -37,7 +38,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install zensical
+          pip install "$(grep -oE 'zensical==[0-9.]+' pyproject.toml)"
 
       - name: Build docs
         run: zensical build
