@@ -175,7 +175,7 @@
         },
         "entry_id": {
           "name": "Config Entry ID",
-          "description": "Target a specific configured cluster (optional; defaults to the first)."
+          "description": "Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first)."
         }
       }
     },
@@ -201,7 +201,7 @@
         },
         "entry_id": {
           "name": "Config Entry ID",
-          "description": "Target a specific configured cluster (optional; defaults to the first)."
+          "description": "Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first)."
         }
       }
     },
@@ -223,7 +223,7 @@
         },
         "entry_id": {
           "name": "Config Entry ID",
-          "description": "Target a specific configured cluster (optional; defaults to the first)."
+          "description": "Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first)."
         }
       }
     },
@@ -245,7 +245,7 @@
         },
         "entry_id": {
           "name": "Config Entry ID",
-          "description": "Target a specific configured cluster (optional; defaults to the first)."
+          "description": "Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first)."
         }
       }
     },
