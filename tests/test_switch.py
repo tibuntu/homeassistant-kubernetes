@@ -272,11 +272,16 @@ class TestKubernetesCronJobSwitch:
         cronjob_switch.config_entry = mock_config_entry
         cronjob_switch._is_on = False
         cronjob_switch._suspend = True
+        written_states = []
+        cronjob_switch.async_write_ha_state = MagicMock(
+            side_effect=lambda: written_states.append(cronjob_switch.is_on)
+        )
 
         # Execute
         await cronjob_switch.async_turn_on()
 
-        # Verify
+        # Verify: the new state is published (should_poll is False)
+        assert written_states == [True]
         mock_client.resume_cronjob.assert_called_once_with("test-cronjob", "default")
         assert cronjob_switch._is_on is True
         assert cronjob_switch._suspend is False
@@ -299,9 +304,12 @@ class TestKubernetesCronJobSwitch:
         cronjob_switch._is_on = False
         cronjob_switch._suspend = True
 
+        cronjob_switch.async_write_ha_state = MagicMock()
+
         # Execute and verify exception
         with pytest.raises(Exception, match="Permission denied"):
             await cronjob_switch.async_turn_on()
+        cronjob_switch.async_write_ha_state.assert_not_called()
 
         # Verify state unchanged
         assert cronjob_switch._is_on is False
@@ -319,11 +327,16 @@ class TestKubernetesCronJobSwitch:
         cronjob_switch.config_entry = mock_config_entry
         cronjob_switch._is_on = True
         cronjob_switch._suspend = False
+        written_states = []
+        cronjob_switch.async_write_ha_state = MagicMock(
+            side_effect=lambda: written_states.append(cronjob_switch.is_on)
+        )
 
         # Execute
         await cronjob_switch.async_turn_off()
 
-        # Verify
+        # Verify: the new state is published (should_poll is False)
+        assert written_states == [False]
         mock_client.suspend_cronjob.assert_called_once_with("test-cronjob", "default")
         assert cronjob_switch._is_on is False
         assert cronjob_switch._suspend is True
@@ -345,10 +358,12 @@ class TestKubernetesCronJobSwitch:
         }
         cronjob_switch._is_on = True
         cronjob_switch._suspend = False
+        cronjob_switch.async_write_ha_state = MagicMock()
 
         # Execute and verify exception
         with pytest.raises(Exception, match="CronJob not found"):
             await cronjob_switch.async_turn_off()
+        cronjob_switch.async_write_ha_state.assert_not_called()
 
         # Verify state unchanged
         assert cronjob_switch._is_on is True
@@ -1714,6 +1729,7 @@ class TestCronJobOperations:
     def _setup_hass(self, switch, mock_config_entry, mock_client):
         """Wire up the entry's runtime data so that client lookup works."""
         switch.hass = MagicMock()
+        switch.async_write_ha_state = MagicMock()
         mock_config_entry.runtime_data = KubernetesEntryData(
             config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
         )
@@ -1733,6 +1749,7 @@ class TestCronJobOperations:
 
         await cronjob_switch.async_turn_off()
 
+        cronjob_switch.async_write_ha_state.assert_called_once()
         mock_client.suspend_cronjob.assert_called_once_with("test-cronjob", "default")
         assert cronjob_switch._is_on is False
         assert cronjob_switch._suspend is True
@@ -1753,6 +1770,7 @@ class TestCronJobOperations:
 
         with pytest.raises(Exception, match="Namespace not found"):
             await cronjob_switch.async_turn_off()
+        cronjob_switch.async_write_ha_state.assert_not_called()
 
         # State must remain unchanged
         assert cronjob_switch._is_on is True
@@ -1770,6 +1788,7 @@ class TestCronJobOperations:
 
         with pytest.raises(ConnectionError, match="Connection refused"):
             await cronjob_switch.async_turn_off()
+        cronjob_switch.async_write_ha_state.assert_not_called()
 
         # State must remain unchanged
         assert cronjob_switch._is_on is True
@@ -1787,6 +1806,7 @@ class TestCronJobOperations:
 
         await cronjob_switch.async_turn_on()
 
+        cronjob_switch.async_write_ha_state.assert_called_once()
         mock_client.resume_cronjob.assert_called_once_with("test-cronjob", "default")
         assert cronjob_switch._is_on is True
         assert cronjob_switch._suspend is False
@@ -1807,6 +1827,7 @@ class TestCronJobOperations:
 
         with pytest.raises(Exception, match="RBAC forbidden"):
             await cronjob_switch.async_turn_on()
+        cronjob_switch.async_write_ha_state.assert_not_called()
 
         # State must remain unchanged
         assert cronjob_switch._is_on is False
