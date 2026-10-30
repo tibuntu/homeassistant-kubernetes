@@ -916,7 +916,9 @@ class KubernetesClient:
         """Parse a single raw replica-based workload (Deployment/StatefulSet) API object."""
         try:
             selector_spec = item.get("spec", {}).get("selector") or {}
-            selector_expressions = selector_spec.get("matchExpressions") or []
+            selector_expressions = selector_spec.get("matchExpressions")
+            if not isinstance(selector_expressions, list):
+                selector_expressions = []
             return {
                 "name": item["metadata"]["name"],
                 "namespace": item["metadata"]["namespace"],
@@ -924,9 +926,7 @@ class KubernetesClient:
                 "available_replicas": item["status"].get("availableReplicas", 0),
                 "ready_replicas": item["status"].get("readyReplicas", 0),
                 "is_running": item["status"].get("availableReplicas", 0) > 0,
-                "selector": item.get("spec", {})
-                .get("selector", {})
-                .get("matchLabels", {}),
+                "selector": selector_spec.get("matchLabels") or {},
                 "selector_expressions": selector_expressions,
             }
         except Exception as ex:
@@ -2011,6 +2011,8 @@ class KubernetesClient:
             return False
         operator = expression.get("operator")
         values = expression.get("values") or []
+        if not isinstance(values, list):
+            return False
         present = key in pod_labels
         if operator == "In":
             return present and pod_labels[key] in values
@@ -2042,7 +2044,7 @@ class KubernetesClient:
         metrics: dict[str, dict[str, float]],
     ) -> tuple[float, float]:
         """Calculate CPU and memory usage for a workload from its pods."""
-        selector = workload.get("selector", {})
+        selector = workload.get("selector") or {}
         expressions = workload.get("selector_expressions") or ()
         namespace = workload.get("namespace")
         workload_name = workload.get("name", "unknown")

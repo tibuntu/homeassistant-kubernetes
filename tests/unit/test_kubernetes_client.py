@@ -4468,6 +4468,11 @@ class TestPodMatchesSelector:
             is True
         )
 
+    def test_string_values_fail_closed(self, mock_client):
+        """A non-list values never substring-matches."""
+        exprs = [{"key": "env", "operator": "In", "values": "prod"}]
+        assert mock_client._pod_matches_selector({"env": "pro"}, {}, exprs) is False
+
     def test_empty_selector_and_expressions(self, mock_client):
         """Both empty returns False."""
         assert mock_client._pod_matches_selector({"a": "1"}, {}, []) is False
@@ -4688,10 +4693,15 @@ class TestParseReplicaWorkloadItem:
 
     @pytest.mark.parametrize(
         "selector",
-        [{}, {"matchLabels": {"app": "web"}}, {"matchExpressions": None}],
+        [
+            {},
+            {"matchLabels": {"app": "web"}},
+            {"matchExpressions": None},
+            {"matchExpressions": 5},
+        ],
     )
     def test_selector_expressions_default_empty(self, mock_client, selector):
-        """Missing or null matchExpressions parses to an empty list."""
+        """Missing, null or non-list matchExpressions parses to an empty list."""
         spec = {"replicas": 1}
         spec["selector"] = selector
         raw = {
@@ -4702,6 +4712,27 @@ class TestParseReplicaWorkloadItem:
         result = mock_client._parse_deployment_item(raw)
         assert result is not None
         assert result["selector_expressions"] == []
+
+    def test_null_match_labels_with_expressions(self, mock_client):
+        """Null matchLabels parses to {} and usage attribution does not raise."""
+        exprs = [{"key": "app", "operator": "Exists"}]
+        raw = {
+            "metadata": {"name": "web", "namespace": "prod"},
+            "spec": {
+                "replicas": 1,
+                "selector": {"matchLabels": None, "matchExpressions": exprs},
+            },
+            "status": {"availableReplicas": 1},
+        }
+        result = mock_client._parse_deployment_item(raw)
+        assert result is not None
+        assert result["selector"] == {}
+        pods = [{"name": "p1", "namespace": "prod", "labels": {"app": "web"}}]
+        metrics = {"prod/p1": {"cpu": 10.0, "memory": 20.0}}
+        assert mock_client._calculate_resource_usage(result, pods, metrics) == (
+            10.0,
+            20.0,
+        )
 
     def test_missing_selector(self, mock_client):
         """_parse_replica_workload_item handles missing selector gracefully."""
