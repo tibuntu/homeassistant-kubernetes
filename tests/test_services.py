@@ -2539,7 +2539,13 @@ class TestMultiEntryRouting:
     ):
         """A bare name plus entry_id resolves in that entry, not via a foreign switch."""
         entry_a, entry_b = two_entries
-        self._register(hass, entry_a, "web", deployment_name="web")
+        self._register(
+            hass,
+            entry_a,
+            "web",
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="web",
+        )
         entry_b.runtime_data.coordinator.data = {
             "deployments": {"default_web": {"name": "web", "namespace": "default"}}
         }
@@ -2554,6 +2560,7 @@ class TestMultiEntryRouting:
 
         entry_b.runtime_data.client.scale_deployment.assert_awaited_once()
         entry_a.runtime_data.client.scale_deployment.assert_not_called()
+        entry_b.runtime_data.client.scale_statefulset.assert_not_called()
 
     async def test_bare_name_resolves_via_switch_owner(
         self, hass: HomeAssistant, two_entries
@@ -2597,10 +2604,95 @@ class TestMultiEntryRouting:
         """_entity_entry_id returns the owner only for this integration's entities."""
         _, entry_b = two_entries
         entity_id = self._register(hass, entry_b, "web", deployment_name="web")
+        other = MockConfigEntry(domain="other_domain", entry_id="other_entry")
+        other.add_to_hass(hass)
         foreign = er.async_get(hass).async_get_or_create(
-            "switch", "other_domain", "x", suggested_object_id="foreign"
+            "switch",
+            "other_domain",
+            "x",
+            config_entry=other,
+            suggested_object_id="foreign",
         )
 
         assert _entity_entry_id(hass, entity_id) == "entry_b"
         assert _entity_entry_id(hass, "switch.unregistered") is None
         assert _entity_entry_id(hass, foreign.entity_id) is None
+
+    async def test_registered_entity_with_unknown_entry_id(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """A stale entry_id is reported as not loaded, not as a span conflict."""
+        _, entry_b = two_entries
+        entity_id = self._register(hass, entry_b, "web", deployment_name="web")
+        await async_setup_services(hass)
+
+        with pytest.raises(ServiceValidationError) as err:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: entity_id, ATTR_REPLICAS: 2, "entry_id": "nope"},
+                blocking=True,
+            )
+        assert err.value.translation_key == "entry_not_loaded"
+        assert err.value.translation_placeholders == {"entry_id": "nope"}
+        entry_b.runtime_data.client.scale_deployment.assert_not_called()
+
+    async def test_raw_name_with_unknown_entry_id(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """A raw name with a stale entry_id is reported as not loaded."""
+        entry_a, entry_b = two_entries
+        entry_b.runtime_data.coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}}
+        }
+        await async_setup_services(hass)
+
+        with pytest.raises(ServiceValidationError) as err:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {ATTR_WORKLOAD_NAME: "web", ATTR_REPLICAS: 2, "entry_id": "nope"},
+                blocking=True,
+            )
+        assert err.value.translation_key == "entry_not_loaded"
+        entry_a.runtime_data.client.scale_deployment.assert_not_called()
+        entry_b.runtime_data.client.scale_deployment.assert_not_called()
+
+    async def test_bare_name_with_entry_id_prefers_own_entry_switch(
+        self, hass: HomeAssistant, add_loaded_entry, make_coordinator
+    ):
+        """In one entry, switch.<name> wins over a different raw match."""
+        client = MagicMock()
+        client.scale_deployment = AsyncMock(return_value=True)
+        client.scale_statefulset = AsyncMock(return_value=True)
+        entry = add_loaded_entry(
+            "entry_a",
+            config={"namespace": "ns1"},
+            client=client,
+            coordinator=make_coordinator(
+                data={
+                    "deployments": {"ns1_web": {"name": "web", "namespace": "ns1"}},
+                    "statefulsets": {"ns1_web": {"name": "web", "namespace": "ns1"}},
+                },
+                client=client,
+            ),
+        )
+        self._register(
+            hass,
+            entry,
+            "web",
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="web",
+            namespace="ns1",
+        )
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "web", ATTR_REPLICAS: 2, "entry_id": "entry_a"},
+            blocking=True,
+        )
+
+        client.scale_statefulset.assert_awaited_once()
+        client.scale_deployment.assert_not_called()
