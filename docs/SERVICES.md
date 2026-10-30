@@ -34,7 +34,7 @@ Scale one or more Kubernetes workloads (Deployments or StatefulSets) to a specif
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
 - `replicas` (integer, required): Target number of replicas (0 or more)
-- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
+- `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets
 
@@ -80,7 +80,7 @@ Start one or more Kubernetes workloads by scaling them to the specified number o
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
 - `replicas` (integer, optional): Number of replicas for Deployments/StatefulSets (default: 1, ignored for CronJobs)
-- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
+- `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**:
 - **Deployments**: Scales to the specified number of replicas
@@ -125,7 +125,7 @@ Stop one or more Kubernetes workloads by scaling them to 0 replicas (Deployments
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.production_default_web_app`)
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
-- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
+- `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets
 
@@ -159,7 +159,7 @@ Perform a rolling restart of one or more Kubernetes workloads. This is equivalen
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.production_default_web_app`)
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
-- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
+- `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets, DaemonSets
 
@@ -282,6 +282,8 @@ workload_names:
 
 When using entity IDs, the service automatically extracts the workload name, namespace, and workload type from the entity attributes.
 
+With several clusters configured, the four workload services run against the cluster that owns the targets: for entity IDs it is the entry that registered the switch, for raw workload names the cluster that has a workload with that name. An explicit `entry_id` must be loaded, and raw names are then resolved only in that entry. `delete_job`, `cordon_node` and `uncordon_node` still default to the first configured entry.
+
 ## Service Behavior
 
 ### Error Handling
@@ -295,6 +297,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 - `delete_job` / `cordon_node` / `uncordon_node` are called without a usable name
 - A workload's type does not support the requested operation — for example scaling, stopping, or restarting a CronJob. The whole call is rejected; no target in the call is touched.
 - `scale_workload` targets an HPA-managed workload with `replicas` other than `0`. The whole call is rejected; no target in the call is touched.
+- `scale_workload` / `start_workload` / `stop_workload` / `restart_workload` span more than one cluster: the targets belong to different config entries, an explicit `entry_id` contradicts the targets' cluster, or a raw workload name without `entry_id` exists in more than one cluster. The whole call is rejected; call the service once per cluster (or pass `entry_id`).
 
 **Failed operations** raise a regular error *after* every target has been attempted:
 
