@@ -2508,6 +2508,136 @@ class TestMultiEntryRouting:
         entry_a.runtime_data.client.scale_deployment.assert_not_called()
         entry_b.runtime_data.client.scale_deployment.assert_not_called()
 
+    async def test_extract_workload_info_resolves_raw_names(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """workload_names accepts a bare workload name."""
+        _, entry_b = two_entries
+        entry_b.runtime_data.coordinator.data = {
+            "deployments": {"default_nginx": {"name": "nginx", "namespace": "default"}}
+        }
+
+        result = _extract_workload_info({ATTR_WORKLOAD_NAMES: ["nginx"]}, hass)
+
+        assert result == [("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)]
+
+    async def test_extract_workload_info_mixed_switch_and_raw(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """A switch entity ID and a raw name in one list both resolve."""
+        entry_a, _entry_b = two_entries
+        id_a = self._register(hass, entry_a, "a", deployment_name="a")
+        entry_a.runtime_data.coordinator.data = {
+            "deployments": {"default_b": {"name": "b", "namespace": "default"}}
+        }
+
+        result = _extract_workload_info({ATTR_WORKLOAD_NAMES: [id_a, "b"]}, hass)
+
+        assert result == [
+            ("a", "default", WORKLOAD_TYPE_DEPLOYMENT),
+            ("b", "default", WORKLOAD_TYPE_DEPLOYMENT),
+        ]
+
+    async def test_scale_workload_names_raw_name_routes_to_owner(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """workload_names with a raw name present only in B runs on B's client."""
+        entry_a, entry_b = two_entries
+        entry_b.runtime_data.coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}}
+        }
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {ATTR_WORKLOAD_NAMES: ["web"], ATTR_REPLICAS: 2},
+            blocking=True,
+        )
+
+        entry_b.runtime_data.client.scale_deployment.assert_awaited_once()
+        entry_a.runtime_data.client.scale_deployment.assert_not_called()
+
+    async def test_workload_names_raw_name_in_both_entries_is_ambiguous(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """A raw name in several entries without entry_id is rejected."""
+        entry_a, entry_b = two_entries
+        data = {"deployments": {"default_web": {"name": "web", "namespace": "default"}}}
+        entry_a.runtime_data.coordinator.data = data
+        entry_b.runtime_data.coordinator.data = data
+        await async_setup_services(hass)
+
+        with pytest.raises(ServiceValidationError) as err:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {ATTR_WORKLOAD_NAMES: ["web"], ATTR_REPLICAS: 2},
+                blocking=True,
+            )
+        assert err.value.translation_key == "workloads_span_entries"
+        entry_a.runtime_data.client.scale_deployment.assert_not_called()
+        entry_b.runtime_data.client.scale_deployment.assert_not_called()
+
+    async def test_workload_names_raw_name_with_entry_id_ignores_foreign_switch(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """workload_names raw name plus entry_id resolves in that entry."""
+        entry_a, entry_b = two_entries
+        self._register(
+            hass,
+            entry_a,
+            "web",
+            workload_type=WORKLOAD_TYPE_STATEFULSET,
+            statefulset_name="web",
+        )
+        entry_b.runtime_data.coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}}
+        }
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_SCALE_WORKLOAD,
+            {ATTR_WORKLOAD_NAMES: ["web"], ATTR_REPLICAS: 2, "entry_id": "entry_b"},
+            blocking=True,
+        )
+
+        entry_b.runtime_data.client.scale_deployment.assert_awaited_once()
+        entry_a.runtime_data.client.scale_statefulset.assert_not_called()
+        entry_b.runtime_data.client.scale_statefulset.assert_not_called()
+
+    async def test_only_unresolvable_raw_names_is_no_valid_workloads(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """Raw names found nowhere raise no_valid_workloads."""
+        entry_a, entry_b = two_entries
+        await async_setup_services(hass)
+
+        with pytest.raises(ServiceValidationError) as err:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_SCALE_WORKLOAD,
+                {ATTR_WORKLOAD_NAMES: ["ghost"], ATTR_REPLICAS: 2},
+                blocking=True,
+            )
+        assert err.value.translation_key == "no_valid_workloads"
+        entry_a.runtime_data.client.scale_deployment.assert_not_called()
+        entry_b.runtime_data.client.scale_deployment.assert_not_called()
+
+    async def test_raw_name_via_target_is_not_resolved(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """Only workload_names accepts raw names; target stays switch-only."""
+        _, entry_b = two_entries
+        entry_b.runtime_data.coordinator.data = {
+            "deployments": {"default_web": {"name": "web", "namespace": "default"}}
+        }
+
+        result = _extract_workload_info({"target": {"entity_id": ["web"]}}, hass)
+
+        assert result == []
+
     async def test_failed_target_does_not_contribute_owner(
         self, hass: HomeAssistant, two_entries
     ):

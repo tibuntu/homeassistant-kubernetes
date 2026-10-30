@@ -282,7 +282,7 @@ workload_names:
 
 When using entity IDs, the service automatically extracts the workload name, namespace, and workload type from the entity attributes.
 
-With several clusters configured, the four workload services run against the cluster that owns the targets: for entity IDs it is the entry that registered the switch, for raw workload names the cluster that has a workload with that name. A bare `workload_name` is first tried as the entity `switch.<name>`; only when no such switch resolves is it looked up as a raw name. An explicit `entry_id` must be loaded; raw names are then resolved only in that entry, and a bare name whose `switch.<name>` belongs to another cluster is looked up in the `entry_id` cluster instead. `delete_job`, `cordon_node` and `uncordon_node` still default to the first configured entry.
+With several clusters configured, the four workload services run against the cluster that owns the targets: for entity IDs it is the entry that registered the switch, for raw workload names the cluster that has a workload with that name. A bare `workload_name`, and every `workload_names` item that is not a `switch.` entity ID, is first tried as the entity `switch.<name>`; only when no such switch resolves is it looked up as a raw name. An explicit `entry_id` must be loaded; raw names are then resolved only in that entry, and a bare name whose `switch.<name>` belongs to another cluster is looked up in the `entry_id` cluster instead. `delete_job`, `cordon_node` and `uncordon_node` still default to the first configured entry.
 
 ## Service Behavior
 
