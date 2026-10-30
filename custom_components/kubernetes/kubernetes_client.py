@@ -616,8 +616,14 @@ class KubernetesClient:
             raise
 
     @staticmethod
-    def _first_container_problem(statuses: list[dict[str, Any]]) -> str | None:
-        """Return the first current-state failure reason among container statuses."""
+    def _first_container_problem(
+        statuses: list[dict[str, Any]],
+        ignore_exit_names: frozenset[str] = frozenset(),
+    ) -> str | None:
+        """Return the first current-state failure reason among container statuses.
+
+        Exit codes of containers named in ``ignore_exit_names`` are skipped.
+        """
         for cs in statuses:
             waiting = (cs.get("state") or {}).get("waiting")
             reason = waiting.get("reason") if waiting else None
@@ -625,6 +631,8 @@ class KubernetesClient:
                 return str(reason)
         for cs in statuses:
             terminated = (cs.get("state") or {}).get("terminated")
+            if cs.get("name") in ignore_exit_names:
+                continue
             if terminated and terminated.get("exitCode") not in (None, 0):
                 return str(terminated.get("reason") or "Error")
         return None
@@ -633,12 +641,21 @@ class KubernetesClient:
         self,
         container_statuses: list[dict[str, Any]],
         init_container_statuses: list[dict[str, Any]],
+        sidecar_names: frozenset[str],
     ) -> str | None:
-        """Return the problem reason from app containers, then init containers."""
+        """Return the problem reason from app containers, then init containers.
+
+        Native sidecars (init containers with ``restartPolicy: Always``) are
+        stopped after the app containers exit, and Kubernetes documents a
+        non-zero exit code at that point as normal, so only their waiting
+        reasons (e.g. CrashLoopBackOff) count.
+        """
         reason = self._first_container_problem(container_statuses)
         if reason is not None:
             return reason
-        init_reason = self._first_container_problem(init_container_statuses)
+        init_reason = self._first_container_problem(
+            init_container_statuses, sidecar_names
+        )
         return f"Init:{init_reason}" if init_reason is not None else None
 
     def _parse_pods_data(self, pods: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -727,8 +744,15 @@ class KubernetesClient:
                             break
 
                 # Derive a single automation-friendly problem flag/reason (current state).
+                sidecar_names = frozenset(
+                    c.get("name", "")
+                    for c in spec.get("initContainers") or []
+                    if c.get("restartPolicy") == "Always"
+                )
                 problem_reason = self._derive_container_problem(
-                    container_statuses, status.get("initContainerStatuses") or []
+                    container_statuses,
+                    status.get("initContainerStatuses") or [],
+                    sidecar_names,
                 )
                 if problem_reason is None and phase == "Failed":
                     problem_reason = "Failed"

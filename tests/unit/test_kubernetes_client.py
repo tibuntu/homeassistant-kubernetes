@@ -5728,6 +5728,7 @@ class TestParsePodContainerState:
         container_statuses=None,
         conditions=None,
         init_container_statuses=None,
+        init_containers=None,
     ):
         """Build a minimal raw pod dict for _parse_pods_data."""
         status: dict = {"phase": phase}
@@ -5745,7 +5746,7 @@ class TestParsePodContainerState:
                 "creationTimestamp": "2024-01-01T00:00:00Z",
                 "labels": {},
             },
-            "spec": {"nodeName": "node-1"},
+            "spec": {"nodeName": "node-1", "initContainers": init_containers or []},
             "status": status,
         }
 
@@ -5860,6 +5861,91 @@ class TestParsePodContainerState:
         )
         assert pod["problem"] is True
         assert pod["problem_reason"] == "Error"
+
+    def test_sidecar_exit_on_termination_not_a_problem(self, mock_client):
+        """A native sidecar killed after the app finished is not a problem."""
+        pod = self._parse(
+            mock_client,
+            phase="Succeeded",
+            container_statuses=[self._terminated(0, "Completed")],
+            init_container_statuses=[
+                {**self._terminated(137, "Error"), "name": "proxy"}
+            ],
+            init_containers=[{"name": "proxy", "restartPolicy": "Always"}],
+        )
+        assert pod["problem"] is False
+        assert pod["problem_reason"] is None
+
+    def test_sidecar_crash_loop_is_a_problem(self, mock_client):
+        """A crash-looping native sidecar is still flagged."""
+        pod = self._parse(
+            mock_client,
+            phase="Running",
+            container_statuses=[
+                {"ready": True, "restartCount": 0, "state": {"running": {}}}
+            ],
+            init_container_statuses=[
+                {**self._waiting("CrashLoopBackOff"), "name": "proxy"}
+            ],
+            init_containers=[{"name": "proxy", "restartPolicy": "Always"}],
+        )
+        assert pod["problem"] is True
+        assert pod["problem_reason"] == "Init:CrashLoopBackOff"
+
+    def test_regular_init_exit_still_counts_beside_sidecar(self, mock_client):
+        """Only sidecar exit codes are ignored, not regular init containers."""
+        pod = self._parse(
+            mock_client,
+            phase="Failed",
+            init_container_statuses=[
+                {**self._terminated(137, "Error"), "name": "proxy"},
+                {**self._terminated(2), "name": "migrate"},
+            ],
+            init_containers=[
+                {"name": "proxy", "restartPolicy": "Always"},
+                {"name": "migrate"},
+            ],
+        )
+        assert pod["problem_reason"] == "Init:Error"
+
+    def test_init_last_state_failure_only_not_a_problem(self, mock_client):
+        """A recovered init failure (lastState only) does not set problem."""
+        pod = self._parse(
+            mock_client,
+            phase="Running",
+            container_statuses=[
+                {"ready": True, "restartCount": 0, "state": {"running": {}}}
+            ],
+            init_container_statuses=[
+                {
+                    **self._terminated(0, "Completed"),
+                    "lastState": {"terminated": {"exitCode": 1, "reason": "Error"}},
+                }
+            ],
+        )
+        assert pod["problem"] is False
+
+    def test_later_waiting_precedes_earlier_exit(self, mock_client):
+        """A non-benign waiting reason anywhere wins over a non-zero exit."""
+        pod = self._parse(
+            mock_client,
+            phase="Running",
+            container_statuses=[
+                self._terminated(1, "Error"),
+                self._waiting("CrashLoopBackOff"),
+            ],
+        )
+        assert pod["problem_reason"] == "CrashLoopBackOff"
+
+    def test_app_exit_precedes_init_failure(self, mock_client):
+        """A non-zero app exit wins over an init failure."""
+        pod = self._parse(
+            mock_client,
+            phase="Running",
+            container_statuses=[self._terminated(137, "OOMKilled")],
+            init_container_statuses=[self._waiting("CrashLoopBackOff")],
+        )
+        assert pod["problem_reason"] == "OOMKilled"
 
     def test_app_waiting_precedes_init_failure(self, mock_client):
         """A non-benign app waiting reason wins over an init failure."""

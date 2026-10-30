@@ -167,7 +167,7 @@ Each pod sensor provides comprehensive information about the pod:
 
 > **Note on `problem`/`problem_reason`**: These derived attributes are designed for automations and alerts. A pod that OOMKilled but has since restarted successfully will have `last_terminated_reason: OOMKilled` yet `problem: false` — the flag only fires when the pod is *currently* broken, not for historical events.
 
-> **Note on container selection**: These attributes reflect the pod's application containers (`containerStatuses`); the per-container reason attributes above reflect the first application container found, while `problem` considers every application container and the init containers (`initContainerStatuses`), reporting an init-container failure with an `Init:` prefix as `kubectl` does (e.g. `Init:CrashLoopBackOff`).
+> **Note on container selection**: These attributes reflect the pod's application containers (`containerStatuses`); the per-container reason attributes above reflect the first application container found, while `problem` considers every application container and the init containers (`initContainerStatuses`), reporting an init-container failure with an `Init:` prefix similar to `kubectl` (e.g. `Init:CrashLoopBackOff`). Exit codes of native sidecars (init containers with `restartPolicy: Always`) are ignored, because Kubernetes stops them after the app containers exit; a crash-looping sidecar still counts.
 
 ### Individual Job Sensors
 
