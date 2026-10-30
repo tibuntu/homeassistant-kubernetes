@@ -25,7 +25,7 @@ Three per-cluster sensors count resources that currently need attention, so a si
 | Sensor | Counts | Attribute | Unit |
 |--------|--------|-----------|------|
 | **Degraded Workloads** | Deployments with fewer available, StatefulSets with fewer ready, and DaemonSets with fewer available replicas than desired (workloads scaled to 0 are ignored) | `workloads`: list of `{name, type, namespace, ready, desired}` | workloads |
-| **Problem Pods** | Pods whose `problem` flag is set (CrashLoopBackOff, ImagePullBackOff, non-zero exit, phase `Failed`, Unschedulable — see [Pod sensors](#individual-pod-sensors)) plus pods in phase `Unknown` | `pods`: list of `{name, namespace, phase, reason}` (`reason` is the pod's `problem_reason`, or the phase when there is none — e.g. `Unknown`) | pods |
+| **Problem Pods** | Pods whose `problem` flag is set (CrashLoopBackOff, ImagePullBackOff, non-zero exit, init-container failures, phase `Failed`, Unschedulable — see [Pod sensors](#individual-pod-sensors)) plus pods in phase `Unknown` | `pods`: list of `{name, namespace, phase, reason}` (`reason` is the pod's `problem_reason`, or the phase when there is none — e.g. `Unknown`) | pods |
 | **Nodes Under Pressure** | Nodes with Memory/Disk/PID Pressure or Network Unavailable | `nodes`: list of `{name, conditions}` | nodes |
 
 Gating: *Problem Pods* is not created when **Pods** is disabled under **Configure → Disable data collection for**, *Nodes Under Pressure* when **Node sensors** is disabled, and *Degraded Workloads* only when Deployment sensors, StatefulSet sensors **and** DaemonSets are all disabled.
@@ -162,12 +162,12 @@ Each pod sensor provides comprehensive information about the pod:
 | **last_terminated_reason** | Reason the first container found terminated in its **previous** run — catches an OOMKilled that has already restarted | `OOMKilled` |
 | **last_terminated_exit_code** | Exit code of the previous container termination | `137` |
 | **pending_reason** | Reason the pod is stuck in Pending (present only when Pending) | `Unschedulable` |
-| **problem** | `true` when the pod is currently in a broken state (non-benign waiting reason, non-zero exit code, phase Failed, or Unschedulable Pending); `false` otherwise — recovered OOMKills and transient `ContainerCreating` do **not** set this | `true` / `false` |
-| **problem_reason** | Human-readable explanation of why `problem` is `true`; absent when `problem` is `false` | `CrashLoopBackOff` / `OOMKilled` / `Unschedulable` |
+| **problem** | `true` when the pod is currently in a broken state (non-benign waiting reason or non-zero exit code in any container, including init containers; phase Failed, or Unschedulable Pending); `false` otherwise — recovered OOMKills and transient `ContainerCreating` do **not** set this | `true` / `false` |
+| **problem_reason** | Human-readable explanation of why `problem` is `true`; absent when `problem` is `false` | `CrashLoopBackOff` / `OOMKilled` / `Unschedulable` / `Init:CrashLoopBackOff` (init containers are prefixed with `Init:`) |
 
 > **Note on `problem`/`problem_reason`**: These derived attributes are designed for automations and alerts. A pod that OOMKilled but has since restarted successfully will have `last_terminated_reason: OOMKilled` yet `problem: false` — the flag only fires when the pod is *currently* broken, not for historical events.
 
-> **Note on container selection**: These attributes reflect the pod's application containers (`containerStatuses`); init-container failures are not currently inspected.
+> **Note on container selection**: These attributes reflect the pod's application containers (`containerStatuses`); the per-container reason attributes above reflect the first application container found, while `problem` considers every application container and the init containers (`initContainerStatuses`), reporting an init-container failure with an `Init:` prefix as `kubectl` does (e.g. `Init:CrashLoopBackOff`).
 
 ### Individual Job Sensors
 
