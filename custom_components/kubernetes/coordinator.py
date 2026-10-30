@@ -1007,11 +1007,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         ``namespace`` is None, otherwise only entries of that namespace. With
         ``prune`` (default) in-scope entries missing from the list (deleted
         during a watch gap) are removed and orphaned entities cleaned up; with
-        ``prune=False`` the list is only merged in.
+        ``prune=False`` the list is only merged in. An item whose parser raises
+        keeps its existing entry (a full poll would fail and delete nothing);
+        an item the parser drops (None) is still pruned, like in the poll.
         """
         if self.data is None:
             return
         parsed: dict[str, dict[str, Any]] = {}
+        failed_keys: set[str] = set()
         for item in items:
             try:
                 result = parse_fn(item)
@@ -1027,6 +1030,17 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning(
                     "Failed to parse %s item during list: %s", resource_type, ex
                 )
+                try:
+                    meta = item["metadata"]
+                    failed_keys.add(
+                        meta["name"]
+                        if resource_type == "nodes"
+                        else f"{meta['namespace']}_{meta['name']}"
+                    )
+                except Exception:
+                    _LOGGER.debug(
+                        "Cannot derive key of unparsable %s item", resource_type
+                    )
         bucket = self.data.setdefault(resource_type, {})
         pruned = 0
         if prune:
@@ -1034,6 +1048,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 key
                 for key, value in bucket.items()
                 if key not in parsed
+                and key not in failed_keys
                 and (namespace is None or value.get("namespace") == namespace)
             ]
             for key in stale:
@@ -1148,8 +1163,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     ) = await self.client.list_resource_with_version(url)
                     async with self._data_lock:
                         # A poll that finished after the list request may hold
-                        # objects created after it; its snapshot is at least as
-                        # fresh, so merge without pruning in that case.
+                        # objects created after it, so its snapshot may be
+                        # fresher than this list; merge without pruning then.
                         self._populate_from_list(
                             resource_type,
                             items,

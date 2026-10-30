@@ -2074,8 +2074,8 @@ class TestRelistPruning:
         assert coord.data["pods_count"] == 3
         coord._cleanup_orphaned_entities.assert_awaited_once()
 
-    async def test_unparsable_item_is_absent_with_consistent_count(self, coord):
-        """An item the parser drops ends up absent from data after a relist."""
+    async def test_parser_filtered_item_is_absent_with_consistent_count(self, coord):
+        """An item the parser drops (returns None) ends up absent from data after a relist."""
         coord.data = {
             "pods": {"default_job": self._pod("job"), "default_a": self._pod("a")},
             "pods_count": 2,
@@ -2090,6 +2090,32 @@ class TestRelistPruning:
 
         assert set(coord.data["pods"]) == {"default_a"}
         assert coord.data["pods_count"] == 1
+
+    async def test_raising_parser_keeps_existing_entry(self, hass, coord):
+        """An item whose parser raises is kept; other stale entries are pruned."""
+        coord.data = {
+            "pods": {
+                "default_bad": self._pod("bad"),
+                "default_ghost": self._pod("ghost"),
+            },
+            "pods_count": 2,
+        }
+
+        def parse(item):
+            if item["metadata"]["name"] == "bad":
+                raise ValueError("boom")
+            return self._parse_pod(item)
+
+        coord._populate_from_list("pods", [self._pod_item("bad")], parse, None)
+        await hass.async_block_till_done()
+
+        assert set(coord.data["pods"]) == {"default_bad"}
+        assert coord.data["pods_count"] == 1
+        # Cleanup runs once, for the ghost only; the kept entry is in data.
+        coord._cleanup_orphaned_entities.assert_awaited_once()
+        assert (
+            "default_bad" in coord._cleanup_orphaned_entities.await_args.args[0]["pods"]
+        )
 
     async def test_prune_false_only_merges(self, hass, coord):
         """With prune=False stale entries stay and no cleanup is scheduled."""
@@ -2185,6 +2211,47 @@ class TestRelistPruning:
 
         assert set(coord.data["pods"]) == {"default_new", "default_old"}
         coord._cleanup_orphaned_entities.assert_not_awaited()
+
+
+async def test_watch_relist_skips_prune_when_real_poll_lands_during_list(
+    hass: HomeAssistant, coordinator, mock_client
+):
+    """A real poll finishing during the relist's list request blocks pruning."""
+    mock_client.get_pods.return_value = [{"name": "new", "namespace": "default"}]
+    coordinator.data = {"pods": {}, "pods_count": 0}
+    coordinator._cleanup_orphaned_entities = AsyncMock()
+
+    async def _list(url):
+        coordinator.data = await coordinator._async_update_data()
+        return [{"metadata": {"name": "old", "namespace": "default"}}], "100"
+
+    mock_client.list_resource_with_version = AsyncMock(side_effect=_list)
+
+    async def _stop(url, rv):
+        coordinator._watch_stop_event.set()
+        return
+        yield
+
+    mock_client.watch_stream = _stop
+    coordinator.async_update_listeners = MagicMock()
+    await coordinator._run_watch_loop(
+        "pods", "https://h/api/v1/pods", lambda item: dict(item["metadata"])
+    )
+    assert set(coordinator.data["pods"]) == {"default_new", "default_old"}
+
+
+async def test_poll_generation_increments_only_on_successful_poll(
+    hass: HomeAssistant, coordinator, mock_client
+):
+    """_poll_generation bumps by one per successful poll, not on UpdateFailed."""
+    start = coordinator._poll_generation
+    await coordinator._async_update_data()
+    assert coordinator._poll_generation == start + 1
+
+    mock_client.get_pods.side_effect = Exception("down")
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator._poll_generation == start + 1
 
 
 class TestRunWatchLoopExtended:
