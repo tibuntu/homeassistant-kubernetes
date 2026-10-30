@@ -303,7 +303,7 @@ The integration automatically creates switches for controlling Kubernetes worklo
 | **deployment_name** / **statefulset_name** | Name of the workload (key matches the resource type) | `web-app` |
 | **namespace** | Kubernetes namespace | `default` |
 | **replicas** | Current number of replicas | `3` |
-| **workload_type** | `deployment` or `statefulset` | `deployment` |
+| **workload_type** | `Deployment` or `StatefulSet` | `Deployment` |
 | **last_scale_attempt_failed** | `true` if the most recent scale operation failed | `false` |
 | **cpu_usage_(millicores)** | Aggregated CPU usage across the workload's pods | `142` |
 | **memory_usage_(MiB)** | Aggregated memory usage across the workload's pods | `256` |

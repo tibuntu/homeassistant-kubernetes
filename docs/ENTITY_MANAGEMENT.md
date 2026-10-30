@@ -48,7 +48,7 @@ The integration now automatically removes orphaned entities during each polling 
 The cleanup process provides detailed logging:
 
 ```
-[INFO] Deployment my-app no longer exists, marking entity for removal
+[INFO] Entity switch.production_default_my_app (unique_id: <entry_id>_default_my-app_deployment) no longer matches current data, marking for removal
 [INFO] Removing orphaned entity: switch.production_default_my_app
 [INFO] Removed 1 orphaned entities
 ```

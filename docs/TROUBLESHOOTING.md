@@ -73,8 +73,8 @@ When the cluster rejects the stored token, the integration detects it on the nex
 You can also update the token at any time without waiting for the prompt:
 
 1. Go to **Settings** → **Devices & Services**
-2. Find your Kubernetes integration and click **Configure**
-3. Update the API token with the new token from Step 1 or 2
+2. Find your Kubernetes integration, open the three-dot menu (**...**) and select **Reconfigure**
+3. Update the API token with the new token from Step 2
 4. Save the configuration
 
 > **Note:** If Home Assistant runs inside the cluster with **Prefer in-cluster ServiceAccount token** enabled, routine token rotation is handled automatically — the integration re-reads the projected token and retries before ever asking you to re-authenticate. A reauthentication prompt in that setup usually means the ServiceAccount or its ClusterRoleBinding was deleted — submitting a token there also switches the entry off in-cluster mode so the pasted token takes effect. Re-enable **Prefer in-cluster ServiceAccount token** via **Reconfigure** once the ServiceAccount is back.

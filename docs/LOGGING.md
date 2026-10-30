@@ -129,7 +129,7 @@ Add `--cacert <ca.crt>` (or `-k` for a quick test only) when the cluster uses a 
 ### Successful Operation
 
 ```
-DEBUG (MainThread) [custom_components.kubernetes.kubernetes_client] Successfully completed get pods count (cluster=production, host=k8s.example.com:6443, namespace=default): found 15 pods
+DEBUG (MainThread) [custom_components.kubernetes.kubernetes_client] Successfully completed get pods count (cluster=production, host=k8s.example.com:6443, namespaces=default): retrieved 15 pods
 ```
 
 ### Authentication Error
