@@ -1945,6 +1945,37 @@ class TestDeleteJobService:
 
         mock_client.delete_job.assert_called_once_with("unknown-job", "default")
 
+    async def test_blank_job_name_requires_a_name(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """A whitespace-only job_name counts as no name at all."""
+        await async_setup_services(hass)
+        with pytest.raises(ServiceValidationError, match="at least one"):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_DELETE_JOB,
+                {ATTR_JOB_NAME: "   "},
+                blocking=True,
+            )
+        mock_client.delete_job.assert_not_called()
+
+    async def test_empty_namespace_falls_back_to_default(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """An empty namespace is accepted and falls back like an omitted one."""
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.data = {"jobs": {}}
+
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "my-job", ATTR_NAMESPACE: ""},
+            blocking=True,
+        )
+
+        mock_client.delete_job.assert_called_once_with("my-job", "default")
+
     async def test_entry_id_selects_correct_entry(
         self, hass: HomeAssistant, mock_client, add_loaded_entry
     ):

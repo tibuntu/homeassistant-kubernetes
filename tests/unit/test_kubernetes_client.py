@@ -15,6 +15,8 @@ from custom_components.kubernetes.kubernetes_client import (
     KubernetesClient,
     ResourceVersionExpired,
     build_ssl_param,
+    is_valid_k8s_name,
+    is_valid_k8s_namespace,
     normalize_host,
 )
 
@@ -5537,6 +5539,8 @@ class TestDeleteJob:
             ("j1", "..", "default"),
             ("j1", None, ".."),
             ("j1", ["a"], "default"),
+            ("a" * 254, "ns", "default"),
+            ("j1\n", "ns", "default"),
         ],
     )
     async def test_delete_job_invalid_names_raise(
@@ -6492,3 +6496,50 @@ class TestGetPodLogs:
             await mock_client.get_pod_logs("p", "default")
 
         assert exc_info.value.status == status
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("a", True),
+        ("a" * 253, True),
+        ("a.b", True),
+        ("a-b.c-d", True),
+        ("a" * 254, False),
+        ("j1\n", False),
+        ("-a", False),
+        ("a-", False),
+        ("a..b", False),
+        (".", False),
+        ("..", False),
+        ("", False),
+        ("Upper", False),
+        (None, False),
+        (["default"], False),
+    ],
+)
+def test_is_valid_k8s_name(value, expected):
+    """Names are DNS-1123 subdomains of at most 253 characters."""
+    assert is_valid_k8s_name(value) is expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("a", True),
+        ("a" * 63, True),
+        ("my-ns", True),
+        ("a" * 64, False),
+        ("j1\n", False),
+        ("a.b", False),
+        ("-a", False),
+        ("a-", False),
+        ("", False),
+        ("Upper", False),
+        (None, False),
+        (["default"], False),
+    ],
+)
+def test_is_valid_k8s_namespace(value, expected):
+    """Namespaces are DNS-1123 labels of at most 63 characters."""
+    assert is_valid_k8s_namespace(value) is expected
