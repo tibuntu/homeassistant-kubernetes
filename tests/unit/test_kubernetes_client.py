@@ -5518,6 +5518,38 @@ class TestDeletePod:
 class TestDeleteJob:
     """Tests for the delete_job client method."""
 
+    async def test_delete_job_exact_url(self, mock_client):
+        sess = mock_aiohttp_session(delete=200)
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=sess,
+        ):
+            assert await mock_client.delete_job("j1", "default") is True
+        assert sess.delete.call_args[0][0].endswith(
+            "/apis/batch/v1/namespaces/default/jobs/j1?propagationPolicy=Background"
+        )
+
+    @pytest.mark.parametrize(
+        ("job_name", "namespace", "default_ns"),
+        [
+            (".", "ns", "default"),
+            ("..", "ns", "default"),
+            ("j1", "..", "default"),
+            ("j1", None, ".."),
+            ("j1", ["a"], "default"),
+        ],
+    )
+    async def test_delete_job_invalid_names_raise(
+        self, mock_client, job_name, namespace, default_ns
+    ):
+        mock_client.namespace = default_ns
+        mock_client._delete_job_aiohttp = AsyncMock(return_value=True)
+        mock_client._delete_job_kubernetes = AsyncMock(return_value=True)
+        with pytest.raises(ValueError, match="DNS-1123"):
+            await mock_client.delete_job(job_name, namespace)
+        mock_client._delete_job_aiohttp.assert_not_called()
+        mock_client._delete_job_kubernetes.assert_not_called()
+
     async def test_delete_job_aiohttp_success(self, mock_client):
         sess = mock_aiohttp_session(delete=200)
         with patch(

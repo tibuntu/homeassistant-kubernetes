@@ -36,6 +36,7 @@ from .const import (
     WORKLOAD_TYPE_STATEFULSET,
 )
 from .coordinator import KubernetesEntryData, get_hpa_for, get_loaded_entries
+from .kubernetes_client import is_valid_k8s_name, is_valid_k8s_namespace
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.debug("Kubernetes services module loaded")
@@ -562,15 +563,38 @@ RESTART_WORKLOAD_SCHEMA = vol.Schema(
     )
 )
 
+
+def _job_name_value(value: Any) -> str:
+    """Validate a job name; empty values pass through to the no-names check."""
+    name = cv.string(value).strip()
+    if name and not is_valid_k8s_name(name):
+        raise vol.Invalid(
+            f"Invalid job name {name!r}: must be a DNS-1123 subdomain "
+            "(lowercase alphanumerics, '-' and '.', no '.' or '..' alone)"
+        )
+    return name
+
+
+def _namespace_value(value: Any) -> str:
+    """Validate a namespace; empty values fall through to the default."""
+    namespace = cv.string(value).strip()
+    if namespace and not is_valid_k8s_namespace(namespace):
+        raise vol.Invalid(
+            f"Invalid namespace {namespace!r}: must be a DNS-1123 label "
+            "(lowercase alphanumerics and '-', max 63 characters)"
+        )
+    return namespace
+
+
 DELETE_JOB_SCHEMA = vol.Schema(
     vol.All(
         {
-            vol.Optional(ATTR_JOB_NAME): cv.string,
+            vol.Optional(ATTR_JOB_NAME): _job_name_value,
             vol.Optional(ATTR_JOB_NAMES): vol.Any(
-                cv.string,
-                vol.All(cv.ensure_list, [cv.string]),
+                _job_name_value,
+                vol.All(cv.ensure_list, [_job_name_value]),
             ),
-            vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional(ATTR_NAMESPACE): _namespace_value,
             vol.Optional("entry_id"): cv.string,
         },
         _validate_job_schema,

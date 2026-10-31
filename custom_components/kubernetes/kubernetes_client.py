@@ -9,6 +9,7 @@ import functools
 import ipaddress
 import json
 import logging
+import re
 import ssl
 import time
 from typing import Any
@@ -122,6 +123,29 @@ class KubernetesApiError(Exception):
         """Store the HTTP status (when there was one) next to the message."""
         super().__init__(message)
         self.status = status
+
+
+_DNS1123_LABEL = r"[a-z0-9]([-a-z0-9]*[a-z0-9])?"
+_DNS1123_SUBDOMAIN_RE = re.compile(rf"{_DNS1123_LABEL}(\.{_DNS1123_LABEL})*")
+_DNS1123_LABEL_RE = re.compile(_DNS1123_LABEL)
+
+
+def is_valid_k8s_name(value: Any) -> bool:
+    """Return True if value is a DNS-1123 subdomain (a valid object name)."""
+    return (
+        isinstance(value, str)
+        and len(value) <= 253
+        and _DNS1123_SUBDOMAIN_RE.fullmatch(value) is not None
+    )
+
+
+def is_valid_k8s_namespace(value: Any) -> bool:
+    """Return True if value is a DNS-1123 label (a valid namespace name)."""
+    return (
+        isinstance(value, str)
+        and len(value) <= 63
+        and _DNS1123_LABEL_RE.fullmatch(value) is not None
+    )
 
 
 class KubernetesClient:
@@ -1568,23 +1592,32 @@ class KubernetesClient:
 
     async def delete_job(self, job_name: str, namespace: str | None = None) -> bool:
         """Delete a job by name (cascade-deletes its pods via Background propagation)."""
-        result = await self._delete_job_aiohttp(job_name, namespace)
+        target_namespace = namespace or self.namespace
+        if not is_valid_k8s_name(job_name):
+            raise ValueError(
+                f"Invalid job name {job_name!r}: must be a DNS-1123 subdomain"
+            )
+        if not is_valid_k8s_namespace(target_namespace):
+            raise ValueError(
+                f"Invalid namespace {target_namespace!r}: must be a DNS-1123 label"
+            )
+        result = await self._delete_job_aiohttp(job_name, target_namespace)
         if result:
             _LOGGER.info(
                 "Successfully deleted job %s in namespace %s",
                 job_name,
-                namespace or self.namespace,
+                target_namespace,
             )
             return result
         _LOGGER.debug(
             "aiohttp failed, trying official Kubernetes client for job deletion"
         )
-        result = await self._delete_job_kubernetes(job_name, namespace)
+        result = await self._delete_job_kubernetes(job_name, target_namespace)
         if result:
             _LOGGER.info(
                 "Successfully deleted job %s in namespace %s using official client",
                 job_name,
-                namespace or self.namespace,
+                target_namespace,
             )
         return result
 
@@ -1600,7 +1633,8 @@ class KubernetesClient:
             }
             url = (
                 f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/"
-                f"{target_namespace}/jobs/{job_name}?propagationPolicy=Background"
+                f"{quote(target_namespace, safe='')}/jobs/"
+                f"{quote(job_name, safe='')}?propagationPolicy=Background"
             )
             async with aiohttp.ClientSession() as session:
                 async with session.delete(

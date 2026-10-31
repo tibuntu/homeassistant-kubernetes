@@ -11,6 +11,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+import voluptuous as vol
 import yaml
 
 from custom_components.kubernetes.const import (
@@ -1782,6 +1783,47 @@ class TestCollectJobNames:
 @pytest.mark.usefixtures("load_translations")
 class TestDeleteJobService:
     """Tests for the delete_job service."""
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {ATTR_JOB_NAME: "."},
+            {ATTR_JOB_NAME: ".."},
+            {ATTR_JOB_NAME: "a/b"},
+            {ATTR_JOB_NAME: "Upper"},
+            {ATTR_JOB_NAMES: ["ok", "."]},
+            {ATTR_JOB_NAME: "my-job", ATTR_NAMESPACE: ".."},
+            {ATTR_JOB_NAME: "my-job", ATTR_NAMESPACE: "a/b"},
+            {ATTR_JOB_NAME: "my-job", ATTR_NAMESPACE: "a.b"},
+        ],
+    )
+    async def test_invalid_names_rejected(
+        self, hass: HomeAssistant, mock_client, setup_domain_data, data
+    ):
+        """Names that are not valid Kubernetes names never reach the client."""
+        await async_setup_services(hass)
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(
+                DOMAIN, SERVICE_DELETE_JOB, data, blocking=True
+            )
+        mock_client.delete_job.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "data",
+        [{ATTR_JOB_NAME: " my-job "}, {ATTR_JOB_NAMES: [" my-job "]}],
+    )
+    async def test_names_are_stripped(
+        self, hass: HomeAssistant, mock_client, setup_domain_data, data
+    ):
+        """Surrounding whitespace is stripped before deleting."""
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {**data, ATTR_NAMESPACE: "prod"},
+            blocking=True,
+        )
+        mock_client.delete_job.assert_called_once_with("my-job", "prod")
 
     async def test_delete_single_job_explicit_namespace(
         self, hass: HomeAssistant, mock_client, setup_domain_data

@@ -192,7 +192,7 @@ data:
 
 **Service**: `kubernetes.delete_job`
 
-Delete one or more Kubernetes Jobs. This is useful for removing failed Jobs or cleaning up completed Jobs. Deletes the Job and its pods using a Background propagation policy (pods are also deleted).
+Delete one or more Kubernetes Jobs. This is useful for removing failed Jobs or cleaning up completed Jobs. Deletes the Job and its pods using a Background propagation policy (pods are also deleted). Job names must be valid Kubernetes object names (DNS-1123 subdomain) and the namespace a DNS-1123 label; `.` and `..` are rejected.
 
 **Parameters**:
 
@@ -294,7 +294,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 
 - No Kubernetes integration is configured, or the supplied `entry_id` does not match a loaded config entry
 - None of the given `workload_name` / `workload_names` resolve to a known workload (e.g. the entity ID does not exist, or the switch has no `namespace`/`workload_type` attributes)
-- `delete_job` / `cordon_node` / `uncordon_node` are called without a usable name
+- `delete_job` / `cordon_node` / `uncordon_node` are called without a usable name. `delete_job` additionally rejects a job name that is not a valid DNS-1123 subdomain (such as `.` or `..`) and a namespace that is not a DNS-1123 label, with a validation error.
 - A workload's type does not support the requested operation — for example scaling, stopping, or restarting a CronJob. The whole call is rejected; no target in the call is touched.
 - `scale_workload` targets an HPA-managed workload with `replicas` other than `0`. The whole call is rejected; no target in the call is touched.
 - `scale_workload` / `start_workload` / `stop_workload` / `restart_workload` span more than one cluster: the targets belong to different config entries, an explicit `entry_id` contradicts the targets' cluster, or a raw workload name without `entry_id` exists in more than one cluster. The whole call is rejected; call the service once per cluster (or pass `entry_id` to pick the cluster for an ambiguous raw name).

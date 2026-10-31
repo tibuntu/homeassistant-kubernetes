@@ -2608,6 +2608,55 @@ class TestWebsocketDeleteJob:
             == "Failed to delete job my-job-abc123 in namespace default"
         )
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("job_name", "."),
+            ("job_name", ".."),
+            ("job_name", "a/b"),
+            ("namespace", ".."),
+            ("namespace", "a.b"),
+        ],
+    )
+    async def test_delete_job_invalid_names_rejected(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        field,
+        value,
+    ):
+        """Invalid names are rejected before reaching the client."""
+        client = MagicMock()
+        client.delete_job = AsyncMock(return_value=True)
+        add_loaded_client_entry(client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json({**self._msg(5), field: value})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        client.delete_job.assert_not_called()
+
+    async def test_delete_job_value_error_is_invalid_format(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """A ValueError from the client is reported as invalid_format."""
+        client = MagicMock()
+        client.delete_job = AsyncMock(side_effect=ValueError("bad name"))
+        add_loaded_client_entry(client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json(self._msg(6))
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        assert msg["error"]["message"] == "bad name"
+
     async def test_delete_job_entry_not_found(
         self, hass: HomeAssistant, hass_ws_client
     ):

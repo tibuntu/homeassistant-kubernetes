@@ -48,9 +48,28 @@ from .coordinator import (
     get_loaded_entries,
     hpa_attributes,
 )
-from .kubernetes_client import KubernetesApiError
+from .kubernetes_client import (
+    KubernetesApiError,
+    is_valid_k8s_name,
+    is_valid_k8s_namespace,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _valid_job_name(value: Any) -> str:
+    """Validate a job name as a DNS-1123 subdomain."""
+    if not is_valid_k8s_name(value):
+        raise vol.Invalid("job_name must be a DNS-1123 subdomain")
+    return str(value)
+
+
+def _valid_namespace(value: Any) -> str:
+    """Validate a namespace as a DNS-1123 label."""
+    if not is_valid_k8s_namespace(value):
+        raise vol.Invalid("namespace must be a DNS-1123 label")
+    return str(value)
+
 
 # Kubernetes object names (DNS-1123 subdomain). Rejects "..", "/" and the like
 # before a name is put into an API path.
@@ -460,8 +479,8 @@ async def websocket_pod_logs(
     {
         vol.Required("type"): "kubernetes/jobs/delete",
         vol.Required("entry_id"): str,
-        vol.Required("job_name"): str,
-        vol.Required("namespace"): str,
+        vol.Required("job_name"): _valid_job_name,
+        vol.Required("namespace"): _valid_namespace,
     }
 )
 @websocket_api.async_response
@@ -481,7 +500,11 @@ async def websocket_delete_job(
         return
 
     client = coordinator.client
-    success = await client.delete_job(job_name, namespace)
+    try:
+        success = await client.delete_job(job_name, namespace)
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
 
     if success:
         # Trigger a data refresh so the UI updates
