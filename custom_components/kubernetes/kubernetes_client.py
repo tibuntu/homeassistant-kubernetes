@@ -1474,7 +1474,7 @@ class KubernetesClient:
 
             async with aiohttp.ClientSession() as session:
                 async with session.delete(
-                    f"https://{self.host}:{self.port}/api/v1/namespaces/{target_namespace}/pods/{pod_name}",
+                    f"https://{self.host}:{self.port}/api/v1/namespaces/{quote(target_namespace, safe='')}/pods/{quote(pod_name, safe='')}",
                     headers=headers,
                     ssl=await self._get_ssl_param(),
                     timeout=aiohttp.ClientTimeout(total=10),
@@ -1600,7 +1600,7 @@ class KubernetesClient:
             }
             url = (
                 f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/"
-                f"{target_namespace}/jobs/{job_name}?propagationPolicy=Background"
+                f"{quote(target_namespace, safe='')}/jobs/{quote(job_name, safe='')}?propagationPolicy=Background"
             )
             async with aiohttp.ClientSession() as session:
                 async with session.delete(
@@ -2274,7 +2274,7 @@ class KubernetesClient:
                 "Accept": "application/json",
                 "Content-Type": "application/strategic-merge-patch+json",
             }
-            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs/{cronjob_name}"
+            url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{quote(namespace, safe='')}/cronjobs/{quote(cronjob_name, safe='')}"
 
             async with aiohttp.ClientSession() as session:
                 async with session.patch(
