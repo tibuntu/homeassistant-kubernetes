@@ -2186,6 +2186,38 @@ class TestWebsocketDeletePod:
             "namespace": "default",
         }
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("pod_name", ".."),
+            ("pod_name", "pod\n"),
+            ("namespace", "a/b"),
+            ("namespace", "default\n"),
+            ("pod_name", "X"),
+        ],
+    )
+    async def test_invalid_names_rejected(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        field,
+        value,
+    ):
+        """Names that are not valid Kubernetes names never reach the client."""
+        client = MagicMock()
+        client.delete_pod = AsyncMock()
+        add_loaded_client_entry(client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json({**self._msg(1), field: value})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        client.delete_pod.assert_not_called()
+
     async def test_delete_pod_success(
         self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
     ):
@@ -2403,7 +2435,13 @@ class TestWebsocketPodLogs:
 
     @pytest.mark.parametrize(
         ("field", "value"),
-        [("pod_name", ".."), ("namespace", "a/b"), ("pod_name", "X")],
+        [
+            ("pod_name", ".."),
+            ("pod_name", "pod\n"),
+            ("namespace", "a/b"),
+            ("namespace", "default\n"),
+            ("pod_name", "X"),
+        ],
     )
     async def test_invalid_names_rejected(
         self,
@@ -2569,6 +2607,38 @@ class TestWebsocketDeleteJob:
             "job_name": "my-job-abc123",
             "namespace": "default",
         }
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("job_name", ".."),
+            ("job_name", "job\n"),
+            ("namespace", "a/b"),
+            ("namespace", "default\n"),
+            ("job_name", "X"),
+        ],
+    )
+    async def test_invalid_names_rejected(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        field,
+        value,
+    ):
+        """Names that are not valid Kubernetes names never reach the client."""
+        client = MagicMock()
+        client.delete_job = AsyncMock()
+        add_loaded_client_entry(client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json({**self._msg(1), field: value})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        client.delete_job.assert_not_called()
 
     async def test_delete_job_success(
         self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
@@ -2744,6 +2814,42 @@ class TestWebsocketSuspendCronJobEndToEnd:
             "namespace": "default",
             "suspend": suspend,
         }
+
+    @pytest.mark.parametrize("suspend", [True, False])
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("cronjob_name", ".."),
+            ("cronjob_name", "backup\n"),
+            ("namespace", "a/b"),
+            ("namespace", "default\n"),
+            ("cronjob_name", "X"),
+        ],
+    )
+    async def test_invalid_names_rejected(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        field,
+        value,
+        suspend,
+    ):
+        """Names that are not valid Kubernetes names never reach the client."""
+        client = MagicMock()
+        client.suspend_cronjob = AsyncMock()
+        client.resume_cronjob = AsyncMock()
+        add_loaded_client_entry(client)
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json({**self._suspend_msg(1, suspend), field: value})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        client.suspend_cronjob.assert_not_called()
+        client.resume_cronjob.assert_not_called()
 
     async def test_admin_can_suspend(
         self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry

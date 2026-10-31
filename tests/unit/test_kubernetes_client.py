@@ -6460,3 +6460,41 @@ class TestGetPodLogs:
             await mock_client.get_pod_logs("p", "default")
 
         assert exc_info.value.status == status
+
+
+class TestMutationUrlQuoting:
+    """Names and namespaces are percent-encoded into the mutation URLs."""
+
+    async def test_delete_pod_quotes_segments(self, mock_client):
+        """A '/' in the pod name or namespace cannot add path segments."""
+        session = mock_aiohttp_session(delete=200)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            await mock_client._delete_pod_aiohttp("a/b", "n/s")
+
+        url = session.delete.call_args[0][0]
+        assert url.endswith("/api/v1/namespaces/n%2Fs/pods/a%2Fb")
+
+    async def test_delete_job_quotes_segments(self, mock_client):
+        """A '/' in the job name or namespace cannot add path segments."""
+        session = mock_aiohttp_session(delete=200)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            await mock_client._delete_job_aiohttp("a/b", "n/s")
+
+        url = session.delete.call_args[0][0]
+        assert url.endswith(
+            "/apis/batch/v1/namespaces/n%2Fs/jobs/a%2Fb?propagationPolicy=Background"
+        )
+
+    async def test_patch_cronjob_quotes_segments(self, mock_client):
+        """A '/' in the CronJob name or namespace cannot add path segments."""
+        session = mock_aiohttp_session(patch=200)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            await mock_client._patch_cronjob_aiohttp(
+                "a/b", "n/s", {"spec": {"suspend": True}}, "suspend"
+            )
+
+        url = session.patch.call_args[0][0]
+        assert url.endswith("/apis/batch/v1/namespaces/n%2Fs/cronjobs/a%2Fb")
