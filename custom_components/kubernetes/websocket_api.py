@@ -52,9 +52,10 @@ from .kubernetes_client import KubernetesApiError
 
 _LOGGER = logging.getLogger(__name__)
 
-# Kubernetes object names (DNS-1123 subdomain). Rejects "..", "/" and the like
-# before a name is put into an API path.
-_K8S_NAME = vol.All(str, vol.Match(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$"))
+# Kubernetes object names (DNS-1123 subdomain). Rejects "..", "/" and the like.
+# Guards every command that puts a name into an API path. Anchored with \Z
+# because "$" would also accept a trailing newline.
+_K8S_NAME = vol.All(str, vol.Match(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?\Z"))
 
 # Resource buckets that are keyed "{namespace}_{name}" in coordinator.data and
 # broken down per-namespace in the cluster overview. Order matches the
@@ -364,8 +365,8 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
     {
         vol.Required("type"): "kubernetes/pods/delete",
         vol.Required("entry_id"): str,
-        vol.Required("pod_name"): str,
-        vol.Required("namespace"): str,
+        vol.Required("pod_name"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAME,
     }
 )
 @websocket_api.async_response
@@ -460,8 +461,8 @@ async def websocket_pod_logs(
     {
         vol.Required("type"): "kubernetes/jobs/delete",
         vol.Required("entry_id"): str,
-        vol.Required("job_name"): str,
-        vol.Required("namespace"): str,
+        vol.Required("job_name"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAME,
     }
 )
 @websocket_api.async_response
@@ -563,8 +564,8 @@ def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
     {
         vol.Required("type"): "kubernetes/cronjobs/suspend",
         vol.Required("entry_id"): str,
-        vol.Required("cronjob_name"): str,
-        vol.Required("namespace"): str,
+        vol.Required("cronjob_name"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAME,
         vol.Required("suspend"): bool,
     }
 )
