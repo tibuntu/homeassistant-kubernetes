@@ -2190,7 +2190,7 @@ class TestWebsocketDeletePod:
         ("field", "value"),
         [
             ("pod_name", ".."),
-            ("pod_name", "pod_name\n"),
+            ("pod_name", "pod\n"),
             ("namespace", "a/b"),
             ("namespace", "default\n"),
             ("pod_name", "X"),
@@ -2612,7 +2612,7 @@ class TestWebsocketDeleteJob:
         ("field", "value"),
         [
             ("job_name", ".."),
-            ("job_name", "job_name\n"),
+            ("job_name", "job\n"),
             ("namespace", "a/b"),
             ("namespace", "default\n"),
             ("job_name", "X"),
