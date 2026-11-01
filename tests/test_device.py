@@ -2,8 +2,13 @@
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+import pytest
 
-from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.const import (
+    CONF_DEVICE_GROUPING_MODE,
+    DEVICE_GROUPING_MODE_CLUSTER,
+    DOMAIN,
+)
 from custom_components.kubernetes.device import (
     cleanup_orphaned_namespace_devices,
     get_all_namespaces,
@@ -122,6 +127,20 @@ class TestGetAllNamespaces:
         }
         namespaces = get_all_namespaces(data)
         assert namespaces == {"default", "production", "kube-system"}
+
+    def test_get_all_namespaces_skips_empty_and_missing_namespace(self):
+        """Resources without a namespace must not yield a "cluster: " device."""
+        data = {
+            "pods": {
+                "a": {"namespace": "default", "name": "a"},
+                "b": {"namespace": "", "name": "b"},
+                "c": {"namespace": None, "name": "c"},
+            },
+            "deployments": {
+                "d": {"namespace": "apps", "name": "d"},
+            },
+        }
+        assert get_all_namespaces(data) == {"default", "apps"}
 
 
 class TestDeviceCreation:
@@ -278,3 +297,85 @@ class TestDeviceCleanup:
             )
             is not None
         )
+
+    async def test_cleanup_keeps_cluster_device_when_no_namespaces_remain(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
+        """Only namespace devices are orphans; the cluster device always stays."""
+        registry = dr.async_get(hass)
+        await get_or_create_namespace_device(hass, mock_config_entry, "default")
+
+        await cleanup_orphaned_namespace_devices(hass, mock_config_entry, set())
+
+        remaining = {
+            identifier
+            for device in dr.async_entries_for_config_entry(
+                registry, mock_config_entry.entry_id
+            )
+            for identifier in device.identifiers
+        }
+        assert remaining == {(DOMAIN, "test_entry_id_cluster")}
+
+
+class TestClusterGroupingMode:
+    """Test the "Group by Cluster" device grouping mode."""
+
+    @pytest.fixture
+    def cluster_mode_entry(self, make_config_entry):
+        """Config entry with device grouping set to the cluster mode."""
+        return make_config_entry(
+            data={CONF_DEVICE_GROUPING_MODE: DEVICE_GROUPING_MODE_CLUSTER}
+        )
+
+    def test_namespace_device_info_is_cluster_device_info(
+        self, hass: HomeAssistant, cluster_mode_entry
+    ):
+        """Namespaced entities attach to the cluster device."""
+        device_info = get_namespace_device_info(hass, cluster_mode_entry, "default")
+
+        assert device_info == get_cluster_device_info(cluster_mode_entry)
+        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
+        assert device_info["name"] == "test-cluster"
+        assert device_info["model"] == "Cluster"
+
+    async def test_no_namespace_device_is_created(
+        self, hass: HomeAssistant, cluster_mode_entry
+    ):
+        """No namespace device (nor its parent) is registered in cluster mode."""
+        device = await get_or_create_namespace_device(
+            hass, cluster_mode_entry, "default"
+        )
+
+        assert device is None
+        assert (
+            dr.async_entries_for_config_entry(
+                dr.async_get(hass), cluster_mode_entry.entry_id
+            )
+            == []
+        )
+
+    async def test_cleanup_keeps_all_devices(
+        self, hass: HomeAssistant, cluster_mode_entry
+    ):
+        """Cleanup is a no-op, even for namespace devices left from namespace mode."""
+        registry = dr.async_get(hass)
+        await get_or_create_cluster_device(hass, cluster_mode_entry)
+        registry.async_get_or_create(
+            config_entry_id=cluster_mode_entry.entry_id,
+            identifiers={(DOMAIN, "test_entry_id_namespace_old")},
+            name="test-cluster: old",
+        )
+
+        await cleanup_orphaned_namespace_devices(hass, cluster_mode_entry, set())
+
+        remaining = {
+            identifier
+            for device in dr.async_entries_for_config_entry(
+                registry, cluster_mode_entry.entry_id
+            )
+            for identifier in device.identifiers
+        }
+        assert remaining == {
+            (DOMAIN, "test_entry_id_cluster"),
+            (DOMAIN, "test_entry_id_namespace_old"),
+        }
