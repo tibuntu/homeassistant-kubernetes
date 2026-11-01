@@ -2190,9 +2190,12 @@ class TestWebsocketDeletePod:
         ("field", "value"),
         [
             ("pod_name", ".."),
+            ("pod_name", "."),
             ("pod_name", "pod\n"),
             ("namespace", "a/b"),
             ("namespace", "default\n"),
+            ("namespace", "a.b"),
+            ("namespace", "Default"),
             ("pod_name", "X"),
         ],
     )
@@ -2437,9 +2440,12 @@ class TestWebsocketPodLogs:
         ("field", "value"),
         [
             ("pod_name", ".."),
+            ("pod_name", "."),
             ("pod_name", "pod\n"),
             ("namespace", "a/b"),
             ("namespace", "default\n"),
+            ("namespace", "a.b"),
+            ("namespace", "Default"),
             ("pod_name", "X"),
         ],
     )
@@ -2612,9 +2618,12 @@ class TestWebsocketDeleteJob:
         ("field", "value"),
         [
             ("job_name", ".."),
+            ("job_name", "."),
             ("job_name", "job\n"),
             ("namespace", "a/b"),
             ("namespace", "default\n"),
+            ("namespace", "a.b"),
+            ("namespace", "Default"),
             ("job_name", "X"),
         ],
     )
@@ -2820,9 +2829,12 @@ class TestWebsocketSuspendCronJobEndToEnd:
         ("field", "value"),
         [
             ("cronjob_name", ".."),
+            ("cronjob_name", "."),
             ("cronjob_name", "backup\n"),
             ("namespace", "a/b"),
             ("namespace", "default\n"),
+            ("namespace", "a.b"),
+            ("namespace", "Default"),
             ("cronjob_name", "X"),
         ],
     )

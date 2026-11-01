@@ -15,6 +15,8 @@ from custom_components.kubernetes.kubernetes_client import (
     KubernetesClient,
     ResourceVersionExpired,
     build_ssl_param,
+    is_valid_k8s_name,
+    is_valid_k8s_namespace,
     normalize_host,
 )
 
@@ -6498,3 +6500,181 @@ class TestMutationUrlQuoting:
 
         url = session.patch.call_args[0][0]
         assert url.endswith("/apis/batch/v1/namespaces/n%2Fs/cronjobs/a%2Fb")
+
+    async def test_scale_workload_quotes_segments(self, mock_client):
+        """A '/' in the workload name or namespace cannot add path segments."""
+        session = mock_aiohttp_session(patch=200)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            await mock_client._scale_workload_aiohttp("deployments", "a/b", 1, "n/s")
+
+        url = session.patch.call_args[0][0]
+        assert url.endswith("/apis/apps/v1/namespaces/n%2Fs/deployments/a%2Fb/scale")
+
+    async def test_rollout_restart_quotes_segments(self, mock_client):
+        """A '/' in the workload name or namespace cannot add path segments."""
+        session = mock_aiohttp_session(patch=200)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            await mock_client._rollout_restart_aiohttp("deployments", "a/b", "n/s")
+
+        url = session.patch.call_args[0][0]
+        assert url.endswith("/apis/apps/v1/namespaces/n%2Fs/deployments/a%2Fb")
+
+    async def test_set_node_schedulable_quotes_segment(self, mock_client):
+        """A '/' in the node name cannot add path segments."""
+        session = mock_aiohttp_session(patch=200)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            await mock_client._set_node_schedulable_aiohttp("a/b", False)
+
+        url = session.patch.call_args[0][0]
+        assert url.endswith("/api/v1/nodes/a%2Fb")
+
+    async def test_trigger_cronjob_quotes_segments(self, mock_client):
+        """Both the CronJob GET and the Job POST URLs quote name and namespace."""
+        cronjob = _mock_response(
+            200,
+            json={
+                "metadata": {"name": "a/b", "uid": "u"},
+                "spec": {"jobTemplate": {"metadata": {}, "spec": {}}},
+            },
+        )
+        session = mock_aiohttp_session(get=cronjob, post=201)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            await mock_client._trigger_cronjob_aiohttp("a/b", "n/s")
+
+        assert session.get.call_args[0][0].endswith(
+            "/apis/batch/v1/namespaces/n%2Fs/cronjobs/a%2Fb"
+        )
+        assert session.post.call_args[0][0].endswith(
+            "/apis/batch/v1/namespaces/n%2Fs/jobs"
+        )
+
+
+class TestK8sNameValidators:
+    """is_valid_k8s_name / is_valid_k8s_namespace accept only DNS-1123 values."""
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            ".",
+            "..",
+            "%2E",
+            "",
+            "a/b",
+            "A",
+            "a\n",
+            "-a",
+            "a..b",
+            "a.-b",
+            "a" * 254,
+            {"a": 1},
+            None,
+        ],
+    )
+    def test_name_rejects(self, value):
+        """Dot segments, empty labels, bad characters and non-strings fail."""
+        assert is_valid_k8s_name(value) is False
+
+    @pytest.mark.parametrize("value", ["a.b", "a-b.c", "kube-system", "a", "a" * 63])
+    def test_name_accepts(self, value):
+        """Ordinary names and dotted subdomains pass."""
+        assert is_valid_k8s_name(value) is True
+
+    @pytest.mark.parametrize(
+        "value",
+        [".", "..", "%2E", "", "a/b", "A", "a\n", "-a", "a" * 64, "a.b", [], None],
+    )
+    def test_namespace_rejects(self, value):
+        """Namespaces are labels: no dots, at most 63 characters."""
+        assert is_valid_k8s_namespace(value) is False
+
+    @pytest.mark.parametrize("value", ["kube-system", "default", "a", "a" * 63])
+    def test_namespace_accepts(self, value):
+        """Ordinary namespaces pass."""
+        assert is_valid_k8s_namespace(value) is True
+
+
+BAD_SEGMENTS = [".", "..", "%2E", "a/b"]
+
+
+class TestMutationGuards:
+    """Invalid names/namespaces never reach aiohttp or the official client."""
+
+    @staticmethod
+    def _assert_no_requests(client, session_cls):
+        session_cls.assert_not_called()
+        assert not client.core_v1.mock_calls
+        assert not client.apps_v1.mock_calls
+        assert not client.batch_v1.mock_calls
+
+    @pytest.mark.parametrize("bad", BAD_SEGMENTS)
+    @pytest.mark.parametrize("position", ["name", "namespace", "default_namespace"])
+    @pytest.mark.parametrize(
+        "method",
+        [
+            "delete_pod",
+            "delete_job",
+            "scale_deployment",
+            "stop_statefulset",
+            "rollout_restart_deployment",
+        ],
+    )
+    async def test_bool_methods_reject(self, mock_client, method, position, bad):
+        """Boolean mutators return False without any request."""
+        name, namespace = "ok", "default"
+        if position == "name":
+            name = bad
+        elif position == "namespace":
+            namespace = bad
+        else:
+            mock_client.namespace = bad
+            namespace = None
+        args = (
+            (name, 1, namespace) if method == "scale_deployment" else (name, namespace)
+        )
+
+        with patch("aiohttp.ClientSession") as session_cls:
+            result = await getattr(mock_client, method)(*args)
+
+        assert result is False
+        self._assert_no_requests(mock_client, session_cls)
+
+    @pytest.mark.parametrize("bad", BAD_SEGMENTS)
+    @pytest.mark.parametrize("method", ["cordon_node", "uncordon_node"])
+    async def test_node_methods_reject(self, mock_client, method, bad):
+        """Node names are validated before any request."""
+        with patch("aiohttp.ClientSession") as session_cls:
+            result = await getattr(mock_client, method)(bad)
+
+        assert result is False
+        self._assert_no_requests(mock_client, session_cls)
+
+    @pytest.mark.parametrize("monitor_all", [False, True])
+    @pytest.mark.parametrize("bad", BAD_SEGMENTS)
+    @pytest.mark.parametrize("position", ["name", "namespace", "default_namespace"])
+    @pytest.mark.parametrize(
+        "method", ["trigger_cronjob", "suspend_cronjob", "resume_cronjob"]
+    )
+    async def test_cronjob_methods_reject(
+        self, mock_client, method, position, bad, monitor_all
+    ):
+        """CronJob mutators return a failure dict without any request."""
+        mock_client.monitor_all_namespaces = monitor_all
+        name, namespace = "ok", "default"
+        if position == "name":
+            name = bad
+        elif position == "namespace":
+            namespace = bad
+        else:
+            mock_client.namespace = bad
+            namespace = None
+
+        with patch("aiohttp.ClientSession") as session_cls:
+            result = await getattr(mock_client, method)(name, namespace)
+
+        assert result["success"] is False
+        assert "error" in result
+        self._assert_no_requests(mock_client, session_cls)

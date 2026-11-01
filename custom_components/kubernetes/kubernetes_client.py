@@ -9,6 +9,7 @@ import functools
 import ipaddress
 import json
 import logging
+import re
 import ssl
 import time
 from typing import Any
@@ -57,6 +58,32 @@ _LOGGER = logging.getLogger(__name__)
 
 # Waiting reasons that are transient and expected during normal startup — not problems.
 _BENIGN_WAITING_REASONS = frozenset({"ContainerCreating", "PodInitializing"})
+
+
+_DNS_LABEL_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?\Z")
+
+
+def is_valid_k8s_name(value: object) -> bool:
+    """Return True if value is a DNS-1123 subdomain (a valid object name).
+
+    Rejects "." and ".." (and empty labels such as "a..b"): URL quoting leaves
+    them unchanged and yarl/urllib3 collapse dot segments, so a name of "."
+    would turn a single-object DELETE into a collection request.
+    """
+    if not isinstance(value, str) or not 1 <= len(value) <= 253:
+        return False
+    return all(
+        _DNS_LABEL_RE.match(label) and len(label) <= 63 for label in value.split(".")
+    )
+
+
+def is_valid_k8s_namespace(value: object) -> bool:
+    """Return True if value is a DNS-1123 label (a valid namespace name)."""
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= 63
+        and _DNS_LABEL_RE.match(value) is not None
+    )
 
 
 def normalize_host(host: str) -> str:
@@ -1253,6 +1280,24 @@ class KubernetesClient:
             replace_fn=self.apps_v1.replace_namespaced_deployment,
         )
 
+    def _invalid_target(
+        self,
+        kind: str,
+        name: str,
+        namespace: str | None,
+        *,
+        namespaced: bool = True,
+    ) -> str | None:
+        """Return an error message if name/namespace must not reach an API path."""
+        if not is_valid_k8s_name(name):
+            msg = f"Refusing to modify {kind}: invalid name {name!r}"
+        elif namespaced and not is_valid_k8s_namespace(namespace or self.namespace):
+            msg = f"Refusing to modify {kind} {name!r}: invalid namespace {namespace or self.namespace!r}"
+        else:
+            return None
+        _LOGGER.error(msg)
+        return msg
+
     async def _scale_workload(
         self,
         resource_type: str,
@@ -1265,6 +1310,8 @@ class KubernetesClient:
     ) -> bool:
         """Scale a replica workload: aiohttp PATCH first, official client fallback."""
         kind = resource_type.rstrip("s")
+        if self._invalid_target(kind, name, namespace):
+            return False
         result = await self._scale_workload_aiohttp(
             resource_type, name, replicas, namespace
         )
@@ -1308,7 +1355,7 @@ class KubernetesClient:
 
             async with aiohttp.ClientSession() as session:
                 async with session.patch(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{target_namespace}/{resource_type}/{name}/scale",
+                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{quote(target_namespace, safe='')}/{resource_type}/{quote(name, safe='')}/scale",
                     headers=headers,
                     json={"spec": {"replicas": replicas}},
                     ssl=await self._get_ssl_param(),
@@ -1440,6 +1487,8 @@ class KubernetesClient:
     # Pod methods
     async def delete_pod(self, pod_name: str, namespace: str | None = None) -> bool:
         """Delete a pod by name."""
+        if self._invalid_target("pod", pod_name, namespace):
+            return False
         result = await self._delete_pod_aiohttp(pod_name, namespace)
         if result:
             _LOGGER.info(
@@ -1568,6 +1617,8 @@ class KubernetesClient:
 
     async def delete_job(self, job_name: str, namespace: str | None = None) -> bool:
         """Delete a job by name (cascade-deletes its pods via Background propagation)."""
+        if self._invalid_target("job", job_name, namespace):
+            return False
         result = await self._delete_job_aiohttp(job_name, namespace)
         if result:
             _LOGGER.info(
@@ -1685,6 +1736,8 @@ class KubernetesClient:
         patch_fn: Callable,
     ) -> bool:
         """Perform a rollout restart by patching the restart annotation."""
+        if self._invalid_target(resource_type.rstrip("s"), name, namespace):
+            return False
         result = await self._rollout_restart_aiohttp(resource_type, name, namespace)
         if result:
             _LOGGER.info(
@@ -1735,7 +1788,7 @@ class KubernetesClient:
 
             async with aiohttp.ClientSession() as session:
                 async with session.patch(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{target_namespace}/{resource_type}/{name}",
+                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{quote(target_namespace, safe='')}/{resource_type}/{quote(name, safe='')}",
                     headers=headers,
                     json=patch_data,
                     ssl=await self._get_ssl_param(),
@@ -1798,6 +1851,8 @@ class KubernetesClient:
     async def _set_node_schedulable(self, node_name: str, schedulable: bool) -> bool:
         """Set a node's schedulable state by patching spec.unschedulable."""
         action = "uncordon" if schedulable else "cordon"
+        if self._invalid_target("node", node_name, None, namespaced=False):
+            return False
         result = await self._set_node_schedulable_aiohttp(node_name, schedulable)
         if result:
             _LOGGER.debug("Successfully %sed node %s", action, node_name)
@@ -1829,7 +1884,7 @@ class KubernetesClient:
 
             async with aiohttp.ClientSession() as session:
                 async with session.patch(
-                    f"https://{self.host}:{self.port}/api/v1/nodes/{node_name}",
+                    f"https://{self.host}:{self.port}/api/v1/nodes/{quote(node_name, safe='')}",
                     headers=headers,
                     json=patch_data,
                     ssl=await self._get_ssl_param(),
@@ -2328,7 +2383,7 @@ class KubernetesClient:
             }
 
             # Step 1: Get the CronJob to extract the job template
-            cronjob_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/cronjobs/{cronjob_name}"
+            cronjob_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{quote(namespace, safe='')}/cronjobs/{quote(cronjob_name, safe='')}"
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
@@ -2380,7 +2435,7 @@ class KubernetesClient:
                     }
 
                     # Create the job
-                    jobs_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{namespace}/jobs"
+                    jobs_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{quote(namespace, safe='')}/jobs"
 
                     async with session.post(
                         jobs_url,
@@ -2504,6 +2559,14 @@ class KubernetesClient:
         )
         target_namespace = namespace or self.namespace
 
+        if error_msg := self._invalid_target("CronJob", cronjob_name, namespace):
+            return {
+                "success": False,
+                "error": error_msg,
+                "cronjob_name": cronjob_name,
+                "namespace": target_namespace,
+            }
+
         # Check namespace permissions
         if not self.monitor_all_namespaces and target_namespace not in self.namespaces:
             error_msg = (
@@ -2540,6 +2603,14 @@ class KubernetesClient:
         """Patch spec.suspend on a CronJob after checking the namespace is monitored."""
         operation = "suspend" if suspend else "resume"
         target_namespace = namespace or self.namespace
+
+        if error_msg := self._invalid_target("CronJob", cronjob_name, namespace):
+            return {
+                "success": False,
+                "error": error_msg,
+                "cronjob_name": cronjob_name,
+                "namespace": target_namespace,
+            }
 
         # Check namespace permissions
         if not self.monitor_all_namespaces and target_namespace not in self.namespaces:
