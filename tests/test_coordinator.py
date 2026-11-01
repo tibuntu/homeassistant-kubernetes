@@ -702,6 +702,50 @@ class TestKubernetesDataCoordinator:
         registry = er.async_get(hass)
         assert registry.async_get("switch.worker_1_schedulable") is not None
 
+    async def test_cleanup_keeps_cluster_event_entity_when_events_enabled(
+        self, hass: HomeAssistant, make_config_entry, mock_client
+    ):
+        """Regression: cleanup must not remove the cluster event entity."""
+        entry = make_config_entry(
+            entry_id="test-entry-id",
+            data={
+                "cluster_name": "test-cluster",
+                "host": "test-cluster.example.com",
+                "port": 6443,
+                "api_token": "test-token",
+            },
+            options={CONF_ENABLE_EVENTS: True},
+        )
+        with patch("homeassistant.helpers.frame.report_usage"):
+            coordinator = KubernetesDataCoordinator(hass, entry, mock_client)
+        _create_entity(
+            hass,
+            entry,
+            "test-entry-id_cluster_events",
+            "event.test_cluster_events",
+        )
+
+        await coordinator._cleanup_orphaned_entities({})
+
+        registry = er.async_get(hass)
+        assert registry.async_get("event.test_cluster_events") is not None
+
+    async def test_cleanup_removes_cluster_event_entity_when_events_disabled(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Test cleanup removes a leftover event entity once events are off."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_cluster_events",
+            "event.test_cluster_events",
+        )
+
+        await coordinator._cleanup_orphaned_entities({})
+
+        registry = er.async_get(hass)
+        assert registry.async_get("event.test_cluster_events") is None
+
     async def test_cleanup_removes_schedulable_switch_of_deleted_node(
         self, hass: HomeAssistant, coordinator, mock_config_entry
     ):
