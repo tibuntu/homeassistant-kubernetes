@@ -48,14 +48,34 @@ from .coordinator import (
     get_loaded_entries,
     hpa_attributes,
 )
-from .kubernetes_client import KubernetesApiError
+from .kubernetes_client import (
+    KubernetesApiError,
+    is_valid_k8s_name,
+    is_valid_k8s_namespace,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-# Kubernetes object names (DNS-1123 subdomain). Rejects "..", "/" and the like.
-# Guards every command that puts a name into an API path. Anchored with \Z
-# because "$" would also accept a trailing newline.
-_K8S_NAME = vol.All(str, vol.Match(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?\Z"))
+
+def _k8s_validator(check: Callable[[object], bool], what: str) -> Callable[[Any], Any]:
+    """Build a voluptuous validator raising vol.Invalid unless check(value)."""
+
+    def validate(value: Any) -> Any:
+        if not check(value):
+            raise vol.Invalid(f"invalid {what}")
+        return value
+
+    return validate
+
+
+# Object names (DNS-1123 subdomain) and namespaces (DNS-1123 label). Reject
+# ".", "..", "/" and the like (URL quoting leaves dot segments intact). Guards
+# every command that puts a name into an API path; the \Z-anchored check
+# lives in kubernetes_client so a trailing newline is rejected too.
+_K8S_NAME = vol.All(str, _k8s_validator(is_valid_k8s_name, "Kubernetes name"))
+_K8S_NAMESPACE = vol.All(
+    str, _k8s_validator(is_valid_k8s_namespace, "Kubernetes namespace")
+)
 
 # Resource buckets that are keyed "{namespace}_{name}" in coordinator.data and
 # broken down per-namespace in the cluster overview. Order matches the
@@ -366,7 +386,7 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
         vol.Required("type"): "kubernetes/pods/delete",
         vol.Required("entry_id"): str,
         vol.Required("pod_name"): _K8S_NAME,
-        vol.Required("namespace"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAMESPACE,
     }
 )
 @websocket_api.async_response
@@ -406,7 +426,7 @@ async def websocket_delete_pod(
         vol.Required("type"): "kubernetes/pods/logs",
         vol.Required("entry_id"): str,
         vol.Required("pod_name"): _K8S_NAME,
-        vol.Required("namespace"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAMESPACE,
         vol.Optional("container"): str,
         vol.Optional("tail_lines", default=200): vol.All(
             int, vol.Range(min=POD_LOGS_MIN_TAIL_LINES, max=POD_LOGS_MAX_TAIL_LINES)
@@ -462,7 +482,7 @@ async def websocket_pod_logs(
         vol.Required("type"): "kubernetes/jobs/delete",
         vol.Required("entry_id"): str,
         vol.Required("job_name"): _K8S_NAME,
-        vol.Required("namespace"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAMESPACE,
     }
 )
 @websocket_api.async_response
@@ -565,7 +585,7 @@ def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
         vol.Required("type"): "kubernetes/cronjobs/suspend",
         vol.Required("entry_id"): str,
         vol.Required("cronjob_name"): _K8S_NAME,
-        vol.Required("namespace"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAMESPACE,
         vol.Required("suspend"): bool,
     }
 )
