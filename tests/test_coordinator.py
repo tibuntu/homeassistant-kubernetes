@@ -4121,22 +4121,22 @@ class TestDisabledResources:
         with patch("homeassistant.helpers.frame.report_usage"):
             return KubernetesDataCoordinator(hass, entry, mock_client)
 
-    async def test_cluster_events_expected_only_when_events_enabled(
+    async def test_cluster_events_expected_when_events_enabled(
         self, hass: HomeAssistant, mock_client
     ):
-        """The cluster events unique_id is expected only with enable_events on."""
-        on = self._make_coordinator(hass, mock_client, [], {CONF_ENABLE_EVENTS: True})
-        eid = on.config_entry.entry_id
-        assert f"{eid}_cluster_events" in on._build_expected_unique_ids({})
-
-        off = self._make_coordinator(hass, mock_client, [])
-        assert f"{eid}_cluster_events" not in off._build_expected_unique_ids({})
+        """The cluster events unique_id is expected with enable_events on."""
+        coordinator = self._make_coordinator(
+            hass, mock_client, [], {CONF_ENABLE_EVENTS: True}
+        )
+        eid = coordinator.config_entry.entry_id
+        assert f"{eid}_cluster_events" in coordinator._build_expected_unique_ids({})
 
     @pytest.mark.parametrize("events_enabled", [True, False])
     async def test_cleanup_keeps_cluster_events_entity_only_when_enabled(
         self, hass: HomeAssistant, mock_client, events_enabled: bool
     ):
         """Orphan cleanup keeps the live cluster events entity, drops it when off."""
+        # events_enabled=False also pins that the id is not expected when off
         coordinator = self._make_coordinator(
             hass, mock_client, [], {CONF_ENABLE_EVENTS: events_enabled}
         )
