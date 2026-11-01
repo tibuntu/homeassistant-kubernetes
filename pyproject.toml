@@ -35,7 +35,7 @@ dev = [
     "ruff==0.17.2",
 
     # Type checking
-    "mypy==2.4.0",
+    "mypy==2.4.1",
 
     # Security
     "bandit[toml]==1.9.4",
@@ -44,7 +44,7 @@ dev = [
     "pre-commit==4.7.0",
 
     # Documentation
-    "zensical==0.0.72",
+    "zensical==0.0.74",
 ]
 
 [tool.setuptools.packages.find]

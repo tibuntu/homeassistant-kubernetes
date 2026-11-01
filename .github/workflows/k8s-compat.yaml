@@ -28,7 +28,7 @@ concurrency:
 # The matrix tests this version plus the two preceding minors.
 # renovate: datasource=github-releases depName=kubernetes/kubernetes versioning=semver
 env:
-  K8S_LATEST: "1.37.1"
+  K8S_LATEST: "1.37.2"
   # The kind CLI and the node images must come from the same kind release.
   KIND_VERSION: "v0.33.0"
 
