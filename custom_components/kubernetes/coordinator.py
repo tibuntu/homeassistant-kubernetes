@@ -593,6 +593,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Cluster health binary sensor
         expected.add(f"{eid}_cluster_health")
 
+        # Cluster events entity: same gating as event.async_setup_entry
+        if self.config_entry.options.get(CONF_ENABLE_EVENTS, DEFAULT_ENABLE_EVENTS):
+            expected.add(f"{eid}_cluster_events")
+
         # Alert sensors: same gating as sensor.async_setup_entry
         if not {"deployments", "statefulsets", "daemonsets"} <= disabled:
             expected.add(f"{eid}_degraded_workloads")

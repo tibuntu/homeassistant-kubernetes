@@ -4099,7 +4099,11 @@ class TestDisabledResources:
     """Tests for the disabled_resources data-collection opt-out."""
 
     def _make_coordinator(
-        self, hass: HomeAssistant, mock_client, disabled: list[str]
+        self,
+        hass: HomeAssistant,
+        mock_client,
+        disabled: list[str],
+        options: dict | None = None,
     ) -> KubernetesDataCoordinator:
         """Create a coordinator whose entry has the given disabled resources."""
         entry = MockConfigEntry(
@@ -4111,11 +4115,40 @@ class TestDisabledResources:
                 "port": 6443,
                 "api_token": "test-token",
             },
-            options={CONF_DISABLED_RESOURCES: disabled},
+            options={CONF_DISABLED_RESOURCES: disabled, **(options or {})},
         )
         entry.add_to_hass(hass)
         with patch("homeassistant.helpers.frame.report_usage"):
             return KubernetesDataCoordinator(hass, entry, mock_client)
+
+    async def test_cluster_events_expected_only_when_events_enabled(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """The cluster events unique_id is expected only with enable_events on."""
+        on = self._make_coordinator(hass, mock_client, [], {CONF_ENABLE_EVENTS: True})
+        eid = on.config_entry.entry_id
+        assert f"{eid}_cluster_events" in on._build_expected_unique_ids({})
+
+        off = self._make_coordinator(hass, mock_client, [])
+        assert f"{eid}_cluster_events" not in off._build_expected_unique_ids({})
+
+    @pytest.mark.parametrize("events_enabled", [True, False])
+    async def test_cleanup_keeps_cluster_events_entity_only_when_enabled(
+        self, hass: HomeAssistant, mock_client, events_enabled: bool
+    ):
+        """Orphan cleanup keeps the live cluster events entity, drops it when off."""
+        coordinator = self._make_coordinator(
+            hass, mock_client, [], {CONF_ENABLE_EVENTS: events_enabled}
+        )
+        entry = coordinator.config_entry
+        entity_id = "event.test_cluster_events"
+        _create_entity(hass, entry, f"{entry.entry_id}_cluster_events", entity_id)
+        registry = er.async_get(hass)
+        assert registry.async_get(entity_id) is not None
+
+        await coordinator._cleanup_orphaned_entities({})
+
+        assert (registry.async_get(entity_id) is not None) is events_enabled
 
     async def test_fully_off_resources_skip_fetch(
         self, hass: HomeAssistant, mock_client
