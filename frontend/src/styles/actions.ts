@@ -47,7 +47,8 @@ export const actionStyles = css`
 
   .action-btn.restart:hover,
   .action-btn.suspend:hover,
-  .action-btn.cordon:hover {
+  .action-btn.cordon:hover,
+  .action-btn.drain:hover {
     background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
     color: var(--warning-color, #ff9800);
   }

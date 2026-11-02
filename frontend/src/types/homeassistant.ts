@@ -11,11 +11,19 @@ export interface HomeAssistant {
     domain: string,
     service: string,
     data?: Record<string, unknown>,
-  ) => Promise<void>;
+    target?: Record<string, unknown>,
+    notifyOnError?: boolean,
+    returnResponse?: boolean,
+  ) => Promise<ServiceCallResponse>;
   connection: {
     subscribeMessage: <T>(
       callback: (msg: T) => void,
       subscribeMessage: { type: string } & Record<string, unknown>,
     ) => Promise<() => Promise<void>>;
   };
+}
+
+/** What `callService` resolves to; `response` is set with `returnResponse`. */
+export interface ServiceCallResponse {
+  response?: unknown;
 }

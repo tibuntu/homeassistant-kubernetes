@@ -2,7 +2,7 @@ import { html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
-import { stateStyles, filterStyles, badgeStyles } from "../styles/shared";
+import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
 import {
   formatAge,
   toggleInSet,
@@ -43,6 +43,21 @@ interface NodesResponse {
   clusters: ClusterNodes[];
 }
 
+/** One node's entry in the `drain_node` service response. */
+interface DrainResult {
+  evicted: string[];
+  skipped: { pod: string; reason: string }[];
+  blocked: string[];
+}
+
+const SKIP_REASONS: Record<string, string> = {
+  mirror_pod: "static pod",
+  daemonset: "DaemonSet",
+  completed: "finished",
+  emptydir: "emptyDir data",
+  home_assistant: "Home Assistant itself",
+};
+
 @customElement("k8s-nodes-table")
 export class K8sNodesTable extends K8sDataView<NodesResponse> {
   @state() private _expandedNodes: Set<string> = new Set();
@@ -50,6 +65,14 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
   @state() private _searchQuery: string = "";
   @state() private _actionInProgress: Set<string> = new Set();
   @state() private _actionError: string | null = null;
+  @state() private _drainTarget: { entry_id: string; node: string } | null = null;
+  @state() private _drainOptions = {
+    ignore_daemonsets: true,
+    delete_emptydir_data: false,
+    timeout: 120,
+  };
+  @state() private _draining = false;
+  @state() private _drainResult: DrainResult | null = null;
 
   protected loadErrorFallback = "Failed to load nodes data";
 
@@ -125,12 +148,96 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
     }
   }
 
+  private _requestDrain(entryId: string, node: NodeData): void {
+    this._drainTarget = { entry_id: entryId, node: node.name };
+    this._drainResult = null;
+  }
+
+  private _closeDrain(): void {
+    this._drainTarget = null;
+    this._drainResult = null;
+  }
+
+  /** Drain via the HA service; the dialog stays open to show its response. */
+  private async _confirmDrain(): Promise<void> {
+    if (!this._drainTarget) return;
+    const { entry_id, node } = this._drainTarget;
+    this._draining = true;
+    try {
+      const result = await this.hass.callService(
+        "kubernetes",
+        "drain_node",
+        { node_name: node, entry_id, ...this._drainOptions },
+        undefined,
+        true,
+        true,
+      );
+      const response = result?.response as Record<string, DrainResult> | undefined;
+      this._drainResult = response?.[node] ?? { evicted: [], skipped: [], blocked: [] };
+      await this._loadData();
+    } catch (err: unknown) {
+      this._actionError = `Drain failed: ${errorMessage(err, "Action failed")}`;
+      this._drainTarget = null;
+    } finally {
+      this._draining = false;
+    }
+  }
+
   static styles = [
     actionStyles,
     stateStyles,
     filterStyles,
     badgeStyles,
+    dialogStyles,
     css`
+      .node-actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .drain-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        font-size: 14px;
+        color: var(--primary-text-color);
+      }
+
+      .drain-option input[type="number"] {
+        width: 80px;
+        padding: 4px 8px;
+        border: 1px solid var(--divider-color);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--primary-text-color);
+      }
+
+      .confirm-actions .drain-action {
+        background: var(--warning-color, #ff9800);
+        color: #fff;
+        border-color: var(--warning-color, #ff9800);
+      }
+
+      .drain-section {
+        margin-bottom: 12px;
+        font-size: 14px;
+        color: var(--primary-text-color);
+      }
+
+      .drain-section.blocked {
+        color: var(--warning-color, #ff9800);
+      }
+
+      .drain-section ul {
+        margin: 4px 0 0;
+        padding-left: 20px;
+        max-height: 120px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 13px;
+      }
+
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -306,6 +413,143 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
           : nothing
       }
       ${this._data!.clusters.map((c) => this._renderCluster(c))}
+      ${this._drainTarget ? this._renderDrainDialog() : nothing}
+    `;
+  }
+
+  private _renderDrainDialog() {
+    const node = this._drainTarget!.node;
+    const result = this._drainResult;
+    const opts = this._drainOptions;
+    return html`
+      <div
+        class="confirm-overlay"
+        tabindex="-1"
+        ${this._autofocusOverlay()}
+        @click=${this._draining ? nothing : this._closeDrain}
+        @keydown=${this._onOverlayKeydown(this._draining ? nothing : this._closeDrain)}
+      >
+        <div class="confirm-dialog" @click=${(e: Event) => e.stopPropagation()}>
+          <h3>Drain Node</h3>
+          ${
+            result
+              ? this._renderDrainResult(node, result)
+              : html`
+                  <p>
+                    Cordon <span class="confirm-ref">${node}</span> and evict its pods.
+                    PodDisruptionBudgets are honoured; blocked pods are retried until
+                    the timeout.
+                  </p>
+                  <label class="drain-option">
+                    <input
+                      type="checkbox"
+                      .checked=${opts.ignore_daemonsets}
+                      ?disabled=${this._draining}
+                      @change=${(e: Event) => {
+                        this._drainOptions = {
+                          ...opts,
+                          ignore_daemonsets: (e.target as HTMLInputElement).checked,
+                        };
+                      }}
+                    />
+                    Ignore DaemonSet pods
+                  </label>
+                  <label class="drain-option">
+                    <input
+                      type="checkbox"
+                      .checked=${opts.delete_emptydir_data}
+                      ?disabled=${this._draining}
+                      @change=${(e: Event) => {
+                        this._drainOptions = {
+                          ...opts,
+                          delete_emptydir_data: (e.target as HTMLInputElement).checked,
+                        };
+                      }}
+                    />
+                    Evict pods with emptyDir data (the data is lost)
+                  </label>
+                  <label class="drain-option">
+                    Timeout
+                    <input
+                      class="drain-timeout"
+                      type="number"
+                      min="0"
+                      max="3600"
+                      .value=${String(opts.timeout)}
+                      ?disabled=${this._draining}
+                      @input=${(e: InputEvent) => {
+                        const v = parseInt((e.target as HTMLInputElement).value, 10);
+                        if (!isNaN(v) && v >= 0 && v <= 3600) {
+                          this._drainOptions = { ...opts, timeout: v };
+                        }
+                      }}
+                    />
+                    s
+                  </label>
+                `
+          }
+          <div class="confirm-actions">
+            ${
+              result
+                ? html`<button @click=${this._closeDrain}>Close</button>`
+                : html`
+                    <button @click=${this._closeDrain} ?disabled=${this._draining}>
+                      Cancel
+                    </button>
+                    <button
+                      class="drain-action"
+                      @click=${this._confirmDrain}
+                      ?disabled=${this._draining}
+                    >
+                      ${this._draining ? "Draining..." : "Drain"}
+                    </button>
+                  `
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderDrainResult(node: string, result: DrainResult) {
+    return html`
+      <p>
+        <span class="confirm-ref">${node}</span> is cordoned. ${result.evicted.length}
+        pod${result.evicted.length === 1 ? "" : "s"} evicted.
+      </p>
+      ${
+        result.blocked.length
+          ? html`<div class="drain-section blocked">
+              Still blocked by a PodDisruptionBudget:
+              <ul>
+                ${result.blocked.map((p) => html`<li>${p}</li>`)}
+              </ul>
+            </div>`
+          : nothing
+      }
+      ${
+        result.evicted.length
+          ? html`<div class="drain-section">
+              Evicted:
+              <ul>
+                ${result.evicted.map((p) => html`<li>${p}</li>`)}
+              </ul>
+            </div>`
+          : nothing
+      }
+      ${
+        result.skipped.length
+          ? html`<div class="drain-section">
+              Skipped:
+              <ul>
+                ${result.skipped.map(
+                  (s) =>
+                    html`<li>${s.pod} (${SKIP_REASONS[s.reason] ?? s.reason})</li>`,
+                )}
+              </ul>
+            </div>`
+          : nothing
+      }
     `;
   }
 
@@ -453,20 +697,32 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
           <span class="node-age">${formatAge(node.creation_timestamp)}</span>
           ${
             isAdmin(this.hass)
-              ? html`<button
-                  class="action-btn ${node.schedulable ? "cordon" : "uncordon"}"
-                  title=${node.schedulable ? "Cordon (stop scheduling new pods)" : "Uncordon"}
-                  ?disabled=${this._actionInProgress.has(nodeKey)}
-                  @click=${(e: Event) => {
-                    e.stopPropagation();
-                    this._setSchedulable(entryId, node, !node.schedulable);
-                  }}
-                >
-                  <ha-icon
-                    icon=${node.schedulable ? "mdi:server-off" : "mdi:server"}
-                  ></ha-icon>
-                </button>`
-              : html`<span></span>`
+              ? html`<div class="node-actions">
+                  <button
+                    class="action-btn ${node.schedulable ? "cordon" : "uncordon"}"
+                    title=${node.schedulable ? "Cordon (stop scheduling new pods)" : "Uncordon"}
+                    ?disabled=${this._actionInProgress.has(nodeKey)}
+                    @click=${(e: Event) => {
+                      e.stopPropagation();
+                      this._setSchedulable(entryId, node, !node.schedulable);
+                    }}
+                  >
+                    <ha-icon
+                      icon=${node.schedulable ? "mdi:server-off" : "mdi:server"}
+                    ></ha-icon>
+                  </button>
+                  <button
+                    class="action-btn drain"
+                    title="Drain (cordon and evict pods)"
+                    @click=${(e: Event) => {
+                      e.stopPropagation();
+                      this._requestDrain(entryId, node);
+                    }}
+                  >
+                    <ha-icon icon="mdi:tray-arrow-up"></ha-icon>
+                  </button>
+                </div>`
+              : html`<div class="node-actions"></div>`
           }
         </div>
         ${expanded ? this._renderNodeDetails(node, conditions) : nothing}

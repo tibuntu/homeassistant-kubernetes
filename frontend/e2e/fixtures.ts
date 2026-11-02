@@ -268,3 +268,14 @@ export const RESPONSES: Record<string, unknown> = {
     ],
   },
 };
+
+/** Responses of services called with `returnResponse`, keyed by service name. */
+export const SERVICE_RESPONSES: Record<string, unknown> = {
+  drain_node: {
+    "node-1": {
+      evicted: ["default/web-7d9f8b-abc12"],
+      skipped: [{ pod: "kube-system/kube-proxy-x1y2z", reason: "daemonset" }],
+      blocked: ["default/db-0"],
+    },
+  },
+};

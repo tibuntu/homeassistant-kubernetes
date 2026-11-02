@@ -2,6 +2,7 @@
  * Mounts the real panel against a fake `hass` so Playwright can drive it
  * without Home Assistant. Responses come from `fixtures.ts`; every WebSocket
  * message and service call is recorded on `window.__k8s` for assertions.
+ * A service called with `returnResponse` answers from `SERVICE_RESPONSES`.
  *
  * Query string: `?fail=<ws type>` (repeatable) makes those WebSocket calls
  * reject until the spec clears `window.__k8s.fail`. `?admin=0` mounts the
@@ -9,7 +10,7 @@
  */
 import { KubernetesPanel } from "../src/kubernetes-panel";
 import type { HomeAssistant } from "../src/types/homeassistant";
-import { RESPONSES } from "./fixtures";
+import { RESPONSES, SERVICE_RESPONSES } from "./fixtures";
 
 interface ServiceCall {
   domain: string;
@@ -58,8 +59,9 @@ const hass: HomeAssistant = {
     if (!(type in RESPONSES)) throw new Error(`harness: no fixture for ${type}`);
     return structuredClone(RESPONSES[type]) as T;
   },
-  async callService(domain, service, data) {
+  async callService(domain, service, data, _target, _notifyOnError, returnResponse) {
     services.push({ domain, service, data });
+    return { response: returnResponse ? SERVICE_RESPONSES[service] : undefined };
   },
   connection: {
     async subscribeMessage<T>(callback: (msg: T) => void, msg: { type: string }) {

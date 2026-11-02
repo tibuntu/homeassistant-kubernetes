@@ -679,7 +679,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
 
   .action-btn.restart:hover,
   .action-btn.suspend:hover,
-  .action-btn.cordon:hover {
+  .action-btn.cordon:hover,
+  .action-btn.drain:hover {
     background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.1);
     color: var(--warning-color, #ff9800);
   }
@@ -715,7 +716,55 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
   .action-error .dismiss-btn:hover {
     background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
   }
-`,q=class extends U{constructor(...e){super(...e),this._expandedNodes=/* @__PURE__ */ new Set,this._statusFilter=`all`,this._searchQuery=``,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this.loadErrorFallback=`Failed to load nodes data`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/nodes/list`});this._data=e}_toggleNode(e){this._expandedNodes=Qe(this._expandedNodes,e)}_getConditions(e){let t=[];return e.memory_pressure&&t.push(`memory_pressure`),e.disk_pressure&&t.push(`disk_pressure`),e.pid_pressure&&t.push(`pid_pressure`),e.network_unavailable&&t.push(`network_unavailable`),t}_getFilteredNodes(e){let t=e;if(this._statusFilter!==`all`&&(t=t.filter(e=>this._statusFilter===`ready`?e.status===`Ready`:e.status!==`Ready`)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.internal_ip.toLowerCase().includes(e)||t.kubelet_version.toLowerCase().includes(e))}return t}async _setSchedulable(e,t,n){let r=`${e}_${t.name}`,i=new Set(this._actionInProgress);i.add(r),this._actionInProgress=i;try{await this.hass.callService(`kubernetes`,n?`uncordon_node`:`cordon_node`,{node_name:t.name,entry_id:e}),await this._loadData()}catch(e){let t=V(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-nodes-table] Action failed:`,e)}finally{let e=new Set(this._actionInProgress);e.delete(r),this._actionInProgress=e}}static{this.styles=[at,W,G,K,o`
+`,ot={mirror_pod:`static pod`,daemonset:`DaemonSet`,completed:`finished`,emptydir:`emptyDir data`,home_assistant:`Home Assistant itself`},q=class extends U{constructor(...e){super(...e),this._expandedNodes=/* @__PURE__ */ new Set,this._statusFilter=`all`,this._searchQuery=``,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._drainTarget=null,this._drainOptions={ignore_daemonsets:!0,delete_emptydir_data:!1,timeout:120},this._draining=!1,this._drainResult=null,this.loadErrorFallback=`Failed to load nodes data`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/nodes/list`});this._data=e}_toggleNode(e){this._expandedNodes=Qe(this._expandedNodes,e)}_getConditions(e){let t=[];return e.memory_pressure&&t.push(`memory_pressure`),e.disk_pressure&&t.push(`disk_pressure`),e.pid_pressure&&t.push(`pid_pressure`),e.network_unavailable&&t.push(`network_unavailable`),t}_getFilteredNodes(e){let t=e;if(this._statusFilter!==`all`&&(t=t.filter(e=>this._statusFilter===`ready`?e.status===`Ready`:e.status!==`Ready`)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.internal_ip.toLowerCase().includes(e)||t.kubelet_version.toLowerCase().includes(e))}return t}async _setSchedulable(e,t,n){let r=`${e}_${t.name}`,i=new Set(this._actionInProgress);i.add(r),this._actionInProgress=i;try{await this.hass.callService(`kubernetes`,n?`uncordon_node`:`cordon_node`,{node_name:t.name,entry_id:e}),await this._loadData()}catch(e){let t=V(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-nodes-table] Action failed:`,e)}finally{let e=new Set(this._actionInProgress);e.delete(r),this._actionInProgress=e}}_requestDrain(e,t){this._drainTarget={entry_id:e,node:t.name},this._drainResult=null}_closeDrain(){this._drainTarget=null,this._drainResult=null}async _confirmDrain(){if(!this._drainTarget)return;let{entry_id:e,node:t}=this._drainTarget;this._draining=!0;try{let n=(await this.hass.callService(`kubernetes`,`drain_node`,{node_name:t,entry_id:e,...this._drainOptions},void 0,!0,!0))?.response;this._drainResult=n?.[t]??{evicted:[],skipped:[],blocked:[]},await this._loadData()}catch(e){this._actionError=`Drain failed: ${V(e,`Action failed`)}`,this._drainTarget=null}finally{this._draining=!1}}static{this.styles=[at,W,G,K,$e,o`
+      .node-actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .drain-option {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        font-size: 14px;
+        color: var(--primary-text-color);
+      }
+
+      .drain-option input[type="number"] {
+        width: 80px;
+        padding: 4px 8px;
+        border: 1px solid var(--divider-color);
+        border-radius: 4px;
+        background: transparent;
+        color: var(--primary-text-color);
+      }
+
+      .confirm-actions .drain-action {
+        background: var(--warning-color, #ff9800);
+        color: #fff;
+        border-color: var(--warning-color, #ff9800);
+      }
+
+      .drain-section {
+        margin-bottom: 12px;
+        font-size: 14px;
+        color: var(--primary-text-color);
+      }
+
+      .drain-section.blocked {
+        color: var(--warning-color, #ff9800);
+      }
+
+      .drain-section ul {
+        margin: 4px 0 0;
+        padding-left: 20px;
+        max-height: 120px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 13px;
+      }
+
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -878,7 +927,95 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               </div>
             `:E}
       ${this._data.clusters.map(e=>this._renderCluster(e))}
-    `:e}_renderCluster(e){let t=this._getFilteredNodes(e.nodes),n=e.nodes.filter(e=>e.status===`Ready`).length;return w`
+      ${this._drainTarget?this._renderDrainDialog():E}
+    `:e}_renderDrainDialog(){let e=this._drainTarget.node,t=this._drainResult,n=this._drainOptions;return w`
+      <div
+        class="confirm-overlay"
+        tabindex="-1"
+        ${this._autofocusOverlay()}
+        @click=${this._draining?E:this._closeDrain}
+        @keydown=${this._onOverlayKeydown(this._draining?E:this._closeDrain)}
+      >
+        <div class="confirm-dialog" @click=${e=>e.stopPropagation()}>
+          <h3>Drain Node</h3>
+          ${t?this._renderDrainResult(e,t):w`
+                  <p>
+                    Cordon <span class="confirm-ref">${e}</span> and evict its pods.
+                    PodDisruptionBudgets are honoured; blocked pods are retried until
+                    the timeout.
+                  </p>
+                  <label class="drain-option">
+                    <input
+                      type="checkbox"
+                      .checked=${n.ignore_daemonsets}
+                      ?disabled=${this._draining}
+                      @change=${e=>{this._drainOptions={...n,ignore_daemonsets:e.target.checked}}}
+                    />
+                    Ignore DaemonSet pods
+                  </label>
+                  <label class="drain-option">
+                    <input
+                      type="checkbox"
+                      .checked=${n.delete_emptydir_data}
+                      ?disabled=${this._draining}
+                      @change=${e=>{this._drainOptions={...n,delete_emptydir_data:e.target.checked}}}
+                    />
+                    Evict pods with emptyDir data (the data is lost)
+                  </label>
+                  <label class="drain-option">
+                    Timeout
+                    <input
+                      class="drain-timeout"
+                      type="number"
+                      min="0"
+                      max="3600"
+                      .value=${String(n.timeout)}
+                      ?disabled=${this._draining}
+                      @input=${e=>{let t=parseInt(e.target.value,10);!isNaN(t)&&t>=0&&t<=3600&&(this._drainOptions={...n,timeout:t})}}
+                    />
+                    s
+                  </label>
+                `}
+          <div class="confirm-actions">
+            ${t?w`<button @click=${this._closeDrain}>Close</button>`:w`
+                    <button @click=${this._closeDrain} ?disabled=${this._draining}>
+                      Cancel
+                    </button>
+                    <button
+                      class="drain-action"
+                      @click=${this._confirmDrain}
+                      ?disabled=${this._draining}
+                    >
+                      ${this._draining?`Draining...`:`Drain`}
+                    </button>
+                  `}
+          </div>
+        </div>
+      </div>
+    `}_renderDrainResult(e,t){return w`
+      <p>
+        <span class="confirm-ref">${e}</span> is cordoned. ${t.evicted.length}
+        pod${t.evicted.length===1?``:`s`} evicted.
+      </p>
+      ${t.blocked.length?w`<div class="drain-section blocked">
+              Still blocked by a PodDisruptionBudget:
+              <ul>
+                ${t.blocked.map(e=>w`<li>${e}</li>`)}
+              </ul>
+            </div>`:E}
+      ${t.evicted.length?w`<div class="drain-section">
+              Evicted:
+              <ul>
+                ${t.evicted.map(e=>w`<li>${e}</li>`)}
+              </ul>
+            </div>`:E}
+      ${t.skipped.length?w`<div class="drain-section">
+              Skipped:
+              <ul>
+                ${t.skipped.map(e=>w`<li>${e.pod} (${ot[e.reason]??e.reason})</li>`)}
+              </ul>
+            </div>`:E}
+    `}_renderCluster(e){let t=this._getFilteredNodes(e.nodes),n=e.nodes.filter(e=>e.status===`Ready`).length;return w`
       <div class="cluster-section">
         ${this._data.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
 
@@ -962,16 +1099,25 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   >`}
           </div>
           <span class="node-age">${B(t.creation_timestamp)}</span>
-          ${z(this.hass)?w`<button
-                  class="action-btn ${t.schedulable?`cordon`:`uncordon`}"
-                  title=${t.schedulable?`Cordon (stop scheduling new pods)`:`Uncordon`}
-                  ?disabled=${this._actionInProgress.has(n)}
-                  @click=${n=>{n.stopPropagation(),this._setSchedulable(e,t,!t.schedulable)}}
-                >
-                  <ha-icon
-                    icon=${t.schedulable?`mdi:server-off`:`mdi:server`}
-                  ></ha-icon>
-                </button>`:w`<span></span>`}
+          ${z(this.hass)?w`<div class="node-actions">
+                  <button
+                    class="action-btn ${t.schedulable?`cordon`:`uncordon`}"
+                    title=${t.schedulable?`Cordon (stop scheduling new pods)`:`Uncordon`}
+                    ?disabled=${this._actionInProgress.has(n)}
+                    @click=${n=>{n.stopPropagation(),this._setSchedulable(e,t,!t.schedulable)}}
+                  >
+                    <ha-icon
+                      icon=${t.schedulable?`mdi:server-off`:`mdi:server`}
+                    ></ha-icon>
+                  </button>
+                  <button
+                    class="action-btn drain"
+                    title="Drain (cordon and evict pods)"
+                    @click=${n=>{n.stopPropagation(),this._requestDrain(e,t)}}
+                  >
+                    <ha-icon icon="mdi:tray-arrow-up"></ha-icon>
+                  </button>
+                </div>`:w`<div class="node-actions"></div>`}
         </div>
         ${r?this._renderNodeDetails(t,i):E}
       </ha-card>
@@ -1049,7 +1195,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 </div>
               `:E}
       </div>
-    `}};H([I()],q.prototype,`_expandedNodes`,void 0),H([I()],q.prototype,`_statusFilter`,void 0),H([I()],q.prototype,`_searchQuery`,void 0),H([I()],q.prototype,`_actionInProgress`,void 0),H([I()],q.prototype,`_actionError`,void 0),q=H([P(`k8s-nodes-table`)],q);var ot=[100,500,2e3],st=`https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md`,ct={Running:`badge-running`,Succeeded:`badge-succeeded`,Pending:`badge-pending`,Failed:`badge-failed`,Unknown:`badge-unknown`},lt=[{key:`ready`,label:`Ready`},{key:`restarts`,label:`Restarts`},{key:`node`,label:`Node`},{key:`ip`,label:`IP`},{key:`owner`,label:`Owner`},{key:`age`,label:`Age`}],ut=new Set(lt.map(e=>e.key)),dt=`k8s-pods-columns`;function ft(){try{let e=localStorage.getItem(dt);if(e){let t=JSON.parse(e).filter(e=>ut.has(e));if(t.length)return new Set(t)}}catch{}return new Set(ut)}function pt(e){try{localStorage.setItem(dt,JSON.stringify([...e]))}catch{}}var J=class extends U{constructor(...e){super(...e),this._searchQuery=``,this._phaseFilter=`all`,this._namespaceFilter=`all`,this._sortField=`name`,this._sortAsc=!0,this._deleteConfirm=null,this._deleting=!1,this._visibleColumns=ft(),this._columnMenuOpen=!1,this._actionError=null,this._logsTarget=null,this._logsContainer=``,this._logsTail=500,this._logsPrevious=!1,this._logsResult=null,this._logsLoading=!1,this._logsError=null,this._logsCopied=!1,this._logsRequest=0,this.loadErrorFallback=`Failed to load pods data`,this._boundCloseMenu=()=>{this._columnMenuOpen=!1}}firstUpdated(e){super.firstUpdated(e),document.addEventListener(`click`,this._boundCloseMenu)}disconnectedCallback(){super.disconnectedCallback(),document.removeEventListener(`click`,this._boundCloseMenu)}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/pods/list`});this._data=e}_getNamespaces(e){return[...new Set(e.map(e=>e.namespace))].sort()}_getFilteredPods(e){let t=e;if(this._phaseFilter!==`all`&&(t=t.filter(e=>e.phase===this._phaseFilter)),this._namespaceFilter!==`all`&&(t=t.filter(e=>e.namespace===this._namespaceFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.node_name.toLowerCase().includes(e)||t.owner_name.toLowerCase().includes(e))}return t=[...t].sort((e,t)=>{let n,r,i=this._sortField;i===`restarts`?(n=e.restart_count,r=t.restart_count):i===`age`?(n=e.creation_timestamp||``,r=t.creation_timestamp||``):(n=e[i]||``,r=t[i]||``);let a=n<r?-1:+(n>r);return this._sortAsc?a:-a}),t}_handleSort(e){this._sortField===e?this._sortAsc=!this._sortAsc:(this._sortField=e,this._sortAsc=!0)}_handleSortKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._handleSort(t))}_requestDelete(e,t){this._deleteConfirm={entry_id:e,pod_name:t.name,namespace:t.namespace}}_cancelDelete(){this._deleteConfirm=null}async _confirmDelete(){if(this._deleteConfirm){this._deleting=!0;try{await this.hass.callWS({type:`kubernetes/pods/delete`,entry_id:this._deleteConfirm.entry_id,pod_name:this._deleteConfirm.pod_name,namespace:this._deleteConfirm.namespace}),this._deleteConfirm=null,await this._loadData()}catch(e){this._actionError=V(e,`Failed to delete pod`),this._deleteConfirm=null}finally{this._deleting=!1}}}_openLogs(e,t){let n=t.containers??[];this._logsTarget={entry_id:e,pod_name:t.name,namespace:t.namespace,containers:n},this._logsContainer=n[0]??``,this._logsPrevious=!1,this._logsResult=null,this._fetchLogs()}_closeLogs(){this._logsTarget=null,this._logsRequest++}async _fetchLogs(){let e=this._logsTarget;if(!e)return;let t=++this._logsRequest;this._logsLoading=!0,this._logsError=null,this._logsCopied=!1;try{let n=await this.hass.callWS({type:`kubernetes/pods/logs`,entry_id:e.entry_id,pod_name:e.pod_name,namespace:e.namespace,...this._logsContainer?{container:this._logsContainer}:{},tail_lines:this._logsTail,previous:this._logsPrevious});if(t!==this._logsRequest)return;this._logsResult=n}catch(e){if(t!==this._logsRequest)return;this._logsResult=null,this._logsError={message:V(e,`Failed to fetch logs`),forbidden:typeof e==`object`&&!!e&&`code`in e&&e.code===`forbidden`}}finally{t===this._logsRequest&&(this._logsLoading=!1)}}_setLogsOption(e){e(),this._fetchLogs()}async _copyLogs(){if(this._logsResult)try{await navigator.clipboard.writeText(this._logsResult.logs),this._logsCopied=!0}catch{}}updated(e){if(super.updated(e),e.has(`_logsResult`)&&this._logsResult){let e=this.renderRoot.querySelector(`.logs-output`);e&&(e.scrollTop=e.scrollHeight)}}_sortIcon(e){return this._sortField===e?this._sortAsc?`mdi:arrow-up`:`mdi:arrow-down`:``}static{this.styles=[at,W,G,K,$e,et,o`
+    `}};H([I()],q.prototype,`_expandedNodes`,void 0),H([I()],q.prototype,`_statusFilter`,void 0),H([I()],q.prototype,`_searchQuery`,void 0),H([I()],q.prototype,`_actionInProgress`,void 0),H([I()],q.prototype,`_actionError`,void 0),H([I()],q.prototype,`_drainTarget`,void 0),H([I()],q.prototype,`_drainOptions`,void 0),H([I()],q.prototype,`_draining`,void 0),H([I()],q.prototype,`_drainResult`,void 0),q=H([P(`k8s-nodes-table`)],q);var st=[100,500,2e3],ct=`https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md`,lt={Running:`badge-running`,Succeeded:`badge-succeeded`,Pending:`badge-pending`,Failed:`badge-failed`,Unknown:`badge-unknown`},ut=[{key:`ready`,label:`Ready`},{key:`restarts`,label:`Restarts`},{key:`node`,label:`Node`},{key:`ip`,label:`IP`},{key:`owner`,label:`Owner`},{key:`age`,label:`Age`}],dt=new Set(ut.map(e=>e.key)),ft=`k8s-pods-columns`;function pt(){try{let e=localStorage.getItem(ft);if(e){let t=JSON.parse(e).filter(e=>dt.has(e));if(t.length)return new Set(t)}}catch{}return new Set(dt)}function mt(e){try{localStorage.setItem(ft,JSON.stringify([...e]))}catch{}}var J=class extends U{constructor(...e){super(...e),this._searchQuery=``,this._phaseFilter=`all`,this._namespaceFilter=`all`,this._sortField=`name`,this._sortAsc=!0,this._deleteConfirm=null,this._deleting=!1,this._visibleColumns=pt(),this._columnMenuOpen=!1,this._actionError=null,this._logsTarget=null,this._logsContainer=``,this._logsTail=500,this._logsPrevious=!1,this._logsResult=null,this._logsLoading=!1,this._logsError=null,this._logsCopied=!1,this._logsRequest=0,this.loadErrorFallback=`Failed to load pods data`,this._boundCloseMenu=()=>{this._columnMenuOpen=!1}}firstUpdated(e){super.firstUpdated(e),document.addEventListener(`click`,this._boundCloseMenu)}disconnectedCallback(){super.disconnectedCallback(),document.removeEventListener(`click`,this._boundCloseMenu)}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/pods/list`});this._data=e}_getNamespaces(e){return[...new Set(e.map(e=>e.namespace))].sort()}_getFilteredPods(e){let t=e;if(this._phaseFilter!==`all`&&(t=t.filter(e=>e.phase===this._phaseFilter)),this._namespaceFilter!==`all`&&(t=t.filter(e=>e.namespace===this._namespaceFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.node_name.toLowerCase().includes(e)||t.owner_name.toLowerCase().includes(e))}return t=[...t].sort((e,t)=>{let n,r,i=this._sortField;i===`restarts`?(n=e.restart_count,r=t.restart_count):i===`age`?(n=e.creation_timestamp||``,r=t.creation_timestamp||``):(n=e[i]||``,r=t[i]||``);let a=n<r?-1:+(n>r);return this._sortAsc?a:-a}),t}_handleSort(e){this._sortField===e?this._sortAsc=!this._sortAsc:(this._sortField=e,this._sortAsc=!0)}_handleSortKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._handleSort(t))}_requestDelete(e,t){this._deleteConfirm={entry_id:e,pod_name:t.name,namespace:t.namespace}}_cancelDelete(){this._deleteConfirm=null}async _confirmDelete(){if(this._deleteConfirm){this._deleting=!0;try{await this.hass.callWS({type:`kubernetes/pods/delete`,entry_id:this._deleteConfirm.entry_id,pod_name:this._deleteConfirm.pod_name,namespace:this._deleteConfirm.namespace}),this._deleteConfirm=null,await this._loadData()}catch(e){this._actionError=V(e,`Failed to delete pod`),this._deleteConfirm=null}finally{this._deleting=!1}}}_openLogs(e,t){let n=t.containers??[];this._logsTarget={entry_id:e,pod_name:t.name,namespace:t.namespace,containers:n},this._logsContainer=n[0]??``,this._logsPrevious=!1,this._logsResult=null,this._fetchLogs()}_closeLogs(){this._logsTarget=null,this._logsRequest++}async _fetchLogs(){let e=this._logsTarget;if(!e)return;let t=++this._logsRequest;this._logsLoading=!0,this._logsError=null,this._logsCopied=!1;try{let n=await this.hass.callWS({type:`kubernetes/pods/logs`,entry_id:e.entry_id,pod_name:e.pod_name,namespace:e.namespace,...this._logsContainer?{container:this._logsContainer}:{},tail_lines:this._logsTail,previous:this._logsPrevious});if(t!==this._logsRequest)return;this._logsResult=n}catch(e){if(t!==this._logsRequest)return;this._logsResult=null,this._logsError={message:V(e,`Failed to fetch logs`),forbidden:typeof e==`object`&&!!e&&`code`in e&&e.code===`forbidden`}}finally{t===this._logsRequest&&(this._logsLoading=!1)}}_setLogsOption(e){e(),this._fetchLogs()}async _copyLogs(){if(this._logsResult)try{await navigator.clipboard.writeText(this._logsResult.logs),this._logsCopied=!0}catch{}}updated(e){if(super.updated(e),e.has(`_logsResult`)&&this._logsResult){let e=this.renderRoot.querySelector(`.logs-output`);e&&(e.scrollTop=e.scrollHeight)}}_sortIcon(e){return this._sortField===e?this._sortAsc?`mdi:arrow-up`:`mdi:arrow-down`:``}static{this.styles=[at,W,G,K,$e,et,o`
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -1411,7 +1557,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 </ha-card>
               `}
       </div>
-    `}_colVisible(e){return this._visibleColumns.has(e)}_toggleColumn(e){let t=new Set(this._visibleColumns);t.has(e)?t.delete(e):t.add(e),this._visibleColumns=t,pt(t)}_renderColumnMenu(){return w`
+    `}_colVisible(e){return this._visibleColumns.has(e)}_toggleColumn(e){let t=new Set(this._visibleColumns);t.has(e)?t.delete(e):t.add(e),this._visibleColumns=t,mt(t)}_renderColumnMenu(){return w`
       <div class="column-menu-wrapper">
         <button
           class="column-toggle-btn"
@@ -1422,7 +1568,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         </button>
         ${this._columnMenuOpen?w`
                 <div class="column-menu" @click=${e=>e.stopPropagation()}>
-                  ${lt.map(e=>w`
+                  ${ut.map(e=>w`
                       <label class="column-option">
                         <input
                           type="checkbox"
@@ -1435,7 +1581,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 </div>
               `:E}
       </div>
-    `}_renderPodRow(e,t){let n=e.entry_id,r=ct[t.phase]||`badge-unknown`;return w`
+    `}_renderPodRow(e,t){let n=e.entry_id,r=lt[t.phase]||`badge-unknown`;return w`
       <tr>
         <td>${t.namespace}</td>
         <td class="pod-name">${t.name}</td>
@@ -1521,7 +1667,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                       ${e.containers.map(e=>w`<option value=${e}>${e}</option>`)}
                     </select>
                   `:E}
-            ${ot.map(e=>w`
+            ${st.map(e=>w`
                 <button
                   class="filter-chip"
                   ?active=${this._logsTail===e}
@@ -1544,7 +1690,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     ${this._logsError.message}
                     ${this._logsError.forbidden?w`<br />The integration's ServiceAccount needs
                             <code>get</code> on <code>pods/log</code> — see the
-                            <a href=${st} target="_blank" rel="noreferrer"
+                            <a href=${ct} target="_blank" rel="noreferrer"
                               >RBAC docs</a
                             >.`:E}
                   </div>
@@ -1564,7 +1710,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}};H([I()],J.prototype,`_searchQuery`,void 0),H([I()],J.prototype,`_phaseFilter`,void 0),H([I()],J.prototype,`_namespaceFilter`,void 0),H([I()],J.prototype,`_sortField`,void 0),H([I()],J.prototype,`_sortAsc`,void 0),H([I()],J.prototype,`_deleteConfirm`,void 0),H([I()],J.prototype,`_deleting`,void 0),H([I()],J.prototype,`_visibleColumns`,void 0),H([I()],J.prototype,`_columnMenuOpen`,void 0),H([I()],J.prototype,`_actionError`,void 0),H([I()],J.prototype,`_logsTarget`,void 0),H([I()],J.prototype,`_logsContainer`,void 0),H([I()],J.prototype,`_logsTail`,void 0),H([I()],J.prototype,`_logsPrevious`,void 0),H([I()],J.prototype,`_logsResult`,void 0),H([I()],J.prototype,`_logsLoading`,void 0),H([I()],J.prototype,`_logsError`,void 0),H([I()],J.prototype,`_logsCopied`,void 0),J=H([P(`k8s-pods-table`)],J);var mt=[`Ingress`,`LoadBalancer`,`NodePort`,`ClusterIP`,`ExternalName`],Y=class extends U{constructor(...e){super(...e),this._services=null,this._ingressError=null,this._servicesError=null,this._searchQuery=``,this._typeFilter=`all`,this.loadErrorFallback=`Failed to load network data`}willUpdate(e){e.has(`initialFilter`)&&this.initialFilter&&(this._typeFilter=this.initialFilter)}hasData(){return this._data!==null||this._services!==null}async fetchData(){let[e,t]=await Promise.allSettled([this.hass.callWS({type:`kubernetes/ingresses/list`}),this.hass.callWS({type:`kubernetes/services/list`})]);e.status===`fulfilled`?(this._data=e.value,this._ingressError=null):this._ingressError=V(e.reason,`Failed to load ingress data`),t.status===`fulfilled`?(this._services=t.value,this._servicesError=null):this._servicesError=V(t.reason,`Failed to load service data`)}_getFilteredIngresses(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.rules.some(e=>(e.host||``).toLowerCase().includes(t)))}_getFilteredServices(e){let t=e;if(this._typeFilter!==`all`&&this._typeFilter!==`Services`&&(t=t.filter(e=>e.type===this._typeFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.external_ips.some(t=>t.toLowerCase().includes(e)))}return t}_services_of(e){return[...new Set(e.rules.map(e=>e.service_name))].filter(Boolean).join(`, `)}_hasTls(e){return e.tls_hosts.length>0||e.urls.some(e=>e.startsWith(`https://`))}_formatPort(e){let t=e.target_port!=null&&String(e.target_port)!==String(e.port)?`→${e.target_port}`:``,n=e.node_port?` (node ${e.node_port})`:``;return`${e.port}${t}/${e.protocol}${n}`}static{this.styles=[W,G,K,et,o`
+    `}};H([I()],J.prototype,`_searchQuery`,void 0),H([I()],J.prototype,`_phaseFilter`,void 0),H([I()],J.prototype,`_namespaceFilter`,void 0),H([I()],J.prototype,`_sortField`,void 0),H([I()],J.prototype,`_sortAsc`,void 0),H([I()],J.prototype,`_deleteConfirm`,void 0),H([I()],J.prototype,`_deleting`,void 0),H([I()],J.prototype,`_visibleColumns`,void 0),H([I()],J.prototype,`_columnMenuOpen`,void 0),H([I()],J.prototype,`_actionError`,void 0),H([I()],J.prototype,`_logsTarget`,void 0),H([I()],J.prototype,`_logsContainer`,void 0),H([I()],J.prototype,`_logsTail`,void 0),H([I()],J.prototype,`_logsPrevious`,void 0),H([I()],J.prototype,`_logsResult`,void 0),H([I()],J.prototype,`_logsLoading`,void 0),H([I()],J.prototype,`_logsError`,void 0),H([I()],J.prototype,`_logsCopied`,void 0),J=H([P(`k8s-pods-table`)],J);var ht=[`Ingress`,`LoadBalancer`,`NodePort`,`ClusterIP`,`ExternalName`],Y=class extends U{constructor(...e){super(...e),this._services=null,this._ingressError=null,this._servicesError=null,this._searchQuery=``,this._typeFilter=`all`,this.loadErrorFallback=`Failed to load network data`}willUpdate(e){e.has(`initialFilter`)&&this.initialFilter&&(this._typeFilter=this.initialFilter)}hasData(){return this._data!==null||this._services!==null}async fetchData(){let[e,t]=await Promise.allSettled([this.hass.callWS({type:`kubernetes/ingresses/list`}),this.hass.callWS({type:`kubernetes/services/list`})]);e.status===`fulfilled`?(this._data=e.value,this._ingressError=null):this._ingressError=V(e.reason,`Failed to load ingress data`),t.status===`fulfilled`?(this._services=t.value,this._servicesError=null):this._servicesError=V(t.reason,`Failed to load service data`)}_getFilteredIngresses(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.rules.some(e=>(e.host||``).toLowerCase().includes(t)))}_getFilteredServices(e){let t=e;if(this._typeFilter!==`all`&&this._typeFilter!==`Services`&&(t=t.filter(e=>e.type===this._typeFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.external_ips.some(t=>t.toLowerCase().includes(e)))}return t}_services_of(e){return[...new Set(e.rules.map(e=>e.service_name))].filter(Boolean).join(`, `)}_hasTls(e){return e.tls_hosts.length>0||e.urls.some(e=>e.startsWith(`https://`))}_formatPort(e){let t=e.target_port!=null&&String(e.target_port)!==String(e.port)?`→${e.target_port}`:``,n=e.node_port?` (node ${e.node_port})`:``;return`${e.port}${t}/${e.protocol}${n}`}static{this.styles=[W,G,K,et,o`
       /* stateStyles' .empty is 64px padding; network uses .empty for five
        in-section messages, where that much padding doubles up. */
       .empty {
@@ -1686,7 +1832,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         >
           <option value="all">All types</option>
           <option value="Services">Services</option>
-          ${mt.map(e=>w`<option value=${e}>${e}</option>`)}
+          ${ht.map(e=>w`<option value=${e}>${e}</option>`)}
         </select>
       </div>
 
@@ -2382,7 +2528,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}};H([F({attribute:!1})],Q.prototype,`initialFilter`,void 0),H([I()],Q.prototype,`_namespaceFilter`,void 0),H([I()],Q.prototype,`_categoryFilter`,void 0),H([I()],Q.prototype,`_statusFilter`,void 0),H([I()],Q.prototype,`_searchQuery`,void 0),H([I()],Q.prototype,`_actionInProgress`,void 0),H([I()],Q.prototype,`_actionError`,void 0),H([I()],Q.prototype,`_jobDeleteConfirm`,void 0),H([I()],Q.prototype,`_deletingJob`,void 0),H([I()],Q.prototype,`_collapsedCategories`,void 0),H([I()],Q.prototype,`_scaleTarget`,void 0),H([I()],Q.prototype,`_scaleValue`,void 0),H([I()],Q.prototype,`_scaling`,void 0),Q=H([P(`k8s-workloads`)],Q);var ht=class extends U{constructor(...e){super(...e),this.pollMs=0,this.subscribe=!1,this.loadErrorFallback=`Failed to load configuration`,this.emptyMessage=`No Kubernetes entries configured.`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/config/list`});this._data=e}_navigateToIntegration(){window.open(`/config/integrations/integration/kubernetes`,`_blank`)}static{this.styles=[W,K,o`
+    `}};H([F({attribute:!1})],Q.prototype,`initialFilter`,void 0),H([I()],Q.prototype,`_namespaceFilter`,void 0),H([I()],Q.prototype,`_categoryFilter`,void 0),H([I()],Q.prototype,`_statusFilter`,void 0),H([I()],Q.prototype,`_searchQuery`,void 0),H([I()],Q.prototype,`_actionInProgress`,void 0),H([I()],Q.prototype,`_actionError`,void 0),H([I()],Q.prototype,`_jobDeleteConfirm`,void 0),H([I()],Q.prototype,`_deletingJob`,void 0),H([I()],Q.prototype,`_collapsedCategories`,void 0),H([I()],Q.prototype,`_scaleTarget`,void 0),H([I()],Q.prototype,`_scaleValue`,void 0),H([I()],Q.prototype,`_scaling`,void 0),Q=H([P(`k8s-workloads`)],Q);var gt=class extends U{constructor(...e){super(...e),this.pollMs=0,this.subscribe=!1,this.loadErrorFallback=`Failed to load configuration`,this.emptyMessage=`No Kubernetes entries configured.`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/config/list`});this._data=e}_navigateToIntegration(){window.open(`/config/integrations/integration/kubernetes`,`_blank`)}static{this.styles=[W,K,o`
       .entry-section {
         margin-bottom: 24px;
       }
@@ -2627,7 +2773,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       <span class="setting-value-bool bool-false">
         <ha-icon icon="mdi:close-circle-outline"></ha-icon> Disabled
       </span>
-    `}};ht=H([P(`k8s-settings`)],ht);var gt=[{id:`overview`,label:`Overview`,icon:`mdi:view-dashboard`},{id:`nodes`,label:`Nodes`,icon:`mdi:server`},{id:`workloads`,label:`Workloads`,icon:`mdi:application-cog`},{id:`pods`,label:`Pods`,icon:`mdi:cube-outline`},{id:`network`,label:`Network`,icon:`mdi:lan`},{id:`settings`,label:`Settings`,icon:`mdi:cog`}],$=class extends N{constructor(...e){super(...e),this.narrow=!1,this._nav={tab:`overview`}}firstUpdated(e){Le()}_handleTabChange(e){this._nav={tab:e}}_toggleSidebar(){this.dispatchEvent(new Event(`hass-toggle-menu`,{bubbles:!0,composed:!0}))}static{this.styles=o`
+    `}};gt=H([P(`k8s-settings`)],gt);var _t=[{id:`overview`,label:`Overview`,icon:`mdi:view-dashboard`},{id:`nodes`,label:`Nodes`,icon:`mdi:server`},{id:`workloads`,label:`Workloads`,icon:`mdi:application-cog`},{id:`pods`,label:`Pods`,icon:`mdi:cube-outline`},{id:`network`,label:`Network`,icon:`mdi:lan`},{id:`settings`,label:`Settings`,icon:`mdi:cog`}],$=class extends N{constructor(...e){super(...e),this.narrow=!1,this._nav={tab:`overview`}}firstUpdated(e){Le()}_handleTabChange(e){this._nav={tab:e}}_toggleSidebar(){this.dispatchEvent(new Event(`hass-toggle-menu`,{bubbles:!0,composed:!0}))}static{this.styles=o`
     :host {
       display: flex;
       flex-direction: column;
@@ -2723,7 +2869,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         <h1>Kubernetes</h1>
       </div>
       <div class="tab-bar">
-        ${gt.map(e=>w`
+        ${_t.map(e=>w`
             <div
               class="tab"
               role="button"
