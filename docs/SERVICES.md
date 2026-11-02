@@ -15,6 +15,7 @@ The integration provides the following services for controlling Kubernetes resou
 | **Delete Job** | Delete one or more Jobs (useful for clearing failed Jobs) | Jobs |
 | **Cordon Node** | Mark one or more nodes unschedulable (`kubectl cordon`) | Nodes |
 | **Uncordon Node** | Mark one or more nodes schedulable again (`kubectl uncordon`) | Nodes |
+| **Drain Node** | Cordon nodes and evict their pods, honouring PodDisruptionBudgets (`kubectl drain`) | Nodes |
 
 > **Note**: CronJobs are rejected by `scale_workload` and `stop_workload`. Use the switch entity to suspend/resume CronJobs, or use `start_workload` to trigger them.
 
@@ -258,6 +259,61 @@ data:
     - worker-node-2
 ```
 
+### Drain Node
+
+**Service**: `kubernetes.drain_node`
+
+Drain cordons a node and evicts its pods through the Eviction API — the equivalent of `kubectl drain --ignore-daemonsets`. Evictions respect PodDisruptionBudgets: an eviction a PDB blocks is retried every 5 seconds until `timeout` runs out. With several nodes in one call, every node is cordoned before the first pod is evicted, so evicted pods are not rescheduled onto another node of the same call.
+
+**Parameters**:
+
+- `node_name` (string, optional): Single node name
+- `node_names` (list, optional): Multiple node names
+- `ignore_daemonsets` (boolean, optional, default `true`): Skip DaemonSet-managed pods. When `false`, a node running DaemonSet pods is not drained and the call fails for it, like `kubectl drain` without `--ignore-daemonsets`
+- `delete_emptydir_data` (boolean, optional, default `false`): Also evict pods that use `emptyDir` volumes; their data is lost. When `false` they are skipped
+- `timeout` (integer seconds, optional, default `120`, max `3600`): How long to retry PDB-blocked evictions. `0` tries each pod once
+- `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
+
+**Skipped pods** (reported with a `reason`): `mirror_pod` (static pods), `daemonset`, `completed` (phase `Succeeded`/`Failed`), `emptydir`, and `home_assistant` — the pod Home Assistant itself runs in, when it runs inside the cluster. Evicting it would kill the service call before it returns; stop Home Assistant from your automation instead. That guard compares pod names with Home Assistant's hostname, so it does not work with `hostNetwork: true`.
+
+**Response**: The service returns, per node, the pods whose eviction was accepted (`evicted`; they may still be terminating — the service does not wait for them), the `skipped` pods with their reason, and the pods still `blocked` by a PDB when the timeout ran out. Pods that are still blocked are reported, not raised; any other eviction error (e.g. a 403 because the RBAC lacks `create` on `pods/eviction`) fails the call after every pod was attempted.
+
+```json
+{
+  "worker-node-1": {
+    "evicted": ["default/web-7d9f-abcde"],
+    "skipped": [{"pod": "kube-system/kube-proxy-x1y2z", "reason": "daemonset"}],
+    "blocked": ["db/postgres-0"]
+  }
+}
+```
+
+**Note**: Requires `create` on `pods/eviction` (included in `manifests/full/` — re-apply the RBAC if you installed it before this service existed) and lists pods across all namespaces, so it does not work with namespace-scoped roles.
+
+**Example** — drain a node for maintenance, wait until nothing is blocked, then hand over to the reboot:
+
+```yaml
+script:
+  drain_worker_1:
+    sequence:
+      - service: kubernetes.drain_node
+        data:
+          node_name: worker-node-1
+          timeout: 300
+        response_variable: drain
+      - if:
+          - condition: template
+            value_template: "{{ drain['worker-node-1'].blocked | length > 0 }}"
+        then:
+          - stop: "Pods are still blocked by a PodDisruptionBudget"
+            error: true
+      # ... reboot the node through another integration, wait for its Ready
+      # binary sensor, then:
+      - service: kubernetes.uncordon_node
+        data:
+          node_name: worker-node-1
+```
+
 ## Using Entity IDs vs. Workload Names
 
 The services accept both entity IDs and direct workload names:
@@ -282,7 +338,7 @@ workload_names:
 
 When using entity IDs, the service automatically extracts the workload name, namespace, and workload type from the entity attributes.
 
-With several clusters configured, the four workload services run against the cluster that owns the targets: for entity IDs it is the entry that registered the switch, for raw workload names the cluster that has a workload with that name. A bare `workload_name`, and every `workload_names` item that is not a `switch.` entity ID, is first tried as the entity `switch.<name>`; only when no such switch resolves is it looked up as a raw name. An explicit `entry_id` must be loaded; raw names are then resolved only in that entry, and a bare name whose `switch.<name>` belongs to another cluster is looked up in the `entry_id` cluster instead. `delete_job`, `cordon_node` and `uncordon_node` still default to the first configured entry.
+With several clusters configured, the four workload services run against the cluster that owns the targets: for entity IDs it is the entry that registered the switch, for raw workload names the cluster that has a workload with that name. A bare `workload_name`, and every `workload_names` item that is not a `switch.` entity ID, is first tried as the entity `switch.<name>`; only when no such switch resolves is it looked up as a raw name. An explicit `entry_id` must be loaded; raw names are then resolved only in that entry, and a bare name whose `switch.<name>` belongs to another cluster is looked up in the `entry_id` cluster instead. `delete_job`, `cordon_node`, `uncordon_node` and `drain_node` still default to the first configured entry.
 
 ## Service Behavior
 
@@ -294,7 +350,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 
 - No Kubernetes integration is configured, or the supplied `entry_id` does not match a loaded config entry
 - None of the given `workload_name` / `workload_names` resolve to a known workload (e.g. the entity ID does not exist, or the switch has no `namespace`/`workload_type` attributes)
-- `delete_job` / `cordon_node` / `uncordon_node` are called without a usable name
+- `delete_job` / `cordon_node` / `uncordon_node` / `drain_node` are called without a usable name
 - A workload's type does not support the requested operation — for example scaling, stopping, or restarting a CronJob. The whole call is rejected; no target in the call is touched.
 - `scale_workload` targets an HPA-managed workload with `replicas` other than `0`. The whole call is rejected; no target in the call is touched.
 - `scale_workload` / `start_workload` / `stop_workload` / `restart_workload` span more than one cluster: the targets belong to different config entries, an explicit `entry_id` contradicts the targets' cluster, or a raw workload name without `entry_id` exists in more than one cluster. The whole call is rejected; call the service once per cluster (or pass `entry_id` to pick the cluster for an ambiguous raw name).
@@ -303,7 +359,8 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 
 - Multi-target calls do **not** abort at the first failure. Every workload, Job or node in the call is attempted, and a single error naming all failed targets (with the reason, where the API provided one) is raised at the end.
 - Targets that succeeded stay changed — a partial failure is reported, not rolled back.
-- Node cordon/uncordon still refreshes the coordinator when at least one node changed, even if others failed.
+- Node cordon/uncordon/drain still refreshes the coordinator when at least one node changed, even if others failed.
+- `drain_node` reports pods still blocked by a PodDisruptionBudget in its response instead of raising; a raised error discards the response.
 
 ### Asynchronous Operations
 
@@ -338,7 +395,8 @@ Services require the following Kubernetes RBAC permissions:
 - `batch/jobs`: `get`, `list`, `delete` (`delete_job` service)
 
 **For Nodes (cordon/uncordon)**:
-- `nodes`: `get`, `list`, `patch` (`cordon_node` / `uncordon_node` services)
+- `nodes`: `get`, `list`, `patch` (`cordon_node` / `uncordon_node` / `drain_node` services)
+- `pods/eviction`: `create`, plus `list` on `pods` cluster-wide (`drain_node`)
 
 **General**:
 - Access to the target namespaces

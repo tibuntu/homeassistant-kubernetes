@@ -20,7 +20,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 - **Pod Management**: Delete individual pods directly from the sidebar panel (requires HA admin role); per-pod sensors expose container-state diagnostics — CrashLoopBackOff, ImagePullBackOff, OOMKilled (including a recovered OOMKill that already restarted, via `last_terminated_reason`), and scheduling failures — plus a derived `problem`/`problem_reason` attribute for easy automations and alerts; opt-in, admin-only pod log snapshots in the panel's Pods tab (experimental, **Configure → Enable pod logs in the panel**)
 - **Job Management**: Delete Jobs (including failed Jobs) via the sidebar panel or `kubernetes.delete_job` service; cascades to pods
 - **CronJob Management**: Suspend, resume, and trigger CronJobs from the sidebar panel, via the per-CronJob switch, or via `kubernetes.start_workload`
-- **Node Management**: Cordon and uncordon nodes from the sidebar panel, via per-node switches (on = schedulable), or via the `kubernetes.cordon_node` / `kubernetes.uncordon_node` services
+- **Node Management**: Cordon and uncordon nodes from the sidebar panel, via per-node switches (on = schedulable), or via the `kubernetes.cordon_node` / `kubernetes.uncordon_node` services; drain nodes for maintenance with `kubernetes.drain_node` (Eviction API, honours PodDisruptionBudgets)
 - **Dynamic Entity Management**: Automatic entity creation and cleanup as cluster resources change
 - **Dashboard Panel**: Built-in sidebar panel with cluster overview (incl. Kubernetes version), resource counts, health monitoring, and alerts; Workloads tab with start/stop/rolling-restart, CronJob suspend/resume/trigger, and Job deletion; Nodes tab with cordon/uncordon; a Network tab lists Ingresses with clickable URLs, backing service, and TLS status and Services with type, cluster IP, external addresses (LoadBalancer IPs as clickable links), and ports
 - **Diagnostics**: Native Home Assistant Diagnostics download with redacted credentials for easier bug reporting
@@ -98,6 +98,7 @@ The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `n
 - **Services have no admin check.** The sidebar panel hides mutation buttons from non-admin users, but Home Assistant cannot restrict who calls `scale_workload`, `cordon_node` and the other services ([details](https://tibuntu.github.io/homeassistant-kubernetes/CONFIGURATION/#dashboard-panel)).
 - **Large clusters create many entities** — one sensor per pod, plus per-workload, per-node and per-Job entities. Turn off categories you don't need under **Configure → Disable data collection for** ([details](https://tibuntu.github.io/homeassistant-kubernetes/CONFIGURATION/#data-collection-opt-out)).
 - **Replica numbers go up to 100**, and **pod logs are snapshots** (experimental, no live streaming, capped at 256 KiB).
+- **`drain_node` does not wait for evicted pods to terminate**, and it skips the pod Home Assistant runs in — except with `hostNetwork: true`, where that pod cannot be recognised ([details](https://tibuntu.github.io/homeassistant-kubernetes/SERVICES/#drain-node)).
 - **The cluster name cannot be changed** after setup; it identifies the config entry. Remove and re-add the integration to rename it.
 
 ## Removal

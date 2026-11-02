@@ -391,6 +391,26 @@ class TestMutations:
 
         await _poll_until(_replacement_ready, timeout=60)
 
+    async def test_evict_pod_recreated(self, k8s_client):
+        """The Eviction body is accepted by a real API server (drain_node)."""
+        pods = await k8s_client.get_pods()
+        pod = next(
+            p
+            for p in pods
+            if p["namespace"] == "default" and p["name"].startswith("test-nginx-")
+        )
+        on_node = await k8s_client.get_pods_on_node(pod["node_name"])
+        assert pod["name"] in {p["metadata"]["name"] for p in on_node}
+
+        assert await k8s_client.evict_pod(pod["name"], "default") is True
+
+        async def _replacement_ready():
+            deployments = await k8s_client.get_deployments()
+            dep = next(d for d in deployments if d["name"] == "test-nginx")
+            return dep["available_replicas"] == 1
+
+        await _poll_until(_replacement_ready, timeout=60)
+
     async def test_trigger_cronjob_creates_and_cleans_up_job(self, k8s_client):
         result = await k8s_client.trigger_cronjob("test-cronjob", "default")
         assert result["success"] is True

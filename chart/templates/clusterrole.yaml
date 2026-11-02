@@ -14,6 +14,7 @@ metadata:
 #     node cordon/uncordon)
 #   - Workload rollout restart (deployments, statefulsets, daemonsets)
 #   - Pod and Job deletion from the sidebar panel
+#   - Node drain (drain_node service, pods/eviction)
 #   - Pod log snapshots in the sidebar panel (pods/log)
 #   - Cluster Events platform (events)
 #   - Experimental Watch API (real-time updates via ?watch=true)
@@ -36,6 +37,10 @@ rules:
   - apiGroups: [""]
     resources: ["pods/log"]
     verbs: ["get"]
+  # drain_node service — evict pods through the Eviction API (honours PDBs)
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
 
   # Apps resources — monitoring + watch
   - apiGroups: ["apps"]

@@ -91,6 +91,7 @@ Enables all integration features:
 - Workload rollout restart (deployments, statefulsets, daemonsets)
 - Ingress and Service monitoring (Network tab in the sidebar panel, with clickable URLs)
 - Pod and Job deletion from the sidebar panel (requires Home Assistant admin role)
+- Node drain via the `drain_node` service (`pods/eviction`)
 - Cluster Events platform (`events`)
 - Watch API (real-time updates via `?watch=true`, enabled by default)
 - Legacy API compatibility (Kubernetes < 1.16)
@@ -102,7 +103,7 @@ Read-only access to every resource the integration monitors. No write permission
 **Limitations:**
 
 - No switches (scaling, CronJob control, or node cordon/uncordon)
-- No rollout restart, pod deletion, or Job deletion
+- No rollout restart, pod deletion, Job deletion, or node drain
 - No pod logs in the sidebar panel (`pods/log` not granted)
 - No Cluster Events platform (`events` not granted)
 - No Watch API support (`watch` verb not granted) — each stream gets HTTP 403 on connect and retries once a minute, a **Missing permissions** repair issue names the affected resource(s), and once every stream is forbidden the integration polls at the regular interval instead; disable the Watch API under **Configure** to silence the repair issue
@@ -115,6 +116,7 @@ Read-only access to every resource the integration monitors. No write permission
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
 | **pods** | `get`, `list`, `watch`, `delete` | ✅ | `get`, `list` only | Pod count and status sensors, pod deletion |
+| **pods/eviction** | `create` | ✅ | ❌ | `drain_node` service — evicts pods through the Eviction API, so PodDisruptionBudgets are honoured |
 | **pods/log** | `get` | ✅ | ❌ | Pod log snapshots in the sidebar panel (opt-in, admin-only — logs can contain secrets; drop the rule if you never want them readable) |
 | **nodes** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Node sensors and binary sensors; `patch` enables cordon/uncordon |
 | **namespaces** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Namespace discovery |
@@ -269,7 +271,9 @@ If you want to restrict access to specific namespaces instead of cluster-wide, u
 ```yaml
 # Cluster-scoped access for nodes and namespace discovery.
 # Drop `patch` on nodes if you do not want cordon/uncordon — nodes are
-# cluster-scoped, so there is no namespaced equivalent.
+# cluster-scoped, so there is no namespaced equivalent. The drain_node service
+# lists the pods of a node across all namespaces, so it needs the full
+# ClusterRole; it does not work with namespace-scoped roles.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -410,6 +414,17 @@ The log viewer needs `get` on `pods/log`. Unlike a missing watch rule, this rais
 kubectl auth can-i get pods/log --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Fix: re-apply manifests/full/ (or helm upgrade) — the minimal set does not grant pods/log
+```
+
+#### 9. `drain_node`: "eviction failed with status 403"
+
+Draining needs `create` on `pods/eviction`, which was added to the full role together with the `drain_node` service. Installs set up before that need the RBAC re-applied.
+
+```bash
+# Verify eviction permissions
+kubectl auth can-i create pods/eviction --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+
+# Fix: re-apply manifests/full/ (or helm upgrade --reset-then-reuse-values)
 ```
 
 ### Diagnostic Commands
