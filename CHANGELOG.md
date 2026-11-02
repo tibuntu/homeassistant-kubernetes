@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.15.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.3...v1.15.0) (2026-11-02)
+
+
+### Features
+
+* add drain_node service to cordon a node and evict its pods ([3d1e81f](https://github.com/tibuntu/homeassistant-kubernetes/commit/3d1e81f79bb23c691957dc895d7d3b8de345dadc)), closes [#529](https://github.com/tibuntu/homeassistant-kubernetes/issues/529)
+* add Restarting Pods alert sensor for pods in a restart loop ([8392164](https://github.com/tibuntu/homeassistant-kubernetes/commit/8392164fd4fbe5e2c636c8b10e967e32b3445744)), closes [#525](https://github.com/tibuntu/homeassistant-kubernetes/issues/525)
+* detect stalled Deployment rollouts ([dd9e8f7](https://github.com/tibuntu/homeassistant-kubernetes/commit/dd9e8f74880f6c9a7b270a37a2c9f27953dd42ea)), closes [#509](https://github.com/tibuntu/homeassistant-kubernetes/issues/509)
+* drain nodes from the panel's Nodes tab ([cab333d](https://github.com/tibuntu/homeassistant-kubernetes/commit/cab333d063777fecbc4cef84b73284c5cbbf2069))
+* show restarting pods in the panel overview alerts ([fc34e48](https://github.com/tibuntu/homeassistant-kubernetes/commit/fc34e48ee731b017bcb2859300a49ca401a8295b))
+* show stalled rollouts as Degraded in the panel's Workloads tab ([89ae289](https://github.com/tibuntu/homeassistant-kubernetes/commit/89ae2890b2e0e442a67ee56ee183c81d7e684fe4))
+
+
+### Bug Fixes
+
+* fail closed on malformed workload selector fields ([6957185](https://github.com/tibuntu/homeassistant-kubernetes/commit/6957185bc9f8b0cbc9781488e145d7d977e67ef6))
+* fetch namespace pod metrics concurrently and warn once on 403 ([a3eedf8](https://github.com/tibuntu/homeassistant-kubernetes/commit/a3eedf8ee647c173b5a741c7fb206bd18452e410))
+* fetch pod metrics for every configured namespace ([ed83966](https://github.com/tibuntu/homeassistant-kubernetes/commit/ed839668b69fc5c012d510b7c1996d971aaac476))
+* honor matchExpressions when attributing pod metrics to workloads ([a4f4791](https://github.com/tibuntu/homeassistant-kubernetes/commit/a4f47913fdd6ac463ddb67eda2c683420d659a69))
+* keep the cluster events entity during orphan cleanup ([dc31ff6](https://github.com/tibuntu/homeassistant-kubernetes/commit/dc31ff699c421dfeecd3869b4affba2dc78ded1e))
+* reject invalid Kubernetes names before any mutating API request ([32869fa](https://github.com/tibuntu/homeassistant-kubernetes/commit/32869fae58a42f489d83e570302ec213d131c136))
+* validate and URL-quote names in the panel's delete and suspend commands ([6ebf597](https://github.com/tibuntu/homeassistant-kubernetes/commit/6ebf597e50c349559a2428deb421ace785a0204c))
+
 ## [1.14.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.2...v1.14.3) (2026-10-30)
 
 
