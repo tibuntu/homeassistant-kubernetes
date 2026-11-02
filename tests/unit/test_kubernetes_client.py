@@ -15,6 +15,7 @@ from custom_components.kubernetes.kubernetes_client import (
     KubernetesClient,
     ResourceVersionExpired,
     build_ssl_param,
+    drain_skip_reason,
     is_valid_k8s_name,
     is_valid_k8s_namespace,
     normalize_host,
@@ -7080,3 +7081,168 @@ class TestMutationGuards:
         assert result["success"] is False
         assert "error" in result
         self._assert_no_requests(mock_client, session_cls)
+
+
+def _pod(name="web-1", **fields: Any) -> dict[str, Any]:
+    """Build a raw pod object; *fields* override metadata/spec/status."""
+    pod: dict[str, Any] = {
+        "metadata": {"name": name, "namespace": "default"},
+        "spec": {"volumes": []},
+        "status": {"phase": "Running"},
+    }
+    for key, value in fields.items():
+        pod[key].update(value)
+    return pod
+
+
+class TestDrainSkipReason:
+    """drain_skip_reason: kubectl drain's pod filters plus HA's own pod."""
+
+    @pytest.mark.parametrize(
+        ("pod", "expected"),
+        [
+            (_pod(), None),
+            (
+                _pod(metadata={"annotations": {"kubernetes.io/config.mirror": "x"}}),
+                "mirror_pod",
+            ),
+            (_pod("homeassistant-0"), "home_assistant"),
+            (
+                _pod(metadata={"ownerReferences": [{"kind": "DaemonSet"}]}),
+                "daemonset",
+            ),
+            (_pod(metadata={"ownerReferences": [{"kind": "ReplicaSet"}]}), None),
+            (_pod(status={"phase": "Succeeded"}), "completed"),
+            (_pod(status={"phase": "Failed"}), "completed"),
+            (_pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]}), "emptydir"),
+            (_pod(spec={"volumes": [{"name": "cfg", "configMap": {}}]}), None),
+            ({}, None),
+        ],
+    )
+    def test_reasons(self, pod, expected):
+        """Each filter yields its reason; an ordinary pod is evicted."""
+        assert (
+            drain_skip_reason(
+                pod, delete_emptydir_data=False, own_pod="homeassistant-0"
+            )
+            == expected
+        )
+
+    def test_emptydir_allowed(self):
+        """delete_emptydir_data lets emptyDir pods through."""
+        pod = _pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]})
+        assert drain_skip_reason(pod, delete_emptydir_data=True, own_pod=None) is None
+
+    def test_no_own_pod_outside_cluster(self):
+        """Without an own pod name no pod is treated as Home Assistant."""
+        assert (
+            drain_skip_reason(
+                {"metadata": {}}, delete_emptydir_data=False, own_pod=None
+            )
+            is None
+        )
+
+
+class TestGetPodsOnNode:
+    """get_pods_on_node: cluster-wide list filtered by spec.nodeName."""
+
+    async def test_lists_cluster_wide_with_field_selector(self, mock_client):
+        """Even in per-namespace mode the list is cluster-wide."""
+        session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": [{"a": 1}]})
+        )
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            assert await mock_client.get_pods_on_node("node-1") == [{"a": 1}]
+
+        url = session.get.call_args[0][0]
+        assert url.endswith("/api/v1/pods?fieldSelector=spec.nodeName%3Dnode-1")
+
+    async def test_non_200_raises(self, mock_client):
+        """A failed list raises instead of looking like an empty node."""
+        session = mock_aiohttp_session(get=403)
+
+        with (
+            patch("aiohttp.ClientSession", return_value=session),
+            pytest.raises(KubernetesApiError) as exc_info,
+        ):
+            await mock_client.get_pods_on_node("node-1")
+
+        assert exc_info.value.status == 403
+
+    @pytest.mark.parametrize("bad", [".", "a/b", "a&b=c"])
+    async def test_invalid_node_name_raises_without_request(self, mock_client, bad):
+        """The node name cannot inject into the path or the query."""
+        with (
+            patch("aiohttp.ClientSession") as session_cls,
+            pytest.raises(KubernetesApiError, match="invalid name"),
+        ):
+            await mock_client.get_pods_on_node(bad)
+
+        session_cls.assert_not_called()
+
+
+class TestEvictPod:
+    """evict_pod: policy/v1 Eviction, 429 = blocked by a PDB."""
+
+    @pytest.mark.parametrize("status", [200, 201, 404])
+    async def test_accepted_or_gone_returns_true(self, mock_client, status):
+        """Accepted evictions and already-deleted pods count as evicted."""
+        session = mock_aiohttp_session(post=status)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            assert await mock_client.evict_pod("web-1", "apps") is True
+
+        url = session.post.call_args[0][0]
+        assert url.endswith("/api/v1/namespaces/apps/pods/web-1/eviction")
+        assert session.post.call_args[1]["json"] == {
+            "apiVersion": "policy/v1",
+            "kind": "Eviction",
+            "metadata": {"name": "web-1", "namespace": "apps"},
+        }
+
+    async def test_pdb_blocked_returns_false(self, mock_client):
+        """429 means a PodDisruptionBudget blocks the eviction for now."""
+        session = mock_aiohttp_session(post=429)
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            assert await mock_client.evict_pod("web-1", "apps") is False
+
+    async def test_forbidden_raises_with_rbac_hint(self, mock_client):
+        """403 names the missing RBAC rule."""
+        session = mock_aiohttp_session(post=_mock_response(403, text="forbidden"))
+
+        with (
+            patch("aiohttp.ClientSession", return_value=session),
+            pytest.raises(KubernetesApiError, match="pods/eviction create") as exc,
+        ):
+            await mock_client.evict_pod("web-1", "apps")
+
+        assert exc.value.status == 403
+
+    async def test_other_status_raises(self, mock_client):
+        """Any other status is a hard failure carrying the API text."""
+        session = mock_aiohttp_session(post=_mock_response(500, text="boom"))
+
+        with (
+            patch("aiohttp.ClientSession", return_value=session),
+            pytest.raises(KubernetesApiError, match="status 500: boom") as exc,
+        ):
+            await mock_client.evict_pod("web-1", "apps")
+
+        assert "RBAC" not in str(exc.value)
+
+    @pytest.mark.parametrize("bad", BAD_SEGMENTS)
+    @pytest.mark.parametrize("position", ["name", "namespace"])
+    async def test_invalid_target_raises_without_request(
+        self, mock_client, position, bad
+    ):
+        """Invalid names/namespaces never reach aiohttp."""
+        name, namespace = ("ok", bad) if position == "namespace" else (bad, "ok")
+        with (
+            patch("aiohttp.ClientSession") as session_cls,
+            pytest.raises(KubernetesApiError),
+        ):
+            await mock_client.evict_pod(name, namespace)
+
+        session_cls.assert_not_called()

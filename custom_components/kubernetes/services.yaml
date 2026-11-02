@@ -220,3 +220,51 @@ uncordon_node:
       required: false
       selector:
         text:
+
+drain_node:
+  name: Drain Node
+  description: Cordon one or more Kubernetes nodes and evict their pods through the Eviction API, honouring PodDisruptionBudgets. Returns the evicted, skipped and still-blocked pods per node.
+  fields:
+    node_name:
+      name: Node Name
+      description: The name of a single node to drain (use node_names for multiple).
+      required: false
+      selector:
+        text:
+    node_names:
+      name: Node Names
+      description: A list of node names to drain (use node_name for a single node).
+      required: false
+      selector:
+        text:
+          multiple: true
+    ignore_daemonsets:
+      name: Ignore DaemonSets
+      description: Skip pods managed by a DaemonSet. If disabled, a node running DaemonSet pods is not drained.
+      required: false
+      default: true
+      selector:
+        boolean:
+    delete_emptydir_data:
+      name: Delete emptyDir data
+      description: Also evict pods that use emptyDir volumes (their data is lost). If disabled, those pods are skipped.
+      required: false
+      default: false
+      selector:
+        boolean:
+    timeout:
+      name: Timeout
+      description: How long to keep retrying evictions blocked by a PodDisruptionBudget. Pods still blocked afterwards are reported, not treated as an error.
+      required: false
+      default: 120
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: s
+    entry_id:
+      name: Config Entry ID
+      description: Target a specific configured cluster (optional; defaults to the first).
+      required: false
+      selector:
+        text:

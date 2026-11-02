@@ -133,6 +133,30 @@ async def build_ssl_param(
     )
 
 
+def drain_skip_reason(
+    pod: dict[str, Any], *, delete_emptydir_data: bool, own_pod: str | None
+) -> str | None:
+    """Return why a drain must not evict *pod* (a raw API object), or None.
+
+    Mirrors ``kubectl drain``'s filters, plus ``home_assistant`` for the pod HA
+    itself runs in: evicting it would kill the service call mid-flight.
+    """
+    meta = pod.get("metadata") or {}
+    if "kubernetes.io/config.mirror" in (meta.get("annotations") or {}):
+        return "mirror_pod"
+    if own_pod and meta.get("name") == own_pod:
+        return "home_assistant"
+    if any(ref.get("kind") == "DaemonSet" for ref in meta.get("ownerReferences") or []):
+        return "daemonset"
+    if (pod.get("status") or {}).get("phase") in ("Succeeded", "Failed"):
+        return "completed"
+    if not delete_emptydir_data and any(
+        "emptyDir" in volume for volume in (pod.get("spec") or {}).get("volumes") or []
+    ):
+        return "emptydir"
+    return None
+
+
 class ResourceVersionExpired(Exception):
     """Raised when a watch's resourceVersion is too old (HTTP 410 or ERROR event 410)."""
 
@@ -1948,6 +1972,62 @@ class KubernetesClient:
         except Exception as ex:
             self._log_error(f"official client {action} node {node_name}", ex)
             return False
+
+    async def get_pods_on_node(self, node_name: str) -> list[dict[str, Any]]:
+        """Return the raw pod objects scheduled on a node, across all namespaces.
+
+        Cluster-wide even in per-namespace mode, since a drain must see every
+        pod on the node. Raises KubernetesApiError on any non-200.
+        """
+        if msg := self._invalid_target("node", node_name, None, namespaced=False):
+            raise KubernetesApiError(msg)
+        return await self._fetch_resource_items(
+            "api/v1",
+            f"pods?fieldSelector=spec.nodeName%3D{node_name}",
+            cluster_scoped=True,
+        )
+
+    async def evict_pod(self, pod_name: str, namespace: str) -> bool:
+        """Evict a pod through the Eviction API, honouring PodDisruptionBudgets.
+
+        aiohttp only. Returns True when the eviction was accepted or the pod is
+        already gone (404), False when a PodDisruptionBudget blocks it (429).
+        Raises KubernetesApiError on any other status.
+        """
+        if msg := self._invalid_target("pod", pod_name, namespace):
+            raise KubernetesApiError(msg)
+        body = {
+            "apiVersion": "policy/v1",
+            "kind": "Eviction",
+            "metadata": {"name": pod_name, "namespace": namespace},
+        }
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"https://{self.host}:{self.port}/api/v1/namespaces/"
+                f"{quote(namespace, safe='')}/pods/{quote(pod_name, safe='')}/eviction",
+                headers=headers,
+                json=body,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status in (200, 201, 404):
+                    return True
+                if response.status == 429:
+                    return False
+                hint = (
+                    " (re-apply the integration's RBAC: pods/eviction create)"
+                    if response.status == 403
+                    else ""
+                )
+                raise KubernetesApiError(
+                    f"eviction failed with status {response.status}{hint}: "
+                    f"{(await response.text())[:500]}",
+                    response.status,
+                )
 
     async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
         """Get pod metrics (CPU and memory usage)."""

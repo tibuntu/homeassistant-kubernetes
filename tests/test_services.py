@@ -14,18 +14,22 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 import yaml
 
 from custom_components.kubernetes.const import (
+    ATTR_DELETE_EMPTYDIR_DATA,
+    ATTR_IGNORE_DAEMONSETS,
     ATTR_JOB_NAME,
     ATTR_JOB_NAMES,
     ATTR_NAMESPACE,
     ATTR_NODE_NAME,
     ATTR_NODE_NAMES,
     ATTR_REPLICAS,
+    ATTR_TIMEOUT,
     ATTR_WORKLOAD_NAME,
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
     DOMAIN,
     SERVICE_CORDON_NODE,
     SERVICE_DELETE_JOB,
+    SERVICE_DRAIN_NODE,
     SERVICE_RESTART_WORKLOAD,
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
@@ -48,6 +52,7 @@ from custom_components.kubernetes.services import (
     _get_workload_info_from_entity,
     _no_workloads_error,
     _normalize_entity_id_list,
+    _own_pod_name,
     _resolve_raw_workload_name,
     _validate_job_schema,
     _validate_node_schema,
@@ -77,6 +82,8 @@ def mock_client():
     client.delete_job = AsyncMock(return_value=True)
     client.cordon_node = AsyncMock(return_value=True)
     client.uncordon_node = AsyncMock(return_value=True)
+    client.get_pods_on_node = AsyncMock(return_value=[])
+    client.evict_pod = AsyncMock(return_value=True)
     return client
 
 
@@ -2868,3 +2875,281 @@ class TestMultiEntryRouting:
 
         client.scale_statefulset.assert_awaited_once()
         client.scale_deployment.assert_not_called()
+
+
+def _raw_pod(name: str, namespace: str = "default", **extra) -> dict:
+    """Build a raw pod object as returned by get_pods_on_node."""
+    pod = {
+        "metadata": {"name": name, "namespace": namespace},
+        "spec": {"volumes": []},
+        "status": {"phase": "Running"},
+    }
+    for key, value in extra.items():
+        pod[key].update(value)
+    return pod
+
+
+_DAEMONSET_POD = _raw_pod(
+    "kube-proxy-1",
+    "kube-system",
+    metadata={"ownerReferences": [{"kind": "DaemonSet"}]},
+)
+
+
+class TestOwnPodName:
+    """_own_pod_name: HA's pod name only when running in a cluster."""
+
+    def test_outside_cluster(self, monkeypatch):
+        """Without KUBERNETES_SERVICE_HOST there is no own pod."""
+        monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
+        assert _own_pod_name() is None
+
+    def test_inside_cluster_uses_hostname(self, monkeypatch):
+        """In a pod the hostname is the pod name."""
+        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services.socket.gethostname",
+            lambda: "homeassistant-0",
+        )
+        assert _own_pod_name() == "homeassistant-0"
+
+
+@pytest.mark.usefixtures("load_translations")
+class TestDrainNodeService:
+    """Tests for the drain_node service."""
+
+    @pytest.fixture(autouse=True)
+    def _fast_retries(self, monkeypatch):
+        """No real sleeping between PDB retries; HA is not in a cluster."""
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services.DRAIN_RETRY_INTERVAL", 0
+        )
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services._own_pod_name", lambda: None
+        )
+
+    async def _drain(self, hass: HomeAssistant, **data):
+        await async_setup_services(hass)
+        return await hass.services.async_call(
+            DOMAIN, SERVICE_DRAIN_NODE, data, blocking=True, return_response=True
+        )
+
+    async def test_registered(self, hass: HomeAssistant):
+        """The service is registered."""
+        await async_setup_services(hass)
+        assert hass.services.has_service(DOMAIN, SERVICE_DRAIN_NODE)
+
+    async def test_cordons_then_evicts_and_reports(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Evictable pods are evicted, the rest skipped with a reason."""
+        mock_client.get_pods_on_node.return_value = [
+            _raw_pod("web-1", "apps"),
+            _DAEMONSET_POD,
+            _raw_pod("done", status={"phase": "Succeeded"}),
+        ]
+
+        response = await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
+
+        mock_client.cordon_node.assert_called_once_with("node-1")
+        mock_client.get_pods_on_node.assert_called_once_with("node-1")
+        mock_client.evict_pod.assert_called_once_with("web-1", "apps")
+        assert response == {
+            "node-1": {
+                "evicted": ["apps/web-1"],
+                "skipped": [
+                    {"pod": "kube-system/kube-proxy-1", "reason": "daemonset"},
+                    {"pod": "default/done", "reason": "completed"},
+                ],
+                "blocked": [],
+            }
+        }
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_called_once()
+
+    async def test_node_without_pods(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """An empty node is just cordoned, not a failure."""
+        response = await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
+
+        assert response == {"node-1": {"evicted": [], "skipped": [], "blocked": []}}
+        mock_client.evict_pod.assert_not_called()
+
+    async def test_works_without_return_response(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """The response is optional for callers that do not want it."""
+        await async_setup_services(hass)
+        assert (
+            await hass.services.async_call(
+                DOMAIN, SERVICE_DRAIN_NODE, {ATTR_NODE_NAME: "node-1"}, blocking=True
+            )
+            is None
+        )
+        mock_client.cordon_node.assert_called_once_with("node-1")
+
+    async def test_all_nodes_cordoned_before_first_eviction(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Evicted pods cannot land on another node of the same call."""
+        calls: list[str] = []
+
+        async def _evict(name, namespace):
+            calls.append(f"evict {name}")
+            return True
+
+        async def _cordon(name):
+            calls.append(f"cordon {name}")
+            return True
+
+        async def _list(name):
+            return [_raw_pod(f"pod-{name}")]
+
+        mock_client.cordon_node.side_effect = _cordon
+        mock_client.get_pods_on_node.side_effect = _list
+        mock_client.evict_pod.side_effect = _evict
+
+        response = await self._drain(hass, **{ATTR_NODE_NAMES: ["a", "b"]})
+
+        assert calls == ["cordon a", "cordon b", "evict pod-a", "evict pod-b"]
+        assert response["a"]["evicted"] == ["default/pod-a"]
+        assert response["b"]["evicted"] == ["default/pod-b"]
+
+    async def test_pdb_blocked_pod_is_retried(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """A 429 is retried until the eviction goes through."""
+        mock_client.get_pods_on_node.return_value = [_raw_pod("db-0")]
+        mock_client.evict_pod.side_effect = [False, False, True]
+
+        response = await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
+
+        assert mock_client.evict_pod.call_count == 3
+        assert response["node-1"]["evicted"] == ["default/db-0"]
+        assert response["node-1"]["blocked"] == []
+
+    async def test_still_blocked_after_timeout_is_reported_not_raised(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """timeout 0 tries once; a blocked pod lands in the response."""
+        mock_client.get_pods_on_node.return_value = [
+            _raw_pod("db-0"),
+            _raw_pod("web-1"),
+        ]
+        mock_client.evict_pod.side_effect = [False, True]
+
+        response = await self._drain(
+            hass, **{ATTR_NODE_NAME: "node-1", ATTR_TIMEOUT: 0}
+        )
+
+        assert mock_client.evict_pod.call_count == 2
+        assert response["node-1"]["evicted"] == ["default/web-1"]
+        assert response["node-1"]["blocked"] == ["default/db-0"]
+
+    async def test_eviction_error_raises_after_all_pods(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """A hard eviction error fails the call once every pod was attempted."""
+        mock_client.get_pods_on_node.return_value = [
+            _raw_pod("bad"),
+            _raw_pod("good"),
+        ]
+        mock_client.evict_pod.side_effect = [Exception("status 403"), True]
+
+        with pytest.raises(HomeAssistantError, match="pod default/bad: status 403"):
+            await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
+
+        assert mock_client.evict_pod.call_count == 2
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_called_once()
+
+    async def test_cordon_failure_skips_node(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """A node that cannot be cordoned is not drained."""
+        mock_client.cordon_node.return_value = False
+
+        with pytest.raises(HomeAssistantError, match="node node-1"):
+            await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
+
+        mock_client.get_pods_on_node.assert_not_called()
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_not_called()
+
+    async def test_list_failure_raises(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """A failed pod list is a failure for that node, not an empty node."""
+        mock_client.get_pods_on_node.side_effect = Exception("list failed")
+
+        with pytest.raises(HomeAssistantError, match="node node-1: list failed"):
+            await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
+
+        mock_client.evict_pod.assert_not_called()
+
+    async def test_daemonset_pods_refuse_drain_when_not_ignored(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """ignore_daemonsets=false refuses the node like kubectl does."""
+        mock_client.get_pods_on_node.return_value = [_raw_pod("web"), _DAEMONSET_POD]
+
+        with pytest.raises(HomeAssistantError, match="ignore_daemonsets"):
+            await self._drain(
+                hass, **{ATTR_NODE_NAME: "node-1", ATTR_IGNORE_DAEMONSETS: False}
+            )
+
+        mock_client.evict_pod.assert_not_called()
+
+    async def test_daemonset_free_node_drains_when_not_ignored(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Without DaemonSet pods ignore_daemonsets=false changes nothing."""
+        mock_client.get_pods_on_node.return_value = [_raw_pod("web")]
+
+        response = await self._drain(
+            hass, **{ATTR_NODE_NAME: "node-1", ATTR_IGNORE_DAEMONSETS: False}
+        )
+
+        assert response["node-1"]["evicted"] == ["default/web"]
+
+    async def test_emptydir_option_and_own_pod(
+        self, hass: HomeAssistant, mock_client, setup_domain_data, monkeypatch
+    ):
+        """delete_emptydir_data is passed on; HA's own pod is never evicted."""
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services._own_pod_name",
+            lambda: "homeassistant-0",
+        )
+        mock_client.get_pods_on_node.return_value = [
+            _raw_pod("cache", spec={"volumes": [{"emptyDir": {}}]}),
+            _raw_pod("homeassistant-0", "home"),
+        ]
+
+        response = await self._drain(
+            hass, **{ATTR_NODE_NAME: "node-1", ATTR_DELETE_EMPTYDIR_DATA: True}
+        )
+
+        mock_client.evict_pod.assert_called_once_with("cache", "default")
+        assert response["node-1"]["skipped"] == [
+            {"pod": "home/homeassistant-0", "reason": "home_assistant"}
+        ]
+
+    async def test_blank_node_name_raises(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """A whitespace-only node_name is rejected before any change."""
+        with pytest.raises(ServiceValidationError, match="drain_node requires"):
+            await self._drain(hass, **{ATTR_NODE_NAME: " "})
+
+        mock_client.cordon_node.assert_not_called()
+
+    @pytest.mark.parametrize("timeout", [-1, 3601])
+    async def test_timeout_out_of_range_is_rejected(
+        self, hass: HomeAssistant, setup_domain_data, timeout
+    ):
+        """The schema bounds the timeout."""
+        import voluptuous as vol
+
+        with pytest.raises(vol.Invalid):
+            await self._drain(hass, **{ATTR_NODE_NAME: "n", ATTR_TIMEOUT: timeout})

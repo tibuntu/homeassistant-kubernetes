@@ -2,29 +2,44 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable
 import logging
+import os
+import socket
+from time import monotonic
 from typing import Any
 
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 import voluptuous as vol
 
 from .const import (
+    ATTR_DELETE_EMPTYDIR_DATA,
+    ATTR_IGNORE_DAEMONSETS,
     ATTR_JOB_NAME,
     ATTR_JOB_NAMES,
     ATTR_NAMESPACE,
     ATTR_NODE_NAME,
     ATTR_NODE_NAMES,
     ATTR_REPLICAS,
+    ATTR_TIMEOUT,
     ATTR_WORKLOAD_NAME,
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
+    DEFAULT_DRAIN_TIMEOUT,
     DOMAIN,
+    DRAIN_RETRY_INTERVAL,
     SERVICE_CORDON_NODE,
     SERVICE_DELETE_JOB,
+    SERVICE_DRAIN_NODE,
     SERVICE_RESTART_WORKLOAD,
     SERVICE_SCALE_WORKLOAD,
     SERVICE_START_WORKLOAD,
@@ -36,6 +51,7 @@ from .const import (
     WORKLOAD_TYPE_STATEFULSET,
 )
 from .coordinator import KubernetesEntryData, get_hpa_for, get_loaded_entries
+from .kubernetes_client import drain_skip_reason
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.debug("Kubernetes services module loaded")
@@ -591,6 +607,36 @@ NODE_SCHEMA = vol.Schema(
     )
 )
 
+DRAIN_NODE_SCHEMA = vol.Schema(
+    vol.All(
+        {
+            vol.Optional(ATTR_NODE_NAME): cv.string,
+            vol.Optional(ATTR_NODE_NAMES): vol.Any(
+                cv.string,
+                vol.All(cv.ensure_list, [cv.string]),
+            ),
+            vol.Optional("entry_id"): cv.string,
+            vol.Optional(ATTR_IGNORE_DAEMONSETS, default=True): cv.boolean,
+            vol.Optional(ATTR_DELETE_EMPTYDIR_DATA, default=False): cv.boolean,
+            vol.Optional(ATTR_TIMEOUT, default=DEFAULT_DRAIN_TIMEOUT): vol.All(
+                vol.Coerce(int), vol.Range(min=0, max=3600)
+            ),
+        },
+        _validate_node_schema,
+    )
+)
+
+
+def _own_pod_name() -> str | None:
+    """Return the name of the pod Home Assistant runs in, if it runs in a cluster.
+
+    A pod's hostname is its name, except with ``hostNetwork: true`` (then it is
+    the node's, and the drain guard cannot find HA's pod).
+    """
+    if os.environ.get("KUBERNETES_SERVICE_HOST"):
+        return socket.gethostname()
+    return None
+
 
 def _collect_names(
     call_data: dict[str, Any], single_key: str, multi_key: str
@@ -977,6 +1023,100 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         """Uncordon one or more Kubernetes nodes (mark schedulable)."""
         await _set_nodes_schedulable(call, schedulable=True)
 
+    async def drain_node(call: ServiceCall) -> ServiceResponse:
+        """Cordon nodes and evict their pods through the Eviction API.
+
+        Every node is cordoned and listed before the first eviction, so evicted
+        pods never land on another node of the same call. PDB-blocked evictions
+        are retried until the timeout and then reported, not raised.
+        """
+        node_names = _collect_node_names(call.data)
+        if not node_names:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="no_node_names",
+                translation_placeholders={"service": SERVICE_DRAIN_NODE},
+            )
+        entry_data = _get_entry_data(hass, call.data)
+        coordinator = entry_data.coordinator
+        client = coordinator.client
+        deadline = monotonic() + call.data[ATTR_TIMEOUT]
+        own_pod = _own_pod_name()
+        any_cordoned = False
+        failures: list[str] = []
+        results: dict[str, dict[str, list[Any]]] = {}
+        pending: list[tuple[str, str, str]] = []  # (node, namespace, pod)
+
+        for node_name in node_names:
+            if not await _attempt(
+                client.cordon_node(node_name), f"node {node_name}", failures
+            ):
+                continue
+            any_cordoned = True
+            try:
+                pods = await client.get_pods_on_node(node_name)
+            except Exception as err:
+                failures.append(f"node {node_name}: {err}")
+                continue
+            skipped: list[dict[str, str]] = []
+            to_evict: list[tuple[str, str, str]] = []
+            for pod in pods:
+                meta = pod.get("metadata") or {}
+                namespace, name = meta.get("namespace", ""), meta.get("name", "")
+                reason = drain_skip_reason(
+                    pod,
+                    delete_emptydir_data=call.data[ATTR_DELETE_EMPTYDIR_DATA],
+                    own_pod=own_pod,
+                )
+                if reason:
+                    skipped.append({"pod": f"{namespace}/{name}", "reason": reason})
+                else:
+                    to_evict.append((node_name, namespace, name))
+            daemonset_pods = [s["pod"] for s in skipped if s["reason"] == "daemonset"]
+            if daemonset_pods and not call.data[ATTR_IGNORE_DAEMONSETS]:
+                # Like kubectl: refuse instead of evicting pods that come right back
+                failures.append(
+                    f"node {node_name}: DaemonSet-managed pods "
+                    f"{', '.join(daemonset_pods)} (set ignore_daemonsets)"
+                )
+                continue
+            results[node_name] = {"evicted": [], "skipped": skipped, "blocked": []}
+            pending.extend(to_evict)
+
+        while pending:
+            blocked: list[tuple[str, str, str]] = []
+            for node_name, namespace, name in pending:
+                label = f"{namespace}/{name}"
+                # Not _attempt: False means "blocked by a PDB", not a failure
+                try:
+                    evicted = await client.evict_pod(name, namespace)
+                except Exception as err:
+                    failures.append(f"pod {label}: {err}")
+                    continue
+                if evicted:
+                    results[node_name]["evicted"].append(label)
+                else:
+                    blocked.append((node_name, namespace, name))
+            pending = blocked
+            if not pending or monotonic() >= deadline:
+                break
+            await asyncio.sleep(min(DRAIN_RETRY_INTERVAL, deadline - monotonic()))
+
+        for node_name, namespace, name in pending:
+            results[node_name]["blocked"].append(f"{namespace}/{name}")
+            _LOGGER.warning(
+                "Eviction of pod %s/%s on node %s still blocked by a "
+                "PodDisruptionBudget after the timeout",
+                namespace,
+                name,
+                node_name,
+            )
+
+        if any_cordoned:
+            await coordinator.async_request_refresh()
+        _raise_failures(failures, "drain")
+        return results
+
     # Register the generic services
     hass.services.async_register(
         DOMAIN,
@@ -1025,4 +1165,12 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         SERVICE_UNCORDON_NODE,
         uncordon_node,
         schema=NODE_SCHEMA,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_DRAIN_NODE,
+        drain_node,
+        schema=DRAIN_NODE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
     )
