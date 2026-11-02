@@ -94,7 +94,7 @@ def test_problem_pods_uses_parser_flag():
 
 
 def test_build_alerts_composes_helpers():
-    """build_alerts is exactly the three helpers under the panel's keys."""
+    """build_alerts is exactly the four helpers under the panel's keys."""
     data = {
         "nodes": {"n1": {"disk_pressure": True}},
         "daemonsets": {
@@ -111,6 +111,7 @@ def test_build_alerts_composes_helpers():
         "nodes_with_pressure": nodes_under_pressure(data),
         "degraded_workloads": degraded_workloads(data),
         "failed_pods": problem_pods(data),
+        "restarting_pods": restarting_pods(data),
     }
     assert build_alerts(data)["degraded_workloads"][0]["ready"] == 0
 

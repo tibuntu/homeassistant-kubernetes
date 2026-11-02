@@ -128,4 +128,5 @@ def build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         "nodes_with_pressure": nodes_under_pressure(data),
         "degraded_workloads": degraded_workloads(data),
         "failed_pods": problem_pods(data),
+        "restarting_pods": restarting_pods(data),
     }

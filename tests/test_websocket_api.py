@@ -1919,6 +1919,7 @@ class TestHandlersEdgeCases:
         assert cluster["alerts"]["nodes_with_pressure"] == []
         assert cluster["alerts"]["degraded_workloads"] == []
         assert cluster["alerts"]["failed_pods"] == []
+        assert cluster["alerts"]["restarting_pods"] == []
 
     def test_nodes_list_empty_nodes_dict(self, mock_hass):
         """Test nodes list returns empty list when nodes dict is empty."""

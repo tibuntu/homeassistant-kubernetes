@@ -20,7 +20,7 @@ The integration provides the following sensors to monitor your Kubernetes cluste
 
 ### Cluster Alert Sensors
 
-Three per-cluster sensors count resources that currently need attention, so a single automation can cover the whole cluster. They use the same rules as the sidebar panel's Overview alerts, so both always agree. The offending resources are listed in an attribute; that list is excluded from the recorder (history keeps the count only).
+Four per-cluster sensors count resources that currently need attention, so a single automation can cover the whole cluster. They use the same rules as the sidebar panel's Overview alerts, so both always agree. The offending resources are listed in an attribute; that list is excluded from the recorder (history keeps the count only).
 
 | Sensor | Counts | Attribute | Unit |
 |--------|--------|-----------|------|
