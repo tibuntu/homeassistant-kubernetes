@@ -1148,6 +1148,83 @@ class TestMigrateUniqueIds:
 
         assert registry.async_get(entity_id).unique_id == f"{eid}_bot_statefulset"
 
+    async def test_same_name_resolves_per_workload_kind(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        make_coordinator,
+    ):
+        """A name shared by a deployment and a statefulset resolves per kind."""
+        eid = mock_config_entry.entry_id
+        registry = async_get_entity_registry(hass)
+        old_ids = [
+            ("switch", f"{eid}_web_deployment"),
+            ("switch", f"{eid}_web_statefulset"),
+            ("sensor", f"{eid}_web_statefulset_status"),
+            ("sensor", f"{eid}_web_statefulset_cpu"),
+            ("sensor", f"{eid}_web_statefulset_memory"),
+        ]
+        entity_ids = [
+            self._register(hass, mock_config_entry, domain, uid).entity_id
+            for domain, uid in old_ids
+        ]
+        coordinator = make_coordinator(
+            data={
+                "deployments": {"prod_web": {"name": "web", "namespace": "prod"}},
+                "statefulsets": {"data_web": {"name": "web", "namespace": "data"}},
+            }
+        )
+
+        _async_migrate_unique_ids(hass, mock_config_entry, coordinator)
+
+        assert [registry.async_get(e).unique_id for e in entity_ids] == [
+            f"{eid}_prod_web_deployment",
+            f"{eid}_data_web_statefulset",
+            f"{eid}_data_web_statefulset_status",
+            f"{eid}_data_web_statefulset_cpu",
+            f"{eid}_data_web_statefulset_memory",
+        ]
+
+    async def test_ambiguous_daemonset_not_migrated(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry: MockConfigEntry,
+        make_coordinator,
+    ):
+        """A daemonset name in multiple namespaces keeps its old unique_id."""
+        eid = mock_config_entry.entry_id
+        registry = async_get_entity_registry(hass)
+        daemonset_entity_id = self._register(
+            hass, mock_config_entry, "sensor", f"{eid}_daemonset_fluentd"
+        ).entity_id
+        deployment_entity_id = self._register(
+            hass, mock_config_entry, "switch", f"{eid}_web_deployment"
+        ).entity_id
+        coordinator = make_coordinator(
+            data={
+                "deployments": {"prod_web": {"name": "web", "namespace": "prod"}},
+                "daemonsets": {
+                    "logging_fluentd": {"name": "fluentd", "namespace": "logging"},
+                    "kube-system_fluentd": {
+                        "name": "fluentd",
+                        "namespace": "kube-system",
+                    },
+                },
+            }
+        )
+
+        _async_migrate_unique_ids(hass, mock_config_entry, coordinator)
+
+        assert (
+            registry.async_get(daemonset_entity_id).unique_id
+            == f"{eid}_daemonset_fluentd"
+        )
+        # The resolvable deployment in the same pass proves the migration ran.
+        assert (
+            registry.async_get(deployment_entity_id).unique_id
+            == f"{eid}_prod_web_deployment"
+        )
+
     async def test_new_format_and_unrelated_ids_untouched(
         self,
         hass: HomeAssistant,
