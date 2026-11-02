@@ -148,6 +148,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
   .badge-condition,
   .badge-pending,
   .badge-degraded,
+  .badge-rollout-stalled,
   .badge-plain,
   .badge-type-externalname {
     background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);
@@ -2045,7 +2046,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         ${this._shouldShowCategory(`cronjobs`)?this._renderCronJobs(e.cronjobs,e.entry_id):E}
         ${this._shouldShowCategory(`jobs`)?this._renderJobs(e.entry_id,e.jobs):E}
       </div>
-    `}_shouldShowCategory(e){return this._categoryFilter===`all`||this._categoryFilter===e}_getReplicaStatus(e,t){return e.replicas===0?`stopped`:(e[Z[t].readyField]||0)<e.replicas?`degraded`:`healthy`}_getDaemonSetStatus(e){return e.desired_number_scheduled===0?`stopped`:(e.number_available||0)<e.desired_number_scheduled?`degraded`:`healthy`}_matchesStatusFilter(e){return this._statusFilter===`all`||this._statusFilter===e}_renderReplicaCategory(e,t,n){let r=Z[e],i=t.filter(t=>this._matchesNamespace(t.namespace)&&this._matchesSearch(t.name)&&this._matchesStatusFilter(this._getReplicaStatus(t,e)));return i.length===0&&this._categoryFilter!==`all`?w`<div class="empty">No ${r.emptyLabel} match your filters.</div>`:i.length===0?E:w`
+    `}_shouldShowCategory(e){return this._categoryFilter===`all`||this._categoryFilter===e}_getReplicaStatus(e,t){return e.replicas===0?`stopped`:e.rollout_stalled||(e[Z[t].readyField]||0)<e.replicas?`degraded`:`healthy`}_getDaemonSetStatus(e){return e.desired_number_scheduled===0?`stopped`:(e.number_available||0)<e.desired_number_scheduled?`degraded`:`healthy`}_matchesStatusFilter(e){return this._statusFilter===`all`||this._statusFilter===e}_renderReplicaCategory(e,t,n){let r=Z[e],i=t.filter(t=>this._matchesNamespace(t.namespace)&&this._matchesSearch(t.name)&&this._matchesStatusFilter(this._getReplicaStatus(t,e)));return i.length===0&&this._categoryFilter!==`all`?w`<div class="empty">No ${r.emptyLabel} match your filters.</div>`:i.length===0?E:w`
       <div class="category-section">
         <div
           class="category-header"
@@ -2087,6 +2088,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           <span class="badge ${X[i].badgeClass}">
             ${X[i].label}
           </span>
+          ${t.rollout_stalled?w`<span
+                  class="badge badge-rollout-stalled"
+                  title="Rollout stalled: ${t.rollout_reason??`unknown reason`}"
+                  >Rollout stalled</span
+                >`:E}
           ${t.hpa_managed?w`<span
                   class="badge badge-hpa"
                   title="Managed by HPA ${t.hpa_name} (${t.hpa_min_replicas}–${t.hpa_max_replicas} replicas)"
