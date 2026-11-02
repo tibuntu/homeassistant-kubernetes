@@ -3294,6 +3294,8 @@ class TestKubernetesWorkloadStatusSensorExtended:
         assert attrs["replicas"] == 0
         assert attrs["ready_replicas"] == 0
         assert attrs["available_replicas"] == 0
+        assert attrs["updated_replicas"] == 0
+        assert attrs["rollout_reason"] is None
 
     def test_native_value_defaults_replicas_to_zero(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -3310,6 +3312,43 @@ class TestKubernetesWorkloadStatusSensorExtended:
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
         # replicas defaults to 0, so status should be "Scaled Down"
         assert sensor.native_value == "Scaled Down"
+
+    @pytest.mark.parametrize(
+        ("replicas", "ready", "expected"),
+        [
+            (3, 3, "Rollout Stalled"),  # old pods keep every replica ready
+            (3, 1, "Rollout Stalled"),
+            (0, 0, "Scaled Down"),
+        ],
+    )
+    def test_native_value_rollout_stalled(
+        self,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        replicas,
+        ready,
+        expected,
+    ):
+        """A stalled rollout wins over Ready/Degraded but not over Scaled Down."""
+        mock_coordinator.data = {
+            "deployments": {
+                "staging_web-app": {
+                    "name": "web-app",
+                    "namespace": "staging",
+                    "replicas": replicas,
+                    "ready_replicas": ready,
+                    "updated_replicas": 1,
+                    "rollout_stalled": True,
+                    "rollout_reason": "ProgressDeadlineExceeded",
+                }
+            }
+        }
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == expected
+        attrs = sensor.extra_state_attributes
+        assert attrs["updated_replicas"] == 1
+        assert attrs["rollout_reason"] == "ProgressDeadlineExceeded"
 
     def test_statefulset_workload_type(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -4378,6 +4417,7 @@ class TestKubernetesAlertSensor:
                         "namespace": "default",
                         "ready": 1,
                         "desired": 2,
+                        "reason": None,
                     }
                 ],
             ),

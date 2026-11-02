@@ -16,6 +16,7 @@ interface AlertDegradedWorkload {
   namespace: string;
   ready: number;
   desired: number;
+  reason: string | null;
 }
 
 interface AlertFailedPod {
@@ -547,7 +548,10 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
             <ha-icon icon="mdi:alert"></ha-icon>
             <div>
               <div class="alert-title">${wl.type}: ${wl.namespace}/${wl.name}</div>
-              <div class="alert-detail">${wl.ready}/${wl.desired} replicas ready</div>
+              <div class="alert-detail">
+                ${wl.reason ? `Rollout stalled (${wl.reason}), ` : ""}${wl.ready}/${wl.desired}
+                replicas ready
+              </div>
             </div>
           </div>
         `,

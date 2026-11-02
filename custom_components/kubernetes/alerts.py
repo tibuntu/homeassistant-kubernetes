@@ -30,13 +30,19 @@ def nodes_under_pressure(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def degraded_workloads(data: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return workloads with fewer ready/available replicas than desired."""
+    """Return workloads with fewer ready/available replicas than desired.
+
+    A Deployment whose rollout is stalled (``ProgressDeadlineExceeded``) is
+    listed too, even while its old pods keep every replica available; its
+    ``reason`` is the rollout reason, ``None`` for a plain replica shortfall.
+    """
     alerts = []
     for bucket, workload_type, desired_key, ready_key in _WORKLOAD_REPLICA_KEYS:
         for workload in data.get(bucket, {}).values():
             desired = workload.get(desired_key, 0)
             ready = workload.get(ready_key) or 0
-            if desired > 0 and ready < desired:
+            stalled = bool(workload.get("rollout_stalled"))
+            if desired > 0 and (ready < desired or stalled):
                 alerts.append(
                     {
                         "name": workload.get("name", ""),
@@ -44,6 +50,7 @@ def degraded_workloads(data: dict[str, Any]) -> list[dict[str, Any]]:
                         "namespace": workload.get("namespace", "unknown"),
                         "ready": ready,
                         "desired": desired,
+                        "reason": workload.get("rollout_reason") if stalled else None,
                     }
                 )
     return alerts
