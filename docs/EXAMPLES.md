@@ -500,6 +500,28 @@ automation:
             {% endfor %}
 ```
 
+### Restart Loop Alerts
+
+*Problem Pods* only sees the current state, so a pod that is OOMKilled every few minutes and restarts cleanly can look healthy each time it is read. *Restarting Pods* catches it: it lists pods with at least 3 restarts whose last restart was within the past hour.
+
+```yaml
+automation:
+  - alias: "Notify on restarting pods"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.production_restarting_pods
+      above: 0
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Kubernetes: pods restarting"
+          message: >
+            {% for pod in state_attr('sensor.production_restarting_pods', 'pods') %}
+            {{ pod.namespace }}/{{ pod.name }}: {{ pod.restarts }} restarts,
+            last {{ pod.last_terminated_reason }} (exit {{ pod.last_terminated_exit_code }})
+            {% endfor %}
+```
+
 *Degraded Workloads* (`workloads` attribute) and *Nodes Under Pressure* (`nodes` attribute) work the same way. Keep the `for:` delay on *Degraded Workloads* in particular: every rolling update briefly has fewer available replicas than desired, so without it the automation fires on each deploy.
 
 ### Cluster Health Monitoring

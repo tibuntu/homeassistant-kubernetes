@@ -18,7 +18,12 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
-from .alerts import degraded_workloads, nodes_under_pressure, problem_pods
+from .alerts import (
+    degraded_workloads,
+    nodes_under_pressure,
+    problem_pods,
+    restarting_pods,
+)
 from .const import (
     ATTR_WORKLOAD_TYPE,
     WORKLOAD_TYPE_CRONJOB,
@@ -77,6 +82,9 @@ async def async_setup_entry(
         if "pods" not in disabled:
             sensors.append(
                 KubernetesProblemPodsSensor(coordinator, client, config_entry)
+            )
+            sensors.append(
+                KubernetesRestartingPodsSensor(coordinator, client, config_entry)
             )
         if "nodes" not in disabled:
             sensors.append(
@@ -665,6 +673,18 @@ class KubernetesProblemPodsSensor(KubernetesAlertSensor):
 
     def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         return problem_pods(data)
+
+
+class KubernetesRestartingPodsSensor(KubernetesAlertSensor):
+    """Pods in a restart loop (see ``alerts.restarting_pods``)."""
+
+    _attr_native_unit_of_measurement = "pods"
+    _unique_suffix = "restarting_pods"
+    _list_attr = "pods"
+    _unrecorded_attributes = frozenset({"pods"})
+
+    def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        return restarting_pods(data)
 
 
 class KubernetesNodesUnderPressureSensor(KubernetesAlertSensor):

@@ -6315,6 +6315,36 @@ class TestParsePodContainerState:
         assert pod["last_terminated_exit_code"] == 137
         assert pod["problem"] is False
 
+    def test_last_terminated_at_is_latest_finish(self, mock_client):
+        """last_terminated_at is the newest lastState finishedAt of any container."""
+
+        def restarted(finished_at):
+            return {
+                "ready": True,
+                "restartCount": 1,
+                "state": {"running": {}},
+                "lastState": {"terminated": {"exitCode": 1, "finishedAt": finished_at}},
+            }
+
+        pod = self._parse(
+            mock_client,
+            container_statuses=[
+                restarted("2024-01-01T01:00:00Z"),
+                restarted("2024-01-01T02:00:00Z"),
+                restarted("2024-01-01T00:30:00Z"),
+                {"ready": True, "restartCount": 0, "state": {"running": {}}},
+            ],
+        )
+        assert pod["last_terminated_at"] == "2024-01-01T02:00:00Z"
+
+    def test_last_terminated_at_none_without_restart(self, mock_client):
+        """A pod that never restarted has no last termination timestamp."""
+        pod = self._parse(
+            mock_client,
+            container_statuses=[{"ready": True, "restartCount": 0, "state": {}}],
+        )
+        assert pod["last_terminated_at"] is None
+
     def test_pending_unschedulable(self, mock_client):
         """Pending pod with Unschedulable PodScheduled condition → problem True."""
         raw = self._make_raw_pod(

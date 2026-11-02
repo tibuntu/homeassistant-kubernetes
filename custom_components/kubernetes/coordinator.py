@@ -602,6 +602,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             expected.add(f"{eid}_degraded_workloads")
         if "pods" not in disabled:
             expected.add(f"{eid}_problem_pods")
+            expected.add(f"{eid}_restarting_pods")
         if "nodes" not in disabled:
             expected.add(f"{eid}_nodes_under_pressure")
 
