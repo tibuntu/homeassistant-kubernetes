@@ -5233,6 +5233,77 @@ class TestGetPodMetricsAiohttp:
         url = call_args[0][0] if call_args[0] else call_args[1].get("url", "")
         assert "/namespaces/" not in url
 
+    @staticmethod
+    def _namespace_metrics(namespace: str, pod: str, cpu: str, memory: str):
+        """Build a 200 metrics response holding one pod in ``namespace``."""
+        return _mock_response(
+            200,
+            json_data={
+                "items": [
+                    {
+                        "metadata": {"name": pod, "namespace": namespace},
+                        "containers": [{"usage": {"cpu": cpu, "memory": memory}}],
+                    }
+                ]
+            },
+        )
+
+    async def test_multiple_namespaces_fetches_each(self, mock_client):
+        """Every configured namespace is fetched, not just the first one."""
+        mock_client.namespaces = ["default", "production"]
+        mock_client.monitor_all_namespaces = False
+
+        mock_session = mock_aiohttp_session(
+            get=[
+                self._namespace_metrics("default", "pod1", "250m", "128Mi"),
+                self._namespace_metrics("production", "pod2", "500m", "256Mi"),
+            ]
+        )
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_pod_metrics_aiohttp()
+
+        assert result == {
+            "default/pod1": {"cpu": 250.0, "memory": 128.0},
+            "production/pod2": {"cpu": 500.0, "memory": 256.0},
+        }
+        urls = [c.args[0] for c in mock_session.get.call_args_list]
+        assert [url.split(":6443", 1)[1] for url in urls] == [
+            "/apis/metrics.k8s.io/v1beta1/namespaces/default/pods",
+            "/apis/metrics.k8s.io/v1beta1/namespaces/production/pods",
+        ]
+
+    @pytest.mark.parametrize(
+        "first_namespace_response",
+        [403, 500, Exception("Connection refused")],
+        ids=["forbidden", "server_error", "exception"],
+    )
+    async def test_multiple_namespaces_skips_failed_namespace(
+        self, mock_client, first_namespace_response
+    ):
+        """A namespace that fails is skipped; the others keep their metrics."""
+        mock_client.namespaces = ["default", "production"]
+        mock_client.monitor_all_namespaces = False
+
+        mock_session = mock_aiohttp_session(
+            get=[
+                first_namespace_response,
+                self._namespace_metrics("production", "pod2", "500m", "256Mi"),
+            ]
+        )
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_pod_metrics_aiohttp()
+
+        assert result == {"production/pod2": {"cpu": 500.0, "memory": 256.0}}
+        assert mock_session.get.call_count == 2
+
 
 class TestSuspendCronjobAiohttp:
     """Tests for suspend_cronjob (aiohttp path) method."""

@@ -1955,77 +1955,100 @@ class KubernetesClient:
         return await self._get_pod_metrics_aiohttp()
 
     async def _get_pod_metrics_aiohttp(self) -> dict[str, dict[str, float]]:
-        """Get pod metrics using aiohttp."""
+        """Get pod metrics using aiohttp.
+
+        Without monitor_all_namespaces, each configured namespace is fetched
+        separately (matching _get_pods_aiohttp). Metrics are best-effort: a
+        namespace that fails is skipped and the others are still returned.
+        """
         try:
             headers = {"Authorization": f"Bearer {self.api_token}"}
+            base = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1"
             if self.monitor_all_namespaces:
-                url = (
-                    f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/pods"
-                )
+                targets: list[tuple[str | None, str]] = [(None, f"{base}/pods")]
             else:
-                url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/namespaces/{self.namespace}/pods"
+                targets = [
+                    (ns, f"{base}/namespaces/{ns}/pods") for ns in self.namespaces
+                ]
 
+            metrics: dict[str, dict[str, float]] = {}
             async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        metrics: dict[str, dict[str, float]] = {}
-                        for item in data.get("items", []):
-                            metadata = item.get("metadata", {})
-                            name = metadata.get("name")
-                            namespace = metadata.get("namespace")
-                            containers = item.get("containers", [])
-
-                            cpu_usage = 0.0
-                            memory_usage = 0.0
-
-                            for container in containers:
-                                usage = container.get("usage", {})
-                                cpu_str = usage.get("cpu", "0")
-                                memory_str = usage.get("memory", "0")
-
-                                # Debug log for first few items to verify parsing
-                                if len(metrics) < 5:
-                                    _LOGGER.debug(
-                                        "Parsing metrics for %s/%s: cpu=%s, memory=%s",
-                                        namespace,
-                                        name,
-                                        cpu_str,
-                                        memory_str,
-                                    )
-
-                                cpu_usage += self._parse_cpu(cpu_str, "m")
-                                memory_usage += self._parse_memory(memory_str, "MiB")
-
-                            # Key by namespace/name to be unique across namespaces
-                            key = f"{namespace}/{name}"
-                            metrics[key] = {"cpu": cpu_usage, "memory": memory_usage}
-                        _LOGGER.debug(
-                            "Successfully fetched metrics for %d pods", len(metrics)
-                        )
-                        return metrics
-                    elif response.status == 403:
+                for target_namespace, url in targets:
+                    scope = (
+                        f" for namespace {target_namespace!r}"
+                        if target_namespace is not None
+                        else ""
+                    )
+                    try:
+                        async with session.get(
+                            url,
+                            headers=headers,
+                            ssl=await self._get_ssl_param(),
+                            timeout=aiohttp.ClientTimeout(total=10),
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                self._merge_pod_metrics_items(
+                                    data.get("items", []), metrics
+                                )
+                            elif response.status == 403:
+                                _LOGGER.warning(
+                                    "Failed to fetch pod metrics%s: 403 Forbidden. "
+                                    "The service account does not have permission to access the metrics API. "
+                                    "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
+                                    "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']",
+                                    scope,
+                                )
+                            else:
+                                _LOGGER.warning(
+                                    "Failed to fetch pod metrics%s: %s. Metrics API might not be available.",
+                                    scope,
+                                    response.status,
+                                )
+                    except Exception as ex:
                         _LOGGER.warning(
-                            "Failed to fetch pod metrics: 403 Forbidden. "
-                            "The service account does not have permission to access the metrics API. "
-                            "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
-                            "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']"
+                            "Exception in _get_pod_metrics_aiohttp%s: %s", scope, ex
                         )
-                        return {}
-                    else:
-                        _LOGGER.warning(
-                            "Failed to fetch pod metrics: %s. Metrics API might not be available.",
-                            response.status,
-                        )
-                        return {}
+            _LOGGER.debug("Successfully fetched metrics for %d pods", len(metrics))
+            return metrics
         except Exception as ex:
             _LOGGER.warning("Exception in _get_pod_metrics_aiohttp: %s", ex)
             return {}
+
+    def _merge_pod_metrics_items(
+        self, items: list[dict[str, Any]], metrics: dict[str, dict[str, float]]
+    ) -> None:
+        """Sum container usage per pod and store it in ``metrics`` by namespace/name."""
+        for item in items:
+            metadata = item.get("metadata", {})
+            name = metadata.get("name")
+            namespace = metadata.get("namespace")
+            containers = item.get("containers", [])
+
+            cpu_usage = 0.0
+            memory_usage = 0.0
+
+            for container in containers:
+                usage = container.get("usage", {})
+                cpu_str = usage.get("cpu", "0")
+                memory_str = usage.get("memory", "0")
+
+                # Debug log for first few items to verify parsing
+                if len(metrics) < 5:
+                    _LOGGER.debug(
+                        "Parsing metrics for %s/%s: cpu=%s, memory=%s",
+                        namespace,
+                        name,
+                        cpu_str,
+                        memory_str,
+                    )
+
+                cpu_usage += self._parse_cpu(cpu_str, "m")
+                memory_usage += self._parse_memory(memory_str, "MiB")
+
+            # Key by namespace/name to be unique across namespaces
+            key = f"{namespace}/{name}"
+            metrics[key] = {"cpu": cpu_usage, "memory": memory_usage}
 
     async def get_node_metrics(self) -> dict[str, dict[str, float]]:
         """Get node metrics (CPU and memory usage) from the Metrics API."""
