@@ -263,7 +263,7 @@ data:
 
 **Service**: `kubernetes.drain_node`
 
-Drain cordons a node and evicts its pods through the Eviction API — the equivalent of `kubectl drain --ignore-daemonsets`. Evictions respect PodDisruptionBudgets: an eviction a PDB blocks is retried every 5 seconds until `timeout` runs out. With several nodes in one call, every node is cordoned before the first pod is evicted, so evicted pods are not rescheduled onto another node of the same call.
+Drain cordons a node and evicts its pods through the Eviction API (also available as the **Drain** button in the sidebar panel's Nodes tab) — the equivalent of `kubectl drain --ignore-daemonsets`. Evictions respect PodDisruptionBudgets: an eviction a PDB blocks is retried every 5 seconds until `timeout` runs out. With several nodes in one call, every node is cordoned before the first pod is evicted, so evicted pods are not rescheduled onto another node of the same call.
 
 **Parameters**:
 

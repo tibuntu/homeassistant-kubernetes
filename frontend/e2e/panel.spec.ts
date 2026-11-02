@@ -221,3 +221,48 @@ test("pod logs failure shows an inline error in the dialog", async ({ page }) =>
   );
   await expect(page.locator(".logs-output")).toHaveCount(0);
 });
+
+test("drain dialog sends the options and shows the service response", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Nodes");
+  await page.locator(".node-card .action-btn.drain").click();
+  await page.locator(".drain-option", { hasText: "emptyDir" }).locator("input").check();
+  await page.locator(".drain-timeout").fill("30");
+  await page.locator("button.drain-action").click();
+
+  await expect(page.locator(".drain-section.blocked")).toContainText("default/db-0");
+  await expect(page.locator(".confirm-dialog")).toContainText(
+    "kube-system/kube-proxy-x1y2z (DaemonSet)",
+  );
+  await expect(page.locator(".confirm-dialog")).toContainText("1 pod evicted");
+  expect(await page.evaluate(() => window.__k8s.services)).toEqual([
+    {
+      domain: "kubernetes",
+      service: "drain_node",
+      data: {
+        node_name: "node-1",
+        entry_id: "entry_1",
+        ignore_daemonsets: true,
+        delete_emptydir_data: true,
+        timeout: 30,
+      },
+    },
+  ]);
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".confirm-dialog")).toHaveCount(0);
+});
+
+test("Escape closes the drain dialog without calling the service", async ({ page }) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Nodes");
+  await page.locator(".node-card .action-btn.drain").click();
+  await expect(page.locator(".confirm-dialog")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.locator(".confirm-dialog")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__k8s.services)).toEqual([]);
+});
