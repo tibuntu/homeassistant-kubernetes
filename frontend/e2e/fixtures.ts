@@ -37,6 +37,16 @@ export const RESPONSES: Record<string, unknown> = {
             },
           ],
           failed_pods: [],
+          restarting_pods: [
+            {
+              name: "worker-abc",
+              namespace: "default",
+              restarts: 5,
+              last_terminated_reason: "OOMKilled",
+              last_terminated_exit_code: 137,
+              last_terminated_at: "2026-11-02T11:00:00Z",
+            },
+          ],
         },
       },
     ],

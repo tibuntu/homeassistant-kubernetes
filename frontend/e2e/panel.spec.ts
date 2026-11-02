@@ -21,6 +21,12 @@ test("overview count card opens the workloads tab with its category preset", asy
   await expect(page.locator(".workload-card", { hasText: "db" })).toHaveCount(0);
 });
 
+test("overview lists restarting pods with their last termination", async ({ page }) => {
+  await page.goto(HARNESS);
+  const card = page.locator(".alert-card", { hasText: "default/worker-abc" });
+  await expect(card).toContainText("5 restarts, last: OOMKilled (exit 137)");
+});
+
 test("pods column visibility survives a reload", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Pods");

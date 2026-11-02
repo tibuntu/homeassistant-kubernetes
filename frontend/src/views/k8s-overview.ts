@@ -25,10 +25,19 @@ interface AlertFailedPod {
   phase: string;
 }
 
+interface AlertRestartingPod {
+  name: string;
+  namespace: string;
+  restarts: number;
+  last_terminated_reason: string | null;
+  last_terminated_exit_code: number | null;
+}
+
 interface ClusterAlerts {
   nodes_with_pressure: AlertNodePressure[];
   degraded_workloads: AlertDegradedWorkload[];
   failed_pods: AlertFailedPod[];
+  restarting_pods: AlertRestartingPod[];
 }
 
 interface ClusterOverview {
@@ -371,7 +380,8 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
     const totalAlerts =
       cluster.alerts.nodes_with_pressure.length +
       cluster.alerts.degraded_workloads.length +
-      cluster.alerts.failed_pods.length;
+      cluster.alerts.failed_pods.length +
+      cluster.alerts.restarting_pods.length;
 
     return html`
       <div class="cluster-section">
@@ -563,6 +573,28 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
             <div>
               <div class="alert-title">Pod: ${pod.namespace}/${pod.name}</div>
               <div class="alert-detail">Phase: ${pod.phase}</div>
+            </div>
+          </div>
+        `,
+      )}
+      ${alerts.restarting_pods.map(
+        (pod) => html`
+          <div class="alert-card alert-warning">
+            <ha-icon icon="mdi:restart-alert"></ha-icon>
+            <div>
+              <div class="alert-title">Pod: ${pod.namespace}/${pod.name}</div>
+              <div class="alert-detail">
+                ${pod.restarts}
+                restarts${
+                  pod.last_terminated_reason
+                    ? `, last: ${pod.last_terminated_reason}`
+                    : ""
+                }${
+                  pod.last_terminated_exit_code != null
+                    ? ` (exit ${pod.last_terminated_exit_code})`
+                    : ""
+                }
+              </div>
             </div>
           </div>
         `,

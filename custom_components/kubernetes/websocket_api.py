@@ -303,6 +303,7 @@ def _empty_alerts() -> dict[str, list]:
         "nodes_with_pressure": [],
         "degraded_workloads": [],
         "failed_pods": [],
+        "restarting_pods": [],
     }
 
 
