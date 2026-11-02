@@ -4470,6 +4470,12 @@ class TestPodMatchesSelector:
             is True
         )
 
+    @pytest.mark.parametrize("key", [None, ["a"], 1])
+    def test_missing_or_non_string_key_fails_closed(self, mock_client, key):
+        """A missing or non-string key never matches, even with DoesNotExist."""
+        exprs = [{"key": key, "operator": "DoesNotExist"}]
+        assert mock_client._pod_matches_selector({"a": "1"}, {}, exprs) is False
+
     def test_string_values_fail_closed(self, mock_client):
         """A non-list values never substring-matches."""
         exprs = [{"key": "env", "operator": "In", "values": "prod"}]
