@@ -2,26 +2,25 @@
 
 ## [1.15.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.3...v1.15.0) (2026-11-02)
 
+A feature release: **node drain** as a service and in the panel, **stalled rollout detection**, and a **Restarting Pods** alert sensor. It also fixes workload CPU/memory usage for several setups and hardens name handling in every action that changes the cluster. Node drain needs one new permission, see *Upgrading*.
 
-### Features
+### New features
 
-* add drain_node service to cordon a node and evict its pods ([3d1e81f](https://github.com/tibuntu/homeassistant-kubernetes/commit/3d1e81f79bb23c691957dc895d7d3b8de345dadc)), closes [#529](https://github.com/tibuntu/homeassistant-kubernetes/issues/529)
-* add Restarting Pods alert sensor for pods in a restart loop ([8392164](https://github.com/tibuntu/homeassistant-kubernetes/commit/8392164fd4fbe5e2c636c8b10e967e32b3445744)), closes [#525](https://github.com/tibuntu/homeassistant-kubernetes/issues/525)
-* detect stalled Deployment rollouts ([dd9e8f7](https://github.com/tibuntu/homeassistant-kubernetes/commit/dd9e8f74880f6c9a7b270a37a2c9f27953dd42ea)), closes [#509](https://github.com/tibuntu/homeassistant-kubernetes/issues/509)
-* drain nodes from the panel's Nodes tab ([cab333d](https://github.com/tibuntu/homeassistant-kubernetes/commit/cab333d063777fecbc4cef84b73284c5cbbf2069))
-* show restarting pods in the panel overview alerts ([fc34e48](https://github.com/tibuntu/homeassistant-kubernetes/commit/fc34e48ee731b017bcb2859300a49ca401a8295b))
-* show stalled rollouts as Degraded in the panel's Workloads tab ([89ae289](https://github.com/tibuntu/homeassistant-kubernetes/commit/89ae2890b2e0e442a67ee56ee183c81d7e684fe4))
+**Drain a node.** The new `drain_node` service cordons one or more nodes and evicts their pods, much like `kubectl drain`. It goes through the Eviction API, so PodDisruptionBudgets are respected: a blocked eviction is retried until the timeout (120 s by default), and the service response lists the evicted, skipped and still-blocked pods. Mirror pods, DaemonSet pods, finished pods and the pod Home Assistant itself runs in are skipped; pods with `emptyDir` volumes are skipped unless you set `delete_emptydir_data`. Admins also get a *Drain* button next to Cordon/Uncordon in the panel's Nodes tab, with the same options and the result shown in the dialog. ([#529](https://github.com/tibuntu/homeassistant-kubernetes/issues/529))
 
+**Stalled rollouts.** A Deployment whose rollout has exceeded its progress deadline is now detected. Its status sensor reports the new *Rollout Stalled* state and gains `updated_replicas` and `rollout_reason` attributes. The Deployment also shows up in the *Degraded Workloads* sensor, the panel's Overview alerts and as *Degraded* in the Workloads tab, even while its old pods still keep every replica available. ([#509](https://github.com/tibuntu/homeassistant-kubernetes/issues/509))
 
-### Bug Fixes
+**Restarting Pods sensor.** *Problem Pods* only sees a pod's current state, so a pod that crashes or runs out of memory and then restarts cleanly looks healthy. The new *Restarting Pods* sensor on the cluster device lists pods with at least 3 restarts whose last container exit was within the past hour. The panel's Overview shows them as an alert too. ([#525](https://github.com/tibuntu/homeassistant-kubernetes/issues/525))
 
-* fail closed on malformed workload selector fields ([6957185](https://github.com/tibuntu/homeassistant-kubernetes/commit/6957185bc9f8b0cbc9781488e145d7d977e67ef6))
-* fetch namespace pod metrics concurrently and warn once on 403 ([a3eedf8](https://github.com/tibuntu/homeassistant-kubernetes/commit/a3eedf8ee647c173b5a741c7fb206bd18452e410))
-* fetch pod metrics for every configured namespace ([ed83966](https://github.com/tibuntu/homeassistant-kubernetes/commit/ed839668b69fc5c012d510b7c1996d971aaac476))
-* honor matchExpressions when attributing pod metrics to workloads ([a4f4791](https://github.com/tibuntu/homeassistant-kubernetes/commit/a4f47913fdd6ac463ddb67eda2c683420d659a69))
-* keep the cluster events entity during orphan cleanup ([dc31ff6](https://github.com/tibuntu/homeassistant-kubernetes/commit/dc31ff699c421dfeecd3869b4affba2dc78ded1e))
-* reject invalid Kubernetes names before any mutating API request ([32869fa](https://github.com/tibuntu/homeassistant-kubernetes/commit/32869fae58a42f489d83e570302ec213d131c136))
-* validate and URL-quote names in the panel's delete and suspend commands ([6ebf597](https://github.com/tibuntu/homeassistant-kubernetes/commit/6ebf597e50c349559a2428deb421ace785a0204c))
+### Fixes & improvements
+
+* **Workload CPU/memory usage in more setups.** With several namespaces selected (instead of all namespaces), only the first one got pod metrics, so every Deployment and StatefulSet in the others reported 0. All configured namespaces are now fetched, in parallel, and a forbidden namespace logs one warning instead of one per poll. Workloads whose selector uses `matchExpressions` also report their real usage now instead of 0.
+* **Cluster events entity no longer disappears.** With the Cluster Events platform enabled, the event entity was removed from the entity registry on the next poll and only came back after a reload.
+* **Safer name handling.** Every action that changes the cluster (delete, scale, restart, cordon, suspend, trigger) now rejects invalid Kubernetes names before sending a request. A pod name of `.` could previously turn a single-pod delete into a delete of every pod in the namespace.
+
+> **Upgrading — RBAC:** `drain_node` needs `create` on `pods/eviction`. Helm users run `helm upgrade` with `--reset-then-reuse-values`; manifest users re-apply `manifests/full/`. The `minimal` mode does not grant it, so draining is not available there. Everything else works without the new rule.
+>
+> **Behaviour change:** a Deployment whose rollout is stuck used to read *Ready* and now reads *Rollout Stalled*. Automations that trigger on *Ready* may need adjusting.
 
 ## [1.14.3](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.2...v1.14.3) (2026-10-30)
 
