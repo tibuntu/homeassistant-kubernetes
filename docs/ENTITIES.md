@@ -24,7 +24,7 @@ Three per-cluster sensors count resources that currently need attention, so a si
 
 | Sensor | Counts | Attribute | Unit |
 |--------|--------|-----------|------|
-| **Degraded Workloads** | Deployments with fewer available, StatefulSets with fewer ready, and DaemonSets with fewer available replicas than desired (workloads scaled to 0 are ignored) | `workloads`: list of `{name, type, namespace, ready, desired}` | workloads |
+| **Degraded Workloads** | Deployments with fewer available, StatefulSets with fewer ready, and DaemonSets with fewer available replicas than desired, plus Deployments whose rollout is stalled (workloads scaled to 0 are ignored) | `workloads`: list of `{name, type, namespace, ready, desired, reason}` — `reason` is `ProgressDeadlineExceeded` for a stalled rollout, otherwise `null` | workloads |
 | **Problem Pods** | Pods whose `problem` flag is set (CrashLoopBackOff, ImagePullBackOff, non-zero exit, init-container failures, phase `Failed`, Unschedulable — see [Pod sensors](#individual-pod-sensors)) plus pods in phase `Unknown` | `pods`: list of `{name, namespace, phase, reason}` (`reason` is the pod's `problem_reason`, or the phase when there is none — e.g. `Unknown`) | pods |
 | **Nodes Under Pressure** | Nodes with Memory/Disk/PID Pressure or Network Unavailable | `nodes`: list of `{name, conditions}` | nodes |
 
@@ -70,16 +70,17 @@ The integration creates a readiness status sensor for each deployment and statef
 
 | Sensor | Description | Example Value |
 |--------|-------------|---------------|
-| **[workload-name]** | Readiness status of the workload | `Ready` / `Degraded` / `Not Ready` / `Scaled Down` / `Unknown` |
+| **[workload-name]** | Readiness status of the workload | `Ready` / `Rollout Stalled` / `Degraded` / `Not Ready` / `Scaled Down` / `Unknown` |
 
 Status values:
+- `Rollout Stalled` — Deployments only: Kubernetes marked the rollout `Progressing=False` with reason `ProgressDeadlineExceeded` (no progress within `progressDeadlineSeconds`, 600 s by default). Takes priority over the readiness states below, because the old pods usually stay ready while the new ones fail. StatefulSets do not report this condition; a broken StatefulSet update already shows as `Degraded`.
 - `Ready` — all desired replicas are ready (`ready_replicas == replicas > 0`)
 - `Degraded` — some but not all replicas are ready (`0 < ready_replicas < replicas`)
 - `Not Ready` — no replicas are ready (`ready_replicas == 0` and `replicas > 0`)
 - `Scaled Down` — workload is intentionally scaled to zero (`replicas == 0`)
 - `Unknown` — data is unavailable
 
-Each sensor exposes the following attributes: `namespace`, `replicas`, `ready_replicas`, `available_replicas`.
+Each sensor exposes the following attributes: `namespace`, `replicas`, `ready_replicas`, `available_replicas`, `updated_replicas`, `rollout_reason` (`ProgressDeadlineExceeded` while the rollout is stalled, otherwise `null`).
 
 ### Workload Metric Sensors
 

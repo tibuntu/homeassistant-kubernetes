@@ -3539,6 +3539,67 @@ class TestParseHelpersExtended:
         assert result["ready_replicas"] == 0
         assert result["is_running"] is False
 
+    @pytest.mark.parametrize(
+        ("conditions", "stalled", "reason"),
+        [
+            (
+                [
+                    {"type": "Available", "status": "True"},
+                    {
+                        "type": "Progressing",
+                        "status": "False",
+                        "reason": "ProgressDeadlineExceeded",
+                    },
+                ],
+                True,
+                "ProgressDeadlineExceeded",
+            ),
+            # rollout still inside its deadline: updatedReplicas is catching up
+            (
+                [
+                    {
+                        "type": "Progressing",
+                        "status": "True",
+                        "reason": "ReplicaSetUpdated",
+                    }
+                ],
+                False,
+                None,
+            ),
+            (
+                [
+                    {
+                        "type": "Progressing",
+                        "status": "Unknown",
+                        "reason": "DeploymentPaused",
+                    }
+                ],
+                False,
+                None,
+            ),
+            (None, False, None),  # StatefulSets report no Progressing condition
+        ],
+    )
+    def test_parse_replica_workload_item_rollout(
+        self, mock_client, conditions, stalled, reason
+    ):
+        """Only Progressing=False/ProgressDeadlineExceeded marks a stalled rollout."""
+        raw = {
+            "metadata": {"name": "web", "namespace": "default"},
+            "spec": {"replicas": 3},
+            "status": {
+                "availableReplicas": 3,
+                "readyReplicas": 3,
+                "updatedReplicas": 1,
+                "conditions": conditions,
+            },
+        }
+        result = mock_client._parse_replica_workload_item(raw)
+        assert result is not None
+        assert result["updated_replicas"] == 1
+        assert result["rollout_stalled"] is stalled
+        assert result["rollout_reason"] == reason
+
     def test_parse_deployment_item_missing_metadata_key(self, mock_client):
         """_parse_deployment_item with missing metadata keys returns None."""
         raw = {"spec": {"replicas": 1}, "status": {}}

@@ -946,12 +946,29 @@ class KubernetesClient:
             selector_expressions = selector_spec.get("matchExpressions")
             if not isinstance(selector_expressions, list):
                 selector_expressions = []
+            # Only Deployments report Progressing; StatefulSets never stall here.
+            progressing: dict[str, Any] = next(
+                (
+                    c
+                    for c in item["status"].get("conditions") or []
+                    if c.get("type") == "Progressing"
+                ),
+                {},
+            )
+            rollout_stalled = (
+                progressing.get("status") == "False"
+                and progressing.get("reason") == "ProgressDeadlineExceeded"
+            )
+            rollout_reason = progressing.get("reason") if rollout_stalled else None
             return {
                 "name": item["metadata"]["name"],
                 "namespace": item["metadata"]["namespace"],
                 "replicas": item["spec"].get("replicas", 0),
                 "available_replicas": item["status"].get("availableReplicas", 0),
                 "ready_replicas": item["status"].get("readyReplicas", 0),
+                "updated_replicas": item["status"].get("updatedReplicas", 0),
+                "rollout_stalled": rollout_stalled,
+                "rollout_reason": rollout_reason,
                 "is_running": item["status"].get("availableReplicas", 0) > 0,
                 "selector": selector_spec.get("matchLabels") or {},
                 "selector_expressions": selector_expressions,

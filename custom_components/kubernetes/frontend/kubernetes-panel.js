@@ -608,7 +608,10 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <ha-icon icon="mdi:alert"></ha-icon>
             <div>
               <div class="alert-title">${e.type}: ${e.namespace}/${e.name}</div>
-              <div class="alert-detail">${e.ready}/${e.desired} replicas ready</div>
+              <div class="alert-detail">
+                ${e.reason?`Rollout stalled (${e.reason}), `:``}${e.ready}/${e.desired}
+                replicas ready
+              </div>
             </div>
           </div>
         `)}

@@ -55,3 +55,56 @@ def test_build_alerts_composes_helpers():
         "failed_pods": problem_pods(data),
     }
     assert build_alerts(data)["degraded_workloads"][0]["ready"] == 0
+
+
+def test_degraded_workloads_includes_stalled_rollouts():
+    """A stalled Deployment is listed even with every replica available."""
+    data = {
+        "deployments": {
+            "a": {
+                "name": "stalled",
+                "namespace": "ns",
+                "replicas": 2,
+                "available_replicas": 2,
+                "rollout_stalled": True,
+                "rollout_reason": "ProgressDeadlineExceeded",
+            },
+            "b": {
+                "name": "short",
+                "namespace": "ns",
+                "replicas": 2,
+                "available_replicas": 1,
+            },
+            "c": {
+                "name": "ok",
+                "namespace": "ns",
+                "replicas": 2,
+                "available_replicas": 2,
+            },
+            "d": {
+                "name": "off",
+                "namespace": "ns",
+                "replicas": 0,
+                "rollout_stalled": True,
+                "rollout_reason": "ProgressDeadlineExceeded",
+            },
+        }
+    }
+    assert degraded_workloads(data) == [
+        {
+            "name": "stalled",
+            "type": "Deployment",
+            "namespace": "ns",
+            "ready": 2,
+            "desired": 2,
+            "reason": "ProgressDeadlineExceeded",
+        },
+        {
+            "name": "short",
+            "type": "Deployment",
+            "namespace": "ns",
+            "ready": 1,
+            "desired": 2,
+            "reason": None,
+        },
+    ]
