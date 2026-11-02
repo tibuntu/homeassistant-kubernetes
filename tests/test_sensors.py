@@ -35,6 +35,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesPodSensor,
     KubernetesPodsSensor,
     KubernetesProblemPodsSensor,
+    KubernetesRestartingPodsSensor,
     KubernetesServicesSensor,
     KubernetesStatefulSetsSensor,
     KubernetesWorkloadMetricSensor,
@@ -365,8 +366,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 9 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses, Services) + 3 alert sensors + number of node sensors from coordinator
-        expected_count = 9 + 3 + len(mock_coordinator.get_all_nodes_data())
+        # 9 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses, Services) + 4 alert sensors + number of node sensors from coordinator
+        expected_count = 9 + 4 + len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
@@ -491,6 +492,7 @@ class TestDisabledResourceGating:
         assert {s.unique_id for s in sensors} == {
             "test_entry_id_degraded_workloads",
             "test_entry_id_problem_pods",
+            "test_entry_id_restarting_pods",
         }
 
     async def test_setup_skips_disabled_workload_sensors(
@@ -3562,8 +3564,8 @@ class TestAsyncSetupEntryWithResources:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         sensors = mock_add_entities.call_args[0][0]
-        # 9 aggregate + 3 alerts + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 24
-        assert len(sensors) == 24
+        # 9 aggregate + 4 alerts + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 25
+        assert len(sensors) == 25
 
     async def test_stores_add_entities_callback(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
@@ -4396,6 +4398,16 @@ _ALERT_DATA = {
             "problem_reason": "CrashLoopBackOff",
         },
         "default_ok": {"name": "ok", "namespace": "default", "phase": "Running"},
+        # Far-future finish time keeps the restart inside the window forever
+        "default_loop": {
+            "name": "loop",
+            "namespace": "default",
+            "phase": "Running",
+            "restart_count": 4,
+            "last_terminated_at": "2999-01-01T00:00:00Z",
+            "last_terminated_reason": "OOMKilled",
+            "last_terminated_exit_code": 137,
+        },
     },
 }
 
@@ -4431,6 +4443,21 @@ class TestKubernetesAlertSensor:
                         "namespace": "default",
                         "phase": "Running",
                         "reason": "CrashLoopBackOff",
+                    }
+                ],
+            ),
+            (
+                KubernetesRestartingPodsSensor,
+                "restarting_pods",
+                "pods",
+                [
+                    {
+                        "name": "loop",
+                        "namespace": "default",
+                        "restarts": 4,
+                        "last_terminated_reason": "OOMKilled",
+                        "last_terminated_exit_code": 137,
+                        "last_terminated_at": "2999-01-01T00:00:00Z",
                     }
                 ],
             ),

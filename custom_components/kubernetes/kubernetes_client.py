@@ -745,6 +745,7 @@ class KubernetesClient:
                 container_terminated_exit_code = None
                 last_terminated_reason = None
                 last_terminated_exit_code = None
+                last_terminated_at = None
                 for cs in container_statuses:
                     state = cs.get("state", {})
                     waiting = state.get("waiting")
@@ -758,6 +759,12 @@ class KubernetesClient:
                     if last_term and last_terminated_reason is None:
                         last_terminated_reason = last_term.get("reason")
                         last_terminated_exit_code = last_term.get("exitCode")
+                    # RFC 3339 UTC timestamps compare correctly as strings
+                    finished_at = (last_term or {}).get("finishedAt")
+                    if finished_at and (
+                        last_terminated_at is None or finished_at > last_terminated_at
+                    ):
+                        last_terminated_at = finished_at
 
                 # Scheduling reason when stuck Pending (e.g. Unschedulable).
                 pending_reason = None
@@ -809,6 +816,7 @@ class KubernetesClient:
                     "container_terminated_exit_code": container_terminated_exit_code,
                     "last_terminated_reason": last_terminated_reason,
                     "last_terminated_exit_code": last_terminated_exit_code,
+                    "last_terminated_at": last_terminated_at,
                     "pending_reason": pending_reason,
                     "problem": problem,
                     "problem_reason": problem_reason,

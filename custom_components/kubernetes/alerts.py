@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
+
+# ponytail: fixed thresholds; make them options when someone needs other values
+RESTART_ALERT_THRESHOLD = 3
+RESTART_ALERT_WINDOW = timedelta(minutes=60)
 
 _PRESSURE_KEYS: tuple[str, ...] = (
     "memory_pressure",
@@ -76,6 +81,42 @@ def problem_pods(data: dict[str, Any]) -> list[dict[str, Any]]:
                     "namespace": pod.get("namespace", "unknown"),
                     "phase": phase,
                     "reason": pod.get("problem_reason") or phase,
+                }
+            )
+    return alerts
+
+
+def restarting_pods(
+    data: dict[str, Any], now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """Return pods in a restart loop that may look healthy right now.
+
+    A pod counts when it restarted at least ``RESTART_ALERT_THRESHOLD`` times
+    in total and its latest container termination finished within
+    ``RESTART_ALERT_WINDOW``. Kubernetes records that timestamp itself, so no
+    restart history is kept here and detection survives a Home Assistant
+    restart.
+    """
+    cutoff = (now or datetime.now(UTC)) - RESTART_ALERT_WINDOW
+    alerts = []
+    for pod in data.get("pods", {}).values():
+        restarts = pod.get("restart_count") or 0
+        finished_at = pod.get("last_terminated_at")
+        if restarts < RESTART_ALERT_THRESHOLD or not finished_at:
+            continue
+        try:
+            recent = datetime.fromisoformat(finished_at) >= cutoff
+        except (TypeError, ValueError):  # malformed or naive timestamp
+            continue
+        if recent:
+            alerts.append(
+                {
+                    "name": pod.get("name", ""),
+                    "namespace": pod.get("namespace", "unknown"),
+                    "restarts": restarts,
+                    "last_terminated_reason": pod.get("last_terminated_reason"),
+                    "last_terminated_exit_code": pod.get("last_terminated_exit_code"),
+                    "last_terminated_at": finished_at,
                 }
             )
     return alerts

@@ -391,6 +391,9 @@
       "problem_pods": {
         "name": "Problem Pods"
       },
+      "restarting_pods": {
+        "name": "Restarting Pods"
+      },
       "nodes_under_pressure": {
         "name": "Nodes Under Pressure"
       },

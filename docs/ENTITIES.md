@@ -26,9 +26,10 @@ Three per-cluster sensors count resources that currently need attention, so a si
 |--------|--------|-----------|------|
 | **Degraded Workloads** | Deployments with fewer available, StatefulSets with fewer ready, and DaemonSets with fewer available replicas than desired, plus Deployments whose rollout is stalled (workloads scaled to 0 are ignored) | `workloads`: list of `{name, type, namespace, ready, desired, reason}` — `reason` is `ProgressDeadlineExceeded` for a stalled rollout, otherwise `null` | workloads |
 | **Problem Pods** | Pods whose `problem` flag is set (CrashLoopBackOff, ImagePullBackOff, non-zero exit, init-container failures, phase `Failed`, Unschedulable — see [Pod sensors](#individual-pod-sensors)) plus pods in phase `Unknown` | `pods`: list of `{name, namespace, phase, reason}` (`reason` is the pod's `problem_reason`, or the phase when there is none — e.g. `Unknown`) | pods |
+| **Restarting Pods** | Pods in a restart loop that may look healthy right now: at least 3 restarts in total (summed across containers) and the latest container termination finished within the last 60 minutes. Catches pods that OOM or crash and come back `Running` before the next update, which *Problem Pods* misses | `pods`: list of `{name, namespace, restarts, last_terminated_reason, last_terminated_exit_code, last_terminated_at}` (the reason and exit code are from the first container with a previous termination) | pods |
 | **Nodes Under Pressure** | Nodes with Memory/Disk/PID Pressure or Network Unavailable | `nodes`: list of `{name, conditions}` | nodes |
 
-Gating: *Problem Pods* is not created when **Pods** is disabled under **Configure → Disable data collection for**, *Nodes Under Pressure* when **Node sensors** is disabled, and *Degraded Workloads* only when Deployment sensors, StatefulSet sensors **and** DaemonSets are all disabled.
+Gating: *Problem Pods* and *Restarting Pods* are not created when **Pods** is disabled under **Configure → Disable data collection for**, *Nodes Under Pressure* when **Node sensors** is disabled, and *Degraded Workloads* only when Deployment sensors, StatefulSet sensors **and** DaemonSets are all disabled.
 
 ### Individual Node Sensors
 
@@ -439,7 +440,7 @@ Cluster Device (e.g., "production-cluster")
 │   ├── Jobs Count (sensor)
 │   ├── Ingresses Count (sensor)
 │   ├── Services Count (sensor)
-│   ├── Degraded Workloads / Problem Pods / Nodes Under Pressure (sensors)
+│   ├── Degraded Workloads / Problem Pods / Restarting Pods / Nodes Under Pressure (sensors)
 │   ├── Cluster events (event — opt-in, only when enable_events is on)
 │   ├── Individual Node sensors (one per node)
 │   ├── Node condition binary sensors (5 per node: Ready, Memory/Disk/PID Pressure, Network Unavailable)

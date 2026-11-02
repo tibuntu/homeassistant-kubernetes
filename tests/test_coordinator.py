@@ -4391,7 +4391,12 @@ class TestDisabledResources:
         assert f"{eid}_default_web_deployment_replicas" in expected
         assert f"{eid}_default_web_deployment_cpu" in expected
         assert f"{eid}_pods_count" in expected
-        for suffix in ("degraded_workloads", "problem_pods", "nodes_under_pressure"):
+        for suffix in (
+            "degraded_workloads",
+            "problem_pods",
+            "restarting_pods",
+            "nodes_under_pressure",
+        ):
             assert f"{eid}_{suffix}" in expected
 
     async def test_expected_unique_ids_alert_sensors_disabled(
@@ -4407,6 +4412,7 @@ class TestDisabledResources:
 
         assert f"{eid}_degraded_workloads" not in expected
         assert f"{eid}_problem_pods" not in expected
+        assert f"{eid}_restarting_pods" not in expected
         assert f"{eid}_nodes_under_pressure" in expected
 
 
