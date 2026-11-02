@@ -94,6 +94,26 @@ test("HPA-managed workload shows a badge and only allows scaling to 0", async ({
   await expect(page.locator("button.scale-action")).toBeEnabled();
 });
 
+test("stalled rollout reads Degraded with a badge despite all replicas ready", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await expect(
+    page.locator(".alert-detail", { hasText: "Rollout stalled" }),
+  ).toContainText("ProgressDeadlineExceeded");
+
+  await openTab(page, "Workloads");
+  const api = page.locator(".workload-card", { hasText: "api" });
+  await expect(api.locator(".badge-degraded")).toHaveText("Degraded");
+  await expect(api.locator(".badge-rollout-stalled")).toHaveAttribute(
+    "title",
+    /ProgressDeadlineExceeded/,
+  );
+  const web = page.locator(".workload-card", { hasText: "web" });
+  await expect(web.locator(".badge-healthy")).toBeVisible();
+  await expect(web.locator(".badge-rollout-stalled")).toHaveCount(0);
+});
+
 /** Number of mutation controls on the Workloads, Pods and Nodes tabs. */
 async function countMutationControls(page: Page): Promise<number[]> {
   await openTab(page, "Workloads");

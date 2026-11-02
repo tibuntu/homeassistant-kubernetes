@@ -150,6 +150,7 @@ export const badgeStyles = css`
   .badge-condition,
   .badge-pending,
   .badge-degraded,
+  .badge-rollout-stalled,
   .badge-plain,
   .badge-type-externalname {
     background: rgba(var(--rgb-warning-color, 255, 152, 0), 0.15);

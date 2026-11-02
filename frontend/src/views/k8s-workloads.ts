@@ -13,6 +13,9 @@ interface ReplicaWorkloadData {
   replicas: number;
   available_replicas: number;
   ready_replicas: number;
+  /** Deployments only: Progressing=False / ProgressDeadlineExceeded. */
+  rollout_stalled?: boolean;
+  rollout_reason?: string | null;
   hpa_managed?: boolean;
   hpa_name?: string | null;
   hpa_min_replicas?: number | null;
@@ -584,6 +587,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     kind: ReplicaKind,
   ): WorkloadStatus {
     if (item.replicas === 0) return "stopped";
+    // Old pods stay ready while a stalled rollout's new ones fail.
+    if (item.rollout_stalled) return "degraded";
     const ready = item[REPLICA_KIND_META[kind].readyField] || 0;
     if (ready < item.replicas) return "degraded";
     return "healthy";
@@ -686,6 +691,15 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           <span class="badge ${STATUS_META[status].badgeClass}">
             ${STATUS_META[status].label}
           </span>
+          ${
+            item.rollout_stalled
+              ? html`<span
+                  class="badge badge-rollout-stalled"
+                  title="Rollout stalled: ${item.rollout_reason ?? "unknown reason"}"
+                  >Rollout stalled</span
+                >`
+              : nothing
+          }
           ${
             item.hpa_managed
               ? html`<span
