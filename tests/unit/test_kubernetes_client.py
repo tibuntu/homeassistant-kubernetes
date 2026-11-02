@@ -7083,7 +7083,7 @@ class TestMutationGuards:
         self._assert_no_requests(mock_client, session_cls)
 
 
-def _pod(name="web-1", **fields: Any) -> dict[str, Any]:
+def _drain_pod(name="web-1", **fields: Any) -> dict[str, Any]:
     """Build a raw pod object; *fields* override metadata/spec/status."""
     pod: dict[str, Any] = {
         "metadata": {"name": name, "namespace": "default"},
@@ -7101,21 +7101,26 @@ class TestDrainSkipReason:
     @pytest.mark.parametrize(
         ("pod", "expected"),
         [
-            (_pod(), None),
+            (_drain_pod(), None),
             (
-                _pod(metadata={"annotations": {"kubernetes.io/config.mirror": "x"}}),
+                _drain_pod(
+                    metadata={"annotations": {"kubernetes.io/config.mirror": "x"}}
+                ),
                 "mirror_pod",
             ),
-            (_pod("homeassistant-0"), "home_assistant"),
+            (_drain_pod("homeassistant-0"), "home_assistant"),
             (
-                _pod(metadata={"ownerReferences": [{"kind": "DaemonSet"}]}),
+                _drain_pod(metadata={"ownerReferences": [{"kind": "DaemonSet"}]}),
                 "daemonset",
             ),
-            (_pod(metadata={"ownerReferences": [{"kind": "ReplicaSet"}]}), None),
-            (_pod(status={"phase": "Succeeded"}), "completed"),
-            (_pod(status={"phase": "Failed"}), "completed"),
-            (_pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]}), "emptydir"),
-            (_pod(spec={"volumes": [{"name": "cfg", "configMap": {}}]}), None),
+            (_drain_pod(metadata={"ownerReferences": [{"kind": "ReplicaSet"}]}), None),
+            (_drain_pod(status={"phase": "Succeeded"}), "completed"),
+            (_drain_pod(status={"phase": "Failed"}), "completed"),
+            (
+                _drain_pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]}),
+                "emptydir",
+            ),
+            (_drain_pod(spec={"volumes": [{"name": "cfg", "configMap": {}}]}), None),
             ({}, None),
         ],
     )
@@ -7130,7 +7135,7 @@ class TestDrainSkipReason:
 
     def test_emptydir_allowed(self):
         """delete_emptydir_data lets emptyDir pods through."""
-        pod = _pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]})
+        pod = _drain_pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]})
         assert drain_skip_reason(pod, delete_emptydir_data=True, own_pod=None) is None
 
     def test_no_own_pod_outside_cluster(self):
