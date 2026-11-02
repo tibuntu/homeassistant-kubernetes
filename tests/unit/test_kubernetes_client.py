@@ -5304,6 +5304,53 @@ class TestGetPodMetricsAiohttp:
         assert result == {"production/pod2": {"cpu": 500.0, "memory": 256.0}}
         assert mock_session.get.call_count == 2
 
+    async def test_forbidden_namespaces_logged_once(self, mock_client, caplog):
+        """Every 403 of one call ends up in a single warning naming the namespaces."""
+        mock_client.namespaces = ["default", "production"]
+        mock_client.monitor_all_namespaces = False
+
+        mock_session = mock_aiohttp_session(get=[403, 403])
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_pod_metrics_aiohttp()
+
+        assert result == {}
+        forbidden = [r for r in caplog.records if "403 Forbidden" in r.getMessage()]
+        assert len(forbidden) == 1
+        assert "for namespaces 'default', 'production'" in forbidden[0].getMessage()
+
+    async def test_all_namespaces_forbidden_warning_has_no_scope(
+        self, mock_client, caplog
+    ):
+        """The cluster-wide request's 403 warning names no namespace."""
+        mock_client.monitor_all_namespaces = True
+
+        mock_session = mock_aiohttp_session(get=403)
+
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            return_value=mock_session,
+        ):
+            result = await mock_client._get_pod_metrics_aiohttp()
+
+        assert result == {}
+        forbidden = [r for r in caplog.records if "403 Forbidden" in r.getMessage()]
+        assert len(forbidden) == 1
+        assert "for namespace" not in forbidden[0].getMessage()
+
+    async def test_session_failure_returns_empty(self, mock_client):
+        """A failure outside the per-namespace requests still returns empty."""
+        with patch(
+            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+            side_effect=Exception("boom"),
+        ):
+            result = await mock_client._get_pod_metrics_aiohttp()
+
+        assert result == {}
+
 
 class TestSuspendCronjobAiohttp:
     """Tests for suspend_cronjob (aiohttp path) method."""

@@ -1958,11 +1958,13 @@ class KubernetesClient:
         """Get pod metrics using aiohttp.
 
         Without monitor_all_namespaces, each configured namespace is fetched
-        separately (matching _get_pods_aiohttp). Metrics are best-effort: a
-        namespace that fails is skipped and the others are still returned.
+        separately and concurrently. Metrics are best-effort: a namespace that
+        fails is skipped and the others are still returned, and every 403 of
+        one call is reported in a single warning.
         """
         try:
             headers = {"Authorization": f"Bearer {self.api_token}"}
+            ssl_param = await self._get_ssl_param()
             base = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1"
             if self.monitor_all_namespaces:
                 targets: list[tuple[str | None, str]] = [(None, f"{base}/pods")]
@@ -1971,49 +1973,73 @@ class KubernetesClient:
                     (ns, f"{base}/namespaces/{ns}/pods") for ns in self.namespaces
                 ]
 
-            metrics: dict[str, dict[str, float]] = {}
             async with aiohttp.ClientSession() as session:
-                for target_namespace, url in targets:
-                    scope = (
-                        f" for namespace {target_namespace!r}"
-                        if target_namespace is not None
-                        else ""
+                results = await asyncio.gather(
+                    *(
+                        self._fetch_pod_metrics_items(session, url, headers, ssl_param)
+                        for _, url in targets
+                    ),
+                    return_exceptions=True,
+                )
+
+            metrics: dict[str, dict[str, float]] = {}
+            forbidden: list[str] = []
+            for (target_namespace, _), result in zip(targets, results, strict=True):
+                scope = (
+                    f" for namespace {target_namespace!r}"
+                    if target_namespace is not None
+                    else ""
+                )
+                if isinstance(result, BaseException):
+                    _LOGGER.warning(
+                        "Exception in _get_pod_metrics_aiohttp%s: %s", scope, result
                     )
-                    try:
-                        async with session.get(
-                            url,
-                            headers=headers,
-                            ssl=await self._get_ssl_param(),
-                            timeout=aiohttp.ClientTimeout(total=10),
-                        ) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                self._merge_pod_metrics_items(
-                                    data.get("items", []), metrics
-                                )
-                            elif response.status == 403:
-                                _LOGGER.warning(
-                                    "Failed to fetch pod metrics%s: 403 Forbidden. "
-                                    "The service account does not have permission to access the metrics API. "
-                                    "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
-                                    "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']",
-                                    scope,
-                                )
-                            else:
-                                _LOGGER.warning(
-                                    "Failed to fetch pod metrics%s: %s. Metrics API might not be available.",
-                                    scope,
-                                    response.status,
-                                )
-                    except Exception as ex:
-                        _LOGGER.warning(
-                            "Exception in _get_pod_metrics_aiohttp%s: %s", scope, ex
-                        )
+                    continue
+                status, items = result
+                if status == 200:
+                    self._merge_pod_metrics_items(items, metrics)
+                elif status == 403:
+                    forbidden.append(repr(target_namespace))
+                else:
+                    _LOGGER.warning(
+                        "Failed to fetch pod metrics%s: %s. Metrics API might not be available.",
+                        scope,
+                        status,
+                    )
+            if forbidden:
+                _LOGGER.warning(
+                    "Failed to fetch pod metrics%s: 403 Forbidden. "
+                    "The service account does not have permission to access the metrics API. "
+                    "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
+                    "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']",
+                    f" for namespaces {', '.join(forbidden)}"
+                    if not self.monitor_all_namespaces
+                    else "",
+                )
             _LOGGER.debug("Successfully fetched metrics for %d pods", len(metrics))
             return metrics
         except Exception as ex:
             _LOGGER.warning("Exception in _get_pod_metrics_aiohttp: %s", ex)
             return {}
+
+    async def _fetch_pod_metrics_items(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        headers: dict[str, str],
+        ssl_param: ssl.SSLContext | bool,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """GET one metrics.k8s.io pods list; items are empty unless status is 200."""
+        async with session.get(
+            url,
+            headers=headers,
+            ssl=ssl_param,
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as response:
+            if response.status != 200:
+                return response.status, []
+            data = await response.json()
+            return 200, data.get("items", [])
 
     def _merge_pod_metrics_items(
         self, items: list[dict[str, Any]], metrics: dict[str, dict[str, float]]
