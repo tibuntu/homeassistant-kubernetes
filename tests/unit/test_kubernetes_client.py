@@ -7151,6 +7151,24 @@ class TestDrainSkipReason:
                 "emptydir",
             ),
             (_drain_pod(spec={"volumes": [{"name": "cfg", "configMap": {}}]}), None),
+            (
+                _drain_pod(
+                    metadata={
+                        "ownerReferences": [
+                            {"kind": "ConfigMap", "controller": False},
+                            {"kind": "ReplicaSet", "controller": True},
+                        ]
+                    }
+                ),
+                None,
+            ),
+            (
+                _drain_pod(
+                    metadata={"ownerReferences": []},
+                    spec={"volumes": [{"name": "tmp", "emptyDir": {}}]},
+                ),
+                "emptydir",
+            ),
             ({}, "unmanaged"),
             ({"metadata": {}}, "unmanaged"),
         ],
@@ -7187,6 +7205,39 @@ class TestDrainSkipReason:
             is None
         )
 
+    @pytest.mark.parametrize(
+        ("pod", "expected"),
+        [
+            (
+                _drain_pod(
+                    metadata={"annotations": {"kubernetes.io/config.mirror": "x"}}
+                ),
+                "mirror_pod",
+            ),
+            (_drain_pod("homeassistant-0"), "home_assistant"),
+            (
+                _drain_pod(metadata={"ownerReferences": [{"kind": "DaemonSet"}]}),
+                "daemonset",
+            ),
+            (_drain_pod(status={"phase": "Succeeded"}), "completed"),
+            (
+                _drain_pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]}),
+                "emptydir",
+            ),
+        ],
+    )
+    def test_force_keeps_other_filters(self, pod, expected):
+        """force only lifts the unmanaged filter."""
+        assert (
+            drain_skip_reason(
+                pod,
+                delete_emptydir_data=False,
+                force=True,
+                own_pod="homeassistant-0",
+            )
+            == expected
+        )
+
     def test_emptydir_allowed(self):
         """delete_emptydir_data lets emptyDir pods through."""
         pod = _drain_pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]})
@@ -7199,7 +7250,10 @@ class TestDrainSkipReason:
         """Without an own pod name no pod is treated as Home Assistant."""
         assert (
             drain_skip_reason(
-                {"metadata": {}}, delete_emptydir_data=False, force=True, own_pod=None
+                _drain_pod("homeassistant-0"),
+                delete_emptydir_data=False,
+                force=False,
+                own_pod=None,
             )
             is None
         )
