@@ -3,6 +3,7 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -13,11 +14,14 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.kubernetes import (
     DOMAIN,
     PLATFORMS,
-    _any_entry_wants_panel,
     _async_migrate_unique_ids,
     _async_register_panel,
     _async_remove_panel,
+    _async_sync_panel,
+    _entry_wants_panel,
     _loaded_entries_except,
+    _panel_requires_admin,
+    async_remove_entry,
     async_setup,
     async_setup_entry,
     async_unload_entry,
@@ -94,7 +98,7 @@ async def test_async_setup_entry_success(
         assert mock_config_entry.runtime_data.coordinator == mock_coordinator
 
         # Verify panel sync was called
-        mock_sync_panel.assert_called_once_with(hass, mock_config_entry)
+        mock_sync_panel.assert_called_once_with(hass, [mock_config_entry])
 
         # Verify the in-cluster token cache is primed before the first
         # request (issue #408)
@@ -246,7 +250,9 @@ async def test_async_setup_entry_second_entry(
         # The pre-existing entry keeps its own runtime data
         assert existing_entry.runtime_data.coordinator is not mock_coordinator
         # Panel sync is still called (it handles idempotency internally)
-        mock_sync_panel.assert_called_once_with(hass, mock_config_entry)
+        mock_sync_panel.assert_called_once_with(
+            hass, [mock_config_entry, existing_entry]
+        )
 
 
 async def test_async_unload_entry_success(
@@ -332,6 +338,87 @@ async def test_async_unload_entry_multiple_entries(
         # Domain data survives because another entry is still loaded
         assert hass.data[DOMAIN] == {"panel_registered": True}
         mock_remove_panel.assert_not_called()
+
+
+async def test_async_unload_entry_keeps_admin_restriction_of_configured_entry(
+    hass: HomeAssistant, add_loaded_entry
+):
+    """Test an admin-only entry that unloads (e.g. reloads) keeps the restriction."""
+    entry = MockConfigEntry(
+        domain=DOMAIN, entry_id="admin_entry", options={"panel_admin_only": True}
+    )
+    entry.add_to_hass(hass)
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_stop_watch_tasks = AsyncMock()
+    entry.runtime_data = KubernetesEntryData(
+        config=entry.data, client=MagicMock(), coordinator=mock_coordinator
+    )
+    hass.data[DOMAIN] = {"panel_registered": True, "panel_require_admin": True}
+    add_loaded_entry("another_entry")
+
+    with (
+        patch(
+            "custom_components.kubernetes.async_register_built_in_panel"
+        ) as mock_register,
+        patch.object(
+            hass.config_entries,
+            "async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        assert await async_unload_entry(hass, entry) is True
+
+        mock_register.assert_not_called()
+        assert hass.data[DOMAIN]["panel_require_admin"] is True
+
+
+async def test_async_remove_entry_lifts_admin_restriction(
+    hass: HomeAssistant, add_loaded_entry
+):
+    """Test removing the only admin-only entry opens the panel to all users."""
+    removed = MockConfigEntry(
+        domain=DOMAIN, entry_id="admin_entry", options={"panel_admin_only": True}
+    )
+    hass.data[DOMAIN] = {"panel_registered": True, "panel_require_admin": True}
+    add_loaded_entry("another_entry")
+
+    with patch(
+        "custom_components.kubernetes.async_register_built_in_panel"
+    ) as mock_register:
+        await async_remove_entry(hass, removed)
+
+        mock_register.assert_called_once()
+        assert mock_register.call_args.kwargs["require_admin"] is False
+        assert hass.data[DOMAIN]["panel_require_admin"] is False
+
+
+async def test_async_remove_entry_removes_panel_of_unloaded_entry(
+    hass: HomeAssistant,
+):
+    """Test removing an entry that never loaded takes its panel down."""
+    removed = MockConfigEntry(domain=DOMAIN, entry_id="retrying_entry")
+    hass.data[DOMAIN] = {"panel_registered": True, "panel_require_admin": False}
+
+    with patch("custom_components.kubernetes.async_remove_panel") as mock_remove:
+        await async_remove_entry(hass, removed)
+
+        mock_remove.assert_called_once_with(hass, DOMAIN)
+        assert hass.data[DOMAIN] == {"panel_registered": False}
+
+
+async def test_async_remove_entry_without_domain_data(hass: HomeAssistant):
+    """Test removal leaves the panel alone when the integration holds no state."""
+    with (
+        patch("custom_components.kubernetes.async_remove_panel") as mock_remove,
+        patch(
+            "custom_components.kubernetes.async_register_built_in_panel"
+        ) as mock_register,
+    ):
+        await async_remove_entry(hass, MockConfigEntry(domain=DOMAIN))
+
+        mock_remove.assert_not_called()
+        mock_register.assert_not_called()
 
 
 async def test_async_unload_entry_platform_unload_fails(
@@ -425,11 +512,47 @@ class TestPanelRegistration:
             )
             mock_panel_dir.__truediv__ = MagicMock(return_value=mock_panel_js)
 
-            await _async_register_panel(hass)
+            await _async_register_panel(hass, require_admin=False)
 
             mock_static.assert_called_once()
             mock_register.assert_called_once()
+            assert mock_register.call_args.kwargs["require_admin"] is False
+            assert mock_register.call_args.kwargs["update"] is False
             assert hass.data[DOMAIN]["panel_registered"] is True
+
+    async def test_registered_panel_updated_when_admin_requirement_changes(
+        self, hass: HomeAssistant
+    ):
+        """Test a registered panel is re-registered in place with require_admin."""
+        hass.data[DOMAIN] = {"panel_registered": True}
+        hass.http = MagicMock()
+        hass.http.async_register_static_paths = AsyncMock()
+
+        with patch(
+            "custom_components.kubernetes.async_register_built_in_panel"
+        ) as mock_register:
+            await _async_register_panel(hass, require_admin=True)
+
+            mock_register.assert_called_once()
+            assert mock_register.call_args.kwargs["require_admin"] is True
+            assert mock_register.call_args.kwargs["update"] is True
+            hass.http.async_register_static_paths.assert_not_called()
+            assert hass.data[DOMAIN] == {
+                "panel_registered": True,
+                "panel_require_admin": True,
+            }
+
+    async def test_registered_panel_untouched_when_admin_requirement_matches(
+        self, hass: HomeAssistant
+    ):
+        """Test re-registration is skipped when require_admin is unchanged."""
+        hass.data[DOMAIN] = {"panel_registered": True, "panel_require_admin": True}
+
+        with patch(
+            "custom_components.kubernetes.async_register_built_in_panel"
+        ) as mock_register:
+            await _async_register_panel(hass, require_admin=True)
+            mock_register.assert_not_called()
 
     async def test_panel_not_registered_twice(self, hass: HomeAssistant):
         """Test panel registration is idempotent."""
@@ -438,7 +561,7 @@ class TestPanelRegistration:
         with patch(
             "custom_components.kubernetes.async_register_built_in_panel"
         ) as mock_register:
-            await _async_register_panel(hass)
+            await _async_register_panel(hass, require_admin=False)
             mock_register.assert_not_called()
 
     async def test_concurrent_registration_registers_once(self, hass: HomeAssistant):
@@ -467,7 +590,8 @@ class TestPanelRegistration:
             mock_panel_dir.__truediv__ = MagicMock(return_value=mock_panel_js)
 
             await asyncio.gather(
-                _async_register_panel(hass), _async_register_panel(hass)
+                _async_register_panel(hass, require_admin=False),
+                _async_register_panel(hass, require_admin=False),
             )
 
             mock_register.assert_called_once()
@@ -491,44 +615,76 @@ class TestPanelRegistration:
             )
             mock_panel_dir.__truediv__ = MagicMock(return_value=mock_panel_js)
 
-            await _async_register_panel(hass)
+            await _async_register_panel(hass, require_admin=False)
 
             mock_register.assert_not_called()
             assert hass.data[DOMAIN].get("panel_registered") is not True
 
 
-class TestAnyEntryWantsPanel:
-    """Tests for _any_entry_wants_panel helper."""
+class TestEntryWantsPanel:
+    """Tests for _entry_wants_panel helper."""
 
-    def test_returns_true_when_entry_has_panel_enabled(
-        self, hass: HomeAssistant, add_loaded_entry
-    ):
-        """Test returns True when an entry has enable_panel=True."""
-        add_loaded_entry("entry_1", options={"enable_panel": True})
-        assert _any_entry_wants_panel(hass) is True
+    def test_true_when_enabled(self):
+        """Test returns True when the entry has enable_panel=True."""
+        entry = MockConfigEntry(domain=DOMAIN, options={"enable_panel": True})
+        assert _entry_wants_panel(entry) is True
 
-    def test_returns_true_with_default_options(
-        self, hass: HomeAssistant, add_loaded_entry
-    ):
-        """Test returns True when entry has no panel option (defaults to True)."""
-        add_loaded_entry("entry_1")
-        assert _any_entry_wants_panel(hass) is True
+    def test_true_with_default_options(self):
+        """Test the panel defaults to enabled."""
+        assert _entry_wants_panel(MockConfigEntry(domain=DOMAIN)) is True
 
-    def test_returns_false_when_all_disabled(
-        self, hass: HomeAssistant, add_loaded_entry
-    ):
-        """Test returns False when all entries have enable_panel=False."""
-        add_loaded_entry("entry_1", options={"enable_panel": False})
-        assert _any_entry_wants_panel(hass) is False
+    def test_false_when_disabled(self):
+        """Test returns False when the entry has enable_panel=False."""
+        entry = MockConfigEntry(domain=DOMAIN, options={"enable_panel": False})
+        assert _entry_wants_panel(entry) is False
 
-    def test_excludes_entry_id(self, hass: HomeAssistant, add_loaded_entry):
-        """Test excludes the specified entry_id from the check."""
-        add_loaded_entry("entry_1", options={"enable_panel": True})
-        assert _any_entry_wants_panel(hass, exclude_entry_id="entry_1") is False
 
-    def test_returns_false_without_entries(self, hass: HomeAssistant):
-        """Test returns False when no entry is loaded."""
-        assert _any_entry_wants_panel(hass) is False
+class TestPanelRequiresAdmin:
+    """Tests for _panel_requires_admin helper."""
+
+    def test_false_by_default(self, hass: HomeAssistant):
+        """Test the panel is open to all users by default."""
+        MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
+        assert _panel_requires_admin(hass) is False
+
+    def test_false_without_entries(self, hass: HomeAssistant):
+        """Test no entries means no admin requirement."""
+        assert _panel_requires_admin(hass) is False
+
+    def test_true_when_any_entry_restricts(self, hass: HomeAssistant):
+        """Test one admin-only entry restricts the shared panel."""
+        MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
+        MockConfigEntry(domain=DOMAIN, options={"panel_admin_only": True}).add_to_hass(
+            hass
+        )
+        assert _panel_requires_admin(hass) is True
+
+    def test_counts_entries_that_are_not_loaded(self, hass: HomeAssistant):
+        """Test an entry still setting up or retrying keeps its restriction."""
+        MockConfigEntry(
+            domain=DOMAIN,
+            options={"panel_admin_only": True},
+            state=ConfigEntryState.SETUP_RETRY,
+        ).add_to_hass(hass)
+        assert _panel_requires_admin(hass) is True
+
+    def test_ignores_disabled_entries(self, hass: HomeAssistant):
+        """Test a disabled entry does not restrict the panel."""
+        MockConfigEntry(
+            domain=DOMAIN,
+            options={"panel_admin_only": True},
+            disabled_by=ConfigEntryDisabler.USER,
+        ).add_to_hass(hass)
+        assert _panel_requires_admin(hass) is False
+
+    def test_ignores_entries_without_panel(self, hass: HomeAssistant):
+        """Test an entry that hides the panel does not restrict it."""
+        MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
+        MockConfigEntry(
+            domain=DOMAIN,
+            options={"enable_panel": False, "panel_admin_only": True},
+        ).add_to_hass(hass)
+        assert _panel_requires_admin(hass) is False
 
 
 class TestAsyncRemovePanel:
@@ -536,11 +692,11 @@ class TestAsyncRemovePanel:
 
     def test_removes_panel_when_registered(self, hass: HomeAssistant):
         """Test removes panel when it was registered."""
-        hass.data[DOMAIN] = {"panel_registered": True}
+        hass.data[DOMAIN] = {"panel_registered": True, "panel_require_admin": True}
         with patch("custom_components.kubernetes.async_remove_panel") as mock_remove:
             _async_remove_panel(hass)
             mock_remove.assert_called_once_with(hass, DOMAIN)
-            assert hass.data[DOMAIN]["panel_registered"] is False
+            assert hass.data[DOMAIN] == {"panel_registered": False}
 
     def test_noop_when_not_registered(self, hass: HomeAssistant):
         """Test does nothing when panel was not registered."""
@@ -583,107 +739,14 @@ class TestAsyncUpdateOptions:
 class TestAsyncSyncPanel:
     """Tests for _async_sync_panel."""
 
-    async def test_registers_panel_when_wanted_and_not_registered(
-        self, hass: HomeAssistant
-    ):
-        """Test panel is registered when wanted but not yet registered."""
-        from custom_components.kubernetes import _async_sync_panel
-
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test_panel_entry",
-            data={"host": "test"},
-            options={"enable_panel": True},
-        )
-        entry.add_to_hass(hass)
-        hass.data[DOMAIN] = {}
-
-        with patch(
-            "custom_components.kubernetes._async_register_panel", new_callable=AsyncMock
-        ) as mock_register:
-            await _async_sync_panel(hass, entry)
-            mock_register.assert_called_once_with(hass)
-
-    async def test_does_not_register_when_already_registered(self, hass: HomeAssistant):
-        """Test panel is not re-registered when already registered."""
-        from custom_components.kubernetes import _async_sync_panel
-
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test_panel_entry",
-            data={"host": "test"},
-            options={"enable_panel": True},
-        )
-        entry.add_to_hass(hass)
-        hass.data[DOMAIN] = {"panel_registered": True}
-
-        with patch(
-            "custom_components.kubernetes._async_register_panel", new_callable=AsyncMock
-        ) as mock_register:
-            await _async_sync_panel(hass, entry)
-            mock_register.assert_not_called()
-
-    async def test_removes_panel_when_not_wanted_and_registered(
-        self, hass: HomeAssistant
-    ):
-        """Test panel is removed when not wanted but currently registered."""
-        from custom_components.kubernetes import _async_sync_panel
-
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test_panel_entry",
-            data={"host": "test"},
-            options={"enable_panel": False},
-        )
-        entry.add_to_hass(hass)
-        hass.data[DOMAIN] = {"panel_registered": True}
-
-        with (
-            patch(
-                "custom_components.kubernetes._any_entry_wants_panel",
-                return_value=False,
-            ),
-            patch("custom_components.kubernetes._async_remove_panel") as mock_remove,
-        ):
-            await _async_sync_panel(hass, entry)
-            mock_remove.assert_called_once_with(hass)
-
-    async def test_does_not_remove_panel_when_other_entry_wants_it(
-        self, hass: HomeAssistant
-    ):
-        """Test panel is not removed when another entry still wants it."""
-        from custom_components.kubernetes import _async_sync_panel
-
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test_panel_entry",
-            data={"host": "test"},
-            options={"enable_panel": False},
-        )
-        entry.add_to_hass(hass)
-        hass.data[DOMAIN] = {"panel_registered": True}
-
-        with (
-            patch(
-                "custom_components.kubernetes._any_entry_wants_panel", return_value=True
-            ),
-            patch("custom_components.kubernetes._async_remove_panel") as mock_remove,
-        ):
-            await _async_sync_panel(hass, entry)
-            mock_remove.assert_not_called()
-
-    async def test_noop_when_not_wanted_and_not_registered(self, hass: HomeAssistant):
-        """Test nothing happens when panel is neither wanted nor registered."""
-        from custom_components.kubernetes import _async_sync_panel
-
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test_panel_entry",
-            data={"host": "test"},
-            options={"enable_panel": False},
-        )
-        entry.add_to_hass(hass)
-        hass.data[DOMAIN] = {}
+    async def test_registers_panel_when_an_entry_wants_it(self, hass: HomeAssistant):
+        """Test the panel is registered when any given entry wants it."""
+        entries = [
+            MockConfigEntry(domain=DOMAIN, options={"enable_panel": False}),
+            MockConfigEntry(domain=DOMAIN, options={"enable_panel": True}),
+        ]
+        for entry in entries:
+            entry.add_to_hass(hass)
 
         with (
             patch(
@@ -692,28 +755,62 @@ class TestAsyncSyncPanel:
             ) as mock_register,
             patch("custom_components.kubernetes._async_remove_panel") as mock_remove,
         ):
-            await _async_sync_panel(hass, entry)
-            mock_register.assert_not_called()
+            await _async_sync_panel(hass, entries)
+            mock_register.assert_called_once_with(hass, require_admin=False)
             mock_remove.assert_not_called()
 
-    async def test_defaults_to_panel_enabled(self, hass: HomeAssistant):
-        """Test that panel defaults to enabled when option not set."""
-        from custom_components.kubernetes import _async_sync_panel
-
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test_panel_entry",
-            data={"host": "test"},
-            options={},
-        )
+    async def test_removes_panel_when_no_entry_wants_it(self, hass: HomeAssistant):
+        """Test the panel is removed when no given entry wants it."""
+        entry = MockConfigEntry(domain=DOMAIN, options={"enable_panel": False})
         entry.add_to_hass(hass)
-        hass.data[DOMAIN] = {}
+
+        with (
+            patch(
+                "custom_components.kubernetes._async_register_panel",
+                new_callable=AsyncMock,
+            ) as mock_register,
+            patch("custom_components.kubernetes._async_remove_panel") as mock_remove,
+        ):
+            await _async_sync_panel(hass, [entry])
+            mock_register.assert_not_called()
+            mock_remove.assert_called_once_with(hass)
+
+    async def test_removes_panel_without_entries(self, hass: HomeAssistant):
+        """Test the panel is removed when no entry is left."""
+        with patch("custom_components.kubernetes._async_remove_panel") as mock_remove:
+            await _async_sync_panel(hass, [])
+            mock_remove.assert_called_once_with(hass)
+
+    async def test_defaults_to_panel_enabled(self, hass: HomeAssistant):
+        """Test that the panel defaults to enabled when the option is not set."""
+        entry = MockConfigEntry(domain=DOMAIN)
+        entry.add_to_hass(hass)
 
         with patch(
             "custom_components.kubernetes._async_register_panel", new_callable=AsyncMock
         ) as mock_register:
-            await _async_sync_panel(hass, entry)
-            mock_register.assert_called_once_with(hass)
+            await _async_sync_panel(hass, [entry])
+            mock_register.assert_called_once_with(hass, require_admin=False)
+
+    async def test_restriction_of_entry_not_given_applies(self, hass: HomeAssistant):
+        """Test a configured admin-only entry restricts the panel while not loaded.
+
+        Covers concurrent setup and an entry stuck retrying: neither is loaded,
+        so neither is among the entries handed in.
+        """
+        entry = MockConfigEntry(domain=DOMAIN)
+        entry.add_to_hass(hass)
+        MockConfigEntry(
+            domain=DOMAIN,
+            options={"panel_admin_only": True},
+            state=ConfigEntryState.SETUP_IN_PROGRESS,
+        ).add_to_hass(hass)
+
+        with patch(
+            "custom_components.kubernetes._async_register_panel", new_callable=AsyncMock
+        ) as mock_register:
+            await _async_sync_panel(hass, [entry])
+            mock_register.assert_called_once_with(hass, require_admin=True)
 
 
 class TestAsyncRegisterPanelStaticPathError:
@@ -742,7 +839,7 @@ class TestAsyncRegisterPanelStaticPathError:
             )
             mock_panel_dir.__truediv__ = MagicMock(return_value=mock_panel_js)
 
-            await _async_register_panel(hass)
+            await _async_register_panel(hass, require_admin=False)
 
             # Static path raised but panel should still be registered
             mock_static.assert_called_once()

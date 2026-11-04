@@ -46,6 +46,10 @@ CONF_SCALE_COOLDOWN = "scale_cooldown"
 # Panel
 CONF_ENABLE_PANEL = "enable_panel"
 DEFAULT_ENABLE_PANEL = True
+# The panel is integration-wide: it requires admin when any entry showing it
+# sets this option.
+CONF_PANEL_ADMIN_ONLY = "panel_admin_only"
+DEFAULT_PANEL_ADMIN_ONLY = False
 
 # Watch API (default; falls back to interval polling when disabled or failing)
 CONF_ENABLE_WATCH = "enable_watch"

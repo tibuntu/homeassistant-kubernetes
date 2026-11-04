@@ -1197,6 +1197,7 @@ class TestReadCommandsEndToEnd:
             ("kubernetes/pods/list", "clusters"),
             ("kubernetes/workloads/list", "clusters"),
             ("kubernetes/ingresses/list", "clusters"),
+            ("kubernetes/services/list", "clusters"),
             ("kubernetes/config/list", "entries"),
         ],
     )
@@ -1235,6 +1236,82 @@ class TestReadCommandsEndToEnd:
 
         assert msg["success"] is True
         assert result_key in msg["result"]
+
+
+_PANEL_READ_COMMANDS = [
+    "kubernetes/cluster/overview",
+    "kubernetes/nodes/list",
+    "kubernetes/pods/list",
+    "kubernetes/workloads/list",
+    "kubernetes/ingresses/list",
+    "kubernetes/services/list",
+    "kubernetes/config/list",
+    "kubernetes/subscribe_updates",
+]
+
+
+class TestPanelAccess:
+    """The panel's read commands follow its admin-only registration."""
+
+    def _setup(self, hass: HomeAssistant, add_loaded_client_entry, require_admin):
+        coordinator = add_loaded_client_entry(MagicMock())
+        coordinator.last_update_success = True
+        coordinator.data = {}
+        coordinator.async_add_listener = MagicMock(return_value=MagicMock())
+        hass.data[DOMAIN] = {
+            "panel_registered": True,
+            "panel_require_admin": require_admin,
+        }
+        async_register_websocket_commands(hass)
+
+    @pytest.mark.parametrize("command_type", _PANEL_READ_COMMANDS)
+    async def test_non_admin_rejected_when_panel_admin_only(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        hass_read_only_access_token,
+        add_loaded_client_entry,
+        command_type,
+    ):
+        """A non-admin user is refused while the panel is admin-only."""
+        self._setup(hass, add_loaded_client_entry, require_admin=True)
+        ws = await hass_ws_client(hass, hass_read_only_access_token)
+
+        await ws.send_json({"id": 1, "type": command_type})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "unauthorized"
+
+    @pytest.mark.parametrize("command_type", _PANEL_READ_COMMANDS)
+    async def test_non_admin_allowed_when_panel_open(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        hass_read_only_access_token,
+        add_loaded_client_entry,
+        command_type,
+    ):
+        """A non-admin user is served while the panel is open to everyone."""
+        self._setup(hass, add_loaded_client_entry, require_admin=False)
+        ws = await hass_ws_client(hass, hass_read_only_access_token)
+
+        await ws.send_json({"id": 1, "type": command_type})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is True
+
+    async def test_admin_allowed_when_panel_admin_only(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """An admin is served while the panel is admin-only."""
+        self._setup(hass, add_loaded_client_entry, require_admin=True)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json({"id": 1, "type": "kubernetes/config/list"})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is True
 
 
 class TestWebsocketConfigList:
@@ -2010,6 +2087,32 @@ class TestConfigListEdgeCases:
         )
         result = _get_config_list_data(mock_hass)
         assert result["entries"][0]["panel_enabled"] is True
+
+    def test_panel_admin_only_from_options(self, mock_hass, sample_coordinator_data):
+        """Test panel_admin_only reflects config entry options."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        _load_entries(
+            mock_hass,
+            _make_entry(
+                "entry_1",
+                coordinator,
+                {"cluster_name": "test"},
+                options={"panel_admin_only": True},
+            ),
+        )
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["panel_admin_only"] is True
+
+    def test_panel_admin_only_defaults_to_false(
+        self, mock_hass, sample_coordinator_data
+    ):
+        """Test panel_admin_only defaults to False when not in options."""
+        coordinator = _make_coordinator(sample_coordinator_data)
+        _load_entries(
+            mock_hass, _make_entry("entry_1", coordinator, {"cluster_name": "test"})
+        )
+        result = _get_config_list_data(mock_hass)
+        assert result["entries"][0]["panel_admin_only"] is False
 
     def test_healthy_false_when_coordinator_failed(
         self, mock_hass, sample_coordinator_data

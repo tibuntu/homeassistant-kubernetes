@@ -2761,6 +2761,10 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           <span class="setting-value">${this._renderBool(e.panel_enabled)}</span>
         </div>
         <div class="setting-row">
+          <span class="setting-label">Admin-only Panel</span>
+          <span class="setting-value">${this._renderBool(e.panel_admin_only)}</span>
+        </div>
+        <div class="setting-row">
           <span class="setting-label">Pod Logs (experimental)</span>
           <span class="setting-value">${this._renderBool(e.pod_logs_enabled)}</span>
         </div>

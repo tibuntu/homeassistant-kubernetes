@@ -33,6 +33,7 @@ from .const import (
     CONF_EXCLUDE_JOB_PODS,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
+    CONF_PANEL_ADMIN_ONLY,
     CONF_SCALE_COOLDOWN,
     CONF_SCALE_VERIFICATION_TIMEOUT,
     CONF_SWITCH_UPDATE_INTERVAL,
@@ -48,6 +49,7 @@ from .const import (
     DEFAULT_EXCLUDE_JOB_PODS,
     DEFAULT_MONITOR_ALL_NAMESPACES,
     DEFAULT_NAMESPACE,
+    DEFAULT_PANEL_ADMIN_ONLY,
     DEFAULT_PORT,
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
@@ -886,6 +888,12 @@ class KubernetesOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_ENABLE_PANEL,
                     default=current.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL),
+                ): bool,
+                vol.Optional(
+                    CONF_PANEL_ADMIN_ONLY,
+                    default=current.get(
+                        CONF_PANEL_ADMIN_ONLY, DEFAULT_PANEL_ADMIN_ONLY
+                    ),
                 ): bool,
                 vol.Optional(
                     CONF_ENABLE_WATCH,

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import wraps
 import logging
 from typing import Any
 
 from homeassistant.components import websocket_api
+from homeassistant.components.websocket_api.const import WebSocketCommandHandler
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import Unauthorized
 import voluptuous as vol
 
 from .alerts import build_alerts
@@ -20,6 +23,7 @@ from .const import (
     CONF_HOST,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
+    CONF_PANEL_ADMIN_ONLY,
     CONF_PORT,
     CONF_SCALE_COOLDOWN,
     CONF_SCALE_VERIFICATION_TIMEOUT,
@@ -31,11 +35,13 @@ from .const import (
     DEFAULT_ENABLE_POD_LOGS,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_MONITOR_ALL_NAMESPACES,
+    DEFAULT_PANEL_ADMIN_ONLY,
     DEFAULT_PORT,
     DEFAULT_SCALE_COOLDOWN,
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
+    DOMAIN,
     POD_LOGS_MAX_TAIL_LINES,
     POD_LOGS_MIN_TAIL_LINES,
     WORKLOAD_TYPE_DEPLOYMENT,
@@ -115,6 +121,29 @@ def _pod_logs_enabled(entry: Any) -> bool:
     return bool(entry.options.get(CONF_ENABLE_POD_LOGS, DEFAULT_ENABLE_POD_LOGS))
 
 
+def _require_panel_access(func: WebSocketCommandHandler) -> WebSocketCommandHandler:
+    """Refuse non-admin users while the panel is registered as admin-only.
+
+    The panel's require_admin flag only hides the sidebar entry and its URL;
+    the data commands behind it need the same restriction.
+    """
+
+    @wraps(func)
+    def with_panel_access(
+        hass: HomeAssistant,
+        connection: websocket_api.ActiveConnection,
+        msg: dict[str, Any],
+    ) -> None:
+        user = connection.user
+        if hass.data.get(DOMAIN, {}).get("panel_require_admin") and (
+            user is None or not user.is_admin
+        ):
+            raise Unauthorized
+        func(hass, connection, msg)
+
+    return with_panel_access
+
+
 @callback
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register all Kubernetes WebSocket commands."""
@@ -132,6 +161,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_subscribe_updates)
 
 
+@_require_panel_access
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/cluster/overview"})
 @websocket_api.async_response
 async def websocket_cluster_overview(
@@ -144,6 +174,7 @@ async def websocket_cluster_overview(
     connection.send_result(msg["id"], result)
 
 
+@_require_panel_access
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/nodes/list"})
 @websocket_api.async_response
 async def websocket_nodes_list(
@@ -156,6 +187,7 @@ async def websocket_nodes_list(
     connection.send_result(msg["id"], result)
 
 
+@_require_panel_access
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/pods/list"})
 @websocket_api.async_response
 async def websocket_pods_list(
@@ -181,6 +213,7 @@ async def websocket_pods_list(
     connection.send_result(msg["id"], result)
 
 
+@_require_panel_access
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/workloads/list"})
 @websocket_api.async_response
 async def websocket_workloads_list(
@@ -193,6 +226,7 @@ async def websocket_workloads_list(
     connection.send_result(msg["id"], result)
 
 
+@_require_panel_access
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/ingresses/list"})
 @websocket_api.async_response
 async def websocket_ingresses_list(
@@ -205,6 +239,7 @@ async def websocket_ingresses_list(
     connection.send_result(msg["id"], result)
 
 
+@_require_panel_access
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/services/list"})
 @websocket_api.async_response
 async def websocket_services_list(
@@ -517,6 +552,7 @@ async def websocket_delete_job(
         )
 
 
+@_require_panel_access
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/config/list"})
 @websocket_api.async_response
 async def websocket_config_list(
@@ -571,6 +607,9 @@ def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
                     CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN
                 ),
                 "panel_enabled": panel_enabled,
+                "panel_admin_only": entry.options.get(
+                    CONF_PANEL_ADMIN_ONLY, DEFAULT_PANEL_ADMIN_ONLY
+                ),
                 "watch_enabled": watch_enabled,
                 "pod_logs_enabled": _pod_logs_enabled(entry),
                 "healthy": coordinator.last_update_success,
@@ -630,6 +669,7 @@ async def websocket_suspend_cronjob(
 
 
 @callback
+@_require_panel_access
 @websocket_api.websocket_command({vol.Required("type"): "kubernetes/subscribe_updates"})
 def websocket_subscribe_updates(
     hass: HomeAssistant,
