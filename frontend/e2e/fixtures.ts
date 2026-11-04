@@ -261,6 +261,7 @@ export const RESPONSES: Record<string, unknown> = {
         scale_verification_timeout: 60,
         scale_cooldown: 30,
         panel_enabled: true,
+        panel_admin_only: false,
         watch_enabled: true,
         pod_logs_enabled: true,
         healthy: true,

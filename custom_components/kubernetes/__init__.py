@@ -21,10 +21,12 @@ from .const import (
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
     CONF_EXCLUDE_JOB_PODS,
+    CONF_PANEL_ADMIN_ONLY,
     DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_EXCLUDE_JOB_PODS,
+    DEFAULT_PANEL_ADMIN_ONLY,
     PANEL_FILENAME,
     PANEL_ICON,
     PANEL_TITLE,
@@ -68,7 +70,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -> bool:
     """Set up Kubernetes from a config entry."""
     # hass.data[DOMAIN] only carries the integration-wide "panel_registered"
-    # flag; per-entry state lives on entry.runtime_data.
+    # and "panel_require_admin" flags; per-entry state lives on
+    # entry.runtime_data.
     hass.data.setdefault(DOMAIN, {})
 
     # Check if kubernetes package is available before creating client
@@ -116,8 +119,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
     # would ever delete them (issue #349).
     coordinator.async_cleanup_stale_repair_issues()
 
-    # Register or remove the sidebar panel based on the enable_panel option
-    await _async_sync_panel(hass, entry)
+    await _async_sync_panel(
+        hass, [entry, *_loaded_entries_except(hass, entry.entry_id)]
+    )
 
     # Start the coordinator
     await coordinator.async_config_entry_first_refresh()
@@ -227,20 +231,34 @@ def _async_migrate_unique_ids(
         _LOGGER.info("Migrated %d entities to namespaced unique_ids", migrated)
 
 
-async def _async_sync_panel(hass: HomeAssistant, entry: KubernetesConfigEntry) -> None:
-    """Register or remove the sidebar panel based on the enable_panel option."""
-    panel_wanted = entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL)
-    panel_registered = hass.data.get(DOMAIN, {}).get("panel_registered", False)
-
-    if panel_wanted and not panel_registered:
-        await _async_register_panel(hass)
-    elif (
-        not panel_wanted
-        and panel_registered
-        and not _any_entry_wants_panel(hass, exclude_entry_id=entry.entry_id)
-    ):
-        # Only remove if no other entry still wants the panel
+async def _async_sync_panel(
+    hass: HomeAssistant, entries: list[KubernetesConfigEntry]
+) -> None:
+    """Register, update or remove the sidebar panel to fit the given entries."""
+    if any(_entry_wants_panel(e) for e in entries):
+        await _async_register_panel(hass, require_admin=_panel_requires_admin(hass))
+    else:
         _async_remove_panel(hass)
+
+
+def _entry_wants_panel(entry: KubernetesConfigEntry) -> bool:
+    """Return whether the entry has the panel enabled."""
+    return bool(entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL))
+
+
+def _panel_requires_admin(hass: HomeAssistant) -> bool:
+    """Return whether any enabled entry showing the panel restricts it to admins.
+
+    Entries that are still setting up or retrying count as well, so a cluster
+    that is not loaded yet cannot lift its restriction.
+    """
+    return any(
+        _entry_wants_panel(e)
+        and e.options.get(CONF_PANEL_ADMIN_ONLY, DEFAULT_PANEL_ADMIN_ONLY)
+        for e in hass.config_entries.async_entries(
+            DOMAIN, include_ignore=False, include_disabled=False
+        )
+    )
 
 
 def _loaded_entries_except(
@@ -250,25 +268,17 @@ def _loaded_entries_except(
     return [e for e in get_loaded_entries(hass) if e.entry_id != exclude_entry_id]
 
 
-def _any_entry_wants_panel(
-    hass: HomeAssistant, exclude_entry_id: str | None = None
-) -> bool:
-    """Check if any config entry (except excluded) has the panel enabled."""
-    return any(
-        entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL)
-        for entry in _loaded_entries_except(hass, exclude_entry_id)
-    )
-
-
-async def _async_register_panel(hass: HomeAssistant) -> None:
-    """Register the Kubernetes sidebar panel."""
-    if hass.data.get(DOMAIN, {}).get("panel_registered"):
+async def _async_register_panel(hass: HomeAssistant, require_admin: bool) -> None:
+    """Register the Kubernetes sidebar panel, or update its admin requirement."""
+    domain_data = hass.data.get(DOMAIN, {})
+    registered = domain_data.get("panel_registered", False)
+    if registered and domain_data.get("panel_require_admin", False) == require_admin:
         return
 
     panel_dir = Path(__file__).parent / "frontend"
     panel_js = panel_dir / PANEL_FILENAME
 
-    if not panel_js.is_file():
+    if not registered and not panel_js.is_file():
         _LOGGER.warning(
             "Frontend panel file not found at %s; skipping panel registration",
             panel_js,
@@ -294,9 +304,14 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
                 "module_url": f"{PANEL_URL}/{PANEL_FILENAME}",
             }
         },
-        require_admin=False,
+        require_admin=require_admin,
+        update=registered,
     )
     hass.data[DOMAIN]["panel_registered"] = True
+    hass.data[DOMAIN]["panel_require_admin"] = require_admin
+    if registered:
+        _LOGGER.info("Kubernetes sidebar panel require_admin set to %s", require_admin)
+        return
 
     # Static paths persist in HA's HTTP server across panel remove/register
     # cycles and across config entry reloads. Re-registering the same path
@@ -318,6 +333,7 @@ def _async_remove_panel(hass: HomeAssistant) -> None:
         return
     async_remove_panel(hass, DOMAIN)
     hass.data[DOMAIN]["panel_registered"] = False
+    hass.data[DOMAIN].pop("panel_require_admin", None)
     _LOGGER.info("Removed Kubernetes sidebar panel")
 
 
@@ -329,13 +345,17 @@ async def _async_update_options(
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -> None:
-    """Clean up integration-wide repair issues when an entry is removed.
+    """Clean up integration-wide state when an entry is removed.
 
     Setup failures (e.g. ImportError) skip async_unload_entry, so the
     package-missing repair issue would otherwise linger after the user
     deletes the broken entry.
     """
     ir.async_delete_issue(hass, DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
+    # An entry that never loaded registered the panel without an unload to
+    # take it back, and a removed entry may have been the one restricting it.
+    if DOMAIN in hass.data:
+        await _async_sync_panel(hass, get_loaded_entries(hass))
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -> bool:
@@ -351,11 +371,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) 
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         # Clean up when the last config entry is removed. Services stay
         # registered for the lifetime of HA (Bronze "action-setup").
-        if not _loaded_entries_except(hass, entry.entry_id):
-            _async_remove_panel(hass)
+        remaining = _loaded_entries_except(hass, entry.entry_id)
+        await _async_sync_panel(hass, remaining)
+        if not remaining:
             hass.data.pop(DOMAIN, None)
-        elif not _any_entry_wants_panel(hass, exclude_entry_id=entry.entry_id):
-            # Remove panel if no remaining entries want it
-            _async_remove_panel(hass)
 
     return unload_ok

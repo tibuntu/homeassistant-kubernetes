@@ -13,8 +13,10 @@ from .const import (
     CONF_CA_CERT,
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
+    CONF_PANEL_ADMIN_ONLY,
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
+    DEFAULT_PANEL_ADMIN_ONLY,
 )
 from .coordinator import KubernetesConfigEntry, disabled_resources
 
@@ -104,6 +106,9 @@ async def async_get_config_entry_diagnostics(
         # Resolved-with-defaults view of the same flags carried in entry.options.
         "integration": {
             "panel_enabled": entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL),
+            "panel_admin_only": entry.options.get(
+                CONF_PANEL_ADMIN_ONLY, DEFAULT_PANEL_ADMIN_ONLY
+            ),
             "watch_enabled": entry.options.get(CONF_ENABLE_WATCH, DEFAULT_ENABLE_WATCH),
             "disabled_resources": sorted(disabled_resources(entry)),
         },

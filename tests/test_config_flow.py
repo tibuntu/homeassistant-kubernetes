@@ -32,6 +32,7 @@ from custom_components.kubernetes.const import (
     CONF_EXCLUDE_JOB_PODS,
     CONF_MONITOR_ALL_NAMESPACES,
     CONF_NAMESPACE,
+    CONF_PANEL_ADMIN_ONLY,
     CONF_SCALE_COOLDOWN,
     CONF_SCALE_VERIFICATION_TIMEOUT,
     CONF_SWITCH_UPDATE_INTERVAL,
@@ -1397,6 +1398,25 @@ class TestKubernetesOptionsFlow:
         )
         assert result["type"] is FlowResultType.CREATE_ENTRY
         assert result["data"][CONF_ENABLE_PANEL] is False
+
+    async def test_options_flow_saves_panel_admin_only(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """The panel_admin_only option defaults to off and can be turned on."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        defaults = {
+            str(k): k.default() for k in result["data_schema"].schema if k.default
+        }
+        assert defaults[CONF_PANEL_ADMIN_ONLY] is False
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"],
+            user_input={CONF_PANEL_ADMIN_ONLY: True, CONF_ENABLE_WATCH: False},
+        )
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        assert result["data"][CONF_PANEL_ADMIN_ONLY] is True
 
     async def test_options_flow_includes_enable_events(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry

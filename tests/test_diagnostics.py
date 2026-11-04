@@ -93,6 +93,7 @@ async def test_diagnostics_basic_shape(
     # Integration flags reflect options
     assert result["integration"] == {
         "panel_enabled": True,
+        "panel_admin_only": False,
         "watch_enabled": False,
         "disabled_resources": [],
     }

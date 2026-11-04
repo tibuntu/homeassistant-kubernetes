@@ -16,6 +16,7 @@ interface ConfigEntry {
   scale_verification_timeout: number;
   scale_cooldown: number;
   panel_enabled: boolean;
+  panel_admin_only: boolean;
   watch_enabled: boolean;
   pod_logs_enabled: boolean;
   healthy: boolean | null;
@@ -322,6 +323,10 @@ export class K8sSettings extends K8sDataView<ConfigResponse> {
         <div class="setting-row">
           <span class="setting-label">Sidebar Panel</span>
           <span class="setting-value">${this._renderBool(entry.panel_enabled)}</span>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Admin-only Panel</span>
+          <span class="setting-value">${this._renderBool(entry.panel_admin_only)}</span>
         </div>
         <div class="setting-row">
           <span class="setting-label">Pod Logs (experimental)</span>
