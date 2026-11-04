@@ -54,6 +54,7 @@ from custom_components.kubernetes.services import (
     _no_workloads_error,
     _normalize_entity_id_list,
     _own_pod_name,
+    _own_pod_namespace,
     _resolve_raw_workload_name,
     _validate_job_schema,
     _validate_node_schema,
@@ -2919,6 +2920,38 @@ class TestOwnPodName:
         assert _own_pod_name() == "homeassistant-0"
 
 
+class TestOwnPodNamespace:
+    """_own_pod_namespace: the service-account namespace file, fail-safe."""
+
+    def test_reads_and_strips(self, monkeypatch, tmp_path):
+        """The mounted namespace is returned without the trailing newline."""
+        path = tmp_path / "namespace"
+        path.write_text("home\n", encoding="utf-8")
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services.IN_CLUSTER_NAMESPACE_PATH",
+            str(path),
+        )
+        assert _own_pod_namespace() == "home"
+
+    def test_empty_file(self, monkeypatch, tmp_path):
+        """An empty file yields None."""
+        path = tmp_path / "namespace"
+        path.write_text("", encoding="utf-8")
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services.IN_CLUSTER_NAMESPACE_PATH",
+            str(path),
+        )
+        assert _own_pod_namespace() is None
+
+    def test_missing_file(self, monkeypatch, tmp_path):
+        """Without the mount the namespace is unknown (None)."""
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services.IN_CLUSTER_NAMESPACE_PATH",
+            str(tmp_path / "missing"),
+        )
+        assert _own_pod_namespace() is None
+
+
 @pytest.mark.usefixtures("load_translations")
 class TestDrainNodeService:
     """Tests for the drain_node service."""
@@ -2931,6 +2964,9 @@ class TestDrainNodeService:
         )
         monkeypatch.setattr(
             "custom_components.kubernetes.services._own_pod_name", lambda: None
+        )
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services._own_pod_namespace", lambda: None
         )
 
     async def _drain(self, hass: HomeAssistant, **data):
@@ -3158,6 +3194,31 @@ class TestDrainNodeService:
         )
 
         mock_client.evict_pod.assert_called_once_with("cache", "default")
+        assert response["node-1"]["skipped"] == [
+            {"pod": "home/homeassistant-0", "reason": "home_assistant"}
+        ]
+
+    async def test_same_named_pod_in_other_namespace_is_evicted(
+        self, hass: HomeAssistant, mock_client, setup_domain_data, monkeypatch
+    ):
+        """Only HA's own pod (name and namespace) is skipped, not a namesake."""
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services._own_pod_name",
+            lambda: "homeassistant-0",
+        )
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services._own_pod_namespace",
+            lambda: "home",
+        )
+        mock_client.get_pods_on_node.return_value = [
+            _raw_pod("homeassistant-0", "home"),
+            _raw_pod("homeassistant-0", "staging"),
+        ]
+
+        response = await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
+
+        mock_client.evict_pod.assert_called_once_with("homeassistant-0", "staging")
+        assert response["node-1"]["evicted"] == ["staging/homeassistant-0"]
         assert response["node-1"]["skipped"] == [
             {"pod": "home/homeassistant-0", "reason": "home_assistant"}
         ]

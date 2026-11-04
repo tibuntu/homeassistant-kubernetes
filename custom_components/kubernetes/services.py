@@ -38,6 +38,7 @@ from .const import (
     DEFAULT_DRAIN_TIMEOUT,
     DOMAIN,
     DRAIN_RETRY_INTERVAL,
+    IN_CLUSTER_NAMESPACE_PATH,
     SERVICE_CORDON_NODE,
     SERVICE_DELETE_JOB,
     SERVICE_DRAIN_NODE,
@@ -640,6 +641,19 @@ def _own_pod_name() -> str | None:
     return None
 
 
+def _own_pod_namespace() -> str | None:
+    """Return the namespace of the pod Home Assistant runs in, if readable.
+
+    Blocking file read. Fail-safe: None means the drain guard falls back to
+    name-only matching.
+    """
+    try:
+        with open(IN_CLUSTER_NAMESPACE_PATH, encoding="utf-8") as handle:
+            return handle.read().strip() or None
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
 def _collect_names(
     call_data: dict[str, Any], single_key: str, multi_key: str
 ) -> list[str]:
@@ -1044,6 +1058,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         client = coordinator.client
         deadline = monotonic() + call.data[ATTR_TIMEOUT]
         own_pod = _own_pod_name()
+        own_namespace = (
+            await hass.async_add_executor_job(_own_pod_namespace) if own_pod else None
+        )
         any_cordoned = False
         failures: list[str] = []
         results: dict[str, dict[str, list[Any]]] = {}
@@ -1070,6 +1087,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     delete_emptydir_data=call.data[ATTR_DELETE_EMPTYDIR_DATA],
                     force=call.data[ATTR_FORCE],
                     own_pod=own_pod,
+                    own_namespace=own_namespace,
                 )
                 if reason:
                     skipped.append({"pod": f"{namespace}/{name}", "reason": reason})

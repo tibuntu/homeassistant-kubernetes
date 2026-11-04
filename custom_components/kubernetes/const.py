@@ -19,6 +19,7 @@ CONF_DEVICE_GROUPING_MODE = "device_grouping_mode"
 IN_CLUSTER_SERVICE_ACCOUNT_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
 IN_CLUSTER_TOKEN_PATH = f"{IN_CLUSTER_SERVICE_ACCOUNT_DIR}/token"  # nosec B105
 IN_CLUSTER_CA_PATH = f"{IN_CLUSTER_SERVICE_ACCOUNT_DIR}/ca.crt"
+IN_CLUSTER_NAMESPACE_PATH = f"{IN_CLUSTER_SERVICE_ACCOUNT_DIR}/namespace"
 
 # Device grouping modes
 DEVICE_GROUPING_MODE_NAMESPACE = "namespace"

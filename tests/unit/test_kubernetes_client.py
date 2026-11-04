@@ -7238,6 +7238,23 @@ class TestDrainSkipReason:
             == expected
         )
 
+    @pytest.mark.parametrize(
+        ("own_namespace", "expected"),
+        [("home", None), ("default", "home_assistant"), (None, "home_assistant")],
+    )
+    def test_own_pod_matches_namespace(self, own_namespace, expected):
+        """A same-named pod in another namespace is not HA's own pod."""
+        assert (
+            drain_skip_reason(
+                _drain_pod("homeassistant-0"),
+                delete_emptydir_data=False,
+                force=True,
+                own_pod="homeassistant-0",
+                own_namespace=own_namespace,
+            )
+            == expected
+        )
+
     def test_emptydir_allowed(self):
         """delete_emptydir_data lets emptyDir pods through."""
         pod = _drain_pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]})
