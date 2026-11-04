@@ -139,18 +139,24 @@ def drain_skip_reason(
     delete_emptydir_data: bool,
     force: bool,
     own_pod: str | None,
+    own_namespace: str | None = None,
 ) -> str | None:
     """Return why a drain must not evict *pod* (a raw API object), or None.
 
     The filters follow ``kubectl drain``'s, but pods that kubectl would refuse
     (emptyDir volumes, no controller) are skipped and reported here instead.
     ``home_assistant`` is added for the pod HA itself runs in: evicting it would
-    kill the service call mid-flight.
+    kill the service call mid-flight. It matches by name and, when
+    *own_namespace* is known, by namespace too; None falls back to name-only.
     """
     meta = pod.get("metadata") or {}
     if "kubernetes.io/config.mirror" in (meta.get("annotations") or {}):
         return "mirror_pod"
-    if own_pod and meta.get("name") == own_pod:
+    if (
+        own_pod
+        and meta.get("name") == own_pod
+        and (own_namespace is None or meta.get("namespace") == own_namespace)
+    ):
         return "home_assistant"
     if any(ref.get("kind") == "DaemonSet" for ref in meta.get("ownerReferences") or []):
         return "daemonset"
