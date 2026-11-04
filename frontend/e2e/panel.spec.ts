@@ -236,6 +236,9 @@ test("drain dialog sends the options and shows the service response", async ({
   await expect(page.locator(".confirm-dialog")).toContainText(
     "kube-system/kube-proxy-x1y2z (DaemonSet)",
   );
+  await expect(page.locator(".confirm-dialog")).toContainText(
+    "default/debug (no controller)",
+  );
   await expect(page.locator(".confirm-dialog")).toContainText("1 pod evicted");
   expect(await page.evaluate(() => window.__k8s.services)).toEqual([
     {
@@ -246,6 +249,7 @@ test("drain dialog sends the options and shows the service response", async ({
         entry_id: "entry_1",
         ignore_daemonsets: true,
         delete_emptydir_data: true,
+        force: false,
         timeout: 30,
       },
     },

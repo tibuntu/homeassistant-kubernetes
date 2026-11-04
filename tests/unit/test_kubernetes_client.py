@@ -7086,7 +7086,11 @@ class TestMutationGuards:
 def _drain_pod(name="web-1", **fields: Any) -> dict[str, Any]:
     """Build a raw pod object; *fields* override metadata/spec/status."""
     pod: dict[str, Any] = {
-        "metadata": {"name": name, "namespace": "default"},
+        "metadata": {
+            "name": name,
+            "namespace": "default",
+            "ownerReferences": [{"kind": "ReplicaSet", "controller": True}],
+        },
         "spec": {"volumes": []},
         "status": {"phase": "Running"},
     }
@@ -7113,7 +7117,33 @@ class TestDrainSkipReason:
                 _drain_pod(metadata={"ownerReferences": [{"kind": "DaemonSet"}]}),
                 "daemonset",
             ),
-            (_drain_pod(metadata={"ownerReferences": [{"kind": "ReplicaSet"}]}), None),
+            (
+                _drain_pod(
+                    metadata={
+                        "ownerReferences": [{"kind": "ReplicaSet", "controller": True}]
+                    }
+                ),
+                None,
+            ),
+            (
+                _drain_pod(metadata={"ownerReferences": [{"kind": "ReplicaSet"}]}),
+                "unmanaged",
+            ),
+            (
+                _drain_pod(
+                    metadata={
+                        "ownerReferences": [{"kind": "ReplicaSet", "controller": False}]
+                    }
+                ),
+                "unmanaged",
+            ),
+            (_drain_pod(metadata={"ownerReferences": []}), "unmanaged"),
+            (
+                _drain_pod(
+                    metadata={"ownerReferences": []}, status={"phase": "Succeeded"}
+                ),
+                "completed",
+            ),
             (_drain_pod(status={"phase": "Succeeded"}), "completed"),
             (_drain_pod(status={"phase": "Failed"}), "completed"),
             (
@@ -7121,28 +7151,55 @@ class TestDrainSkipReason:
                 "emptydir",
             ),
             (_drain_pod(spec={"volumes": [{"name": "cfg", "configMap": {}}]}), None),
-            ({}, None),
+            ({}, "unmanaged"),
+            ({"metadata": {}}, "unmanaged"),
         ],
     )
     def test_reasons(self, pod, expected):
         """Each filter yields its reason; an ordinary pod is evicted."""
         assert (
             drain_skip_reason(
-                pod, delete_emptydir_data=False, own_pod="homeassistant-0"
+                pod,
+                delete_emptydir_data=False,
+                force=False,
+                own_pod="homeassistant-0",
             )
             == expected
+        )
+
+    @pytest.mark.parametrize(
+        "owner_refs",
+        [[], [{"kind": "ReplicaSet"}], [{"kind": "ReplicaSet", "controller": False}]],
+    )
+    def test_force_allows_unmanaged(self, owner_refs):
+        """force lets pods without a controller through."""
+        pod = _drain_pod(metadata={"ownerReferences": owner_refs})
+        assert (
+            drain_skip_reason(pod, delete_emptydir_data=False, force=True, own_pod=None)
+            is None
+        )
+
+    @pytest.mark.parametrize("pod", [{}, {"metadata": {}}])
+    def test_force_allows_bare_objects(self, pod):
+        """Objects without metadata are evictable when forced."""
+        assert (
+            drain_skip_reason(pod, delete_emptydir_data=False, force=True, own_pod=None)
+            is None
         )
 
     def test_emptydir_allowed(self):
         """delete_emptydir_data lets emptyDir pods through."""
         pod = _drain_pod(spec={"volumes": [{"name": "tmp", "emptyDir": {}}]})
-        assert drain_skip_reason(pod, delete_emptydir_data=True, own_pod=None) is None
+        assert (
+            drain_skip_reason(pod, delete_emptydir_data=True, force=False, own_pod=None)
+            is None
+        )
 
     def test_no_own_pod_outside_cluster(self):
         """Without an own pod name no pod is treated as Home Assistant."""
         assert (
             drain_skip_reason(
-                {"metadata": {}}, delete_emptydir_data=False, own_pod=None
+                {"metadata": {}}, delete_emptydir_data=False, force=True, own_pod=None
             )
             is None
         )

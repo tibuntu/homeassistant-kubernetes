@@ -329,6 +329,10 @@
           "name": "Delete emptyDir data",
           "description": "Also evict pods that use emptyDir volumes (their data is lost). If disabled, those pods are skipped."
         },
+        "force": {
+          "name": "Force",
+          "description": "Also evict pods not managed by a controller (such as a ReplicaSet, StatefulSet or Job). Nothing recreates them, so they are gone for good. If disabled, those pods are skipped."
+        },
         "timeout": {
           "name": "Timeout",
           "description": "How long to keep retrying evictions blocked by a PodDisruptionBudget. Pods still blocked afterwards are reported, not treated as an error."

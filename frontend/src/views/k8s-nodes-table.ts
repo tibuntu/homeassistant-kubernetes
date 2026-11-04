@@ -55,6 +55,7 @@ const SKIP_REASONS: Record<string, string> = {
   daemonset: "DaemonSet",
   completed: "finished",
   emptydir: "emptyDir data",
+  unmanaged: "no controller",
   home_assistant: "Home Assistant itself",
 };
 
@@ -69,6 +70,7 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
   @state() private _drainOptions = {
     ignore_daemonsets: true,
     delete_emptydir_data: false,
+    force: false,
     timeout: 120,
   };
   @state() private _draining = false;
@@ -467,6 +469,20 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
                       }}
                     />
                     Evict pods with emptyDir data (the data is lost)
+                  </label>
+                  <label class="drain-option">
+                    <input
+                      type="checkbox"
+                      .checked=${opts.force}
+                      ?disabled=${this._draining}
+                      @change=${(e: Event) => {
+                        this._drainOptions = {
+                          ...opts,
+                          force: (e.target as HTMLInputElement).checked,
+                        };
+                      }}
+                    />
+                    Evict pods without a controller (they are not recreated)
                   </label>
                   <label class="drain-option">
                     Timeout

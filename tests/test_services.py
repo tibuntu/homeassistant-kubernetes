@@ -15,6 +15,7 @@ import yaml
 
 from custom_components.kubernetes.const import (
     ATTR_DELETE_EMPTYDIR_DATA,
+    ATTR_FORCE,
     ATTR_IGNORE_DAEMONSETS,
     ATTR_JOB_NAME,
     ATTR_JOB_NAMES,
@@ -2880,7 +2881,11 @@ class TestMultiEntryRouting:
 def _raw_pod(name: str, namespace: str = "default", **extra) -> dict:
     """Build a raw pod object as returned by get_pods_on_node."""
     pod = {
-        "metadata": {"name": name, "namespace": namespace},
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+            "ownerReferences": [{"kind": "ReplicaSet", "controller": True}],
+        },
         "spec": {"volumes": []},
         "status": {"phase": "Running"},
     }
@@ -2966,6 +2971,28 @@ class TestDrainNodeService:
         }
         coordinator = setup_domain_data.runtime_data.coordinator
         coordinator.async_request_refresh.assert_called_once()
+
+    async def test_unmanaged_pod_skipped_unless_forced(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """A pod without a controller is skipped by default, evicted with force."""
+        bare = _raw_pod("debug", metadata={"ownerReferences": []})
+        mock_client.get_pods_on_node.return_value = [bare]
+
+        response = await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
+
+        mock_client.evict_pod.assert_not_called()
+        assert response["node-1"]["skipped"] == [
+            {"pod": "default/debug", "reason": "unmanaged"}
+        ]
+
+        response = await self._drain(
+            hass, **{ATTR_NODE_NAME: "node-1", ATTR_FORCE: True}
+        )
+
+        mock_client.evict_pod.assert_called_once_with("debug", "default")
+        assert response["node-1"]["evicted"] == ["default/debug"]
+        assert response["node-1"]["skipped"] == []
 
     async def test_node_without_pods(
         self, hass: HomeAssistant, mock_client, setup_domain_data

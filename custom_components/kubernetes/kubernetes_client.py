@@ -134,12 +134,18 @@ async def build_ssl_param(
 
 
 def drain_skip_reason(
-    pod: dict[str, Any], *, delete_emptydir_data: bool, own_pod: str | None
+    pod: dict[str, Any],
+    *,
+    delete_emptydir_data: bool,
+    force: bool,
+    own_pod: str | None,
 ) -> str | None:
     """Return why a drain must not evict *pod* (a raw API object), or None.
 
-    Mirrors ``kubectl drain``'s filters, plus ``home_assistant`` for the pod HA
-    itself runs in: evicting it would kill the service call mid-flight.
+    The filters follow ``kubectl drain``'s, but pods that kubectl would refuse
+    (emptyDir volumes, no controller) are skipped and reported here instead.
+    ``home_assistant`` is added for the pod HA itself runs in: evicting it would
+    kill the service call mid-flight.
     """
     meta = pod.get("metadata") or {}
     if "kubernetes.io/config.mirror" in (meta.get("annotations") or {}):
@@ -154,6 +160,10 @@ def drain_skip_reason(
         "emptyDir" in volume for volume in (pod.get("spec") or {}).get("volumes") or []
     ):
         return "emptydir"
+    if not force and not any(
+        ref.get("controller") is True for ref in meta.get("ownerReferences") or []
+    ):
+        return "unmanaged"
     return None
 
 
