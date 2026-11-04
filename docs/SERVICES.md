@@ -271,10 +271,11 @@ Drain cordons a node and evicts its pods through the Eviction API (also availabl
 - `node_names` (list, optional): Multiple node names
 - `ignore_daemonsets` (boolean, optional, default `true`): Skip DaemonSet-managed pods. When `false`, a node running DaemonSet pods is not drained and the call fails for it, like `kubectl drain` without `--ignore-daemonsets`
 - `delete_emptydir_data` (boolean, optional, default `false`): Also evict pods that use `emptyDir` volumes; their data is lost. When `false` they are skipped
+- `force` (boolean, optional, default `false`): Also evict pods not managed by a controller (such as a ReplicaSet, StatefulSet or Job). Nothing recreates them, so they are gone for good. When `false` they are skipped
 - `timeout` (integer seconds, optional, default `120`, max `3600`): How long to retry PDB-blocked evictions. `0` tries each pod once
 - `entry_id` (string, optional): Config entry ID (defaults to the first configured entry if not specified)
 
-**Skipped pods** (reported with a `reason`): `mirror_pod` (static pods), `daemonset`, `completed` (phase `Succeeded`/`Failed`), `emptydir`, and `home_assistant` — the pod Home Assistant itself runs in, when it runs inside the cluster. Evicting it would kill the service call before it returns; stop Home Assistant from your automation instead. That guard compares pod names with Home Assistant's hostname, so it does not work with `hostNetwork: true`.
+**Skipped pods** (reported with a `reason`): `mirror_pod` (static pods), `daemonset`, `completed` (phase `Succeeded`/`Failed`), `emptydir`, `unmanaged` (no owner with `controller: true`; `kubectl drain` would refuse the drain instead, unless `--force` is given), and `home_assistant` — the pod Home Assistant itself runs in, when it runs inside the cluster. Evicting it would kill the service call before it returns; stop Home Assistant from your automation instead. That guard compares pod names with Home Assistant's hostname, so it does not work with `hostNetwork: true`.
 
 **Response**: The service returns, per node, the pods whose eviction was accepted (`evicted`; they may still be terminating — the service does not wait for them), the `skipped` pods with their reason, and the pods still `blocked` by a PDB when the timeout ran out. Pods that are still blocked are reported, not raised; any other eviction error (e.g. a 403 because the RBAC lacks `create` on `pods/eviction`) fails the call after every pod was attempted.
 

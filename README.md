@@ -98,7 +98,7 @@ The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `n
 - **Services have no admin check.** The sidebar panel hides mutation buttons from non-admin users, but Home Assistant cannot restrict who calls `scale_workload`, `cordon_node` and the other services ([details](https://tibuntu.github.io/homeassistant-kubernetes/CONFIGURATION/#dashboard-panel)).
 - **Large clusters create many entities** — one sensor per pod, plus per-workload, per-node and per-Job entities. Turn off categories you don't need under **Configure → Disable data collection for** ([details](https://tibuntu.github.io/homeassistant-kubernetes/CONFIGURATION/#data-collection-opt-out)).
 - **Replica numbers go up to 100**, and **pod logs are snapshots** (experimental, no live streaming, capped at 256 KiB).
-- **`drain_node` does not wait for evicted pods to terminate**, and it skips the pod Home Assistant runs in — except with `hostNetwork: true`, where that pod cannot be recognised ([details](https://tibuntu.github.io/homeassistant-kubernetes/SERVICES/#drain-node)).
+- **`drain_node` does not wait for evicted pods to terminate**, and it skips pods without a controller unless `force` is set, and it skips the pod Home Assistant runs in — except with `hostNetwork: true`, where that pod cannot be recognised ([details](https://tibuntu.github.io/homeassistant-kubernetes/SERVICES/#drain-node)).
 - **The cluster name cannot be changed** after setup; it identifies the config entry. Remove and re-add the integration to rename it.
 
 ## Removal

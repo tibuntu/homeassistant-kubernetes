@@ -23,6 +23,7 @@ import voluptuous as vol
 
 from .const import (
     ATTR_DELETE_EMPTYDIR_DATA,
+    ATTR_FORCE,
     ATTR_IGNORE_DAEMONSETS,
     ATTR_JOB_NAME,
     ATTR_JOB_NAMES,
@@ -618,6 +619,7 @@ DRAIN_NODE_SCHEMA = vol.Schema(
             vol.Optional("entry_id"): cv.string,
             vol.Optional(ATTR_IGNORE_DAEMONSETS, default=True): cv.boolean,
             vol.Optional(ATTR_DELETE_EMPTYDIR_DATA, default=False): cv.boolean,
+            vol.Optional(ATTR_FORCE, default=False): cv.boolean,
             vol.Optional(ATTR_TIMEOUT, default=DEFAULT_DRAIN_TIMEOUT): vol.All(
                 vol.Coerce(int), vol.Range(min=0, max=3600)
             ),
@@ -1066,6 +1068,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 reason = drain_skip_reason(
                     pod,
                     delete_emptydir_data=call.data[ATTR_DELETE_EMPTYDIR_DATA],
+                    force=call.data[ATTR_FORCE],
                     own_pod=own_pod,
                 )
                 if reason:

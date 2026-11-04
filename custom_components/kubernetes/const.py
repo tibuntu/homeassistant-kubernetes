@@ -167,6 +167,7 @@ ATTR_NODE_NAME = "node_name"
 ATTR_NODE_NAMES = "node_names"
 ATTR_IGNORE_DAEMONSETS = "ignore_daemonsets"
 ATTR_DELETE_EMPTYDIR_DATA = "delete_emptydir_data"
+ATTR_FORCE = "force"
 ATTR_TIMEOUT = "timeout"
 
 # drain_node: how long PDB-blocked evictions are retried, and how often
