@@ -1251,17 +1251,22 @@ _PANEL_READ_COMMANDS = [
 
 
 class TestPanelAccess:
-    """The panel's read commands follow its admin-only registration."""
+    """The panel's read commands follow the entries' panel_admin_only option."""
 
-    def _setup(self, hass: HomeAssistant, add_loaded_client_entry, require_admin):
-        coordinator = add_loaded_client_entry(MagicMock())
+    def _setup(
+        self,
+        hass: HomeAssistant,
+        add_loaded_client_entry,
+        require_admin,
+        enable_panel=True,
+    ):
+        coordinator = add_loaded_client_entry(
+            MagicMock(),
+            options={"panel_admin_only": require_admin, "enable_panel": enable_panel},
+        )
         coordinator.last_update_success = True
         coordinator.data = {}
         coordinator.async_add_listener = MagicMock(return_value=MagicMock())
-        hass.data[DOMAIN] = {
-            "panel_registered": True,
-            "panel_require_admin": require_admin,
-        }
         async_register_websocket_commands(hass)
 
     @pytest.mark.parametrize("command_type", _PANEL_READ_COMMANDS)
@@ -1300,6 +1305,30 @@ class TestPanelAccess:
         msg = await ws.receive_json()
 
         assert msg["success"] is True
+
+    async def test_non_admin_rejected_without_registered_panel(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        hass_read_only_access_token,
+        add_loaded_client_entry,
+    ):
+        """The restriction holds while no entry shows the panel.
+
+        The commands stay callable over the WebSocket without the sidebar
+        entry, so the panel's registration must not decide who may read.
+        """
+        self._setup(
+            hass, add_loaded_client_entry, require_admin=True, enable_panel=False
+        )
+        assert not hass.data.get(DOMAIN, {}).get("panel_registered")
+        ws = await hass_ws_client(hass, hass_read_only_access_token)
+
+        await ws.send_json({"id": 1, "type": "kubernetes/pods/list"})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "unauthorized"
 
     async def test_admin_allowed_when_panel_admin_only(
         self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry

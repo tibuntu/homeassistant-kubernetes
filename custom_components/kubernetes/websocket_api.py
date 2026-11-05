@@ -41,7 +41,6 @@ from .const import (
     DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
-    DOMAIN,
     POD_LOGS_MAX_TAIL_LINES,
     POD_LOGS_MIN_TAIL_LINES,
     WORKLOAD_TYPE_DEPLOYMENT,
@@ -53,6 +52,7 @@ from .coordinator import (
     get_hpa_for,
     get_loaded_entries,
     hpa_attributes,
+    panel_requires_admin,
 )
 from .kubernetes_client import (
     KubernetesApiError,
@@ -122,10 +122,11 @@ def _pod_logs_enabled(entry: Any) -> bool:
 
 
 def _require_panel_access(func: WebSocketCommandHandler) -> WebSocketCommandHandler:
-    """Refuse non-admin users while the panel is registered as admin-only.
+    """Refuse non-admin users while any entry restricts the panel to admins.
 
     The panel's require_admin flag only hides the sidebar entry and its URL;
-    the data commands behind it need the same restriction.
+    the data commands behind it need the same restriction, also while the
+    panel itself is not registered.
     """
 
     @wraps(func)
@@ -135,9 +136,7 @@ def _require_panel_access(func: WebSocketCommandHandler) -> WebSocketCommandHand
         msg: dict[str, Any],
     ) -> None:
         user = connection.user
-        if hass.data.get(DOMAIN, {}).get("panel_require_admin") and (
-            user is None or not user.is_admin
-        ):
+        if panel_requires_admin(hass) and (user is None or not user.is_admin):
             raise Unauthorized
         func(hass, connection, msg)
 

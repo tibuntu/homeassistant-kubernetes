@@ -27,11 +27,13 @@ from .const import (
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_WATCH,
     CONF_EVENT_TYPES,
+    CONF_PANEL_ADMIN_ONLY,
     CONF_SWITCH_UPDATE_INTERVAL,
     DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_EVENT_TYPES,
     DEFAULT_FALLBACK_POLL_INTERVAL,
+    DEFAULT_PANEL_ADMIN_ONLY,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_WATCH_RECONNECT_DELAY,
     DOMAIN,
@@ -179,6 +181,23 @@ def get_loaded_entries(hass: HomeAssistant) -> list[KubernetesConfigEntry]:
 def disabled_resources(entry: ConfigEntry) -> frozenset[str]:
     """Return the data categories the user opted out of collecting."""
     return frozenset(entry.options.get(CONF_DISABLED_RESOURCES, ()))
+
+
+@callback
+def panel_requires_admin(hass: HomeAssistant) -> bool:
+    """Return whether any enabled entry restricts the panel to admins.
+
+    The panel shows every loaded cluster, so one restricting entry is enough,
+    whether or not that entry has the panel enabled itself. Entries that are
+    still setting up or retrying count too, so a cluster that is not loaded
+    yet cannot lift its restriction.
+    """
+    return any(
+        e.options.get(CONF_PANEL_ADMIN_ONLY, DEFAULT_PANEL_ADMIN_ONLY)
+        for e in hass.config_entries.async_entries(
+            DOMAIN, include_ignore=False, include_disabled=False
+        )
+    )
 
 
 def get_hpa_for(
