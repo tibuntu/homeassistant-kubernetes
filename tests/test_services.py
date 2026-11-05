@@ -1,5 +1,7 @@
 """Tests for the Kubernetes services."""
 
+import base64
+import json
 import logging
 import os
 import re
@@ -41,6 +43,7 @@ from custom_components.kubernetes.const import (
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
+from custom_components.kubernetes.kubernetes_client import OwnPod
 from custom_components.kubernetes.services import (
     _collect_entity_ids,
     _collect_job_names,
@@ -53,9 +56,9 @@ from custom_components.kubernetes.services import (
     _get_workload_info_from_entity,
     _no_workloads_error,
     _normalize_entity_id_list,
-    _own_pod_name,
-    _own_pod_namespace,
+    _own_pod,
     _resolve_raw_workload_name,
+    _token_pod_claims,
     _validate_job_schema,
     _validate_node_schema,
     _validate_workload_schema,
@@ -2902,54 +2905,89 @@ _DAEMONSET_POD = _raw_pod(
 )
 
 
-class TestOwnPodName:
-    """_own_pod_name: HA's pod name only when running in a cluster."""
+def _jwt(claims: dict) -> str:
+    """Build an unsigned JWT carrying *claims*."""
+    body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode()
+    return f"header.{body.rstrip('=')}.signature"
+
+
+_POD_CLAIMS = {
+    "kubernetes.io": {
+        "namespace": "home",
+        "pod": {"name": "homeassistant-0", "uid": "uid-1"},
+    }
+}
+
+
+class TestTokenPodClaims:
+    """_token_pod_claims: pod identity from a projected ServiceAccount token."""
+
+    def test_projected_token(self):
+        """Name, namespace and UID come from the kubernetes.io claim."""
+        assert _token_pod_claims(_jwt(_POD_CLAIMS)) == {
+            "name": "homeassistant-0",
+            "namespace": "home",
+            "uid": "uid-1",
+        }
+
+    @pytest.mark.parametrize(
+        "token",
+        [
+            None,
+            "not-a-jwt",
+            "a.!!!.c",
+            _jwt({"sub": "system:serviceaccount:home:ha"}),  # legacy token
+            _jwt({"kubernetes.io": {"namespace": "home"}}),  # no pod claim
+        ],
+    )
+    def test_no_pod_claims(self, token):
+        """Anything without pod claims yields None."""
+        assert _token_pod_claims(token) is None
+
+
+class TestOwnPod:
+    """_own_pod: HA's pod, by token claims or hostname + namespace file."""
+
+    @pytest.fixture
+    def mount(self, monkeypatch, tmp_path):
+        """Point the service-account paths at a temporary directory."""
+        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
+        monkeypatch.setattr(
+            "custom_components.kubernetes.services.socket.gethostname",
+            lambda: "ha-host",
+        )
+        for attr in ("TOKEN", "NAMESPACE"):
+            monkeypatch.setattr(
+                f"custom_components.kubernetes.services.IN_CLUSTER_{attr}_PATH",
+                str(tmp_path / attr.lower()),
+            )
+        return tmp_path
 
     def test_outside_cluster(self, monkeypatch):
         """Without KUBERNETES_SERVICE_HOST there is no own pod."""
         monkeypatch.delenv("KUBERNETES_SERVICE_HOST", raising=False)
-        assert _own_pod_name() is None
+        assert _own_pod() is None
 
-    def test_inside_cluster_uses_hostname(self, monkeypatch):
-        """In a pod the hostname is the pod name."""
-        monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
-        monkeypatch.setattr(
-            "custom_components.kubernetes.services.socket.gethostname",
-            lambda: "homeassistant-0",
-        )
-        assert _own_pod_name() == "homeassistant-0"
+    def test_token_claims(self, mount):
+        """A projected token identifies the pod by UID, not hostname."""
+        (mount / "token").write_text(_jwt(_POD_CLAIMS) + "\n", encoding="utf-8")
+        assert _own_pod() == OwnPod("homeassistant-0", "home", "uid-1")
 
+    def test_no_mount(self, mount):
+        """Without the mount only the hostname is known."""
+        assert _own_pod() == OwnPod("ha-host", None, None)
 
-class TestOwnPodNamespace:
-    """_own_pod_namespace: the service-account namespace file, fail-safe."""
+    def test_hostname_and_namespace_file(self, mount):
+        """A legacy token falls back to hostname plus stripped namespace file."""
+        (mount / "token").write_text("legacy", encoding="utf-8")
+        (mount / "namespace").write_text("home\n", encoding="utf-8")
+        assert _own_pod() == OwnPod("ha-host", "home", None)
 
-    def test_reads_and_strips(self, monkeypatch, tmp_path):
-        """The mounted namespace is returned without the trailing newline."""
-        path = tmp_path / "namespace"
-        path.write_text("home\n", encoding="utf-8")
-        monkeypatch.setattr(
-            "custom_components.kubernetes.services.IN_CLUSTER_NAMESPACE_PATH",
-            str(path),
-        )
-        assert _own_pod_namespace() == "home"
-
-    def test_empty_file(self, monkeypatch, tmp_path):
-        """An empty file yields None."""
-        path = tmp_path / "namespace"
-        path.write_text("", encoding="utf-8")
-        monkeypatch.setattr(
-            "custom_components.kubernetes.services.IN_CLUSTER_NAMESPACE_PATH",
-            str(path),
-        )
-        assert _own_pod_namespace() is None
-
-    def test_missing_file(self, monkeypatch, tmp_path):
-        """Without the mount the namespace is unknown (None)."""
-        monkeypatch.setattr(
-            "custom_components.kubernetes.services.IN_CLUSTER_NAMESPACE_PATH",
-            str(tmp_path / "missing"),
-        )
-        assert _own_pod_namespace() is None
+    @pytest.mark.parametrize("content", [b"", b"\xff\xfe"])
+    def test_unusable_namespace_file(self, mount, content):
+        """An empty or undecodable namespace file means an unknown namespace."""
+        (mount / "namespace").write_bytes(content)
+        assert _own_pod() == OwnPod("ha-host", None, None)
 
 
 @pytest.mark.usefixtures("load_translations")
@@ -2963,10 +3001,7 @@ class TestDrainNodeService:
             "custom_components.kubernetes.services.DRAIN_RETRY_INTERVAL", 0
         )
         monkeypatch.setattr(
-            "custom_components.kubernetes.services._own_pod_name", lambda: None
-        )
-        monkeypatch.setattr(
-            "custom_components.kubernetes.services._own_pod_namespace", lambda: None
+            "custom_components.kubernetes.services._own_pod", lambda: None
         )
 
     async def _drain(self, hass: HomeAssistant, **data):
@@ -3181,8 +3216,8 @@ class TestDrainNodeService:
     ):
         """delete_emptydir_data is passed on; HA's own pod is never evicted."""
         monkeypatch.setattr(
-            "custom_components.kubernetes.services._own_pod_name",
-            lambda: "homeassistant-0",
+            "custom_components.kubernetes.services._own_pod",
+            lambda: OwnPod("homeassistant-0", None, None),
         )
         mock_client.get_pods_on_node.return_value = [
             _raw_pod("cache", spec={"volumes": [{"emptyDir": {}}]}),
@@ -3203,12 +3238,8 @@ class TestDrainNodeService:
     ):
         """Only HA's own pod (name and namespace) is skipped, not a namesake."""
         monkeypatch.setattr(
-            "custom_components.kubernetes.services._own_pod_name",
-            lambda: "homeassistant-0",
-        )
-        monkeypatch.setattr(
-            "custom_components.kubernetes.services._own_pod_namespace",
-            lambda: "home",
+            "custom_components.kubernetes.services._own_pod",
+            lambda: OwnPod("homeassistant-0", "home", None),
         )
         mock_client.get_pods_on_node.return_value = [
             _raw_pod("homeassistant-0", "home"),
