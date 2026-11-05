@@ -3698,6 +3698,7 @@ class TestFormatCronjobFromDict:
             },
             "status": {
                 "lastScheduleTime": "2024-06-01T02:00:00Z",
+                "lastSuccessfulTime": "2024-06-01T02:03:00Z",
                 "nextScheduleTime": "2024-06-02T02:00:00Z",
                 "active": [{"name": "backup-123"}, {"name": "backup-456"}],
             },
@@ -3708,6 +3709,7 @@ class TestFormatCronjobFromDict:
         assert result["schedule"] == "0 2 * * *"
         assert result["suspend"] is True
         assert result["last_schedule_time"] == "2024-06-01T02:00:00Z"
+        assert result["last_successful_time"] == "2024-06-01T02:03:00Z"
         assert result["next_schedule_time"] == "2024-06-02T02:00:00Z"
         assert result["active_jobs_count"] == 2
         assert result["successful_jobs_history_limit"] == 5
@@ -3724,6 +3726,7 @@ class TestFormatCronjobFromDict:
         assert result["schedule"] == ""
         assert result["suspend"] is False
         assert result["last_schedule_time"] is None
+        assert result["last_successful_time"] is None
         assert result["next_schedule_time"] is None
         assert result["active_jobs_count"] == 0
         assert result["successful_jobs_history_limit"] == 3
@@ -3796,6 +3799,9 @@ class TestFormatJobFromDict:
         assert result["active"] == 0
         assert result["start_time"] is None
         assert result["completion_time"] is None
+        assert result["backoff_limit"] == 6
+        assert result["conditions"] == []
+        assert result["owner_cronjob"] is None
         assert result["uid"] == ""
         assert result["creation_timestamp"] is None
 
@@ -3816,6 +3822,44 @@ class TestFormatJobFromDict:
         assert result["succeeded"] == 1
         assert result["active"] == 0
         assert result["completion_time"] == "2024-01-01T00:05:00Z"
+
+    def test_failed_cronjob_job(self, mock_client):
+        """Conditions, backoffLimit and the owning CronJob are extracted."""
+        raw = {
+            "metadata": {
+                "name": "backup-29000000",
+                "namespace": "default",
+                "ownerReferences": [
+                    {"kind": "Something", "name": "other"},
+                    {"kind": "CronJob", "name": "backup", "controller": True},
+                ],
+            },
+            "spec": {"backoffLimit": 2},
+            "status": {
+                "failed": 3,
+                "conditions": [
+                    {
+                        "type": "Failed",
+                        "status": "True",
+                        "reason": "BackoffLimitExceeded",
+                        "message": "Job has reached the specified backoff limit",
+                        "lastTransitionTime": "2024-01-01T02:10:00Z",
+                    }
+                ],
+            },
+        }
+        result = mock_client._format_job_from_dict(raw)
+        assert result["backoff_limit"] == 2
+        assert result["owner_cronjob"] == "backup"
+        assert result["conditions"] == [
+            {
+                "type": "Failed",
+                "status": "True",
+                "reason": "BackoffLimitExceeded",
+                "message": "Job has reached the specified backoff limit",
+                "last_transition_time": "2024-01-01T02:10:00Z",
+            }
+        ]
 
 
 class TestWatchStreamExtended:
