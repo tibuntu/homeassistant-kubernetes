@@ -624,6 +624,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             expected.add(f"{eid}_restarting_pods")
         if "nodes" not in disabled:
             expected.add(f"{eid}_nodes_under_pressure")
+        if "jobs" not in disabled:
+            expected.add(f"{eid}_failed_jobs")
 
         # Node sensors + schedulable switches + node condition binary sensors.
         # The schedulable switch survives the "nodes" opt-out.

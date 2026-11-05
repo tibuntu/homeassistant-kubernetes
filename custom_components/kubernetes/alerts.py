@@ -8,6 +8,7 @@ from typing import Any
 # ponytail: fixed thresholds; make them options when someone needs other values
 RESTART_ALERT_THRESHOLD = 3
 RESTART_ALERT_WINDOW = timedelta(minutes=60)
+FAILED_JOB_ALERT_WINDOW = timedelta(hours=24)
 
 _PRESSURE_KEYS: tuple[str, ...] = (
     "memory_pressure",
@@ -122,6 +123,63 @@ def restarting_pods(
     return alerts
 
 
+def _recovered(data: dict[str, Any], job: dict[str, Any], failed_at: datetime) -> bool:
+    """Return True when the Job's CronJob succeeded after ``failed_at``."""
+    cronjob = data.get("cronjobs", {}).get(
+        f"{job.get('namespace')}_{job.get('owner_cronjob')}"
+    )
+    try:
+        return datetime.fromisoformat(cronjob["last_successful_time"]) > failed_at
+    except (KeyError, TypeError, ValueError):  # no CronJob, never succeeded, bad
+        return False
+
+
+def failed_jobs(
+    data: dict[str, Any], now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """Return Jobs that failed within ``FAILED_JOB_ALERT_WINDOW``.
+
+    Only the terminal ``Failed`` condition counts, so a Job still retrying
+    below its ``backoffLimit`` is not listed (nor is the interim
+    ``FailureTarget`` condition). The window keeps a nightly CronJob failure
+    visible until the next run, without alerting forever on failed Jobs kept
+    by ``failedJobsHistoryLimit``. A Job deleted earlier (``ttlSecondsAfterFinished``)
+    drops out with it. A CronJob's failed run also drops out once a later run
+    of the same CronJob succeeded (``last_successful_time`` after the failure).
+    """
+    cutoff = (now or datetime.now(UTC)) - FAILED_JOB_ALERT_WINDOW
+    alerts = []
+    for job in data.get("jobs", {}).values():
+        failed = next(
+            (
+                cond
+                for cond in job.get("conditions") or []
+                if cond.get("type") == "Failed" and cond.get("status") == "True"
+            ),
+            None,
+        )
+        if not failed:
+            continue
+        failed_at = failed.get("last_transition_time")
+        try:
+            failed_time = datetime.fromisoformat(failed_at)
+            recent = failed_time >= cutoff
+        except (TypeError, ValueError):  # missing, malformed or naive timestamp
+            continue
+        if recent and not _recovered(data, job, failed_time):
+            alerts.append(
+                {
+                    "name": job.get("name", ""),
+                    "namespace": job.get("namespace", "unknown"),
+                    "cronjob": job.get("owner_cronjob"),
+                    "reason": failed.get("reason"),
+                    "message": failed.get("message"),
+                    "failed_at": failed_at,
+                }
+            )
+    return alerts
+
+
 def build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     """Build all alert lists for one cluster's coordinator data."""
     return {
@@ -129,4 +187,5 @@ def build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         "degraded_workloads": degraded_workloads(data),
         "failed_pods": problem_pods(data),
         "restarting_pods": restarting_pods(data),
+        "failed_jobs": failed_jobs(data),
     }

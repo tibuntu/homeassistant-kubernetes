@@ -27,6 +27,12 @@ test("overview lists restarting pods with their last termination", async ({ page
   await expect(card).toContainText("5 restarts, last: OOMKilled (exit 137)");
 });
 
+test("overview lists failed jobs with reason and owning CronJob", async ({ page }) => {
+  await page.goto(HARNESS);
+  const card = page.locator(".alert-card", { hasText: "default/backup-29000000" });
+  await expect(card).toContainText("Failed (BackoffLimitExceeded), CronJob backup");
+});
+
 test("pods column visibility survives a reload", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Pods");

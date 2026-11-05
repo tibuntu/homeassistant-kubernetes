@@ -47,6 +47,16 @@ export const RESPONSES: Record<string, unknown> = {
               last_terminated_at: "2026-11-02T11:00:00Z",
             },
           ],
+          failed_jobs: [
+            {
+              name: "backup-29000000",
+              namespace: "default",
+              cronjob: "backup",
+              reason: "BackoffLimitExceeded",
+              message: "Job has reached the specified backoff limit",
+              failed_at: "2026-11-02T02:10:00Z",
+            },
+          ],
         },
       },
     ],
