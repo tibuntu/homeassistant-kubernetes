@@ -433,6 +433,9 @@
       "nodes_under_pressure": {
         "name": "Nodes Under Pressure"
       },
+      "failed_jobs": {
+        "name": "Failed Jobs"
+      },
       "node": {
         "name": "{name}"
       },

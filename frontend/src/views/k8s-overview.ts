@@ -33,11 +33,20 @@ interface AlertRestartingPod {
   last_terminated_exit_code: number | null;
 }
 
+interface AlertFailedJob {
+  name: string;
+  namespace: string;
+  cronjob: string | null;
+  reason: string | null;
+  failed_at: string;
+}
+
 interface ClusterAlerts {
   nodes_with_pressure: AlertNodePressure[];
   degraded_workloads: AlertDegradedWorkload[];
   failed_pods: AlertFailedPod[];
   restarting_pods: AlertRestartingPod[];
+  failed_jobs: AlertFailedJob[];
 }
 
 interface ClusterOverview {
@@ -381,7 +390,8 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
       cluster.alerts.nodes_with_pressure.length +
       cluster.alerts.degraded_workloads.length +
       cluster.alerts.failed_pods.length +
-      cluster.alerts.restarting_pods.length;
+      cluster.alerts.restarting_pods.length +
+      cluster.alerts.failed_jobs.length;
 
     return html`
       <div class="cluster-section">
@@ -594,6 +604,22 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
                     ? ` (exit ${pod.last_terminated_exit_code})`
                     : ""
                 }
+              </div>
+            </div>
+          </div>
+        `,
+      )}
+      ${alerts.failed_jobs.map(
+        (job) => html`
+          <div class="alert-card alert-error">
+            <ha-icon icon="mdi:briefcase-remove-outline"></ha-icon>
+            <div>
+              <div class="alert-title">Job: ${job.namespace}/${job.name}</div>
+              <div class="alert-detail">
+                Failed${job.reason ? ` (${job.reason})` : ""}${
+                  job.cronjob ? `, CronJob ${job.cronjob}` : ""
+                },
+                ${formatRelative(Date.parse(job.failed_at) / 1000)}
               </div>
             </div>
           </div>

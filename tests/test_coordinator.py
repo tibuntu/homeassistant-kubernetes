@@ -4396,6 +4396,7 @@ class TestDisabledResources:
             "problem_pods",
             "restarting_pods",
             "nodes_under_pressure",
+            "failed_jobs",
         ):
             assert f"{eid}_{suffix}" in expected
 
@@ -4404,7 +4405,9 @@ class TestDisabledResources:
     ):
         """Alert sensors drop out once every input category is disabled."""
         coordinator = self._make_coordinator(
-            hass, mock_client, ["pods", "deployments", "statefulsets", "daemonsets"]
+            hass,
+            mock_client,
+            ["pods", "deployments", "statefulsets", "daemonsets", "jobs"],
         )
 
         expected = coordinator._build_expected_unique_ids({})
@@ -4413,6 +4416,7 @@ class TestDisabledResources:
         assert f"{eid}_degraded_workloads" not in expected
         assert f"{eid}_problem_pods" not in expected
         assert f"{eid}_restarting_pods" not in expected
+        assert f"{eid}_failed_jobs" not in expected
         assert f"{eid}_nodes_under_pressure" in expected
 
 

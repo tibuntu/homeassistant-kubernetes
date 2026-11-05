@@ -20,6 +20,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 
 from .alerts import (
     degraded_workloads,
+    failed_jobs,
     nodes_under_pressure,
     problem_pods,
     restarting_pods,
@@ -89,6 +90,10 @@ async def async_setup_entry(
         if "nodes" not in disabled:
             sensors.append(
                 KubernetesNodesUnderPressureSensor(coordinator, client, config_entry)
+            )
+        if "jobs" not in disabled:
+            sensors.append(
+                KubernetesFailedJobsSensor(coordinator, client, config_entry)
             )
 
         # Ensure cluster device exists (coordinator already refreshed in __init__.py)
@@ -697,6 +702,18 @@ class KubernetesNodesUnderPressureSensor(KubernetesAlertSensor):
 
     def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         return nodes_under_pressure(data)
+
+
+class KubernetesFailedJobsSensor(KubernetesAlertSensor):
+    """Jobs that failed within the last 24 hours (see ``alerts.failed_jobs``)."""
+
+    _attr_native_unit_of_measurement = "jobs"
+    _unique_suffix = "failed_jobs"
+    _list_attr = "jobs"
+    _unrecorded_attributes = frozenset({"jobs"})
+
+    def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        return failed_jobs(data)
 
 
 class KubernetesNodeSensor(KubernetesBaseSensor):

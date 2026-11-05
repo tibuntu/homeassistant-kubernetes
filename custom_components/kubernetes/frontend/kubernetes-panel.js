@@ -497,7 +497,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       .alerts-info-icon:hover .alerts-tooltip {
         display: block;
       }
-    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===E?w` ${this._data.clusters.map(e=>this._renderCluster(e))} `:e}_renderCluster(e){let t=e.alerts.nodes_with_pressure.length+e.alerts.degraded_workloads.length+e.alerts.failed_pods.length+e.alerts.restarting_pods.length;return w`
+    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===E?w` ${this._data.clusters.map(e=>this._renderCluster(e))} `:e}_renderCluster(e){let t=e.alerts.nodes_with_pressure.length+e.alerts.degraded_workloads.length+e.alerts.failed_pods.length+e.alerts.restarting_pods.length+e.alerts.failed_jobs.length;return w`
       <div class="cluster-section">
         <div class="cluster-header">
           <span class="cluster-name">${e.cluster_name}</span>
@@ -633,6 +633,18 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               <div class="alert-detail">
                 ${e.restarts}
                 restarts${e.last_terminated_reason?`, last: ${e.last_terminated_reason}`:``}${e.last_terminated_exit_code==null?``:` (exit ${e.last_terminated_exit_code})`}
+              </div>
+            </div>
+          </div>
+        `)}
+      ${e.failed_jobs.map(e=>w`
+          <div class="alert-card alert-error">
+            <ha-icon icon="mdi:briefcase-remove-outline"></ha-icon>
+            <div>
+              <div class="alert-title">Job: ${e.namespace}/${e.name}</div>
+              <div class="alert-detail">
+                Failed${e.reason?` (${e.reason})`:``}${e.cronjob?`, CronJob ${e.cronjob}`:``},
+                ${Ze(Date.parse(e.failed_at)/1e3)}
               </div>
             </div>
           </div>

@@ -522,6 +522,27 @@ automation:
             {% endfor %}
 ```
 
+### Failed Job Alerts
+
+*Failed Jobs* lists Jobs that failed for good (retries exhausted or deadline exceeded) within the last 24 hours, including runs of CronJobs. A failed CronJob run disappears from the list once a later run succeeds.
+
+```yaml
+automation:
+  - alias: "Notify on failed jobs"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.production_failed_jobs
+      above: 0
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Kubernetes: job failed"
+          message: >
+            {% for job in state_attr('sensor.production_failed_jobs', 'jobs') %}
+            {{ job.namespace }}/{{ job.name }}{% if job.cronjob %} (CronJob {{ job.cronjob }}){% endif %}: {{ job.reason }}
+            {% endfor %}
+```
+
 *Degraded Workloads* (`workloads` attribute) and *Nodes Under Pressure* (`nodes` attribute) work the same way. Keep the `for:` delay on *Degraded Workloads* in particular: every rolling update briefly has fewer available replicas than desired, so without it the automation fires on each deploy.
 
 ### Cluster Health Monitoring

@@ -7,6 +7,7 @@ import pytest
 from custom_components.kubernetes.alerts import (
     build_alerts,
     degraded_workloads,
+    failed_jobs,
     nodes_under_pressure,
     problem_pods,
     restarting_pods,
@@ -94,7 +95,7 @@ def test_problem_pods_uses_parser_flag():
 
 
 def test_build_alerts_composes_helpers():
-    """build_alerts is exactly the four helpers under the panel's keys."""
+    """build_alerts is exactly the five helpers under the panel's keys."""
     data = {
         "nodes": {"n1": {"disk_pressure": True}},
         "daemonsets": {
@@ -112,6 +113,7 @@ def test_build_alerts_composes_helpers():
         "degraded_workloads": degraded_workloads(data),
         "failed_pods": problem_pods(data),
         "restarting_pods": restarting_pods(data),
+        "failed_jobs": failed_jobs(data),
     }
     assert build_alerts(data)["degraded_workloads"][0]["ready"] == 0
 
@@ -167,3 +169,94 @@ def test_degraded_workloads_includes_stalled_rollouts():
             "reason": None,
         },
     ]
+
+
+def _job(conditions, **extra):
+    return {
+        "name": "backup-1",
+        "namespace": "ns",
+        "owner_cronjob": "backup",
+        "conditions": conditions,
+        **extra,
+    }
+
+
+def _failed(at="2026-11-02T02:00:00Z", status="True", type_="Failed"):
+    return {
+        "type": type_,
+        "status": status,
+        "reason": "BackoffLimitExceeded",
+        "message": "Job has reached the specified backoff limit",
+        "last_transition_time": at,
+    }
+
+
+def test_failed_jobs_reports_recent_failure():
+    """A Job whose Failed condition turned True inside the window is listed."""
+    data = {"jobs": {"ns_backup-1": _job([_failed()])}}
+    assert failed_jobs(data, _NOW) == [
+        {
+            "name": "backup-1",
+            "namespace": "ns",
+            "cronjob": "backup",
+            "reason": "BackoffLimitExceeded",
+            "message": "Job has reached the specified backoff limit",
+            "failed_at": "2026-11-02T02:00:00Z",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "conditions",
+    [
+        [],  # still running or retrying below backoffLimit
+        None,  # job data parsed before conditions were exposed
+        [_failed(type_="FailureTarget")],  # interim, pods still terminating
+        [_failed(status="False")],
+        [_failed(type_="Complete")],
+        [_failed(at="2026-11-01T11:59:59Z")],  # aged out of the 24 h window
+        [_failed(at=None)],
+        [_failed(at="not-a-timestamp")],
+        [_failed(at="2026-11-02T02:00:00")],  # naive, cannot be compared
+    ],
+)
+def test_failed_jobs_skips(conditions):
+    """Retrying, succeeded, old or undated Jobs are not listed."""
+    data = {"jobs": {"ns_backup-1": _job(conditions)}}
+    assert failed_jobs(data, _NOW) == []
+
+
+def test_failed_jobs_defaults_to_current_time():
+    """Without ``now`` the window ends at the current time."""
+    job = _job([_failed(at=datetime.now(UTC).isoformat())], owner_cronjob=None)
+    assert failed_jobs({"jobs": {"j": job}})[0]["cronjob"] is None
+    assert failed_jobs({}) == []
+
+
+@pytest.mark.parametrize(
+    ("last_successful_time", "listed"),
+    [
+        ("2026-11-02T03:00:00Z", False),  # a later run succeeded
+        ("2026-11-01T03:00:00Z", True),  # last success predates the failure
+        (None, True),  # never succeeded
+        ("not-a-timestamp", True),
+        ("2026-11-02T03:00:00", True),  # naive, cannot be compared
+    ],
+)
+def test_failed_jobs_clears_after_later_cronjob_success(last_successful_time, listed):
+    """A CronJob run that failed drops out once a later run succeeded."""
+    data = {
+        "jobs": {"ns_backup-1": _job([_failed()])},
+        "cronjobs": {
+            "ns_backup": {"last_successful_time": last_successful_time},
+            # same CronJob name in another namespace must not count
+            "other_backup": {"last_successful_time": "2026-11-02T03:00:00Z"},
+        },
+    }
+    assert bool(failed_jobs(data, _NOW)) is listed
+
+
+def test_failed_jobs_without_cronjob_data():
+    """A missing CronJob (standalone Job, bucket absent) keeps the alert."""
+    data = {"jobs": {"j": _job([_failed()], owner_cronjob=None)}, "cronjobs": {}}
+    assert len(failed_jobs(data, _NOW)) == 1

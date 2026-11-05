@@ -26,6 +26,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesDaemonSetsSensor,
     KubernetesDegradedWorkloadsSensor,
     KubernetesDeploymentsSensor,
+    KubernetesFailedJobsSensor,
     KubernetesIngressesSensor,
     KubernetesJobSensor,
     KubernetesJobsSensor,
@@ -366,8 +367,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 9 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses, Services) + 4 alert sensors + number of node sensors from coordinator
-        expected_count = 9 + 4 + len(mock_coordinator.get_all_nodes_data())
+        # 9 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses, Services) + 5 alert sensors + number of node sensors from coordinator
+        expected_count = 9 + 5 + len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
@@ -493,6 +494,7 @@ class TestDisabledResourceGating:
             "test_entry_id_degraded_workloads",
             "test_entry_id_problem_pods",
             "test_entry_id_restarting_pods",
+            "test_entry_id_failed_jobs",
         }
 
     async def test_setup_skips_disabled_workload_sensors(
@@ -3564,8 +3566,8 @@ class TestAsyncSetupEntryWithResources:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         sensors = mock_add_entities.call_args[0][0]
-        # 9 aggregate + 4 alerts + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 25
-        assert len(sensors) == 25
+        # 9 aggregate + 5 alerts + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 26
+        assert len(sensors) == 26
 
     async def test_stores_add_entities_callback(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
@@ -4381,6 +4383,22 @@ class TestDiscoverSimple:
 
 _ALERT_DATA = {
     "nodes": {"n1": {"memory_pressure": True}, "n2": {}},
+    "jobs": {
+        "default_backup-1": {
+            "name": "backup-1",
+            "namespace": "default",
+            "owner_cronjob": "backup",
+            "conditions": [
+                {
+                    "type": "Failed",
+                    "status": "True",
+                    "reason": "BackoffLimitExceeded",
+                    "last_transition_time": "2999-01-01T00:00:00Z",
+                }
+            ],
+        },
+        "default_ok": {"name": "ok", "namespace": "default", "conditions": []},
+    },
     "deployments": {
         "default_web": {
             "name": "web",
@@ -4462,6 +4480,21 @@ class TestKubernetesAlertSensor:
                 ],
             ),
             (
+                KubernetesFailedJobsSensor,
+                "failed_jobs",
+                "jobs",
+                [
+                    {
+                        "name": "backup-1",
+                        "namespace": "default",
+                        "cronjob": "backup",
+                        "reason": "BackoffLimitExceeded",
+                        "message": None,
+                        "failed_at": "2999-01-01T00:00:00Z",
+                    }
+                ],
+            ),
+            (
                 KubernetesNodesUnderPressureSensor,
                 "nodes_under_pressure",
                 "nodes",
@@ -4536,6 +4569,7 @@ class TestKubernetesAlertSensor:
                     "deployments",
                     "statefulsets",
                     "daemonsets",
+                    "jobs",
                 ]
             }
         )

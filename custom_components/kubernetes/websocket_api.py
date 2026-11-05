@@ -338,6 +338,7 @@ def _empty_alerts() -> dict[str, list]:
         "degraded_workloads": [],
         "failed_pods": [],
         "restarting_pods": [],
+        "failed_jobs": [],
     }
 
 
