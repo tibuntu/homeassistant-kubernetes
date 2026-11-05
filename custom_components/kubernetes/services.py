@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import Awaitable
+import json
 import logging
 import os
 import socket
@@ -39,6 +41,7 @@ from .const import (
     DOMAIN,
     DRAIN_RETRY_INTERVAL,
     IN_CLUSTER_NAMESPACE_PATH,
+    IN_CLUSTER_TOKEN_PATH,
     SERVICE_CORDON_NODE,
     SERVICE_DELETE_JOB,
     SERVICE_DRAIN_NODE,
@@ -53,7 +56,7 @@ from .const import (
     WORKLOAD_TYPE_STATEFULSET,
 )
 from .coordinator import KubernetesEntryData, get_hpa_for, get_loaded_entries
-from .kubernetes_client import drain_skip_reason
+from .kubernetes_client import OwnPod, drain_skip_reason
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.debug("Kubernetes services module loaded")
@@ -630,28 +633,57 @@ DRAIN_NODE_SCHEMA = vol.Schema(
 )
 
 
-def _own_pod_name() -> str | None:
-    """Return the name of the pod Home Assistant runs in, if it runs in a cluster.
-
-    A pod's hostname is its name, except with ``hostNetwork: true`` (then it is
-    the node's, and the drain guard cannot find HA's pod).
-    """
-    if os.environ.get("KUBERNETES_SERVICE_HOST"):
-        return socket.gethostname()
-    return None
-
-
-def _own_pod_namespace() -> str | None:
-    """Return the namespace of the pod Home Assistant runs in, if readable.
-
-    Blocking file read. Fail-safe: None means the drain guard falls back to
-    name-only matching.
-    """
+def _read_service_account_file(path: str) -> str | None:
+    """Return a stripped service-account mount file, or None if unreadable/empty."""
     try:
-        with open(IN_CLUSTER_NAMESPACE_PATH, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             return handle.read().strip() or None
     except (OSError, UnicodeDecodeError):
         return None
+
+
+def _token_pod_claims(token: str | None) -> dict[str, Any] | None:
+    """Return the ``kubernetes.io`` claims of a projected ServiceAccount token.
+
+    Only our own mounted token is decoded, so the signature is not checked.
+    Legacy (Secret-based) tokens carry no pod claims and yield None.
+    """
+    try:
+        payload = (token or "").split(".")[1]
+        claims = json.loads(
+            base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+        )
+        k8s = claims["kubernetes.io"]
+        pod = k8s["pod"]
+        return {"name": pod["name"], "namespace": k8s["namespace"], "uid": pod["uid"]}
+    except (IndexError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _own_pod() -> OwnPod | None:
+    """Identify the pod Home Assistant runs in, if it runs in a cluster.
+
+    Blocking file reads. The pod UID from the projected ServiceAccount token
+    identifies it exactly, whatever the hostname and in whichever cluster is
+    drained. Without such a token (``automountServiceAccountToken: false`` or a
+    legacy token) it falls back to the hostname, which is the pod name except
+    with ``hostNetwork: true`` or a custom ``spec.hostname``, plus the
+    namespace file when present.
+    """
+    if not os.environ.get("KUBERNETES_SERVICE_HOST"):
+        return None
+    claims = _token_pod_claims(_read_service_account_file(IN_CLUSTER_TOKEN_PATH))
+    if claims:
+        return OwnPod(**claims)
+    _LOGGER.debug(
+        "No pod claims in the ServiceAccount token; drain_node recognises Home "
+        "Assistant's pod by hostname and namespace file only"
+    )
+    return OwnPod(
+        socket.gethostname(),
+        _read_service_account_file(IN_CLUSTER_NAMESPACE_PATH),
+        None,
+    )
 
 
 def _collect_names(
@@ -1057,10 +1089,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = entry_data.coordinator
         client = coordinator.client
         deadline = monotonic() + call.data[ATTR_TIMEOUT]
-        own_pod = _own_pod_name()
-        own_namespace = (
-            await hass.async_add_executor_job(_own_pod_namespace) if own_pod else None
-        )
+        own_pod = await hass.async_add_executor_job(_own_pod)
         any_cordoned = False
         failures: list[str] = []
         results: dict[str, dict[str, list[Any]]] = {}
@@ -1087,7 +1116,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     delete_emptydir_data=call.data[ATTR_DELETE_EMPTYDIR_DATA],
                     force=call.data[ATTR_FORCE],
                     own_pod=own_pod,
-                    own_namespace=own_namespace,
                 )
                 if reason:
                     skipped.append({"pod": f"{namespace}/{name}", "reason": reason})

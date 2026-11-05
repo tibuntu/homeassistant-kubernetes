@@ -13,6 +13,7 @@ from custom_components.kubernetes.const import POD_LOGS_LIMIT_BYTES
 from custom_components.kubernetes.kubernetes_client import (
     KubernetesApiError,
     KubernetesClient,
+    OwnPod,
     ResourceVersionExpired,
     build_ssl_param,
     drain_skip_reason,
@@ -7180,7 +7181,7 @@ class TestDrainSkipReason:
                 pod,
                 delete_emptydir_data=False,
                 force=False,
-                own_pod="homeassistant-0",
+                own_pod=OwnPod("homeassistant-0", None, None),
             )
             == expected
         )
@@ -7233,24 +7234,29 @@ class TestDrainSkipReason:
                 pod,
                 delete_emptydir_data=False,
                 force=True,
-                own_pod="homeassistant-0",
+                own_pod=OwnPod("homeassistant-0", None, None),
             )
             == expected
         )
 
     @pytest.mark.parametrize(
-        ("own_namespace", "expected"),
-        [("home", None), ("default", "home_assistant"), (None, "home_assistant")],
+        ("own_pod", "expected"),
+        [
+            # Name + namespace fallback: a namesake elsewhere is not HA's pod
+            (OwnPod("homeassistant-0", "home", None), None),
+            (OwnPod("homeassistant-0", "default", None), "home_assistant"),
+            (OwnPod("homeassistant-0", None, None), "home_assistant"),
+            # UID wins over name: hostname mismatch, or a namesake elsewhere
+            (OwnPod("ha", "home", "uid-1"), "home_assistant"),
+            (OwnPod("homeassistant-0", "default", "uid-2"), None),
+        ],
     )
-    def test_own_pod_matches_namespace(self, own_namespace, expected):
-        """A same-named pod in another namespace is not HA's own pod."""
+    def test_own_pod_matching(self, own_pod, expected):
+        """HA's pod matches by UID when known, else by name and namespace."""
+        pod = _drain_pod("homeassistant-0", metadata={"uid": "uid-1"})
         assert (
             drain_skip_reason(
-                _drain_pod("homeassistant-0"),
-                delete_emptydir_data=False,
-                force=True,
-                own_pod="homeassistant-0",
-                own_namespace=own_namespace,
+                pod, delete_emptydir_data=False, force=True, own_pod=own_pod
             )
             == expected
         )
