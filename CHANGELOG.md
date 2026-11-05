@@ -2,22 +2,24 @@
 
 ## [1.16.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.15.0...v1.16.0) (2026-11-05)
 
+A feature release: a **Failed Jobs** alert sensor, **more accurate Job and CronJob state**, and an option to **keep the sidebar panel away from non-admins**. It also makes `drain_node` safer. No new permissions are needed, but two behaviour changes are listed under *Upgrading*.
 
-### Features
+### New features
 
-* add Failed Jobs cluster alert sensor ([6a1d8d2](https://github.com/tibuntu/homeassistant-kubernetes/commit/6a1d8d2fe747c410229fb0bd17f7706436c28c88))
-* add last_successful_time to cronjob sensors ([0656cad](https://github.com/tibuntu/homeassistant-kubernetes/commit/0656cad075ce224232a0f985903fc5b53d88e283))
-* expose job conditions, backoff limit and owning cronjob ([97dcbfd](https://github.com/tibuntu/homeassistant-kubernetes/commit/97dcbfd83b5254687652a72406d520c58f31c21c))
-* **panel:** add option to restrict the sidebar panel to admins ([5824583](https://github.com/tibuntu/homeassistant-kubernetes/commit/5824583ddd4ddadd78fe204931e640a05374f746))
+**Failed Jobs sensor.** The new *Failed Jobs* sensor on the cluster device lists Jobs that finally failed (out of retries or past their deadline) within the last 24 hours, with the owning CronJob, reason and message. A Job that is still retrying is not counted, and a failed CronJob run drops out as soon as a later run succeeds. The panel's Overview shows them as an alert too. ([#534](https://github.com/tibuntu/homeassistant-kubernetes/issues/534))
 
+**Job and CronJob details.** Job sensors now read their state from the Job's own conditions and can report *Complete*, *Failed*, *Suspended*, *Running*, *Retrying* or *Pending*. They gain `reason`, `backoff_limit` and `cronjob` attributes. CronJob sensors gain `last_successful_time`, which also catches runs that never started: alert when it is older than the schedule interval plus some slack. See the examples in the docs.
 
-### Bug Fixes
+**Admin-only sidebar panel.** The new *Admin-only Sidebar Panel* option under **Configure** hides the panel from non-admin users, and the panel's data stops reaching them as well. The panel shows every cluster, so it is restricted as soon as one cluster entry turns the option on. Thanks to @wittdennis for the contribution. ([#537](https://github.com/tibuntu/homeassistant-kubernetes/pull/537))
 
-* derive job state from conditions instead of the failed counter ([76ceab1](https://github.com/tibuntu/homeassistant-kubernetes/commit/76ceab15a938d0007aa7fd7b631e533cc80cda62))
-* match the drain's own-pod guard on namespace too ([9fa1b7d](https://github.com/tibuntu/homeassistant-kubernetes/commit/9fa1b7d3a9ec4585a1406e5551fae61543b53078))
-* **panel:** apply admin-only to every entry and independent of panel registration ([2f25fd2](https://github.com/tibuntu/homeassistant-kubernetes/commit/2f25fd2c62fab8a939dca524c27006c0f5a72cfb))
-* recognise HA's own pod by its ServiceAccount token UID in drain_node ([278b240](https://github.com/tibuntu/homeassistant-kubernetes/commit/278b2404f54cfdaef064b5480e712f76f662c1d8))
-* skip pods without a controller when draining a node ([7e5cfaa](https://github.com/tibuntu/homeassistant-kubernetes/commit/7e5cfaada1f153813b5c00c26d58259ac78d3179))
+### Fixes & improvements
+
+* **`drain_node` no longer loses bare pods.** Pods that no controller manages were evicted, and nothing recreated them. They are now skipped and reported as `unmanaged`, like `kubectl drain` does. The new `force` option (also in the panel's Drain dialog) evicts them anyway.
+* **`drain_node` recognises Home Assistant's own pod reliably.** The guard matched by pod name only, so a same-named pod in another namespace was wrongly skipped. It now uses the pod UID from the ServiceAccount token, which also works with `hostNetwork` and custom hostnames.
+
+> **Behaviour changes:**
+> - A Job with failed pods used to read *Failed* while it was still retrying. It now reads *Retrying* until it gives up, and a Job that has not started reads *Pending* instead of *Unknown*. Automations matching *Failed* now fire on the final failure only.
+> - `drain_node` now skips pods without a controller. Automations that ignore the service response may assume a node is empty while such pods still run on it; check `skipped` or pass `force: true`.
 
 ## [1.15.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.3...v1.15.0) (2026-11-02)
 
