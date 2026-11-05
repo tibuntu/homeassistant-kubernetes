@@ -2755,10 +2755,10 @@ class TestKubernetesJobSensor:
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
         assert sensor.native_value == "Running"
 
-    def test_native_value_failed(
+    def test_native_value_retrying(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
-        """Test 'Failed' when failed > 0 and not running or complete."""
+        """Failed pods without a terminal Failed condition mean 'Retrying'."""
         mock_coordinator.get_job_data = MagicMock(
             return_value={
                 "completions": 1,
@@ -2771,7 +2771,7 @@ class TestKubernetesJobSensor:
             }
         )
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == "Failed"
+        assert sensor.native_value == "Retrying"
 
     def test_native_value_unknown_no_data(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -2781,10 +2781,10 @@ class TestKubernetesJobSensor:
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
         assert sensor.native_value == "Unknown"
 
-    def test_native_value_unknown_pending(
+    def test_native_value_pending(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
-        """Test 'Unknown' when job has no active, succeeded, or failed pods."""
+        """Test 'Pending' when job has no active, succeeded, or failed pods."""
         mock_coordinator.get_job_data = MagicMock(
             return_value={
                 "completions": 1,
@@ -2797,7 +2797,67 @@ class TestKubernetesJobSensor:
             }
         )
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == "Unknown"
+        assert sensor.native_value == "Pending"
+
+    @pytest.mark.parametrize(
+        ("conditions", "counts", "expected"),
+        [
+            # Terminal conditions decide, whatever the pod counters say
+            (
+                [{"type": "Failed", "status": "True"}],
+                {"failed": 3},
+                "Failed",
+            ),
+            (
+                [{"type": "Failed", "status": "True"}],
+                {"active": 1, "failed": 1},
+                "Failed",
+            ),
+            (
+                [{"type": "Complete", "status": "True"}],
+                {"succeeded": 0},
+                "Complete",
+            ),
+            # Interim conditions do not end the Job yet
+            (
+                [{"type": "FailureTarget", "status": "True"}],
+                {"active": 1, "failed": 3},
+                "Running",
+            ),
+            (
+                [{"type": "Failed", "status": "False"}],
+                {"failed": 1},
+                "Retrying",
+            ),
+            (
+                [{"type": "Suspended", "status": "True"}],
+                {},
+                "Suspended",
+            ),
+        ],
+    )
+    def test_native_value_from_conditions(
+        self,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        conditions,
+        counts,
+        expected,
+    ):
+        """The state follows the Job's conditions before the pod counters."""
+        mock_coordinator.get_job_data = MagicMock(
+            return_value={
+                "completions": 1,
+                "succeeded": 0,
+                "active": 0,
+                "failed": 0,
+                **counts,
+                "conditions": conditions,
+            }
+        )
+        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
+        assert sensor.native_value == expected
 
     def test_complete_takes_priority_over_failed(
         self, mock_config_entry, mock_client, mock_coordinator
@@ -2829,10 +2889,20 @@ class TestKubernetesJobSensor:
             "active": 0,
             "start_time": "2024-01-01T00:00:00Z",
             "completion_time": None,
+            "backoff_limit": 2,
+            "owner_cronjob": "backup",
+            "conditions": [
+                {"type": "FailureTarget", "status": "True", "reason": "Interim"},
+                {"type": "Failed", "status": "True", "reason": "DeadlineExceeded"},
+            ],
         }
         mock_coordinator.get_job_data = MagicMock(return_value=job_data)
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
         attrs = sensor.extra_state_attributes
+
+        assert attrs["backoff_limit"] == 2
+        assert attrs["cronjob"] == "backup"
+        assert attrs["reason"] == "DeadlineExceeded"
 
         assert attrs["namespace"] == "default"
         assert attrs["completions"] == 3
@@ -3227,6 +3297,9 @@ class TestKubernetesJobSensorExtended:
         assert attrs["active"] == 0
         assert attrs["start_time"] is None
         assert attrs["completion_time"] is None
+        assert attrs["backoff_limit"] is None
+        assert attrs["cronjob"] is None
+        assert attrs["reason"] is None
         assert attrs[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_JOB
 
     def test_native_value_defaults_completions_to_one(
