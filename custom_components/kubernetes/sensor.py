@@ -1121,6 +1121,15 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
         }
 
 
+def _true_job_conditions(job_data: dict[str, Any]) -> set[str]:
+    """Return the types of the Job conditions whose status is ``True``."""
+    return {
+        cond.get("type")
+        for cond in job_data.get("conditions") or []
+        if cond.get("status") == "True"
+    }
+
+
 class KubernetesJobSensor(KubernetesBaseSensor):
     """Sensor for an individual Kubernetes Job."""
 
@@ -1149,23 +1158,32 @@ class KubernetesJobSensor(KubernetesBaseSensor):
 
     @property
     def native_value(self) -> str:
-        """Return the status of the Job."""
+        """Return the status of the Job.
+
+        ``Complete``/``Failed`` come from the Job's terminal conditions, so a
+        Job retrying below its ``backoffLimit`` reads ``Retrying``, not
+        ``Failed``. The interim ``SuccessCriteriaMet``/``FailureTarget``
+        conditions are ignored until the terminal one follows.
+        """
         job_data = self.coordinator.get_job_data(self.namespace, self.job_name)
         if job_data is None:
             return "Unknown"
 
-        completions = job_data.get("completions", 1)
-        succeeded = job_data.get("succeeded", 0)
-        active = job_data.get("active", 0)
-        failed = job_data.get("failed", 0)
-
-        if succeeded >= completions:
+        true_conditions = _true_job_conditions(job_data)
+        if "Complete" in true_conditions:
             return "Complete"
-        if active > 0:
-            return "Running"
-        if failed > 0:
+        if "Failed" in true_conditions:
             return "Failed"
-        return "Unknown"
+        # Fallback for job data without conditions
+        if job_data.get("succeeded", 0) >= job_data.get("completions", 1):
+            return "Complete"
+        if "Suspended" in true_conditions:
+            return "Suspended"
+        if job_data.get("active", 0) > 0:
+            return "Running"
+        if job_data.get("failed", 0) > 0:
+            return "Retrying"
+        return "Pending"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -1182,6 +1200,17 @@ class KubernetesJobSensor(KubernetesBaseSensor):
             "active": job_data.get("active", 0),
             "start_time": job_data.get("start_time"),
             "completion_time": job_data.get("completion_time"),
+            "backoff_limit": job_data.get("backoff_limit"),
+            "cronjob": job_data.get("owner_cronjob"),
+            "reason": next(
+                (
+                    cond.get("reason")
+                    for cond in job_data.get("conditions") or []
+                    if cond.get("type") in ("Complete", "Failed")
+                    and cond.get("status") == "True"
+                ),
+                None,
+            ),
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_JOB,
         }
 

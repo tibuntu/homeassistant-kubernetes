@@ -178,13 +178,18 @@ The integration creates a separate sensor for each Kubernetes Job in the monitor
 
 | Sensor | Description | Example Value |
 |--------|-------------|---------------|
-| **[job-name]** | Individual Job status | `Complete` / `Running` / `Failed` / `Unknown` |
+| **[job-name]** | Individual Job status | `Complete` / `Failed` / `Suspended` / `Running` / `Retrying` / `Pending` / `Unknown` |
 
 Status values:
-- `Complete` — all completions have succeeded (`succeeded >= completions`)
+- `Complete` — the Job's `Complete` condition is set (or, without conditions, `succeeded >= completions`)
+- `Failed` — the Job's terminal `Failed` condition is set: it ran out of retries (`BackoffLimitExceeded`) or time (`DeadlineExceeded`). The `reason` attribute says which
+- `Suspended` — the Job is suspended (`spec.suspend: true`)
 - `Running` — the job has active pods (`active > 0`)
-- `Failed` — the job has failed pods and no active ones
+- `Retrying` — pods failed, but the Job has not given up yet (`failed > 0`, below its `backoffLimit`)
+- `Pending` — no pod has run yet
 - `Unknown` — data is unavailable
+
+Before 1.16, a Job with failed pods and no active ones already read `Failed` while it was still retrying, and a Job that had not started read `Unknown`. Automations that matched `Failed` now fire only on the final failure.
 
 #### Job Sensor Attributes
 
@@ -199,6 +204,9 @@ Each Job sensor provides execution details:
 | **active** | Number of currently active pods | `0` |
 | **start_time** | When the Job started | `2025-01-01T00:00:00Z` |
 | **completion_time** | When the Job completed | `2025-01-01T00:05:00Z` |
+| **backoff_limit** | Retries allowed before the Job fails (`spec.backoffLimit`, Kubernetes default 6) | `6` |
+| **cronjob** | Owning CronJob, `null` for a standalone Job | `backup` |
+| **reason** | Reason of the terminal `Complete`/`Failed` condition, `null` while the Job runs | `BackoffLimitExceeded` |
 
 ### Individual CronJob Sensors
 
