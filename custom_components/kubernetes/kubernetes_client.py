@@ -2711,6 +2711,7 @@ class KubernetesClient:
             "schedule": spec.get("schedule", ""),
             "suspend": spec.get("suspend", False),
             "last_schedule_time": status.get("lastScheduleTime"),
+            "last_successful_time": status.get("lastSuccessfulTime"),
             "next_schedule_time": status.get("nextScheduleTime"),
             "active_jobs_count": len(status.get("active", [])),
             "successful_jobs_history_limit": spec.get("successfulJobsHistoryLimit", 3),
@@ -2760,6 +2761,25 @@ class KubernetesClient:
             "active": status.get("active", 0),
             "start_time": status.get("startTime"),
             "completion_time": status.get("completionTime"),
+            "backoff_limit": spec.get("backoffLimit", 6),
+            "conditions": [
+                {
+                    "type": cond.get("type"),
+                    "status": cond.get("status"),
+                    "reason": cond.get("reason"),
+                    "message": cond.get("message"),
+                    "last_transition_time": cond.get("lastTransitionTime"),
+                }
+                for cond in status.get("conditions") or []
+            ],
+            "owner_cronjob": next(
+                (
+                    ref.get("name")
+                    for ref in metadata.get("ownerReferences") or []
+                    if ref.get("kind") == "CronJob"
+                ),
+                None,
+            ),
             "uid": metadata.get("uid", ""),
             "creation_timestamp": metadata.get("creationTimestamp"),
         }
