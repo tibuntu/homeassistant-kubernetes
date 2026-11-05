@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.16.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.15.0...v1.16.0) (2026-11-05)
+
+
+### Features
+
+* add Failed Jobs cluster alert sensor ([6a1d8d2](https://github.com/tibuntu/homeassistant-kubernetes/commit/6a1d8d2fe747c410229fb0bd17f7706436c28c88))
+* add last_successful_time to cronjob sensors ([0656cad](https://github.com/tibuntu/homeassistant-kubernetes/commit/0656cad075ce224232a0f985903fc5b53d88e283))
+* expose job conditions, backoff limit and owning cronjob ([97dcbfd](https://github.com/tibuntu/homeassistant-kubernetes/commit/97dcbfd83b5254687652a72406d520c58f31c21c))
+* **panel:** add option to restrict the sidebar panel to admins ([5824583](https://github.com/tibuntu/homeassistant-kubernetes/commit/5824583ddd4ddadd78fe204931e640a05374f746))
+
+
+### Bug Fixes
+
+* derive job state from conditions instead of the failed counter ([76ceab1](https://github.com/tibuntu/homeassistant-kubernetes/commit/76ceab15a938d0007aa7fd7b631e533cc80cda62))
+* match the drain's own-pod guard on namespace too ([9fa1b7d](https://github.com/tibuntu/homeassistant-kubernetes/commit/9fa1b7d3a9ec4585a1406e5551fae61543b53078))
+* **panel:** apply admin-only to every entry and independent of panel registration ([2f25fd2](https://github.com/tibuntu/homeassistant-kubernetes/commit/2f25fd2c62fab8a939dca524c27006c0f5a72cfb))
+* recognise HA's own pod by its ServiceAccount token UID in drain_node ([278b240](https://github.com/tibuntu/homeassistant-kubernetes/commit/278b2404f54cfdaef064b5480e712f76f662c1d8))
+* skip pods without a controller when draining a node ([7e5cfaa](https://github.com/tibuntu/homeassistant-kubernetes/commit/7e5cfaada1f153813b5c00c26d58259ac78d3179))
+
 ## [1.15.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.14.3...v1.15.0) (2026-11-02)
 
 A feature release: **node drain** as a service and in the panel, **stalled rollout detection**, and a **Restarting Pods** alert sensor. It also fixes workload CPU/memory usage for several setups and hardens name handling in every action that changes the cluster. Node drain needs one new permission, see *Upgrading*.
