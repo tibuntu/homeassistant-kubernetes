@@ -543,6 +543,26 @@ automation:
             {% endfor %}
 ```
 
+To catch runs that never happened at all, check the CronJob's `last_successful_time` instead:
+
+```yaml
+automation:
+  - alias: "Nightly backup missed"
+    trigger:
+      platform: time
+      at: "08:00:00"
+    condition:
+      - condition: template
+        value_template: >
+          {% set last = state_attr('sensor.production_backup', 'last_successful_time') %}
+          {{ last is none or now() - as_datetime(last) > timedelta(hours=26) }}
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Kubernetes: backup missed"
+          message: "No successful backup run in the last 26 hours."
+```
+
 *Degraded Workloads* (`workloads` attribute) and *Nodes Under Pressure* (`nodes` attribute) work the same way. Keep the `for:` delay on *Degraded Workloads* in particular: every rolling update briefly has fewer available replicas than desired, so without it the automation fires on each deploy.
 
 ### Cluster Health Monitoring
