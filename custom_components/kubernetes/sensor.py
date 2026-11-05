@@ -1114,6 +1114,7 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
             "namespace": cronjob_data.get("namespace", self.namespace),
             "schedule": cronjob_data.get("schedule", "N/A"),
             "last_schedule_time": cronjob_data.get("last_schedule_time"),
+            "last_successful_time": cronjob_data.get("last_successful_time"),
             "next_schedule_time": cronjob_data.get("next_schedule_time"),
             "active_jobs_count": cronjob_data.get("active_jobs_count", 0),
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,

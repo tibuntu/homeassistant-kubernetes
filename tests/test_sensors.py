@@ -2510,6 +2510,7 @@ class TestKubernetesCronJobSensor:
                 "schedule": "0 2 * * *",
                 "namespace": "default",
                 "last_schedule_time": "2024-01-01T02:00:00Z",
+                "last_successful_time": "2024-01-01T02:04:00Z",
                 "next_schedule_time": "2024-01-02T02:00:00Z",
             }
         )
@@ -2519,6 +2520,7 @@ class TestKubernetesCronJobSensor:
         assert attrs["namespace"] == "default"
         assert attrs["schedule"] == "0 2 * * *"
         assert attrs["last_schedule_time"] == "2024-01-01T02:00:00Z"
+        assert attrs["last_successful_time"] == "2024-01-01T02:04:00Z"
         assert attrs["next_schedule_time"] == "2024-01-02T02:00:00Z"
         assert attrs["active_jobs_count"] == 1
         assert attrs["workload_type"] == "CronJob"
