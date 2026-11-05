@@ -21,12 +21,10 @@ from .const import (
     CONF_ENABLE_PANEL,
     CONF_ENABLE_WATCH,
     CONF_EXCLUDE_JOB_PODS,
-    CONF_PANEL_ADMIN_ONLY,
     DEFAULT_ENABLE_EVENTS,
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_EXCLUDE_JOB_PODS,
-    DEFAULT_PANEL_ADMIN_ONLY,
     PANEL_FILENAME,
     PANEL_ICON,
     PANEL_TITLE,
@@ -37,6 +35,7 @@ from .coordinator import (
     KubernetesDataCoordinator,
     KubernetesEntryData,
     get_loaded_entries,
+    panel_requires_admin,
 )
 from .device import update_cluster_device_version
 from .kubernetes_client import KubernetesClient
@@ -236,7 +235,7 @@ async def _async_sync_panel(
 ) -> None:
     """Register, update or remove the sidebar panel to fit the given entries."""
     if any(_entry_wants_panel(e) for e in entries):
-        await _async_register_panel(hass, require_admin=_panel_requires_admin(hass))
+        await _async_register_panel(hass, require_admin=panel_requires_admin(hass))
     else:
         _async_remove_panel(hass)
 
@@ -244,21 +243,6 @@ async def _async_sync_panel(
 def _entry_wants_panel(entry: KubernetesConfigEntry) -> bool:
     """Return whether the entry has the panel enabled."""
     return bool(entry.options.get(CONF_ENABLE_PANEL, DEFAULT_ENABLE_PANEL))
-
-
-def _panel_requires_admin(hass: HomeAssistant) -> bool:
-    """Return whether any enabled entry showing the panel restricts it to admins.
-
-    Entries that are still setting up or retrying count as well, so a cluster
-    that is not loaded yet cannot lift its restriction.
-    """
-    return any(
-        _entry_wants_panel(e)
-        and e.options.get(CONF_PANEL_ADMIN_ONLY, DEFAULT_PANEL_ADMIN_ONLY)
-        for e in hass.config_entries.async_entries(
-            DOMAIN, include_ignore=False, include_disabled=False
-        )
-    )
 
 
 def _loaded_entries_except(

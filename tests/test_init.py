@@ -20,13 +20,15 @@ from custom_components.kubernetes import (
     _async_sync_panel,
     _entry_wants_panel,
     _loaded_entries_except,
-    _panel_requires_admin,
     async_remove_entry,
     async_setup,
     async_setup_entry,
     async_unload_entry,
 )
-from custom_components.kubernetes.coordinator import KubernetesEntryData
+from custom_components.kubernetes.coordinator import (
+    KubernetesEntryData,
+    panel_requires_admin,
+)
 from custom_components.kubernetes.device import (
     get_cluster_device_identifier,
     get_or_create_cluster_device,
@@ -640,16 +642,16 @@ class TestEntryWantsPanel:
 
 
 class TestPanelRequiresAdmin:
-    """Tests for _panel_requires_admin helper."""
+    """Tests for the coordinator's panel_requires_admin helper."""
 
     def test_false_by_default(self, hass: HomeAssistant):
         """Test the panel is open to all users by default."""
         MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
-        assert _panel_requires_admin(hass) is False
+        assert panel_requires_admin(hass) is False
 
     def test_false_without_entries(self, hass: HomeAssistant):
         """Test no entries means no admin requirement."""
-        assert _panel_requires_admin(hass) is False
+        assert panel_requires_admin(hass) is False
 
     def test_true_when_any_entry_restricts(self, hass: HomeAssistant):
         """Test one admin-only entry restricts the shared panel."""
@@ -657,7 +659,7 @@ class TestPanelRequiresAdmin:
         MockConfigEntry(domain=DOMAIN, options={"panel_admin_only": True}).add_to_hass(
             hass
         )
-        assert _panel_requires_admin(hass) is True
+        assert panel_requires_admin(hass) is True
 
     def test_counts_entries_that_are_not_loaded(self, hass: HomeAssistant):
         """Test an entry still setting up or retrying keeps its restriction."""
@@ -666,7 +668,7 @@ class TestPanelRequiresAdmin:
             options={"panel_admin_only": True},
             state=ConfigEntryState.SETUP_RETRY,
         ).add_to_hass(hass)
-        assert _panel_requires_admin(hass) is True
+        assert panel_requires_admin(hass) is True
 
     def test_ignores_disabled_entries(self, hass: HomeAssistant):
         """Test a disabled entry does not restrict the panel."""
@@ -675,16 +677,20 @@ class TestPanelRequiresAdmin:
             options={"panel_admin_only": True},
             disabled_by=ConfigEntryDisabler.USER,
         ).add_to_hass(hass)
-        assert _panel_requires_admin(hass) is False
+        assert panel_requires_admin(hass) is False
 
-    def test_ignores_entries_without_panel(self, hass: HomeAssistant):
-        """Test an entry that hides the panel does not restrict it."""
+    def test_counts_entries_without_panel(self, hass: HomeAssistant):
+        """Test an entry that hides the panel still restricts it.
+
+        The panel shows every loaded cluster, so the hidden entry's data would
+        otherwise reach non-admins through another entry's panel.
+        """
         MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
         MockConfigEntry(
             domain=DOMAIN,
             options={"enable_panel": False, "panel_admin_only": True},
         ).add_to_hass(hass)
-        assert _panel_requires_admin(hass) is False
+        assert panel_requires_admin(hass) is True
 
 
 class TestAsyncRemovePanel:

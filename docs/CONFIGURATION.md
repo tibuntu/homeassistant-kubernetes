@@ -75,7 +75,7 @@ Once the integration is set up, a **Kubernetes** entry appears in the Home Assis
 
 The panel is registered automatically by default. To disable it, go to **Settings > Devices & Services > Kubernetes > Configure** and set **Enable Sidebar Panel** to off. The panel is shown if any configured cluster entry has it enabled.
 
-**Admin-only panel:** turn on **Admin-only Sidebar Panel** in the same dialog to register the panel with Home Assistant's `require_admin` flag. Non-admin users then no longer see the sidebar entry, cannot open the panel's URL, and are refused by the WebSocket commands that serve the panel's cluster data. The panel is shared by all clusters, so it is admin-only as soon as one cluster entry with the panel enabled sets the option, including an entry that is still starting up or retrying its connection. The integration's services and entities are not affected: every user can still call the services and see the entities.
+**Admin-only panel:** turn on **Admin-only Sidebar Panel** in the same dialog to register the panel with Home Assistant's `require_admin` flag. Non-admin users then no longer see the sidebar entry, cannot open the panel's URL, and are refused by the WebSocket commands that serve the panel's cluster data. The panel shows all clusters, so it is admin-only as soon as one cluster entry sets the option, even an entry that has the panel itself turned off or is still starting up or retrying its connection. The WebSocket commands stay restricted while no entry shows the panel. The integration's services and entities are not affected: every user can still call the services and see the entities.
 
 ## Advanced Configuration
 
