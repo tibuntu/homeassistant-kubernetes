@@ -60,6 +60,8 @@ Each DaemonSet sensor provides scheduling and readiness information:
 | **ready** | Number of nodes where the pod is ready | `3` |
 | **available** | Number of nodes where the pod is available | `3` |
 
+Each DaemonSet also gets CPU and memory usage sensors, described under [Workload Metric Sensors](#workload-metric-sensors).
+
 Status values:
 - `Ready` — all desired pods are ready (`ready == desired`)
 - `Degraded` — some but not all pods are ready (`0 < ready < desired`)
@@ -86,12 +88,14 @@ Each sensor exposes the following attributes: `namespace`, `replicas`, `ready_re
 
 ### Workload Metric Sensors
 
-The integration creates CPU and memory usage sensors for each deployment and statefulset. These sensors read live data from the [metrics-server](https://github.com/kubernetes-sigs/metrics-server) and require it to be installed in your cluster.
+The integration creates CPU and memory usage sensors for each deployment, statefulset and daemonset. These sensors read live data from the [metrics-server](https://github.com/kubernetes-sigs/metrics-server) and require it to be installed in your cluster.
 
 | Sensor | Description | Example Value | Unit |
 |--------|-------------|---------------|------|
 | **[workload-name] CPU Usage** | Aggregated CPU usage across all pods of the workload | `142` | m (millicores) |
 | **[workload-name] Memory Usage** | Aggregated memory usage across all pods of the workload | `256` | MiB |
+
+If two workloads of different kinds in the same namespace share a name (for example a Deployment and a DaemonSet both called `web`), both sensors are named `web CPU Usage`, so Home Assistant adds a `_2` suffix to one of the entity IDs.
 
 The memory sensor uses the `data_size` device class, so Home Assistant can display it in another unit (for example GiB) via the entity settings. CPU usage has no matching device class.
 
@@ -465,6 +469,7 @@ Cluster Device (e.g., "production-cluster")
     ├── StatefulSet status sensors (one per statefulset)
     ├── StatefulSet CPU/memory sensors (one pair per statefulset)
     ├── DaemonSet sensors (all daemonsets in this namespace)
+    ├── DaemonSet CPU/memory sensors (one pair per daemonset)
     ├── CronJob switches and status sensors (all cronjobs in this namespace)
     └── Job sensors (all jobs in this namespace)
 ```
@@ -509,7 +514,7 @@ The integration automatically discovers and creates entities for:
 
 - All deployments in monitored namespaces (switch + replica number + status sensor + CPU/memory sensors)
 - All statefulsets in monitored namespaces (switch + replica number + status sensor + CPU/memory sensors)
-- All daemonsets in monitored namespaces (status sensor)
+- All daemonsets in monitored namespaces (status sensor + CPU/memory sensors)
 - All cronjobs in monitored namespaces (switch + status sensor)
 - All jobs in monitored namespaces (status sensor)
 - Individual Kubernetes pods in monitored namespaces
