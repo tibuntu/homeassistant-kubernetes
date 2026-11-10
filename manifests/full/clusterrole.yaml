@@ -67,6 +67,12 @@ rules:
     resources: ["ingresses"]
     verbs: ["get", "list", "watch"]
 
+  # Gateway API — HTTPRoutes in the Network tab (monitoring only; CRD may not
+  # be installed, so a 403/404 here is treated as "none available")
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch"]
+
   # Autoscaling — detect HPA-managed workloads (scale guard + HPA badge)
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]

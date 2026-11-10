@@ -57,21 +57,69 @@ interface ServicesResponse {
   clusters: ClusterServices[];
 }
 
+interface HTTPRouteParentRef {
+  name: string;
+  namespace: string;
+  section_name: string;
+}
+
+interface HTTPRouteMatch {
+  path_type: string;
+  path_value: string;
+  method: string;
+}
+
+interface HTTPRouteBackendRef {
+  name: string;
+  namespace: string;
+  port: number | string;
+}
+
+interface HTTPRouteRule {
+  matches: HTTPRouteMatch[];
+  backend_refs: HTTPRouteBackendRef[];
+}
+
+interface HTTPRouteData {
+  name: string;
+  namespace: string;
+  hostnames: string[];
+  parent_refs: HTTPRouteParentRef[];
+  rules: HTTPRouteRule[];
+  urls: string[];
+  accepted: boolean;
+  resolved_refs: boolean;
+  creation_timestamp: string;
+}
+
+interface ClusterHTTPRoutes {
+  entry_id: string;
+  cluster_name: string;
+  httproutes: HTTPRouteData[];
+}
+
+interface HTTPRoutesResponse {
+  clusters: ClusterHTTPRoutes[];
+}
+
 const NETWORK_TYPES = [
   "Ingress",
+  "HTTPRoute",
   "LoadBalancer",
   "NodePort",
   "ClusterIP",
   "ExternalName",
 ] as const;
-// "Services" shows every service type and hides the ingress section.
+// "Services" shows every service type and hides the ingress/HTTPRoute sections.
 export type NetworkTypeFilter = "all" | "Services" | (typeof NETWORK_TYPES)[number];
 
 @customElement("k8s-network")
 export class K8sNetwork extends K8sDataView<IngressesResponse> {
   @state() private _services: ServicesResponse | null = null;
+  @state() private _httproutes: HTTPRoutesResponse | null = null;
   @state() private _ingressError: string | null = null;
   @state() private _servicesError: string | null = null;
+  @state() private _httprouteError: string | null = null;
   @state() private _searchQuery: string = "";
   @state() private _typeFilter: NetworkTypeFilter = "all";
   /** Preset from an overview card click. */
@@ -86,15 +134,19 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
   }
 
   protected hasData(): boolean {
-    return this._data !== null || this._services !== null;
+    return (
+      this._data !== null || this._services !== null || this._httproutes !== null
+    );
   }
 
   protected async fetchData(): Promise<void> {
-    // Each list fails on its own, so a missing RBAC rule for one resource
-    // does not blank the other section.
-    const [ingresses, services] = await Promise.allSettled([
+    // Each list fails on its own, so a missing RBAC rule (or, for
+    // HTTPRoutes, an absent Gateway API CRD) for one resource does not
+    // blank the other sections.
+    const [ingresses, services, httproutes] = await Promise.allSettled([
       this.hass.callWS<IngressesResponse>({ type: "kubernetes/ingresses/list" }),
       this.hass.callWS<ServicesResponse>({ type: "kubernetes/services/list" }),
+      this.hass.callWS<HTTPRoutesResponse>({ type: "kubernetes/httproutes/list" }),
     ]);
     if (ingresses.status === "fulfilled") {
       this._data = ingresses.value;
@@ -114,6 +166,15 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         "Failed to load service data",
       );
     }
+    if (httproutes.status === "fulfilled") {
+      this._httproutes = httproutes.value;
+      this._httprouteError = null;
+    } else {
+      this._httprouteError = errorMessage(
+        httproutes.reason,
+        "Failed to load HTTPRoute data",
+      );
+    }
   }
 
   private _getFilteredIngresses(ingresses: IngressData[]): IngressData[] {
@@ -129,7 +190,12 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
 
   private _getFilteredServices(services: ServiceData[]): ServiceData[] {
     let filtered = services;
-    if (this._typeFilter !== "all" && this._typeFilter !== "Services") {
+    if (
+      this._typeFilter !== "all" &&
+      this._typeFilter !== "Services" &&
+      this._typeFilter !== "Ingress" &&
+      this._typeFilter !== "HTTPRoute"
+    ) {
       filtered = filtered.filter((s) => s.type === this._typeFilter);
     }
     if (this._searchQuery) {
@@ -142,6 +208,31 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
       );
     }
     return filtered;
+  }
+
+  private _getFilteredHTTPRoutes(httproutes: HTTPRouteData[]): HTTPRouteData[] {
+    if (!this._searchQuery) return httproutes;
+    const q = this._searchQuery.toLowerCase();
+    return httproutes.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.namespace.toLowerCase().includes(q) ||
+        r.hostnames.some((h) => h.toLowerCase().includes(q)),
+    );
+  }
+
+  private _gatewaysOf(httproute: HTTPRouteData): string {
+    return (
+      [...new Set(httproute.parent_refs.map((p) => p.name))].filter(Boolean).join(", ") ||
+      "—"
+    );
+  }
+
+  private _backendsOf(httproute: HTTPRouteData): string {
+    const names = httproute.rules.flatMap((rule) =>
+      rule.backend_refs.map((b) => b.name),
+    );
+    return [...new Set(names)].filter(Boolean).join(", ") || "—";
   }
 
   private _services_of(ingress: IngressData): string {
@@ -276,7 +367,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
       </div>`;
     }
 
-    if (this._ingressError && this._servicesError) {
+    if (this._ingressError && this._servicesError && this._httprouteError) {
       return html`
         <ha-card>
           <div class="error-card">
@@ -290,10 +381,19 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
 
     const ingressClusters = this._data?.clusters ?? [];
     const serviceClusters = this._services?.clusters ?? [];
+    const httprouteClusters = this._httproutes?.clusters ?? [];
     const hasIngresses = ingressClusters.some((c) => c.ingresses.length > 0);
     const hasServices = serviceClusters.some((c) => c.services.length > 0);
-    if (!this._ingressError && !this._servicesError && !hasIngresses && !hasServices) {
-      return html`<div class="empty">No ingresses or services found.</div>`;
+    const hasHTTPRoutes = httprouteClusters.some((c) => c.httproutes.length > 0);
+    if (
+      !this._ingressError &&
+      !this._servicesError &&
+      !this._httprouteError &&
+      !hasIngresses &&
+      !hasServices &&
+      !hasHTTPRoutes
+    ) {
+      return html`<div class="empty">No ingresses, HTTPRoutes, or services found.</div>`;
     }
 
     return html`
@@ -301,7 +401,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         <input
           class="search-input"
           type="text"
-          placeholder="Search ingresses and services…"
+          placeholder="Search ingresses, HTTPRoutes, and services…"
           .value=${this._searchQuery}
           @input=${(e: InputEvent) =>
             (this._searchQuery = (e.target as HTMLInputElement).value)}
@@ -335,7 +435,23 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
           : nothing
       }
       ${
-        this._typeFilter !== "Ingress"
+        this._typeFilter === "all" || this._typeFilter === "HTTPRoute"
+          ? html`
+              <h2 class="section-title">HTTPRoutes</h2>
+              ${
+                this._httprouteError
+                  ? this._renderInlineError(this._httprouteError)
+                  : hasHTTPRoutes
+                    ? httprouteClusters.map((cluster) =>
+                        this._renderHTTPRouteCluster(cluster),
+                      )
+                    : html`<div class="empty">No HTTPRoutes found.</div>`
+              }
+            `
+          : nothing
+      }
+      ${
+        this._typeFilter !== "Ingress" && this._typeFilter !== "HTTPRoute"
           ? html`
               <h2 class="section-title">Services</h2>
               ${
@@ -417,6 +533,69 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         </div>
       </ha-card>
     `;
+  }
+
+  private _renderHTTPRouteCluster(cluster: ClusterHTTPRoutes) {
+    if (!cluster.httproutes.length) return nothing;
+    const httproutes = this._getFilteredHTTPRoutes(cluster.httproutes);
+
+    return html`
+      <div class="cluster-section">
+        ${
+          this._httproutes!.clusters.length > 1
+            ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
+            : nothing
+        }
+        ${
+          httproutes.length === 0
+            ? html`<div class="empty">No HTTPRoutes match your search.</div>`
+            : this._renderHTTPRoutesTable(httproutes)
+        }
+      </div>
+    `;
+  }
+
+  private _renderHTTPRoutesTable(httproutes: HTTPRouteData[]) {
+    return html`
+      <ha-card>
+        <div class="table-wrapper">
+          <table class="network-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>URLs</th>
+                <th>Gateway</th>
+                <th>Backend</th>
+                <th>Status</th>
+                <th>Age</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${httproutes.map(
+                (route) => html`
+                  <tr>
+                    <td>${route.name}</td>
+                    <td>${route.namespace}</td>
+                    <td>${this._renderUrls(route.urls)}</td>
+                    <td>${this._gatewaysOf(route)}</td>
+                    <td>${this._backendsOf(route)}</td>
+                    <td>${this._renderHTTPRouteStatusBadge(route)}</td>
+                    <td>${formatAge(route.creation_timestamp)}</td>
+                  </tr>
+                `,
+              )}
+            </tbody>
+          </table>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  private _renderHTTPRouteStatusBadge(route: HTTPRouteData) {
+    return route.accepted && route.resolved_refs
+      ? html`<span class="badge badge-ready">Accepted</span>`
+      : html`<span class="badge badge-pending">Not Ready</span>`;
   }
 
   private _renderServiceCluster(cluster: ClusterServices) {

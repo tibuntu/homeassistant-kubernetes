@@ -303,3 +303,35 @@ test("Escape closes the drain dialog without calling the service", async ({ page
   await expect(page.locator(".confirm-dialog")).toHaveCount(0);
   expect(await page.evaluate(() => window.__k8s.services)).toEqual([]);
 });
+
+test("network tab shows ingresses, HTTPRoutes, and services", async ({ page }) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Network");
+
+  await expect(page.locator("h2.section-title", { hasText: "Ingresses" })).toBeVisible();
+  await expect(
+    page.locator("h2.section-title", { hasText: "HTTPRoutes" }),
+  ).toBeVisible();
+  await expect(page.locator("h2.section-title", { hasText: "Services" })).toBeVisible();
+
+  const httprouteRow = page.locator(".network-table tr", { hasText: "eg" });
+  await expect(httprouteRow).toContainText("web.example.com");
+  await expect(httprouteRow.locator("a.url-link")).toHaveAttribute(
+    "href",
+    "https://web.example.com",
+  );
+  await expect(httprouteRow.locator(".badge-ready")).toHaveText("Accepted");
+});
+
+test("network type filter narrows to a single section", async ({ page }) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Network");
+
+  await page.locator("select.filter-select").selectOption("HTTPRoute");
+
+  await expect(
+    page.locator("h2.section-title", { hasText: "HTTPRoutes" }),
+  ).toBeVisible();
+  await expect(page.locator("h2.section-title", { hasText: "Ingresses" })).toHaveCount(0);
+  await expect(page.locator("h2.section-title", { hasText: "Services" })).toHaveCount(0);
+});

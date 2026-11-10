@@ -1731,7 +1731,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}};H([I()],J.prototype,`_searchQuery`,void 0),H([I()],J.prototype,`_phaseFilter`,void 0),H([I()],J.prototype,`_namespaceFilter`,void 0),H([I()],J.prototype,`_sortField`,void 0),H([I()],J.prototype,`_sortAsc`,void 0),H([I()],J.prototype,`_deleteConfirm`,void 0),H([I()],J.prototype,`_deleting`,void 0),H([I()],J.prototype,`_visibleColumns`,void 0),H([I()],J.prototype,`_columnMenuOpen`,void 0),H([I()],J.prototype,`_actionError`,void 0),H([I()],J.prototype,`_logsTarget`,void 0),H([I()],J.prototype,`_logsContainer`,void 0),H([I()],J.prototype,`_logsTail`,void 0),H([I()],J.prototype,`_logsPrevious`,void 0),H([I()],J.prototype,`_logsResult`,void 0),H([I()],J.prototype,`_logsLoading`,void 0),H([I()],J.prototype,`_logsError`,void 0),H([I()],J.prototype,`_logsCopied`,void 0),J=H([P(`k8s-pods-table`)],J);var ht=[`Ingress`,`LoadBalancer`,`NodePort`,`ClusterIP`,`ExternalName`],Y=class extends U{constructor(...e){super(...e),this._services=null,this._ingressError=null,this._servicesError=null,this._searchQuery=``,this._typeFilter=`all`,this.loadErrorFallback=`Failed to load network data`}willUpdate(e){e.has(`initialFilter`)&&this.initialFilter&&(this._typeFilter=this.initialFilter)}hasData(){return this._data!==null||this._services!==null}async fetchData(){let[e,t]=await Promise.allSettled([this.hass.callWS({type:`kubernetes/ingresses/list`}),this.hass.callWS({type:`kubernetes/services/list`})]);e.status===`fulfilled`?(this._data=e.value,this._ingressError=null):this._ingressError=V(e.reason,`Failed to load ingress data`),t.status===`fulfilled`?(this._services=t.value,this._servicesError=null):this._servicesError=V(t.reason,`Failed to load service data`)}_getFilteredIngresses(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.rules.some(e=>(e.host||``).toLowerCase().includes(t)))}_getFilteredServices(e){let t=e;if(this._typeFilter!==`all`&&this._typeFilter!==`Services`&&(t=t.filter(e=>e.type===this._typeFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.external_ips.some(t=>t.toLowerCase().includes(e)))}return t}_services_of(e){return[...new Set(e.rules.map(e=>e.service_name))].filter(Boolean).join(`, `)}_hasTls(e){return e.tls_hosts.length>0||e.urls.some(e=>e.startsWith(`https://`))}_formatPort(e){let t=e.target_port!=null&&String(e.target_port)!==String(e.port)?`→${e.target_port}`:``,n=e.node_port?` (node ${e.node_port})`:``;return`${e.port}${t}/${e.protocol}${n}`}static{this.styles=[W,G,K,et,o`
+    `}};H([I()],J.prototype,`_searchQuery`,void 0),H([I()],J.prototype,`_phaseFilter`,void 0),H([I()],J.prototype,`_namespaceFilter`,void 0),H([I()],J.prototype,`_sortField`,void 0),H([I()],J.prototype,`_sortAsc`,void 0),H([I()],J.prototype,`_deleteConfirm`,void 0),H([I()],J.prototype,`_deleting`,void 0),H([I()],J.prototype,`_visibleColumns`,void 0),H([I()],J.prototype,`_columnMenuOpen`,void 0),H([I()],J.prototype,`_actionError`,void 0),H([I()],J.prototype,`_logsTarget`,void 0),H([I()],J.prototype,`_logsContainer`,void 0),H([I()],J.prototype,`_logsTail`,void 0),H([I()],J.prototype,`_logsPrevious`,void 0),H([I()],J.prototype,`_logsResult`,void 0),H([I()],J.prototype,`_logsLoading`,void 0),H([I()],J.prototype,`_logsError`,void 0),H([I()],J.prototype,`_logsCopied`,void 0),J=H([P(`k8s-pods-table`)],J);var ht=[`Ingress`,`HTTPRoute`,`LoadBalancer`,`NodePort`,`ClusterIP`,`ExternalName`],Y=class extends U{constructor(...e){super(...e),this._services=null,this._httproutes=null,this._ingressError=null,this._servicesError=null,this._httprouteError=null,this._searchQuery=``,this._typeFilter=`all`,this.loadErrorFallback=`Failed to load network data`}willUpdate(e){e.has(`initialFilter`)&&this.initialFilter&&(this._typeFilter=this.initialFilter)}hasData(){return this._data!==null||this._services!==null||this._httproutes!==null}async fetchData(){let[e,t,n]=await Promise.allSettled([this.hass.callWS({type:`kubernetes/ingresses/list`}),this.hass.callWS({type:`kubernetes/services/list`}),this.hass.callWS({type:`kubernetes/httproutes/list`})]);e.status===`fulfilled`?(this._data=e.value,this._ingressError=null):this._ingressError=V(e.reason,`Failed to load ingress data`),t.status===`fulfilled`?(this._services=t.value,this._servicesError=null):this._servicesError=V(t.reason,`Failed to load service data`),n.status===`fulfilled`?(this._httproutes=n.value,this._httprouteError=null):this._httprouteError=V(n.reason,`Failed to load HTTPRoute data`)}_getFilteredIngresses(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.rules.some(e=>(e.host||``).toLowerCase().includes(t)))}_getFilteredServices(e){let t=e;if(this._typeFilter!==`all`&&this._typeFilter!==`Services`&&this._typeFilter!==`Ingress`&&this._typeFilter!==`HTTPRoute`&&(t=t.filter(e=>e.type===this._typeFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.external_ips.some(t=>t.toLowerCase().includes(e)))}return t}_getFilteredHTTPRoutes(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.hostnames.some(e=>e.toLowerCase().includes(t)))}_gatewaysOf(e){return[...new Set(e.parent_refs.map(e=>e.name))].filter(Boolean).join(`, `)||`—`}_backendsOf(e){let t=e.rules.flatMap(e=>e.backend_refs.map(e=>e.name));return[...new Set(t)].filter(Boolean).join(`, `)||`—`}_services_of(e){return[...new Set(e.rules.map(e=>e.service_name))].filter(Boolean).join(`, `)}_hasTls(e){return e.tls_hosts.length>0||e.urls.some(e=>e.startsWith(`https://`))}_formatPort(e){let t=e.target_port!=null&&String(e.target_port)!==String(e.port)?`→${e.target_port}`:``,n=e.node_port?` (node ${e.node_port})`:``;return`${e.port}${t}/${e.protocol}${n}`}static{this.styles=[W,G,K,et,o`
       /* stateStyles' .empty is 64px padding; network uses .empty for five
        in-section messages, where that much padding doubles up. */
       .empty {
@@ -1829,7 +1829,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       }
     `]}render(){if(this._loading)return w`<div class="loading">
         <ha-circular-progress indeterminate></ha-circular-progress>
-      </div>`;if(this._ingressError&&this._servicesError)return w`
+      </div>`;if(this._ingressError&&this._servicesError&&this._httprouteError)return w`
         <ha-card>
           <div class="error-card">
             <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -1837,12 +1837,12 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <button class="retry-btn" @click=${()=>this._loadData()}>Retry</button>
           </div>
         </ha-card>
-      `;let e=this._data?.clusters??[],t=this._services?.clusters??[],n=e.some(e=>e.ingresses.length>0),r=t.some(e=>e.services.length>0);return!this._ingressError&&!this._servicesError&&!n&&!r?w`<div class="empty">No ingresses or services found.</div>`:w`
+      `;let e=this._data?.clusters??[],t=this._services?.clusters??[],n=this._httproutes?.clusters??[],r=e.some(e=>e.ingresses.length>0),i=t.some(e=>e.services.length>0),a=n.some(e=>e.httproutes.length>0);return!this._ingressError&&!this._servicesError&&!this._httprouteError&&!r&&!i&&!a?w`<div class="empty">No ingresses, HTTPRoutes, or services found.</div>`:w`
       <div class="filters">
         <input
           class="search-input"
           type="text"
-          placeholder="Search ingresses and services…"
+          placeholder="Search ingresses, HTTPRoutes, and services…"
           .value=${this._searchQuery}
           @input=${e=>this._searchQuery=e.target.value}
         />
@@ -1859,12 +1859,16 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
 
       ${this._typeFilter===`all`||this._typeFilter===`Ingress`?w`
               <h2 class="section-title">Ingresses</h2>
-              ${this._ingressError?this._renderInlineError(this._ingressError):n?e.map(e=>this._renderCluster(e)):w`<div class="empty">No ingresses found.</div>`}
+              ${this._ingressError?this._renderInlineError(this._ingressError):r?e.map(e=>this._renderCluster(e)):w`<div class="empty">No ingresses found.</div>`}
             `:E}
-      ${this._typeFilter===`Ingress`?E:w`
+      ${this._typeFilter===`all`||this._typeFilter===`HTTPRoute`?w`
+              <h2 class="section-title">HTTPRoutes</h2>
+              ${this._httprouteError?this._renderInlineError(this._httprouteError):a?n.map(e=>this._renderHTTPRouteCluster(e)):w`<div class="empty">No HTTPRoutes found.</div>`}
+            `:E}
+      ${this._typeFilter!==`Ingress`&&this._typeFilter!==`HTTPRoute`?w`
               <h2 class="section-title">Services</h2>
-              ${this._servicesError?this._renderInlineError(this._servicesError):r?t.map(e=>this._renderServiceCluster(e)):w`<div class="empty">No services found.</div>`}
-            `}
+              ${this._servicesError?this._renderInlineError(this._servicesError):i?t.map(e=>this._renderServiceCluster(e)):w`<div class="empty">No services found.</div>`}
+            `:E}
     `}_renderInlineError(e){return w`
       <div class="inline-error">
         <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -1906,7 +1910,43 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </table>
         </div>
       </ha-card>
-    `}_renderServiceCluster(e){if(!e.services.length)return E;let t=this._getFilteredServices(e.services);return w`
+    `}_renderHTTPRouteCluster(e){if(!e.httproutes.length)return E;let t=this._getFilteredHTTPRoutes(e.httproutes);return w`
+      <div class="cluster-section">
+        ${this._httproutes.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
+        ${t.length===0?w`<div class="empty">No HTTPRoutes match your search.</div>`:this._renderHTTPRoutesTable(t)}
+      </div>
+    `}_renderHTTPRoutesTable(e){return w`
+      <ha-card>
+        <div class="table-wrapper">
+          <table class="network-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>URLs</th>
+                <th>Gateway</th>
+                <th>Backend</th>
+                <th>Status</th>
+                <th>Age</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${e.map(e=>w`
+                  <tr>
+                    <td>${e.name}</td>
+                    <td>${e.namespace}</td>
+                    <td>${this._renderUrls(e.urls)}</td>
+                    <td>${this._gatewaysOf(e)}</td>
+                    <td>${this._backendsOf(e)}</td>
+                    <td>${this._renderHTTPRouteStatusBadge(e)}</td>
+                    <td>${B(e.creation_timestamp)}</td>
+                  </tr>
+                `)}
+            </tbody>
+          </table>
+        </div>
+      </ha-card>
+    `}_renderHTTPRouteStatusBadge(e){return e.accepted&&e.resolved_refs?w`<span class="badge badge-ready">Accepted</span>`:w`<span class="badge badge-pending">Not Ready</span>`}_renderServiceCluster(e){if(!e.services.length)return E;let t=this._getFilteredServices(e.services);return w`
       <div class="cluster-section">
         ${this._services.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
         ${t.length===0?w`<div class="empty">No services match your filters.</div>`:this._renderServicesTable(t)}
@@ -1952,7 +1992,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         <a class="url-link" href=${e} target="_blank" rel="noopener noreferrer"
           >${e}</a
         >
-      `):`—`}_renderTlsBadge(e){return this._hasTls(e)?w`<span class="badge badge-tls">TLS</span>`:w`<span class="badge badge-plain">HTTP</span>`}};H([I()],Y.prototype,`_services`,void 0),H([I()],Y.prototype,`_ingressError`,void 0),H([I()],Y.prototype,`_servicesError`,void 0),H([I()],Y.prototype,`_searchQuery`,void 0),H([I()],Y.prototype,`_typeFilter`,void 0),H([F({attribute:!1})],Y.prototype,`initialFilter`,void 0),Y=H([P(`k8s-network`)],Y);var X={healthy:{badgeClass:`badge-healthy`,label:`Healthy`},degraded:{badgeClass:`badge-degraded`,label:`Degraded`},stopped:{badgeClass:`badge-stopped`,label:`Stopped`}},Z={deployment:{category:`deployments`,icon:`mdi:rocket-launch`,label:`Deployments`,emptyLabel:`deployments`,readyField:`available_replicas`,actionPrefix:`deploy_`},statefulset:{category:`statefulsets`,icon:`mdi:database`,label:`StatefulSets`,emptyLabel:`statefulsets`,readyField:`ready_replicas`,actionPrefix:`sts_`}},Q=class extends U{constructor(...e){super(...e),this._namespaceFilter=`all`,this._categoryFilter=`all`,this._statusFilter=`all`,this._searchQuery=``,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._jobDeleteConfirm=null,this._deletingJob=!1,this._collapsedCategories=/* @__PURE__ */ new Set,this._scaleTarget=null,this._scaleValue=0,this._scaling=!1,this.loadErrorFallback=`Failed to load workloads data`}willUpdate(e){e.has(`initialFilter`)&&this.initialFilter&&(this._categoryFilter=this.initialFilter)}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/workloads/list`});this._data=e}_getNamespaces(e){let t=/* @__PURE__ */ new Set;for(let n of e.deployments)t.add(n.namespace);for(let n of e.statefulsets)t.add(n.namespace);for(let n of e.daemonsets)t.add(n.namespace);for(let n of e.cronjobs)t.add(n.namespace);for(let n of e.jobs)t.add(n.namespace);return[...t].sort()}_toggleCategory(e){let t=new Set(this._collapsedCategories);t.has(e)?t.delete(e):t.add(e),this._collapsedCategories=t}_handleCategoryKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._toggleCategory(t))}_matchesNamespace(e){return this._namespaceFilter===`all`||e===this._namespaceFilter}_matchesSearch(e){return!this._searchQuery||e.toLowerCase().includes(this._searchQuery.toLowerCase())}_formatAgo(e){let t=B(e);return t===`N/A`?t:`${t} ago`}async _runAction(e,t){let n=new Set(this._actionInProgress);n.add(e),this._actionInProgress=n;try{await t()}catch(e){let t=V(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-workloads] Action failed:`,e)}finally{let t=new Set(this._actionInProgress);t.delete(e),this._actionInProgress=t}}_callService(e,t,n){return this._runAction(n,async()=>{await this.hass.callService(`kubernetes`,e,t),this._scheduleReload(2e3)})}_setCronJobSuspend(e,t,n,r){return this._runAction(r,async()=>{await this.hass.callWS({type:`kubernetes/cronjobs/suspend`,entry_id:e,cronjob_name:t.name,namespace:t.namespace,suspend:n}),await this._loadData()})}static{this.styles=[at,W,G,K,$e,o`
+      `):`—`}_renderTlsBadge(e){return this._hasTls(e)?w`<span class="badge badge-tls">TLS</span>`:w`<span class="badge badge-plain">HTTP</span>`}};H([I()],Y.prototype,`_services`,void 0),H([I()],Y.prototype,`_httproutes`,void 0),H([I()],Y.prototype,`_ingressError`,void 0),H([I()],Y.prototype,`_servicesError`,void 0),H([I()],Y.prototype,`_httprouteError`,void 0),H([I()],Y.prototype,`_searchQuery`,void 0),H([I()],Y.prototype,`_typeFilter`,void 0),H([F({attribute:!1})],Y.prototype,`initialFilter`,void 0),Y=H([P(`k8s-network`)],Y);var X={healthy:{badgeClass:`badge-healthy`,label:`Healthy`},degraded:{badgeClass:`badge-degraded`,label:`Degraded`},stopped:{badgeClass:`badge-stopped`,label:`Stopped`}},Z={deployment:{category:`deployments`,icon:`mdi:rocket-launch`,label:`Deployments`,emptyLabel:`deployments`,readyField:`available_replicas`,actionPrefix:`deploy_`},statefulset:{category:`statefulsets`,icon:`mdi:database`,label:`StatefulSets`,emptyLabel:`statefulsets`,readyField:`ready_replicas`,actionPrefix:`sts_`}},Q=class extends U{constructor(...e){super(...e),this._namespaceFilter=`all`,this._categoryFilter=`all`,this._statusFilter=`all`,this._searchQuery=``,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._jobDeleteConfirm=null,this._deletingJob=!1,this._collapsedCategories=/* @__PURE__ */ new Set,this._scaleTarget=null,this._scaleValue=0,this._scaling=!1,this.loadErrorFallback=`Failed to load workloads data`}willUpdate(e){e.has(`initialFilter`)&&this.initialFilter&&(this._categoryFilter=this.initialFilter)}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/workloads/list`});this._data=e}_getNamespaces(e){let t=/* @__PURE__ */ new Set;for(let n of e.deployments)t.add(n.namespace);for(let n of e.statefulsets)t.add(n.namespace);for(let n of e.daemonsets)t.add(n.namespace);for(let n of e.cronjobs)t.add(n.namespace);for(let n of e.jobs)t.add(n.namespace);return[...t].sort()}_toggleCategory(e){let t=new Set(this._collapsedCategories);t.has(e)?t.delete(e):t.add(e),this._collapsedCategories=t}_handleCategoryKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._toggleCategory(t))}_matchesNamespace(e){return this._namespaceFilter===`all`||e===this._namespaceFilter}_matchesSearch(e){return!this._searchQuery||e.toLowerCase().includes(this._searchQuery.toLowerCase())}_formatAgo(e){let t=B(e);return t===`N/A`?t:`${t} ago`}async _runAction(e,t){let n=new Set(this._actionInProgress);n.add(e),this._actionInProgress=n;try{await t()}catch(e){let t=V(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-workloads] Action failed:`,e)}finally{let t=new Set(this._actionInProgress);t.delete(e),this._actionInProgress=t}}_callService(e,t,n){return this._runAction(n,async()=>{await this.hass.callService(`kubernetes`,e,t),this._scheduleReload(2e3)})}_setCronJobSuspend(e,t,n,r){return this._runAction(r,async()=>{await this.hass.callWS({type:`kubernetes/cronjobs/suspend`,entry_id:e,cronjob_name:t.name,namespace:t.namespace,suspend:n}),await this._loadData()})}static{this.styles=[at,W,G,K,$e,o`
       .cluster-section {
         margin-bottom: 24px;
       }

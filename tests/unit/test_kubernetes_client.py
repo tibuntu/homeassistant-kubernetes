@@ -1101,6 +1101,248 @@ async def test_parse_hpa_item_malformed(mock_client):
     assert mock_client._parse_hpa_item(item) is None
 
 
+# ---------------------------------------------------------------------------
+# HTTPRoutes
+# ---------------------------------------------------------------------------
+
+
+async def test_get_httproutes_success(mock_client):
+    """HTTPRoutes are fetched from gateway.networking.k8s.io/v1 with the HTTPRoute parser."""
+    mock_client._fetch_resource_list = AsyncMock(
+        return_value=[{"name": "web", "namespace": "default"}]
+    )
+
+    httproutes = await mock_client.get_httproutes()
+
+    assert httproutes == [{"name": "web", "namespace": "default"}]
+    mock_client._fetch_resource_list.assert_awaited_once_with(
+        "apis/gateway.networking.k8s.io/v1",
+        "httproutes",
+        mock_client._parse_httproute_item,
+    )
+
+
+async def test_get_httproutes_empty(mock_client):
+    """HTTPRoute retrieval when none exist."""
+    mock_client._fetch_resource_list = AsyncMock(return_value=[])
+
+    assert await mock_client.get_httproutes() == []
+
+
+@pytest.mark.parametrize("status", [403, 404])
+async def test_get_httproutes_forbidden_or_missing_crd_not_logged(mock_client, status):
+    """A 403 (RBAC) or 404 (CRD absent) is re-raised without _log_error; the
+    coordinator treats both as "none available" and warns once."""
+    mock_client._fetch_resource_list = AsyncMock(
+        side_effect=KubernetesApiError("boom", status)
+    )
+    mock_client._log_error = MagicMock()
+
+    with pytest.raises(KubernetesApiError):
+        await mock_client.get_httproutes()
+
+    mock_client._log_error.assert_not_called()
+
+
+async def test_get_httproutes_other_status_logged(mock_client):
+    """A KubernetesApiError that isn't 403/404 is a hard failure and is logged."""
+    mock_client._fetch_resource_list = AsyncMock(
+        side_effect=KubernetesApiError("boom", 500)
+    )
+    mock_client._log_error = MagicMock()
+
+    with pytest.raises(KubernetesApiError):
+        await mock_client.get_httproutes()
+
+    mock_client._log_error.assert_called_once()
+
+
+async def test_get_httproutes_api_exception(mock_client):
+    """HTTPRoute retrieval propagates generic API exceptions and logs them."""
+    mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
+    mock_client._log_error = MagicMock()
+
+    with pytest.raises(Exception, match="API Error"):
+        await mock_client.get_httproutes()
+
+    mock_client._log_error.assert_called_once()
+
+
+def _httproute_item(**overrides):
+    """Build a raw Gateway API HTTPRoute object for parse tests."""
+    item = {
+        "metadata": {
+            "name": "web",
+            "namespace": "default",
+            "creationTimestamp": "2026-01-01T00:00:00Z",
+        },
+        "spec": {
+            "hostnames": ["web.example.com"],
+            "parentRefs": [
+                {"name": "eg", "namespace": "default", "sectionName": "https"}
+            ],
+            "rules": [
+                {
+                    "matches": [
+                        {"path": {"type": "PathPrefix", "value": "/"}, "method": "GET"}
+                    ],
+                    "backendRefs": [
+                        {"name": "web-svc", "namespace": "default", "port": 8080}
+                    ],
+                }
+            ],
+        },
+        "status": {
+            "parents": [
+                {
+                    "conditions": [
+                        {"type": "Accepted", "status": "True"},
+                        {"type": "ResolvedRefs", "status": "True"},
+                    ]
+                }
+            ]
+        },
+    }
+    item.update(overrides)
+    return item
+
+
+async def test_parse_httproute_item_full(mock_client):
+    """A fully accepted HTTPRoute parses hostnames, refs, rules and status."""
+    result = mock_client._parse_httproute_item(_httproute_item())
+
+    assert result["name"] == "web"
+    assert result["namespace"] == "default"
+    assert result["hostnames"] == ["web.example.com"]
+    assert result["parent_refs"] == [
+        {"name": "eg", "namespace": "default", "section_name": "https"}
+    ]
+    assert result["rules"] == [
+        {
+            "matches": [{"path_type": "PathPrefix", "path_value": "/", "method": "GET"}],
+            "backend_refs": [{"name": "web-svc", "namespace": "default", "port": 8080}],
+        }
+    ]
+    assert result["accepted"] is True
+    assert result["resolved_refs"] is True
+    assert result["creation_timestamp"] == "2026-01-01T00:00:00Z"
+
+
+async def test_parse_httproute_item_https_section_name_yields_https_url(mock_client):
+    """A listener name containing 'https' is treated as TLS-terminated."""
+    result = mock_client._parse_httproute_item(_httproute_item())
+
+    assert result["urls"] == ["https://web.example.com"]
+
+
+async def test_parse_httproute_item_tls_section_name_yields_https_url(mock_client):
+    """A listener name containing 'tls' (not literally 'https') also counts."""
+    item = _httproute_item()
+    item["spec"]["parentRefs"][0]["sectionName"] = "my-TLS-listener"
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["urls"] == ["https://web.example.com"]
+
+
+async def test_parse_httproute_item_plain_section_name_yields_http_url(mock_client):
+    """A listener name with no https/tls hint defaults to plain HTTP."""
+    item = _httproute_item()
+    item["spec"]["parentRefs"][0]["sectionName"] = "web"
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["urls"] == ["http://web.example.com"]
+
+
+async def test_parse_httproute_item_no_parent_refs_defaults_http(mock_client):
+    """No parentRefs at all defaults to plain HTTP rather than raising."""
+    item = _httproute_item()
+    item["spec"]["parentRefs"] = []
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["parent_refs"] == []
+    assert result["urls"] == ["http://web.example.com"]
+
+
+async def test_parse_httproute_item_wildcard_hostname_excluded(mock_client):
+    """A wildcard hostname is kept in hostnames but produces no clickable URL."""
+    item = _httproute_item()
+    item["spec"]["hostnames"] = ["web.example.com", "*.example.com"]
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["hostnames"] == ["web.example.com", "*.example.com"]
+    assert result["urls"] == ["https://web.example.com"]
+
+
+async def test_parse_httproute_item_no_hostnames(mock_client):
+    """A route with no hostnames parses to empty hostnames/urls lists."""
+    item = _httproute_item()
+    del item["spec"]["hostnames"]
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["hostnames"] == []
+    assert result["urls"] == []
+
+
+async def test_parse_httproute_item_backend_ref_defaults_to_route_namespace(mock_client):
+    """A backendRef without an explicit namespace defaults to the route's own."""
+    item = _httproute_item()
+    del item["spec"]["rules"][0]["backendRefs"][0]["namespace"]
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["rules"][0]["backend_refs"][0]["namespace"] == "default"
+
+
+async def test_parse_httproute_item_not_accepted_not_resolved(mock_client):
+    """False/missing conditions leave accepted and resolved_refs False."""
+    item = _httproute_item()
+    item["status"] = {
+        "parents": [
+            {
+                "conditions": [
+                    {"type": "Accepted", "status": "False"},
+                ]
+            }
+        ]
+    }
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["accepted"] is False
+    assert result["resolved_refs"] is False
+
+
+async def test_parse_httproute_item_no_status(mock_client):
+    """A route with no status at all parses to unaccepted, unresolved."""
+    item = _httproute_item()
+    del item["status"]
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["accepted"] is False
+    assert result["resolved_refs"] is False
+
+
+async def test_parse_httproute_item_no_rules(mock_client):
+    """A route with no rules parses to an empty rules list."""
+    item = _httproute_item()
+    del item["spec"]["rules"]
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["rules"] == []
+
+
+async def test_parse_httproute_item_malformed_returns_none(mock_client):
+    """Missing metadata returns None instead of raising."""
+    assert mock_client._parse_httproute_item({}) is None
+
+
 def _service_item(**overrides):
     """Build a raw Service API object for parse tests."""
     item = {

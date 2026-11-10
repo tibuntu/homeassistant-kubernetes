@@ -68,6 +68,7 @@ def mock_client():
     client.get_ingresses = AsyncMock(return_value=[])
     client.get_services = AsyncMock(return_value=[])
     client.get_hpas = AsyncMock(return_value=[])
+    client.get_httproutes = AsyncMock(return_value=[])
     client.get_deployments_count = AsyncMock(return_value=0)
     client.get_statefulsets_count = AsyncMock(return_value=0)
     client.get_daemonsets_count = AsyncMock(return_value=0)
@@ -4454,6 +4455,55 @@ class TestFetchHpas:
 
         with pytest.raises(UpdateFailed):
             await coordinator._async_update_data()
+
+
+class TestFetchHttproutes:
+    """HTTPRoute detection must tolerate a missing RBAC rule or absent CRD."""
+
+    @pytest.mark.parametrize("status", [403, 404])
+    async def test_forbidden_or_missing_crd_means_no_httproutes(
+        self, coordinator, mock_client, caplog, status
+    ):
+        """HTTP 403 (RBAC) or 404 (CRD absent) yields an empty bucket and
+        warns once, not every poll."""
+        mock_client.get_httproutes.side_effect = KubernetesApiError("boom", status)
+
+        data = await coordinator._async_update_data()
+        await coordinator._async_update_data()
+
+        assert data["httproutes"] == {}
+        assert caplog.text.count("Listing HTTPRoutes is forbidden") == 1
+
+    async def test_recovery_rearms_warning(self, coordinator, mock_client, caplog):
+        """A successful list clears the flag, so a later 403 warns again."""
+        forbidden = KubernetesApiError("forbidden", 403)
+        httproute = {"name": "web", "namespace": "default"}
+        mock_client.get_httproutes.side_effect = [forbidden, [httproute], forbidden]
+
+        await coordinator._async_update_data()
+        data = await coordinator._async_update_data()
+        await coordinator._async_update_data()
+
+        assert data["httproutes"] == {"default_web": httproute}
+        assert caplog.text.count("Listing HTTPRoutes is forbidden") == 2
+
+    async def test_other_errors_fail_the_poll(self, coordinator, mock_client):
+        """Any other failure still raises, like every other fetch."""
+        mock_client.auth_failed = False
+        mock_client.is_cluster_healthy = AsyncMock(return_value=True)
+        mock_client.get_httproutes.side_effect = KubernetesApiError("boom", 500)
+
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+    async def test_success_populates_bucket(self, coordinator, mock_client):
+        """A successful list is keyed the same as every other namespaced bucket."""
+        httproute = {"name": "web", "namespace": "default"}
+        mock_client.get_httproutes.return_value = [httproute]
+
+        data = await coordinator._async_update_data()
+
+        assert data["httproutes"] == {"default_web": httproute}
 
 
 class TestGetHpaFor:

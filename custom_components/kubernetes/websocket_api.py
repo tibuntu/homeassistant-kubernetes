@@ -152,6 +152,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_workloads_list)
     websocket_api.async_register_command(hass, websocket_ingresses_list)
     websocket_api.async_register_command(hass, websocket_services_list)
+    websocket_api.async_register_command(hass, websocket_httproutes_list)
     websocket_api.async_register_command(hass, websocket_config_list)
     websocket_api.async_register_command(hass, websocket_delete_pod)
     websocket_api.async_register_command(hass, websocket_pod_logs)
@@ -248,6 +249,19 @@ async def websocket_services_list(
 ) -> None:
     """Return all services from all config entries."""
     result = _list_data(hass, "services")
+    connection.send_result(msg["id"], result)
+
+
+@_require_panel_access
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/httproutes/list"})
+@websocket_api.async_response
+async def websocket_httproutes_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all Gateway API HTTPRoutes from all config entries."""
+    result = _list_data(hass, "httproutes")
     connection.send_result(msg["id"], result)
 
 
