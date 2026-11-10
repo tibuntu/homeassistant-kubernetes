@@ -375,12 +375,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
                 # Switch-bearing resources are always fetched — their switches
                 # read this data. Opting them out only suppresses their sensors.
-                deployments = await self.client.get_deployments(
-                    include_metrics=include_metrics
-                )
-                statefulsets = await self.client.get_statefulsets(
-                    include_metrics=include_metrics
-                )
+                deployments = await self.client.get_deployments(include_metrics=False)
+                statefulsets = await self.client.get_statefulsets(include_metrics=False)
                 cronjobs = await self.client.get_cronjobs()
 
                 # Fully-off resources skip their fetch entirely.
@@ -389,6 +385,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     if "daemonsets" in disabled
                     else await self.client.get_daemonsets()
                 )
+
+                # One pods + metrics fetch enriches every workload kind.
+                workloads = [*deployments, *statefulsets, *daemonsets]
+                if include_metrics and workloads:
+                    await self.client.enrich_workloads_with_metrics(workloads)
+
                 jobs = [] if "jobs" in disabled else await self.client.get_jobs()
                 ingresses = (
                     [] if "ingresses" in disabled else await self.client.get_ingresses()
@@ -722,10 +724,15 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             f"{eid}_{namespace}_{name}_{workload_type}_{metric}"
                         )
 
-        # DaemonSet sensors: daemonset_{namespace}_{name}
+        # DaemonSet sensors: daemonset_{namespace}_{name}, plus CPU/memory
+        # metric sensors {namespace}_{name}_daemonset_{cpu|memory}
         for data in current_data.get("daemonsets", {}).values():
             namespace = data.get("namespace", "default")
-            expected.add(f"{eid}_daemonset_{namespace}_{data.get('name', '')}")
+            name = data.get("name", "")
+            expected.add(f"{eid}_daemonset_{namespace}_{name}")
+            if "metrics" not in disabled:
+                for metric in ("cpu", "memory"):
+                    expected.add(f"{eid}_{namespace}_{name}_daemonset_{metric}")
 
         # CronJob sensors: cronjob_{namespace}_{name}
         # CronJob switches: {namespace}_{name}_cronjob (survive the opt-out)

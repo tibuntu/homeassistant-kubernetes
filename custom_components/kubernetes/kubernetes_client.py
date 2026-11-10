@@ -996,15 +996,26 @@ class KubernetesClient:
             _LOGGER.warning("Failed to parse node item: %s", ex)
             return None
 
+    @staticmethod
+    def _parse_selector(
+        item: dict[str, Any],
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """Return (matchLabels, matchExpressions) from a workload's spec.selector.
+
+        Tolerates a null selector, null matchLabels and non-list matchExpressions.
+        """
+        selector_spec = (item.get("spec") or {}).get("selector") or {}
+        expressions = selector_spec.get("matchExpressions")
+        if not isinstance(expressions, list):
+            expressions = []
+        return selector_spec.get("matchLabels") or {}, expressions
+
     def _parse_replica_workload_item(
         self, item: dict[str, Any]
     ) -> dict[str, Any] | None:
         """Parse a single raw replica-based workload (Deployment/StatefulSet) API object."""
         try:
-            selector_spec = item.get("spec", {}).get("selector") or {}
-            selector_expressions = selector_spec.get("matchExpressions")
-            if not isinstance(selector_expressions, list):
-                selector_expressions = []
+            match_labels, selector_expressions = self._parse_selector(item)
             # Only Deployments report Progressing; StatefulSets never stall here.
             progressing: dict[str, Any] = next(
                 (
@@ -1029,7 +1040,7 @@ class KubernetesClient:
                 "rollout_stalled": rollout_stalled,
                 "rollout_reason": rollout_reason,
                 "is_running": item["status"].get("availableReplicas", 0) > 0,
-                "selector": selector_spec.get("matchLabels") or {},
+                "selector": match_labels,
                 "selector_expressions": selector_expressions,
             }
         except Exception as ex:
@@ -1047,6 +1058,7 @@ class KubernetesClient:
     def _parse_daemonset_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
         """Parse a single raw DaemonSet API object into the internal representation."""
         try:
+            match_labels, selector_expressions = self._parse_selector(item)
             return {
                 "name": item["metadata"]["name"],
                 "namespace": item["metadata"]["namespace"],
@@ -1059,9 +1071,8 @@ class KubernetesClient:
                 "number_ready": item["status"].get("numberReady", 0),
                 "number_available": item["status"].get("numberAvailable", 0),
                 "is_running": item["status"].get("numberReady", 0) > 0,
-                "selector": item.get("spec", {})
-                .get("selector", {})
-                .get("matchLabels", {}),
+                "selector": match_labels,
+                "selector_expressions": selector_expressions,
             }
         except Exception as ex:
             _LOGGER.warning("Failed to parse daemonset item: %s", ex)
@@ -2409,10 +2420,16 @@ class KubernetesClient:
 
         return cpu_usage, memory_usage
 
+    async def enrich_workloads_with_metrics(
+        self, workloads: list[dict[str, Any]]
+    ) -> None:
+        """Enrich a mixed list of workloads with one pods + metrics fetch."""
+        await self._enrich_workloads_with_metrics(workloads, "workload")
+
     async def _enrich_workloads_with_metrics(
         self, workloads: list[dict[str, Any]], workload_type_label: str
     ) -> None:
-        """Enrich workloads (deployments/statefulsets) with CPU and memory usage metrics."""
+        """Enrich workloads (deployments/statefulsets/daemonsets) with CPU and memory usage metrics."""
         # Initialize all workloads with 0.0 values first
         for workload in workloads:
             workload.setdefault("cpu_usage", 0.0)

@@ -24,6 +24,7 @@ _COMPONENT_DIR = Path(__file__).parents[1] / "custom_components" / "kubernetes"
 def _client() -> MagicMock:
     client = MagicMock()
     client.auth_failed = False
+    client.enrich_workloads_with_metrics = AsyncMock()
     client.get_deployments = AsyncMock(
         return_value=[
             {"name": "web", "namespace": "default", "replicas": 2, "is_running": True}
