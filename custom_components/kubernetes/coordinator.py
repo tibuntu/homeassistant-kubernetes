@@ -108,6 +108,11 @@ def _watch_url_namespace(url: str) -> str | None:
     return None
 
 
+# Watched resources backed by an optional CRD: a 404 on their list/watch
+# means "API not installed", which is a normal state rather than a failure.
+_OPTIONAL_WATCH_RESOURCES = frozenset({"httproutes"})
+
+
 def _reconnect_delay(failure_streak: int) -> float:
     """Jittered exponential backoff for a failing watch loop, capped."""
     return min(
@@ -1308,11 +1313,16 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     # forbidden state, and data may have drifted meanwhile.
                     resource_version = "0"
                     delay = _forbidden_retry_delay()
-                elif isinstance(ex, aiohttp.ClientResponseError) and ex.status == 404:
-                    # The API is not served — an optional CRD (Gateway API) is
+                elif (
+                    resource_type in _OPTIONAL_WATCH_RESOURCES
+                    and isinstance(ex, aiohttp.ClientResponseError)
+                    and ex.status == 404
+                ):
+                    # The API is not served — the optional CRD (Gateway API) is
                     # not installed. A normal state, not a failure: no streak,
                     # no repair issue, just a slow retry in case it appears.
                     # It also ends a forbidden episode (RBAC added, CRD absent).
+                    # A 404 for any other resource stays a real failure.
                     _LOGGER.debug("Watch %s: API not served (404)", resource_type)
                     failure_streak = 0
                     self._sync_watch_repair_issue(loop_key, failing=False)

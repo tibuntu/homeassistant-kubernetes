@@ -3018,13 +3018,15 @@ class TestRunWatchLoopExtended:
         assert coord._failing_watch_loops == set()
         assert coord._forbidden_resources == set()
 
+    @pytest.mark.parametrize("status", [500, 404])
     async def test_run_watch_loop_other_http_error_still_backs_off(
-        self, coord, mock_client
+        self, coord, mock_client, status
     ):
-        """A non-403 HTTP error keeps the existing reconnect/backoff path."""
+        """A non-403 HTTP error keeps the existing reconnect/backoff path —
+        including a 404 on a resource that is not an optional CRD."""
         mock_client.list_resource_with_version.side_effect = (
             aiohttp.ClientResponseError(
-                request_info=MagicMock(), history=(), status=500, message="boom"
+                request_info=MagicMock(), history=(), status=status, message="boom"
             )
         )
 
@@ -3038,6 +3040,7 @@ class TestRunWatchLoopExtended:
             )
 
         wait_for.assert_called_once()
+        assert wait_for.call_args.kwargs["timeout"] < WATCH_MAX_RECONNECT_DELAY
         assert coord._forbidden_resources == set()
 
 
