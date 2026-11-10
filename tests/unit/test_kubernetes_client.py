@@ -1849,6 +1849,89 @@ async def test_trigger_cronjob_default_namespace(mock_client):
     )
 
 
+def _trigger_guard_client(mock_config, *, monitor_all: bool) -> KubernetesClient:
+    """Client monitoring "default" and "apps" for the trigger namespace guard."""
+    mock_config["namespace"] = ["default", "apps"]
+    mock_config["monitor_all_namespaces"] = monitor_all
+    with patch("custom_components.kubernetes.kubernetes_client.k8s_client"):
+        return KubernetesClient(mock_config)
+
+
+def _trigger_session() -> MagicMock:
+    """Session whose GET returns a CronJob template and POST creates the Job."""
+    cronjob_data = {
+        "spec": {
+            "jobTemplate": {
+                "spec": {"template": {"spec": {"containers": [{"name": "job"}]}}}
+            }
+        }
+    }
+    return mock_aiohttp_session(
+        get=_mock_response(200, json_data=cronjob_data),
+        post=_mock_response(201, json_data={"metadata": {"uid": "job-uid-1"}}),
+    )
+
+
+async def test_trigger_cronjob_unmonitored_namespace_creates_no_job(mock_config):
+    """A namespace outside the monitored list is refused before any API call."""
+    client = _trigger_guard_client(mock_config, monitor_all=False)
+    session = _trigger_session()
+
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+        return_value=session,
+    ) as session_cls:
+        result = await client.trigger_cronjob("backup", "other")
+
+    assert result["success"] is False
+    assert result["cronjob_name"] == "backup"
+    assert result["namespace"] == "other"
+    assert result["error"].startswith(
+        "Cannot trigger CronJob 'backup' in namespace 'other': "
+    )
+    assert "monitor_all_namespaces" in result["error"]
+    # No Job was created: the API was never contacted.
+    assert session_cls.call_count == 0
+    assert session.post.call_count == 0
+
+
+async def test_trigger_cronjob_monitored_non_default_namespace(mock_config):
+    """Any monitored namespace is allowed, not only the first (default) one."""
+    client = _trigger_guard_client(mock_config, monitor_all=False)
+    session = _trigger_session()
+
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+        return_value=session,
+    ):
+        result = await client.trigger_cronjob("backup", "apps")
+
+    assert result["success"] is True
+    assert result["namespace"] == "apps"
+    assert result["job_uid"] == "job-uid-1"
+    post_url = session.post.call_args.args[0]
+    assert post_url.endswith("/apis/batch/v1/namespaces/apps/jobs")
+    assert session.post.call_args.kwargs["json"]["metadata"]["namespace"] == "apps"
+
+
+async def test_trigger_cronjob_monitor_all_namespaces_lifts_guard(mock_config):
+    """With monitor_all_namespaces, an unlisted namespace gets its Job created."""
+    client = _trigger_guard_client(mock_config, monitor_all=True)
+    session = _trigger_session()
+
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+        return_value=session,
+    ):
+        result = await client.trigger_cronjob("backup", "other")
+
+    assert result["success"] is True
+    assert result["namespace"] == "other"
+    assert result["job_uid"] == "job-uid-1"
+    post_url = session.post.call_args.args[0]
+    assert post_url.endswith("/apis/batch/v1/namespaces/other/jobs")
+
+
 async def test_scale_deployment_api_exception(mock_client):
     """Test deployment scaling when API raises exception."""
     mock_client._apps_api.read_namespaced_deployment.side_effect = ApiException(
