@@ -8,6 +8,7 @@ from custom_components.kubernetes.alerts import (
     build_alerts,
     degraded_workloads,
     failed_jobs,
+    job_state,
     nodes_under_pressure,
     problem_pods,
     restarting_pods,
@@ -260,3 +261,45 @@ def test_failed_jobs_without_cronjob_data():
     """A missing CronJob (standalone Job, bucket absent) keeps the alert."""
     data = {"jobs": {"j": _job([_failed()], owner_cronjob=None)}, "cronjobs": {}}
     assert len(failed_jobs(data, _NOW)) == 1
+
+
+def _cond(type_, status="True"):
+    return {"type": type_, "status": status}
+
+
+@pytest.mark.parametrize(
+    ("job", "expected"),
+    [
+        ({"conditions": [_cond("Complete")]}, "Complete"),
+        ({"conditions": [_cond("Failed")]}, "Failed"),
+        ({"conditions": [_cond("Failed"), _cond("Complete")]}, "Complete"),
+        ({"conditions": [_cond("SuccessCriteriaMet")], "active": 1}, "Running"),
+        ({"conditions": [_cond("FailureTarget")], "failed": 1}, "Retrying"),
+        ({"conditions": [_cond("Complete", "False")]}, "Pending"),
+        ({"conditions": [_cond("Failed", "False")], "failed": 1}, "Retrying"),
+        ({"succeeded": 3, "completions": 3}, "Complete"),
+        ({"conditions": [_cond("Suspended")]}, "Suspended"),
+        ({"active": 2}, "Running"),
+        ({"failed": 1}, "Retrying"),
+        ({}, "Pending"),
+        ({"conditions": None}, "Pending"),
+    ],
+    ids=[
+        "complete",
+        "failed",
+        "complete-beats-failed",
+        "interim-success-criteria-ignored",
+        "interim-failure-target-ignored",
+        "complete-status-false-ignored",
+        "failed-status-false-ignored",
+        "counter-fallback",
+        "suspended",
+        "running",
+        "retrying",
+        "pending",
+        "conditions-none",
+    ],
+)
+def test_job_state(job, expected):
+    """job_state covers every branch of the Job status derivation."""
+    assert job_state(job) == expected

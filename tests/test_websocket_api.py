@@ -803,6 +803,34 @@ class TestWebsocketWorkloadsList:
         assert len(cluster["cronjobs"]) == 1
         assert len(cluster["jobs"]) == 1
 
+    def test_jobs_carry_derived_state_without_mutating_coordinator(self, mock_hass):
+        """Each job gets a derived state; coordinator data stays untouched."""
+        data = {
+            "jobs": {
+                "ns_done": {
+                    "name": "done",
+                    "namespace": "ns",
+                    "conditions": [{"type": "Complete", "status": "True"}],
+                },
+                "ns_retry": {
+                    "name": "retry",
+                    "namespace": "ns",
+                    "active": 0,
+                    "failed": 2,
+                    "succeeded": 0,
+                    "completions": 1,
+                },
+            },
+        }
+        coordinator = _make_coordinator(data)
+        _load_entries(mock_hass, _make_entry("entry_1", coordinator, {}))
+
+        result = _get_workloads_list_data(mock_hass)
+
+        states = {j["name"]: j["state"] for j in result["clusters"][0]["jobs"]}
+        assert states == {"done": "Complete", "retry": "Retrying"}
+        assert all("state" not in job for job in coordinator.data["jobs"].values())
+
     def test_handles_none_coordinator_data(self, mock_hass):
         """Test handles coordinator with None data gracefully."""
         coordinator = _make_coordinator(None)

@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import Unauthorized
 import voluptuous as vol
 
-from .alerts import build_alerts
+from .alerts import build_alerts, job_state
 from .const import (
     CONF_CLUSTER_NAME,
     CONF_DEVICE_GROUPING_MODE,
@@ -407,7 +407,7 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
             statefulsets = _with_hpa(data, "statefulsets")
             daemonsets = list(data.get("daemonsets", {}).values())
             cronjobs = list(data.get("cronjobs", {}).values())
-            jobs = list(data.get("jobs", {}).values())
+            jobs = [{**j, "state": job_state(j)} for j in data.get("jobs", {}).values()]
         else:
             deployments = []
             statefulsets = []
