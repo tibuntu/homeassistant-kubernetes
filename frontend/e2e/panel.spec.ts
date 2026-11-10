@@ -126,9 +126,7 @@ test("stalled rollout reads Degraded with a badge despite all replicas ready", a
   await expect(web.locator(".badge-rollout-stalled")).toHaveCount(0);
 });
 
-test("job cards show the derived state badge, not one computed from counters", async ({
-  page,
-}) => {
+test("job cards show the backend-derived state badge", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Workloads");
   const migrate = page.locator(".workload-card", { hasText: "migrate" });

@@ -2478,7 +2478,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         </div>
         ${this._collapsedCategories.has(`jobs`)?E:r.map(t=>this._renderJobCard(e,t))}
       </div>
-    `}_renderJobCard(e,t){let n=gt[t.state]??`pending`,r=t.failed>0;return w`
+    `}_renderJobCard(e,t){let n=t.state??`Unknown`,r=gt[n]??`pending`,i=t.failed>0;return w`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
@@ -2487,8 +2487,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
           <span class="replica-info"> ${t.succeeded}/${t.completions} completed </span>
           ${t.active>0?w`<span class="badge badge-active">${t.active} active</span>`:E}
-          ${r?w`<span class="badge badge-failed">${t.failed} failed</span>`:E}
-          <span class="badge badge-${n}">${t.state}</span>
+          ${i?w`<span class="badge badge-failed">${t.failed} failed</span>`:E}
+          <span class="badge badge-${r}">${n}</span>
           ${t.start_time?w`<span class="last-schedule"
                   >Started: ${this._formatAgo(t.start_time)}</span
                 >`:E}
