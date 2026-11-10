@@ -5238,6 +5238,75 @@ class TestParseReplicaWorkloadItem:
             20.0,
         )
 
+    def test_daemonset_selector_expressions_emitted(self, mock_client):
+        """_parse_daemonset_item emits matchLabels and matchExpressions."""
+        exprs = [{"key": "track", "operator": "NotIn", "values": ["canary"]}]
+        raw = {
+            "metadata": {"name": "agent", "namespace": "kube-system"},
+            "spec": {
+                "selector": {"matchLabels": {"app": "agent"}, "matchExpressions": exprs}
+            },
+            "status": {"numberReady": 1},
+        }
+        result = mock_client._parse_daemonset_item(raw)
+        assert result is not None
+        assert result["selector"] == {"app": "agent"}
+        assert result["selector_expressions"] == exprs
+
+    @pytest.mark.parametrize(
+        "spec",
+        [
+            {},
+            {"selector": None},
+            {"selector": {"matchLabels": None}},
+            {"selector": {"matchLabels": None, "matchExpressions": 5}},
+            {"selector": {"matchExpressions": None}},
+        ],
+    )
+    def test_daemonset_null_selector_parts_default_empty(self, mock_client, spec):
+        """Null selector, null matchLabels and non-list matchExpressions parse."""
+        raw = {
+            "metadata": {"name": "agent", "namespace": "kube-system"},
+            "spec": spec,
+            "status": {"numberReady": 1},
+        }
+        result = mock_client._parse_daemonset_item(raw)
+        assert result is not None
+        assert result["selector"] == {}
+        assert result["selector_expressions"] == []
+
+    def test_daemonset_usage_attribution(self, mock_client):
+        """A parsed daemonset sums metrics of the pods its selector matches."""
+        raw = {
+            "metadata": {"name": "agent", "namespace": "kube-system"},
+            "spec": {"selector": {"matchLabels": {"app": "agent"}}},
+            "status": {"numberReady": 2},
+        }
+        result = mock_client._parse_daemonset_item(raw)
+        pods = [
+            {"name": "a1", "namespace": "kube-system", "labels": {"app": "agent"}},
+            {"name": "a2", "namespace": "kube-system", "labels": {"app": "agent"}},
+            {"name": "o", "namespace": "kube-system", "labels": {"app": "other"}},
+        ]
+        metrics = {
+            "kube-system/a1": {"cpu": 10.0, "memory": 20.0},
+            "kube-system/a2": {"cpu": 5.0, "memory": 6.0},
+            "kube-system/o": {"cpu": 99.0, "memory": 99.0},
+        }
+        assert mock_client._calculate_resource_usage(result, pods, metrics) == (
+            15.0,
+            26.0,
+        )
+
+    async def test_public_enrich_delegates(self, mock_client):
+        """enrich_workloads_with_metrics delegates to the private enricher."""
+        workloads = [{"name": "a", "namespace": "b"}]
+        with patch.object(
+            mock_client, "_enrich_workloads_with_metrics", new=AsyncMock()
+        ) as private:
+            await mock_client.enrich_workloads_with_metrics(workloads)
+        private.assert_awaited_once_with(workloads, "workload")
+
     def test_missing_selector(self, mock_client):
         """_parse_replica_workload_item handles missing selector gracefully."""
         raw = {

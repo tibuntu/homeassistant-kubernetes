@@ -83,6 +83,7 @@ def mock_client():
     client.get_node_metrics = AsyncMock(return_value={})
     client.get_server_version = AsyncMock(return_value="v1.36.2")
     client._test_connection = AsyncMock(return_value=True)
+    client.enrich_workloads_with_metrics = AsyncMock()
     return client
 
 
@@ -1177,6 +1178,7 @@ class TestWatchSupport:
     def mock_client(self):
         """Mock Kubernetes client for watch tests."""
         client = MagicMock()
+        client.enrich_workloads_with_metrics = AsyncMock()
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -1608,6 +1610,7 @@ class TestPopulateFromList:
     def mock_client(self):
         """Mock Kubernetes client."""
         client = MagicMock()
+        client.enrich_workloads_with_metrics = AsyncMock()
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -1787,6 +1790,7 @@ class TestApplyWatchEventExtended:
     def mock_client(self):
         """Mock Kubernetes client."""
         client = MagicMock()
+        client.enrich_workloads_with_metrics = AsyncMock()
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -1868,6 +1872,40 @@ class TestApplyWatchEventExtended:
             "replicas": 2,
             "cpu_usage": 120.0,
             "memory_usage": 64.0,
+        }
+
+    async def test_daemonset_modified_keeps_poll_time_metrics(self, coord, mock_client):
+        """A daemonset MODIFIED event carries over cpu_usage/memory_usage."""
+        coord.data = {
+            "daemonsets": {
+                "default_ds1": {
+                    "name": "ds1",
+                    "namespace": "default",
+                    "number_ready": 1,
+                    "cpu_usage": 50.0,
+                    "memory_usage": 32.0,
+                }
+            }
+        }
+        mock_client._parse_daemonset_item.return_value = {
+            "name": "ds1",
+            "namespace": "default",
+            "number_ready": 2,
+        }
+
+        coord._apply_watch_event(
+            "daemonsets",
+            "MODIFIED",
+            {"metadata": {"name": "ds1", "namespace": "default"}},
+            mock_client._parse_daemonset_item,
+        )
+
+        assert coord.data["daemonsets"]["default_ds1"] == {
+            "name": "ds1",
+            "namespace": "default",
+            "number_ready": 2,
+            "cpu_usage": 50.0,
+            "memory_usage": 32.0,
         }
 
     async def test_last_update_timestamp_set(self, coord, mock_client):
@@ -2020,6 +2058,7 @@ class TestRelistPruning:
     def mock_client(self):
         """Mock Kubernetes client."""
         client = MagicMock()
+        client.enrich_workloads_with_metrics = AsyncMock()
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -2306,6 +2345,7 @@ class TestRunWatchLoopExtended:
     def mock_client(self):
         """Mock Kubernetes client."""
         client = MagicMock()
+        client.enrich_workloads_with_metrics = AsyncMock()
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -3051,6 +3091,7 @@ class TestBuildWatchConfigs:
     def mock_client(self):
         """Mock Kubernetes client."""
         client = MagicMock()
+        client.enrich_workloads_with_metrics = AsyncMock()
         client.host = "test-cluster.example.com"
         client.port = 6443
         client._parse_pod_item = MagicMock()
@@ -3319,6 +3360,7 @@ class TestStartStopWatchTasksExtended:
     def mock_client(self):
         """Mock Kubernetes client."""
         client = MagicMock()
+        client.enrich_workloads_with_metrics = AsyncMock()
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -3420,6 +3462,7 @@ class TestEventWatchLoop:
     def mock_client(self):
         """Mock Kubernetes client for event watch tests."""
         client = MagicMock()
+        client.enrich_workloads_with_metrics = AsyncMock()
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -4322,30 +4365,53 @@ class TestDisabledResources:
     async def test_metrics_disabled_skips_metrics_api(
         self, hass: HomeAssistant, mock_client
     ):
-        """Metrics opt-out skips the Metrics API and the repair issue."""
+        """Metrics opt-out skips the Metrics API, enrichment and the repair issue."""
         coordinator = self._make_coordinator(hass, mock_client, ["metrics"])
         mock_client.get_nodes.return_value = [{"name": "n1"}]
+        mock_client.get_deployments.return_value = [{"name": "d", "namespace": "x"}]
 
         await coordinator._async_update_data()
 
         mock_client.get_node_metrics.assert_not_called()
+        mock_client.enrich_workloads_with_metrics.assert_not_awaited()
         mock_client.get_deployments.assert_called_once_with(include_metrics=False)
         mock_client.get_statefulsets.assert_called_once_with(include_metrics=False)
         # Nodes exist and metrics are empty, but the issue must not be raised
         # because metrics were deliberately disabled.
         assert coordinator._metrics_issue_active is False
 
-    async def test_metrics_enabled_passes_include_metrics_true(
+    async def test_metrics_enabled_enriches_all_workloads_once(
         self, hass: HomeAssistant, mock_client
     ):
-        """Default (nothing disabled) requests metrics enrichment."""
+        """Default (nothing disabled) enriches deployments, statefulsets and daemonsets once."""
+        coordinator = self._make_coordinator(hass, mock_client, [])
+        dep = {"name": "d", "namespace": "x"}
+        sts = {"name": "s", "namespace": "x"}
+        ds = {"name": "ds", "namespace": "x"}
+        mock_client.get_deployments.return_value = [dep]
+        mock_client.get_statefulsets.return_value = [sts]
+        mock_client.get_daemonsets.return_value = [ds]
+
+        await coordinator._async_update_data()
+
+        mock_client.get_deployments.assert_called_once_with(include_metrics=False)
+        mock_client.get_statefulsets.assert_called_once_with(include_metrics=False)
+        mock_client.enrich_workloads_with_metrics.assert_awaited_once()
+        workloads = mock_client.enrich_workloads_with_metrics.await_args.args[0]
+        assert dep in workloads
+        assert sts in workloads
+        assert ds in workloads
+        mock_client.get_node_metrics.assert_called_once()
+
+    async def test_metrics_enabled_without_workloads_skips_enrichment(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """No workloads means no pods + metrics fetch."""
         coordinator = self._make_coordinator(hass, mock_client, [])
 
         await coordinator._async_update_data()
 
-        mock_client.get_deployments.assert_called_once_with(include_metrics=True)
-        mock_client.get_statefulsets.assert_called_once_with(include_metrics=True)
-        mock_client.get_node_metrics.assert_called_once()
+        mock_client.enrich_workloads_with_metrics.assert_not_awaited()
 
     async def test_watch_configs_skip_fully_off_resources(
         self, hass: HomeAssistant, mock_client
@@ -4395,6 +4461,7 @@ class TestDisabledResources:
             "nodes": {"n1": {"name": "n1"}},
             "deployments": {"default_web": {"name": "web", "namespace": "default"}},
             "statefulsets": {"default_db": {"name": "db", "namespace": "default"}},
+            "daemonsets": {"default_ds": {"name": "ds", "namespace": "default"}},
             "cronjobs": {"default_cj": {"name": "cj", "namespace": "default"}},
         }
 
@@ -4425,6 +4492,10 @@ class TestDisabledResources:
         assert f"{eid}_default_db_statefulset_replicas" in expected
         assert f"{eid}_default_db_statefulset_cpu" not in expected
         assert f"{eid}_default_db_statefulset_memory" not in expected
+        # DaemonSet status sensor stays, metric sensors dropped
+        assert f"{eid}_daemonset_default_ds" in expected
+        assert f"{eid}_default_ds_daemonset_cpu" not in expected
+        assert f"{eid}_default_ds_daemonset_memory" not in expected
 
     async def test_expected_unique_ids_all_enabled_unchanged(
         self, hass: HomeAssistant, mock_client
@@ -4434,11 +4505,15 @@ class TestDisabledResources:
         current = {
             "nodes": {"n1": {"name": "n1"}},
             "deployments": {"default_web": {"name": "web", "namespace": "default"}},
+            "daemonsets": {"default_ds": {"name": "ds", "namespace": "default"}},
         }
 
         expected = coordinator._build_expected_unique_ids(current)
         eid = coordinator.config_entry.entry_id
 
+        assert f"{eid}_daemonset_default_ds" in expected
+        assert f"{eid}_default_ds_daemonset_cpu" in expected
+        assert f"{eid}_default_ds_daemonset_memory" in expected
         assert f"{eid}_node_n1" in expected
         assert f"{eid}_node_n1_memory_pressure" in expected
         assert f"{eid}_node_n1_ready" in expected
