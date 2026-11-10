@@ -166,8 +166,27 @@ async def async_setup_entry(
             sensors.append(daemonset_sensor)
             daemonset_sensors_created += 1
 
-        # Create status and CPU/memory sensors for deployments and statefulsets
+        # Create status and CPU/memory sensors for deployments and statefulsets,
+        # plus CPU/memory sensors only for DaemonSets
         metric_sensors_created = 0
+        if "daemonsets" not in disabled and "metrics" not in disabled:
+            for daemonset_data in daemonsets_data.values():
+                daemonset_name = daemonset_data.get("name", "")
+                namespace = daemonset_data.get("namespace", "default")
+                await get_or_create_namespace_device(hass, config_entry, namespace)
+                for metric in ("cpu", "memory"):
+                    sensors.append(
+                        KubernetesWorkloadMetricSensor(
+                            coordinator,
+                            client,
+                            config_entry,
+                            daemonset_name,
+                            namespace,
+                            "daemonset",
+                            metric,
+                        )
+                    )
+                    metric_sensors_created += 1
         status_sensors_created = 0
         for workload_type in ("deployment", "statefulset"):
             resource_key = f"{workload_type}s"
@@ -353,12 +372,12 @@ def _discover_new_workload_metric_sensors(
     config_entry: ConfigEntry,
     existing_unique_ids: set[str],
 ) -> list[KubernetesWorkloadMetricSensor]:
-    """Discover new workload metric sensors for deployments and statefulsets."""
+    """Discover new workload metric sensors for deployments, statefulsets and daemonsets."""
     new_entities: list[KubernetesWorkloadMetricSensor] = []
     disabled = disabled_resources(config_entry)
     if "metrics" in disabled:
         return new_entities
-    for workload_type in ("deployment", "statefulset"):
+    for workload_type in ("deployment", "statefulset", "daemonset"):
         resource_key = f"{workload_type}s"
         if resource_key in disabled:
             continue
@@ -853,7 +872,7 @@ class KubernetesPodSensor(KubernetesBaseSensor):
 
 
 class KubernetesWorkloadMetricSensor(KubernetesBaseSensor):
-    """Sensor for CPU or memory usage of a Kubernetes deployment or statefulset."""
+    """Sensor for CPU or memory usage of a deployment, statefulset or daemonset."""
 
     def __init__(
         self,
