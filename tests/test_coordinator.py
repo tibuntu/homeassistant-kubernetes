@@ -2989,6 +2989,35 @@ class TestRunWatchLoopExtended:
             seconds=DEFAULT_FALLBACK_POLL_INTERVAL
         )
 
+    async def test_run_watch_loop_404_retries_at_cap_without_any_issue(
+        self, coord, mock_client
+    ):
+        """A 404 (optional CRD not installed) retries slowly, raises no
+        repair issue and ends a forbidden episode of the same loop."""
+        url = "https://host/apis/gateway.networking.k8s.io/v1/httproutes"
+        coord._forbidden_loops[f"httproutes:{url}"] = "httproutes"
+        mock_client.list_resource_with_version.side_effect = (
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=404, message="Not Found"
+            )
+        )
+
+        with (
+            patch("asyncio.wait_for", side_effect=self._stop_on_wait(coord)) as wf,
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_create_issue"
+            ) as create,
+        ):
+            await coord._run_watch_loop(
+                "httproutes", url, mock_client._parse_httproute_item
+            )
+
+        wf.assert_called_once()
+        assert wf.call_args.kwargs["timeout"] >= WATCH_MAX_RECONNECT_DELAY
+        create.assert_not_called()
+        assert coord._failing_watch_loops == set()
+        assert coord._forbidden_resources == set()
+
     async def test_run_watch_loop_other_http_error_still_backs_off(
         self, coord, mock_client
     ):
@@ -3065,13 +3094,14 @@ class TestBuildWatchConfigs:
         assert "ingresses" in resource_types
         assert "services" in resource_types
         assert "hpas" in resource_types
+        assert "httproutes" in resource_types
 
         # All URLs should be cluster-wide (no /namespaces/ in them)
         for url in urls:
             assert "/namespaces/" not in url
 
-        # 10 resource types total
-        assert len(configs) == 10
+        # 11 resource types total
+        assert len(configs) == 11
 
     async def test_per_namespace_configs_when_not_monitor_all(self, coord, mock_client):
         """When monitor_all_namespaces=False, should return per-namespace URLs."""
@@ -3081,8 +3111,8 @@ class TestBuildWatchConfigs:
 
         configs = coord._build_watch_configs(base_url)
 
-        # Nodes is always cluster-scoped (1 config) plus 9 resource types * 2 namespaces
-        assert len(configs) == 1 + 9 * 2
+        # Nodes is always cluster-scoped (1 config) plus 10 resource types * 2 namespaces
+        assert len(configs) == 1 + 10 * 2
 
         # The nodes URL should be cluster-wide
         nodes_configs = [(rt, url) for rt, url, _ in configs if rt == "nodes"]
@@ -3096,15 +3126,15 @@ class TestBuildWatchConfigs:
         assert any("/namespaces/kube-system/pods" in url for _, url in pod_configs)
 
     async def test_single_namespace_config(self, coord, mock_client):
-        """With one namespace and not monitoring all, should have 10 configs."""
+        """With one namespace and not monitoring all, should have 11 configs."""
         mock_client.monitor_all_namespaces = False
         mock_client.namespaces = ["production"]
         base_url = "https://test-cluster.example.com:6443"
 
         configs = coord._build_watch_configs(base_url)
 
-        # 1 nodes (cluster-wide) + 9 per-namespace resources * 1 namespace
-        assert len(configs) == 10
+        # 1 nodes (cluster-wide) + 10 per-namespace resources * 1 namespace
+        assert len(configs) == 11
 
         # Verify namespace appears in URLs for namespace-scoped resources
         ns_urls = [url for rt, url, _ in configs if rt != "nodes"]
@@ -3130,6 +3160,7 @@ class TestBuildWatchConfigs:
         assert parse_fn_map["ingresses"] is mock_client._parse_ingress_item
         assert parse_fn_map["services"] is mock_client._parse_service_item
         assert parse_fn_map["hpas"] is mock_client._parse_hpa_item
+        assert parse_fn_map["httproutes"] is mock_client._parse_httproute_item
 
     async def test_watch_configs_include_ingresses_all_namespaces(
         self, coord, mock_client
@@ -3189,6 +3220,10 @@ class TestBuildWatchConfigs:
                 "hpas",
                 "https://host:6443/apis/autoscaling/v2/horizontalpodautoscalers",
             ),
+            (
+                "httproutes",
+                "https://host:6443/apis/gateway.networking.k8s.io/v1/httproutes",
+            ),
         }
         assert got == expected
         assert len(configs) == len(expected)
@@ -3238,6 +3273,10 @@ class TestBuildWatchConfigs:
                 (
                     "hpas",
                     f"https://host:6443/apis/autoscaling/v2/namespaces/{ns}/horizontalpodautoscalers",
+                ),
+                (
+                    "httproutes",
+                    f"https://host:6443/apis/gateway.networking.k8s.io/v1/namespaces/{ns}/httproutes",
                 ),
             }
         assert got == expected
@@ -3324,8 +3363,8 @@ class TestStartStopWatchTasksExtended:
         ):
             await coord.async_start_watch_tasks()
 
-        # 10 resource types for monitor_all_namespaces=True
-        assert len(coord._watch_tasks) == 10
+        # 11 resource types for monitor_all_namespaces=True
+        assert len(coord._watch_tasks) == 11
 
         for coro in created_coros:
             coro.close()
@@ -4169,7 +4208,15 @@ class TestDisabledResources:
         coordinator = self._make_coordinator(
             hass,
             mock_client,
-            ["pods", "daemonsets", "jobs", "ingresses", "services", "hpas"],
+            [
+                "pods",
+                "daemonsets",
+                "jobs",
+                "ingresses",
+                "services",
+                "hpas",
+                "httproutes",
+            ],
         )
         mock_client.get_daemonsets_count.return_value = 4
         mock_client.get_jobs_count.return_value = 2
@@ -4184,12 +4231,14 @@ class TestDisabledResources:
         mock_client.get_ingresses.assert_not_called()
         mock_client.get_services.assert_not_called()
         mock_client.get_hpas.assert_not_called()
+        mock_client.get_httproutes.assert_not_called()
         assert data["pods"] == {}
         assert data["daemonsets"] == {}
         assert data["jobs"] == {}
         assert data["ingresses"] == {}
         assert data["services"] == {}
         assert data["hpas"] == {}
+        assert data["httproutes"] == {}
         # Counts stay on by default and fall back to the cheap count endpoints
         mock_client.get_pods_count.assert_called_once()
         assert data["daemonsets_count"] == 4
@@ -4309,6 +4358,7 @@ class TestDisabledResources:
                 "ingresses",
                 "services",
                 "hpas",
+                "httproutes",
                 "deployments",
                 "nodes",
             ],
@@ -4324,6 +4374,7 @@ class TestDisabledResources:
         assert "ingresses" not in resource_types
         assert "services" not in resource_types
         assert "hpas" not in resource_types
+        assert "httproutes" not in resource_types
         # Sensors-off resources keep their watch (switches consume the data)
         assert "deployments" in resource_types
         assert "nodes" in resource_types
@@ -4458,24 +4509,32 @@ class TestFetchHpas:
 
 
 class TestFetchHttproutes:
-    """HTTPRoute detection must tolerate a missing RBAC rule or absent CRD."""
+    """The HTTPRoute fetch is best-effort and never fails the poll."""
 
-    @pytest.mark.parametrize("status", [403, 404])
+    @pytest.mark.parametrize(
+        ("status", "message", "level"),
+        [
+            (403, "Listing HTTPRoutes is forbidden", "WARNING"),
+            (404, "Gateway API is not installed", "INFO"),
+        ],
+    )
     async def test_forbidden_or_missing_crd_means_no_httproutes(
-        self, coordinator, mock_client, caplog, status
+        self, coordinator, mock_client, caplog, status, message, level
     ):
-        """HTTP 403 (RBAC) or 404 (CRD absent) yields an empty bucket and
-        warns once, not every poll."""
+        """403 (RBAC) or 404 (CRD absent) yields an empty bucket and logs
+        once per episode — a missing CRD only at INFO."""
+        caplog.set_level("INFO")
         mock_client.get_httproutes.side_effect = KubernetesApiError("boom", status)
 
         data = await coordinator._async_update_data()
         await coordinator._async_update_data()
 
         assert data["httproutes"] == {}
-        assert caplog.text.count("Listing HTTPRoutes is forbidden") == 1
+        records = [r for r in caplog.records if message in r.message]
+        assert [r.levelname for r in records] == [level]
 
     async def test_recovery_rearms_warning(self, coordinator, mock_client, caplog):
-        """A successful list clears the flag, so a later 403 warns again."""
+        """A successful list ends the episode, so a later 403 warns again."""
         forbidden = KubernetesApiError("forbidden", 403)
         httproute = {"name": "web", "namespace": "default"}
         mock_client.get_httproutes.side_effect = [forbidden, [httproute], forbidden]
@@ -4487,14 +4546,30 @@ class TestFetchHttproutes:
         assert data["httproutes"] == {"default_web": httproute}
         assert caplog.text.count("Listing HTTPRoutes is forbidden") == 2
 
-    async def test_other_errors_fail_the_poll(self, coordinator, mock_client):
-        """Any other failure still raises, like every other fetch."""
-        mock_client.auth_failed = False
-        mock_client.is_cluster_healthy = AsyncMock(return_value=True)
+    @pytest.mark.parametrize(
+        "error", [KubernetesApiError("boom", 503), TimeoutError("slow")]
+    )
+    async def test_other_errors_keep_previous_bucket(
+        self, coordinator, mock_client, error
+    ):
+        """A transient failure neither fails the poll nor drops the routes."""
+        httproute = {"name": "web", "namespace": "default"}
+        mock_client.get_httproutes.side_effect = [[httproute], error]
+
+        coordinator.data = await coordinator._async_update_data()
+        data = await coordinator._async_update_data()
+
+        assert data["httproutes"] == {"default_web": httproute}
+
+    async def test_error_on_first_poll_means_empty_bucket(
+        self, coordinator, mock_client
+    ):
+        """With no previous data a transient failure yields an empty bucket."""
         mock_client.get_httproutes.side_effect = KubernetesApiError("boom", 500)
 
-        with pytest.raises(UpdateFailed):
-            await coordinator._async_update_data()
+        data = await coordinator._async_update_data()
+
+        assert data["httproutes"] == {}
 
     async def test_success_populates_bucket(self, coordinator, mock_client):
         """A successful list is keyed the same as every other namespaced bucket."""

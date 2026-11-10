@@ -143,6 +143,12 @@ _NAMESPACED_WATCH_RESOURCES: tuple[tuple[str, str, str, str], ...] = (
     ),
     ("services", "api/v1", "services", "_parse_service_item"),
     ("hpas", "apis/autoscaling/v2", "horizontalpodautoscalers", "_parse_hpa_item"),
+    (
+        "httproutes",
+        "apis/gateway.networking.k8s.io/v1",
+        "httproutes",
+        "_parse_httproute_item",
+    ),
 )
 
 
@@ -284,9 +290,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._forbidden_loops: dict[str, str] = {}
         # Set while the HPA list gets HTTP 403, so the warning logs once.
         self._hpas_forbidden = False
-        # Set while HTTPRoutes are forbidden or the Gateway API CRDs are not
-        # installed, so the warning logs once.
-        self._httproutes_unavailable = False
+        # HTTP status (403/404) of the current "no HTTPRoutes" episode, so it
+        # is logged once per episode rather than on every poll.
+        self._httproutes_status: int | None = None
 
     async def _fetch_hpas(self) -> list[dict[str, Any]]:
         """Fetch HPAs, treating HTTP 403 as "no HPAs".
@@ -313,31 +319,35 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         return hpas
 
     async def _fetch_httproutes(self) -> list[dict[str, Any]]:
-        """Fetch Gateway API HTTPRoutes, treating 403/404 as "none available".
+        """Fetch Gateway API HTTPRoutes; never fails the poll cycle.
 
-        Unlike Ingresses, HTTPRoutes are a CRD that many clusters do not
-        install, so they are polled only rather than wired into the Watch
-        API — the forbidden-loop machinery only tolerates HTTP 403, and a
-        missing CRD answers every watch attempt with 404 forever. A missing
-        RBAC rule (403) or an absent Gateway API CRD (404) must not fail the
-        whole poll cycle; no entity is derived from this bucket, only Network
-        tab panel data.
+        HTTPRoutes are a CRD many clusters do not install, and no entity is
+        derived from this bucket (Network tab only), so the fetch is
+        best-effort like the metrics fetches: a missing CRD (404) or RBAC rule
+        (403) means "none", logged once per episode, and any other failure
+        keeps the previous bucket (the client logs it, deduplicated).
         """
         try:
             httproutes = await self.client.get_httproutes()
-        except KubernetesApiError as ex:
-            if ex.status not in (403, 404):
-                raise
-            if not self._httproutes_unavailable:
-                self._httproutes_unavailable = True
-                _LOGGER.warning(
-                    "Listing HTTPRoutes is forbidden or the Gateway API CRDs "
-                    "are not installed — HTTPRoutes will not appear in the "
-                    "Network tab. Re-apply the RBAC (chart or manifests) if "
-                    "the Gateway API is installed on this cluster"
-                )
+        except Exception as ex:
+            status = getattr(ex, "status", None)
+            if status not in (403, 404):
+                return list((self.data or {}).get("httproutes", {}).values())
+            if status != self._httproutes_status:
+                self._httproutes_status = status
+                if status == 404:
+                    _LOGGER.info(
+                        "Gateway API is not installed on this cluster — the "
+                        "Network tab shows no HTTPRoutes"
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Listing HTTPRoutes is forbidden — the Network tab "
+                        "shows no HTTPRoutes. Re-apply the RBAC (chart or "
+                        "manifests), or disable HTTPRoutes in the options"
+                    )
             return []
-        self._httproutes_unavailable = False
+        self._httproutes_status = None
         return httproutes
 
     @property
@@ -382,7 +392,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     [] if "services" in disabled else await self.client.get_services()
                 )
                 hpas = [] if "hpas" in disabled else await self._fetch_hpas()
-                httproutes = await self._fetch_httproutes()
+                httproutes = (
+                    [] if "httproutes" in disabled else await self._fetch_httproutes()
+                )
 
                 _LOGGER.debug("Starting to fetch detailed node information")
                 nodes = await self.client.get_nodes()
@@ -1294,6 +1306,17 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     self._handle_watch_forbidden(loop_key, resource_type)
                     # Relist on retry: the successful list is what clears the
                     # forbidden state, and data may have drifted meanwhile.
+                    resource_version = "0"
+                    delay = _forbidden_retry_delay()
+                elif isinstance(ex, aiohttp.ClientResponseError) and ex.status == 404:
+                    # The API is not served — an optional CRD (Gateway API) is
+                    # not installed. A normal state, not a failure: no streak,
+                    # no repair issue, just a slow retry in case it appears.
+                    # It also ends a forbidden episode (RBAC added, CRD absent).
+                    _LOGGER.debug("Watch %s: API not served (404)", resource_type)
+                    failure_streak = 0
+                    self._sync_watch_repair_issue(loop_key, failing=False)
+                    self._clear_watch_forbidden(loop_key)
                     resource_version = "0"
                     delay = _forbidden_retry_delay()
                 else:

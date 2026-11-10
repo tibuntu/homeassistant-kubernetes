@@ -357,7 +357,7 @@ def _empty_alerts() -> dict[str, list]:
 
 
 def _list_data(hass: HomeAssistant, key: str) -> dict[str, Any]:
-    """Gather a single resource list (nodes/pods/ingresses/services) from all
+    """Gather a single resource list (nodes/pods/ingresses/services/httproutes) from all
     config entries, keyed the same as the coordinator's data bucket."""
     clusters: list[dict[str, Any]] = []
 

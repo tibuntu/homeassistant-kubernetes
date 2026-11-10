@@ -6,7 +6,8 @@
  *
  * Query string: `?fail=<ws type>` (repeatable) makes those WebSocket calls
  * reject until the spec clears `window.__k8s.fail`. `?admin=0` mounts the
- * panel as a non-admin user.
+ * panel as a non-admin user. `?empty=<ws type>` (repeatable) answers those
+ * list calls with no clusters.
  */
 import { KubernetesPanel } from "../src/kubernetes-panel";
 import type { HomeAssistant } from "../src/types/homeassistant";
@@ -36,6 +37,7 @@ declare global {
 const calls: Record<string, unknown>[] = [];
 const services: ServiceCall[] = [];
 const fail = new Set(new URLSearchParams(location.search).getAll("fail"));
+const empty = new Set(new URLSearchParams(location.search).getAll("empty"));
 const subscribers: (() => void)[] = [];
 window.__k8s = { calls, services, fail, push: () => subscribers.forEach((cb) => cb()) };
 
@@ -56,6 +58,7 @@ const hass: HomeAssistant = {
     calls.push(msg);
     const type = String(msg.type);
     if (fail.has(type)) throw new Error(`harness: ${type} failed`);
+    if (empty.has(type)) return { clusters: [] } as T;
     if (!(type in RESPONSES)) throw new Error(`harness: no fixture for ${type}`);
     return structuredClone(RESPONSES[type]) as T;
   },

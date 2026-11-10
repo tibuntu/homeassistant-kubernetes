@@ -203,6 +203,17 @@ class TestServices:
         assert count >= 1
 
 
+class TestHTTPRoutes:
+    async def test_get_httproutes_without_gateway_api_raises_404(self, k8s_client):
+        # kind ships no Gateway API CRDs. The coordinator relies on the real
+        # server answering a list of an unserved group with 404 (not an empty
+        # list, and not 403 since the chart grants the rule).
+        api_error = sys.modules[type(k8s_client).__module__].KubernetesApiError
+        with pytest.raises(api_error) as exc_info:
+            await k8s_client.get_httproutes()
+        assert exc_info.value.status == 404
+
+
 class TestHPAs:
     async def test_get_hpas_finds_target_deployment(self, k8s_client):
         hpas = await k8s_client.get_hpas()

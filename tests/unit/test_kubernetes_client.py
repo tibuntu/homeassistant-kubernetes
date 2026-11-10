@@ -1219,7 +1219,9 @@ async def test_parse_httproute_item_full(mock_client):
     ]
     assert result["rules"] == [
         {
-            "matches": [{"path_type": "PathPrefix", "path_value": "/", "method": "GET"}],
+            "matches": [
+                {"path_type": "PathPrefix", "path_value": "/", "method": "GET"}
+            ],
             "backend_refs": [{"name": "web-svc", "namespace": "default", "port": 8080}],
         }
     ]
@@ -1255,6 +1257,66 @@ async def test_parse_httproute_item_plain_section_name_yields_http_url(mock_clie
     assert result["urls"] == ["http://web.example.com"]
 
 
+async def test_parse_httproute_item_websecure_section_name_yields_https_url(
+    mock_client,
+):
+    """Traefik's conventional TLS listener name counts as https."""
+    item = _httproute_item()
+    item["spec"]["parentRefs"][0]["sectionName"] = "websecure"
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["urls"] == ["https://web.example.com"]
+
+
+async def test_parse_httproute_item_port_443_yields_https_url(mock_client):
+    """A parentRef pinned to port 443 is https even without a sectionName."""
+    item = _httproute_item()
+    item["spec"]["parentRefs"] = [{"name": "eg", "port": 443}]
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["urls"] == ["https://web.example.com"]
+
+
+async def test_parse_httproute_item_null_section_name(mock_client):
+    """An explicit null sectionName parses instead of dropping the route."""
+    item = _httproute_item()
+    item["spec"]["parentRefs"][0]["sectionName"] = None
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["parent_refs"][0]["section_name"] == ""
+    assert result["urls"] == ["http://web.example.com"]
+
+
+async def test_parse_httproute_item_one_rejecting_parent_is_not_accepted(mock_client):
+    """Every parent must accept: one rejecting Gateway turns both flags off
+    even though each condition is True on some parent."""
+    item = _httproute_item()
+    item["status"] = {
+        "parents": [
+            {
+                "conditions": [
+                    {"type": "Accepted", "status": "True"},
+                    {"type": "ResolvedRefs", "status": "False"},
+                ]
+            },
+            {
+                "conditions": [
+                    {"type": "Accepted", "status": "False"},
+                    {"type": "ResolvedRefs", "status": "True"},
+                ]
+            },
+        ]
+    }
+
+    result = mock_client._parse_httproute_item(item)
+
+    assert result["accepted"] is False
+    assert result["resolved_refs"] is False
+
+
 async def test_parse_httproute_item_no_parent_refs_defaults_http(mock_client):
     """No parentRefs at all defaults to plain HTTP rather than raising."""
     item = _httproute_item()
@@ -1288,7 +1350,9 @@ async def test_parse_httproute_item_no_hostnames(mock_client):
     assert result["urls"] == []
 
 
-async def test_parse_httproute_item_backend_ref_defaults_to_route_namespace(mock_client):
+async def test_parse_httproute_item_backend_ref_defaults_to_route_namespace(
+    mock_client,
+):
     """A backendRef without an explicit namespace defaults to the route's own."""
     item = _httproute_item()
     del item["spec"]["rules"][0]["backendRefs"][0]["namespace"]

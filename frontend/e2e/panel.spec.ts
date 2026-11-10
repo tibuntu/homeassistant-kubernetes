@@ -308,7 +308,9 @@ test("network tab shows ingresses, HTTPRoutes, and services", async ({ page }) =
   await page.goto(HARNESS);
   await openTab(page, "Network");
 
-  await expect(page.locator("h2.section-title", { hasText: "Ingresses" })).toBeVisible();
+  await expect(
+    page.locator("h2.section-title", { hasText: "Ingresses" }),
+  ).toBeVisible();
   await expect(
     page.locator("h2.section-title", { hasText: "HTTPRoutes" }),
   ).toBeVisible();
@@ -323,6 +325,21 @@ test("network tab shows ingresses, HTTPRoutes, and services", async ({ page }) =
   await expect(httprouteRow.locator(".badge-ready")).toHaveText("Accepted");
 });
 
+test("network tab hides the HTTPRoutes section without routes", async ({ page }) => {
+  await page.goto(`${HARNESS}?empty=kubernetes/httproutes/list`);
+  await openTab(page, "Network");
+
+  await expect(
+    page.locator("h2.section-title", { hasText: "Ingresses" }),
+  ).toBeVisible();
+  await expect(page.locator("h2.section-title", { hasText: "HTTPRoutes" })).toHaveCount(
+    0,
+  );
+
+  await page.locator("select.filter-select").selectOption("HTTPRoute");
+  await expect(page.locator(".empty")).toHaveText("No HTTPRoutes found.");
+});
+
 test("network type filter narrows to a single section", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Network");
@@ -332,6 +349,10 @@ test("network type filter narrows to a single section", async ({ page }) => {
   await expect(
     page.locator("h2.section-title", { hasText: "HTTPRoutes" }),
   ).toBeVisible();
-  await expect(page.locator("h2.section-title", { hasText: "Ingresses" })).toHaveCount(0);
-  await expect(page.locator("h2.section-title", { hasText: "Services" })).toHaveCount(0);
+  await expect(page.locator("h2.section-title", { hasText: "Ingresses" })).toHaveCount(
+    0,
+  );
+  await expect(page.locator("h2.section-title", { hasText: "Services" })).toHaveCount(
+    0,
+  );
 });

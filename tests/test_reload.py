@@ -41,6 +41,7 @@ def _client() -> MagicMock:
         "get_ingresses",
         "get_services",
         "get_hpas",
+        "get_httproutes",
         "get_pods",
     ):
         setattr(client, method, AsyncMock(return_value=[]))
