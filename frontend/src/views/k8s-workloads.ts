@@ -45,7 +45,7 @@ interface JobData {
   succeeded: number;
   failed: number;
   active: number;
-  state: string;
+  state?: string;
   start_time: string | null;
 }
 
@@ -1036,7 +1036,9 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   }
 
   private _renderJobCard(entryId: string, j: JobData) {
-    const stateClass = JOB_STATE_BADGE[j.state] ?? "pending";
+    // A bundle newer than the running backend gets no state until HA restarts.
+    const state = j.state ?? "Unknown";
+    const stateClass = JOB_STATE_BADGE[state] ?? "pending";
     const hasFailed = j.failed > 0;
 
     return html`
@@ -1057,7 +1059,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
               ? html`<span class="badge badge-failed">${j.failed} failed</span>`
               : nothing
           }
-          <span class="badge badge-${stateClass}">${j.state}</span>
+          <span class="badge badge-${stateClass}">${state}</span>
           ${
             j.start_time
               ? html`<span class="last-schedule"

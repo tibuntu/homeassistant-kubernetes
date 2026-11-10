@@ -19,7 +19,7 @@ export const RESPONSES: Record<string, unknown> = {
           statefulsets: 1,
           daemonsets: 1,
           cronjobs: 1,
-          jobs: 1,
+          jobs: 2,
           ingresses: 1,
           services: 1,
         },
