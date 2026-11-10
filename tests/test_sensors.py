@@ -530,6 +530,64 @@ class TestDisabledResourceGating:
         assert len(sensors) == 1
         assert sensors[0].unique_id == "test_entry_id_default_db_statefulset_status"
 
+    @pytest.mark.parametrize(
+        ("disabled", "expected"),
+        [
+            ([], 2),
+            (["daemonsets"], 0),
+            (["metrics"], 0),
+        ],
+    )
+    async def test_setup_daemonset_metric_sensors_respect_disabled(
+        self, hass: HomeAssistant, mock_client, mock_coordinator, disabled, expected
+    ):
+        """DaemonSet CPU/memory sensors are skipped when daemonsets or metrics are disabled."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_coordinator.data = {
+            "deployments": {},
+            "statefulsets": {},
+            "cronjobs": {},
+            "daemonsets": {"ns_ds": {"name": "ds", "namespace": "ns"}},
+            "jobs": {},
+        }
+        entry = self._entry(hass, disabled)
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data, client=mock_client, coordinator=mock_coordinator
+        )
+
+        mock_add_entities = AsyncMock()
+        await async_setup_entry(hass, entry, mock_add_entities)
+
+        metric_sensors = [
+            s
+            for s in mock_add_entities.call_args[0][0]
+            if isinstance(s, KubernetesWorkloadMetricSensor)
+        ]
+        assert len(metric_sensors) == expected
+
+    def test_discover_daemonset_metrics_respects_disabled(
+        self, hass: HomeAssistant, mock_client, mock_coordinator
+    ):
+        """Metric discovery adds DaemonSet sensors unless daemonsets are disabled."""
+        mock_coordinator.data = {
+            "daemonsets": {"ns_ds": {"name": "ds", "namespace": "ns"}}
+        }
+
+        sensors = _discover_new_workload_metric_sensors(
+            mock_coordinator, mock_client, self._entry(hass, []), set()
+        )
+        assert {s.unique_id for s in sensors} == {
+            "test_entry_id_ns_ds_daemonset_cpu",
+            "test_entry_id_ns_ds_daemonset_memory",
+        }
+        assert (
+            _discover_new_workload_metric_sensors(
+                mock_coordinator, mock_client, self._entry(hass, ["daemonsets"]), set()
+            )
+            == []
+        )
+
     def test_discover_node_sensors_skipped(
         self, hass: HomeAssistant, mock_client, mock_coordinator
     ):
@@ -1785,6 +1843,56 @@ class TestDiscoverWorkloadMetricSensors:
             mock_coordinator, mock_client, mock_config_entry, existing_ids
         )
         assert new_sensors == []
+
+
+class TestDaemonSetMetricSensor:
+    """DaemonSet CPU/memory metric sensors."""
+
+    def test_reports_values_and_unique_id(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Values come from the daemonsets key and unique ids use the daemonset type."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "kube-system_fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                    "cpu_usage": 12.345,
+                    "memory_usage": 256.0,
+                }
+            }
+        }
+        cpu, mem = (
+            KubernetesWorkloadMetricSensor(
+                mock_coordinator,
+                mock_client,
+                mock_config_entry,
+                "fluentd",
+                "kube-system",
+                "daemonset",
+                metric,
+            )
+            for metric in ("cpu", "memory")
+        )
+        assert cpu.native_value == 12.35
+        assert mem.native_value == 256.0
+        assert cpu.unique_id == "test_entry_id_kube-system_fluentd_daemonset_cpu"
+        assert mem.unique_id == "test_entry_id_kube-system_fluentd_daemonset_memory"
+
+    def test_discovery_adds_daemonset_metric_sensors(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """Dynamic discovery creates DaemonSet metric sensors, skipping existing ids."""
+        mock_coordinator.data = {
+            "daemonsets": {"ns_ds": {"name": "ds", "namespace": "ns"}},
+        }
+        new = _discover_new_workload_metric_sensors(
+            mock_coordinator,
+            mock_client,
+            mock_config_entry,
+            {"test_entry_id_ns_ds_daemonset_cpu"},
+        )
+        assert [s.unique_id for s in new] == ["test_entry_id_ns_ds_daemonset_memory"]
 
 
 class TestKubernetesDaemonSetSensor:
@@ -3600,8 +3708,20 @@ class TestAsyncSetupEntryWithResources:
         metric_sensors = [
             s for s in sensors if isinstance(s, KubernetesWorkloadMetricSensor)
         ]
-        # 2 workloads (web-app + my-db) x 2 metrics (cpu + memory) = 4
-        assert len(metric_sensors) == 4
+        # 3 workloads (web-app + my-db + fluentd daemonset) x 2 metrics = 6
+        assert len(metric_sensors) == 6
+        assert {
+            s.unique_id for s in metric_sensors if "_daemonset_" in s.unique_id
+        } == {
+            "test_entry_id_kube-system_fluentd_daemonset_cpu",
+            "test_entry_id_kube-system_fluentd_daemonset_memory",
+        }
+        # DaemonSets get metric sensors only, never workload status sensors
+        assert not any(
+            isinstance(s, KubernetesWorkloadStatusSensor)
+            and s.workload_name == "fluentd"
+            for s in sensors
+        )
 
     async def test_creates_cronjob_sensors(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
@@ -3641,8 +3761,8 @@ class TestAsyncSetupEntryWithResources:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         sensors = mock_add_entities.call_args[0][0]
-        # 9 aggregate + 5 alerts + 1 node + 2 pods + 1 daemonset + 2 status + 4 metrics + 1 cronjob + 1 job = 26
-        assert len(sensors) == 26
+        # 9 aggregate + 5 alerts + 1 node + 2 pods + 1 daemonset + 2 status + 6 metrics + 1 cronjob + 1 job = 28
+        assert len(sensors) == 28
 
     async def test_stores_add_entities_callback(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
@@ -3864,8 +3984,8 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
         assert ds_sensors[0].namespace == "infra"
         assert len(status_sensors) == 1
         assert status_sensors[0].namespace == "web"
-        # 1 deployment x 2 metrics = 2
-        assert len(metric_sensors) == 2
+        # 1 deployment + 1 daemonset, 2 metrics each = 4
+        assert len(metric_sensors) == 4
 
 
 class TestAggregateSensorDeviceInfo:
