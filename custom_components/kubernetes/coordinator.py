@@ -284,6 +284,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._forbidden_loops: dict[str, str] = {}
         # Set while the HPA list gets HTTP 403, so the warning logs once.
         self._hpas_forbidden = False
+        # Set while HTTPRoutes are forbidden or the Gateway API CRDs are not
+        # installed, so the warning logs once.
+        self._httproutes_unavailable = False
 
     async def _fetch_hpas(self) -> list[dict[str, Any]]:
         """Fetch HPAs, treating HTTP 403 as "no HPAs".
@@ -308,6 +311,34 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             return []
         self._hpas_forbidden = False
         return hpas
+
+    async def _fetch_httproutes(self) -> list[dict[str, Any]]:
+        """Fetch Gateway API HTTPRoutes, treating 403/404 as "none available".
+
+        Unlike Ingresses, HTTPRoutes are a CRD that many clusters do not
+        install, so they are polled only rather than wired into the Watch
+        API — the forbidden-loop machinery only tolerates HTTP 403, and a
+        missing CRD answers every watch attempt with 404 forever. A missing
+        RBAC rule (403) or an absent Gateway API CRD (404) must not fail the
+        whole poll cycle; no entity is derived from this bucket, only Network
+        tab panel data.
+        """
+        try:
+            httproutes = await self.client.get_httproutes()
+        except KubernetesApiError as ex:
+            if ex.status not in (403, 404):
+                raise
+            if not self._httproutes_unavailable:
+                self._httproutes_unavailable = True
+                _LOGGER.warning(
+                    "Listing HTTPRoutes is forbidden or the Gateway API CRDs "
+                    "are not installed — HTTPRoutes will not appear in the "
+                    "Network tab. Re-apply the RBAC (chart or manifests) if "
+                    "the Gateway API is installed on this cluster"
+                )
+            return []
+        self._httproutes_unavailable = False
+        return httproutes
 
     @property
     def _forbidden_resources(self) -> set[str]:
@@ -351,6 +382,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     [] if "services" in disabled else await self.client.get_services()
                 )
                 hpas = [] if "hpas" in disabled else await self._fetch_hpas()
+                httproutes = await self._fetch_httproutes()
 
                 _LOGGER.debug("Starting to fetch detailed node information")
                 nodes = await self.client.get_nodes()
@@ -447,6 +479,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     },
                     "services": {f"{s['namespace']}_{s['name']}": s for s in services},
                     "hpas": {f"{h['namespace']}_{h['name']}": h for h in hpas},
+                    "httproutes": {
+                        f"{h['namespace']}_{h['name']}": h for h in httproutes
+                    },
                     "nodes": {node["name"]: node for node in nodes},
                     "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                     "pods_count": pods_count,

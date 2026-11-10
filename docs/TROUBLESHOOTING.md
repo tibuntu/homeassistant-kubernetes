@@ -107,6 +107,10 @@ The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named re
 
 If the issue appears right after restarting the API server (for example a k3s restart) although the RBAC is complete, it's transient: the authorizer denies requests until it has loaded its rules. It clears within about a minute without any action. See the [RBAC Reference](RBAC.md) for the full permission matrix.
 
+### Problem: HTTPRoutes don't appear in the Network tab, with no repair issue
+
+HTTPRoutes are polled only, not watched, so a missing RBAC rule (403) or absent Gateway API CRDs (404) never raises a repair issue — it only logs a one-time warning ("Listing HTTPRoutes is forbidden or the Gateway API CRDs are not installed") and the Network tab simply omits the HTTPRoutes section. If your cluster has the Gateway API installed and you expect routes to show up, re-apply the bundled RBAC (it grants `get`/`list`/`watch` on `gateway.networking.k8s.io`/`httproutes`) and check the Home Assistant log for that warning.
+
 ## Pod Logs Dialog Shows an Error
 
 ### Problem

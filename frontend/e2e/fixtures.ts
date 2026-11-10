@@ -235,6 +235,33 @@ export const RESPONSES: Record<string, unknown> = {
     ],
   },
 
+  "kubernetes/httproutes/list": {
+    clusters: [
+      {
+        entry_id: "entry_1",
+        cluster_name: "test-cluster",
+        httproutes: [
+          {
+            name: "web",
+            namespace: "default",
+            hostnames: ["web.example.com"],
+            parent_refs: [{ name: "eg", namespace: "default", section_name: "https" }],
+            rules: [
+              {
+                matches: [{ path_type: "PathPrefix", path_value: "/", method: "" }],
+                backend_refs: [{ name: "web", namespace: "default", port: 8080 }],
+              },
+            ],
+            urls: ["https://web.example.com"],
+            accepted: true,
+            resolved_refs: true,
+            creation_timestamp: "2026-01-01T00:00:00Z",
+          },
+        ],
+      },
+    ],
+  },
+
   "kubernetes/services/list": {
     clusters: [
       {

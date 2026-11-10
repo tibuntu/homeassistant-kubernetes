@@ -89,7 +89,7 @@ Enables all integration features:
 - Sensors and binary sensors (monitoring)
 - Switches (deployment / statefulset scaling, CronJob suspension, node cordon/uncordon)
 - Workload rollout restart (deployments, statefulsets, daemonsets)
-- Ingress and Service monitoring (Network tab in the sidebar panel, with clickable URLs)
+- Ingress, HTTPRoute, and Service monitoring (Network tab in the sidebar panel, with clickable URLs)
 - Pod and Job deletion from the sidebar panel (requires Home Assistant admin role)
 - Node drain via the `drain_node` service (`pods/eviction`)
 - Cluster Events platform (`events`)
@@ -150,6 +150,12 @@ Read-only access to every resource the integration monitors. No write permission
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
 | **ingresses** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Ingresses count sensor + Network tab in the sidebar panel |
+
+### Gateway API Group (`gateway.networking.k8s.io`)
+
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **httproutes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | HTTPRoutes in the Network tab. Optional: the Gateway API CRDs are not installed on every cluster — a 403 (missing RBAC) or 404 (CRD absent) is treated the same as "none available" and HTTPRoutes simply don't appear |
 
 ### Autoscaling API Group (`autoscaling`)
 
@@ -316,6 +322,9 @@ rules:
   verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: ["httproutes"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["autoscaling"]
   resources: ["horizontalpodautoscalers"]

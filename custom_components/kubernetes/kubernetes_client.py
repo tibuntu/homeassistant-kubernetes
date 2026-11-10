@@ -1227,6 +1227,87 @@ class KubernetesClient:
             _LOGGER.warning("Failed to parse HPA item: %s", ex)
             return None
 
+    def _parse_httproute_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw Gateway API (gateway.networking.k8s.io/v1) HTTPRoute object."""
+        try:
+            metadata = item["metadata"]
+            namespace = metadata["namespace"]
+            spec = item.get("spec", {})
+
+            parent_refs = [
+                {
+                    "name": ref.get("name", ""),
+                    "namespace": ref.get("namespace") or namespace,
+                    "section_name": ref.get("sectionName", ""),
+                }
+                for ref in spec.get("parentRefs") or []
+            ]
+
+            rules: list[dict[str, Any]] = []
+            for rule in spec.get("rules") or []:
+                matches = [
+                    {
+                        "path_type": (match.get("path") or {}).get("type", ""),
+                        "path_value": (match.get("path") or {}).get("value", ""),
+                        "method": match.get("method", ""),
+                    }
+                    for match in rule.get("matches") or []
+                ]
+                backend_refs = [
+                    {
+                        "name": backend.get("name", ""),
+                        "namespace": backend.get("namespace") or namespace,
+                        "port": backend.get("port", ""),
+                    }
+                    for backend in rule.get("backendRefs") or []
+                ]
+                rules.append({"matches": matches, "backend_refs": backend_refs})
+
+            accepted = False
+            resolved_refs = False
+            for parent_status in item.get("status", {}).get("parents") or []:
+                for condition in parent_status.get("conditions") or []:
+                    if condition.get("status") != "True":
+                        continue
+                    if condition.get("type") == "Accepted":
+                        accepted = True
+                    elif condition.get("type") == "ResolvedRefs":
+                        resolved_refs = True
+
+            # The listener's protocol/TLS config lives on the referenced
+            # Gateway, which this integration does not fetch, so there is no
+            # authoritative scheme here. sectionName is a listener name the
+            # Gateway's author chose freely, but "https"/"tls" in it is a
+            # common enough convention to use as a heuristic (like the
+            # Service urls' port-based scheme guess) — anything else is
+            # treated as plain HTTP.
+            scheme = (
+                "https"
+                if any(
+                    kw in ref["section_name"].lower()
+                    for ref in parent_refs
+                    for kw in ("https", "tls")
+                )
+                else "http"
+            )
+            hostnames = spec.get("hostnames") or []
+            urls = [f"{scheme}://{host}" for host in hostnames if "*" not in host]
+
+            return {
+                "name": metadata["name"],
+                "namespace": namespace,
+                "hostnames": hostnames,
+                "parent_refs": parent_refs,
+                "rules": rules,
+                "urls": urls,
+                "accepted": accepted,
+                "resolved_refs": resolved_refs,
+                "creation_timestamp": metadata.get("creationTimestamp", ""),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse HTTPRoute item: %s", ex)
+            return None
+
     async def _fetch_resource_items(
         self,
         api_path: str,
@@ -2504,6 +2585,27 @@ class KubernetesClient:
             # detection off — logging it here would repeat on every poll.
             if not (isinstance(ex, KubernetesApiError) and ex.status == 403):
                 self._log_error("get hpas", ex)
+            raise
+
+    async def get_httproutes(self) -> list[dict[str, Any]]:
+        """Get all Gateway API HTTPRoutes in the namespace(s)."""
+        try:
+            result = await self._fetch_resource_list(
+                "apis/gateway.networking.k8s.io/v1",
+                "httproutes",
+                self._parse_httproute_item,
+            )
+            if result:
+                self._log_success(
+                    "get httproutes", f"retrieved {len(result)} httproutes"
+                )
+            return result
+        except Exception as ex:
+            # A 403 (missing RBAC) or 404 (Gateway API CRDs not installed) is
+            # reported once by the coordinator, which turns HTTPRoute
+            # detection off — logging it here would repeat on every poll.
+            if not (isinstance(ex, KubernetesApiError) and ex.status in (403, 404)):
+                self._log_error("get httproutes", ex)
             raise
 
     # CronJob methods
