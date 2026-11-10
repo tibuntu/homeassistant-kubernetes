@@ -126,6 +126,20 @@ test("stalled rollout reads Degraded with a badge despite all replicas ready", a
   await expect(web.locator(".badge-rollout-stalled")).toHaveCount(0);
 });
 
+test("job cards show the derived state badge, not one computed from counters", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Workloads");
+  const migrate = page.locator(".workload-card", { hasText: "migrate" });
+  await expect(migrate.locator(".badge-complete")).toHaveText("Complete");
+  const nightly = page.locator(".workload-card", { hasText: "nightly-report" });
+  await expect(
+    nightly.locator(".badge-failed").filter({ hasText: /^Failed$/ }),
+  ).toBeVisible();
+  await expect(nightly.locator(".badge-complete")).toHaveCount(0);
+});
+
 /** Number of mutation controls on the Workloads, Pods and Nodes tabs. */
 async function countMutationControls(page: Page): Promise<number[]> {
   await openTab(page, "Workloads");

@@ -45,8 +45,19 @@ interface JobData {
   succeeded: number;
   failed: number;
   active: number;
+  state: string;
   start_time: string | null;
 }
+
+/** Badge class suffix per derived Job state (see alerts.job_state). */
+const JOB_STATE_BADGE: Record<string, string> = {
+  Complete: "complete",
+  Failed: "failed",
+  Retrying: "degraded",
+  Running: "running",
+  Suspended: "suspended",
+  Pending: "pending",
+};
 
 interface ClusterWorkloads {
   entry_id: string;
@@ -989,9 +1000,9 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
       this._statusFilter === "all"
         ? filtered
         : filtered.filter((j) => {
-            if (this._statusFilter === "healthy") return j.succeeded >= j.completions;
+            if (this._statusFilter === "healthy") return j.state === "Complete";
             if (this._statusFilter === "degraded")
-              return j.failed > 0 && j.succeeded < j.completions;
+              return j.state === "Failed" || (j.failed > 0 && j.state !== "Complete");
             if (this._statusFilter === "stopped") return j.active === 0;
             return true;
           });
@@ -1025,7 +1036,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   }
 
   private _renderJobCard(entryId: string, j: JobData) {
-    const isComplete = j.succeeded >= j.completions;
+    const stateClass = JOB_STATE_BADGE[j.state] ?? "pending";
     const hasFailed = j.failed > 0;
 
     return html`
@@ -1046,11 +1057,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
               ? html`<span class="badge badge-failed">${j.failed} failed</span>`
               : nothing
           }
-          ${
-            isComplete
-              ? html`<span class="badge badge-complete">Complete</span>`
-              : nothing
-          }
+          <span class="badge badge-${stateClass}">${j.state}</span>
           ${
             j.start_time
               ? html`<span class="last-schedule"
