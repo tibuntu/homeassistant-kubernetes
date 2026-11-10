@@ -134,9 +134,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
   }
 
   protected hasData(): boolean {
-    return (
-      this._data !== null || this._services !== null || this._httproutes !== null
-    );
+    return this._data !== null || this._services !== null || this._httproutes !== null;
   }
 
   protected async fetchData(): Promise<void> {
@@ -223,8 +221,9 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
 
   private _gatewaysOf(httproute: HTTPRouteData): string {
     return (
-      [...new Set(httproute.parent_refs.map((p) => p.name))].filter(Boolean).join(", ") ||
-      "—"
+      [...new Set(httproute.parent_refs.map((p) => p.name))]
+        .filter(Boolean)
+        .join(", ") || "—"
     );
   }
 
@@ -393,7 +392,9 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
       !hasServices &&
       !hasHTTPRoutes
     ) {
-      return html`<div class="empty">No ingresses, HTTPRoutes, or services found.</div>`;
+      return html`<div class="empty">
+        No ingresses, HTTPRoutes, or services found.
+      </div>`;
     }
 
     return html`
@@ -435,7 +436,10 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
           : nothing
       }
       ${
-        this._typeFilter === "all" || this._typeFilter === "HTTPRoute"
+        // Gateway API is optional: without routes the section only shows when
+        // asked for by the filter, or to report an error.
+        this._typeFilter === "HTTPRoute" ||
+        (this._typeFilter === "all" && (hasHTTPRoutes || this._httprouteError))
           ? html`
               <h2 class="section-title">HTTPRoutes</h2>
               ${

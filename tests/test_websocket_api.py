@@ -1237,9 +1237,7 @@ class TestWebsocketHttproutesList:
 
     def test_multi_cluster(self, mock_hass):
         """Each loaded entry contributes its own cluster block."""
-        c1 = _make_coordinator(
-            {"httproutes": {"a_x": {"name": "x", "namespace": "a"}}}
-        )
+        c1 = _make_coordinator({"httproutes": {"a_x": {"name": "x", "namespace": "a"}}})
         c2 = _make_coordinator({"httproutes": {}})
         _load_entries(
             mock_hass,

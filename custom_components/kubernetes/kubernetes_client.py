@@ -1238,7 +1238,7 @@ class KubernetesClient:
                 {
                     "name": ref.get("name", ""),
                     "namespace": ref.get("namespace") or namespace,
-                    "section_name": ref.get("sectionName", ""),
+                    "section_name": ref.get("sectionName") or "",
                 }
                 for ref in spec.get("parentRefs") or []
             ]
@@ -1263,30 +1263,34 @@ class KubernetesClient:
                 ]
                 rules.append({"matches": matches, "backend_refs": backend_refs})
 
-            accepted = False
-            resolved_refs = False
-            for parent_status in item.get("status", {}).get("parents") or []:
-                for condition in parent_status.get("conditions") or []:
-                    if condition.get("status") != "True":
-                        continue
-                    if condition.get("type") == "Accepted":
-                        accepted = True
-                    elif condition.get("type") == "ResolvedRefs":
-                        resolved_refs = True
+            # A route is only as healthy as its worst parent: every Gateway
+            # that reported a status must have set the condition to True.
+            parent_conditions = [
+                {c.get("type"): c.get("status") for c in parent.get("conditions") or []}
+                for parent in item.get("status", {}).get("parents") or []
+            ]
+            accepted = bool(parent_conditions) and all(
+                conditions.get("Accepted") == "True" for conditions in parent_conditions
+            )
+            resolved_refs = bool(parent_conditions) and all(
+                conditions.get("ResolvedRefs") == "True"
+                for conditions in parent_conditions
+            )
 
             # The listener's protocol/TLS config lives on the referenced
-            # Gateway, which this integration does not fetch, so there is no
-            # authoritative scheme here. sectionName is a listener name the
-            # Gateway's author chose freely, but "https"/"tls" in it is a
-            # common enough convention to use as a heuristic (like the
-            # Service urls' port-based scheme guess) — anything else is
-            # treated as plain HTTP.
+            # Gateway, which this integration does not fetch, so the scheme is
+            # a guess (like the Service urls' port-based one): https when a
+            # parentRef pins port 443 or names a listener by a common TLS
+            # convention ("https", "tls", Traefik's "websecure"), else http.
             scheme = (
                 "https"
                 if any(
-                    kw in ref["section_name"].lower()
-                    for ref in parent_refs
-                    for kw in ("https", "tls")
+                    ref.get("port") == 443
+                    or any(
+                        kw in (ref.get("sectionName") or "").lower()
+                        for kw in ("https", "tls", "websecure")
+                    )
+                    for ref in spec.get("parentRefs") or []
                 )
                 else "http"
             )
@@ -2602,8 +2606,8 @@ class KubernetesClient:
             return result
         except Exception as ex:
             # A 403 (missing RBAC) or 404 (Gateway API CRDs not installed) is
-            # reported once by the coordinator, which turns HTTPRoute
-            # detection off — logging it here would repeat on every poll.
+            # reported once per episode by the coordinator — logging it here
+            # would repeat every 5 minutes.
             if not (isinstance(ex, KubernetesApiError) and ex.status in (403, 404)):
                 self._log_error("get httproutes", ex)
             raise

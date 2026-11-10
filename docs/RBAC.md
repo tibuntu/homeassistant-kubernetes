@@ -155,7 +155,7 @@ Read-only access to every resource the integration monitors. No write permission
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **httproutes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | HTTPRoutes in the Network tab. Optional: the Gateway API CRDs are not installed on every cluster — a 403 (missing RBAC) or 404 (CRD absent) is treated the same as "none available" and HTTPRoutes simply don't appear |
+| **httproutes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | HTTPRoutes in the Network tab. Optional: on a cluster without the Gateway API CRDs the rule is harmless and the Network tab shows no HTTPRoutes section. Without the rule the *Missing permissions* repair issue names `httproutes`; re-apply the RBAC or disable **HTTPRoutes** under *Disable data collection for* |
 
 ### Autoscaling API Group (`autoscaling`)
 

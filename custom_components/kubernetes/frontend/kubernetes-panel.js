@@ -1837,7 +1837,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <button class="retry-btn" @click=${()=>this._loadData()}>Retry</button>
           </div>
         </ha-card>
-      `;let e=this._data?.clusters??[],t=this._services?.clusters??[],n=this._httproutes?.clusters??[],r=e.some(e=>e.ingresses.length>0),i=t.some(e=>e.services.length>0),a=n.some(e=>e.httproutes.length>0);return!this._ingressError&&!this._servicesError&&!this._httprouteError&&!r&&!i&&!a?w`<div class="empty">No ingresses, HTTPRoutes, or services found.</div>`:w`
+      `;let e=this._data?.clusters??[],t=this._services?.clusters??[],n=this._httproutes?.clusters??[],r=e.some(e=>e.ingresses.length>0),i=t.some(e=>e.services.length>0),a=n.some(e=>e.httproutes.length>0);return!this._ingressError&&!this._servicesError&&!this._httprouteError&&!r&&!i&&!a?w`<div class="empty">
+        No ingresses, HTTPRoutes, or services found.
+      </div>`:w`
       <div class="filters">
         <input
           class="search-input"
@@ -1861,7 +1863,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               <h2 class="section-title">Ingresses</h2>
               ${this._ingressError?this._renderInlineError(this._ingressError):r?e.map(e=>this._renderCluster(e)):w`<div class="empty">No ingresses found.</div>`}
             `:E}
-      ${this._typeFilter===`all`||this._typeFilter===`HTTPRoute`?w`
+      ${this._typeFilter===`HTTPRoute`||this._typeFilter===`all`&&(a||this._httprouteError)?w`
               <h2 class="section-title">HTTPRoutes</h2>
               ${this._httprouteError?this._renderInlineError(this._httprouteError):a?n.map(e=>this._renderHTTPRouteCluster(e)):w`<div class="empty">No HTTPRoutes found.</div>`}
             `:E}
