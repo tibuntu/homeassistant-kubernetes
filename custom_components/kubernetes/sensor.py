@@ -21,6 +21,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 from .alerts import (
     degraded_workloads,
     failed_jobs,
+    job_state,
     nodes_under_pressure,
     problem_pods,
     restarting_pods,
@@ -1140,15 +1141,6 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
         }
 
 
-def _true_job_conditions(job_data: dict[str, Any]) -> set[str]:
-    """Return the types of the Job conditions whose status is ``True``."""
-    return {
-        cond.get("type")
-        for cond in job_data.get("conditions") or []
-        if cond.get("status") == "True"
-    }
-
-
 class KubernetesJobSensor(KubernetesBaseSensor):
     """Sensor for an individual Kubernetes Job."""
 
@@ -1177,32 +1169,12 @@ class KubernetesJobSensor(KubernetesBaseSensor):
 
     @property
     def native_value(self) -> str:
-        """Return the status of the Job.
-
-        ``Complete``/``Failed`` come from the Job's terminal conditions, so a
-        Job retrying below its ``backoffLimit`` reads ``Retrying``, not
-        ``Failed``. The interim ``SuccessCriteriaMet``/``FailureTarget``
-        conditions are ignored until the terminal one follows.
-        """
+        """Return the status of the Job (see ``job_state``)."""
         job_data = self.coordinator.get_job_data(self.namespace, self.job_name)
         if job_data is None:
             return "Unknown"
 
-        true_conditions = _true_job_conditions(job_data)
-        if "Complete" in true_conditions:
-            return "Complete"
-        if "Failed" in true_conditions:
-            return "Failed"
-        # Fallback for job data without conditions
-        if job_data.get("succeeded", 0) >= job_data.get("completions", 1):
-            return "Complete"
-        if "Suspended" in true_conditions:
-            return "Suspended"
-        if job_data.get("active", 0) > 0:
-            return "Running"
-        if job_data.get("failed", 0) > 0:
-            return "Retrying"
-        return "Pending"
+        return job_state(job_data)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

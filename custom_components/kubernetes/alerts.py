@@ -1,4 +1,4 @@
-"""Cluster alert lists shared by the panel overview and the alert sensors."""
+"""Cluster alert lists and Job state shared by the panel and the sensors."""
 
 from __future__ import annotations
 
@@ -189,3 +189,37 @@ def build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         "restarting_pods": restarting_pods(data),
         "failed_jobs": failed_jobs(data),
     }
+
+
+def _true_job_conditions(job_data: dict[str, Any]) -> set[str]:
+    """Return the types of the Job conditions whose status is ``True``."""
+    return {
+        cond.get("type")
+        for cond in job_data.get("conditions") or []
+        if cond.get("status") == "True"
+    }
+
+
+def job_state(job: dict[str, Any]) -> str:
+    """Return the status of a Job.
+
+    ``Complete``/``Failed`` come from the Job's terminal conditions, so a
+    Job retrying below its ``backoffLimit`` reads ``Retrying``, not
+    ``Failed``. The interim ``SuccessCriteriaMet``/``FailureTarget``
+    conditions are ignored until the terminal one follows.
+    """
+    true_conditions = _true_job_conditions(job)
+    if "Complete" in true_conditions:
+        return "Complete"
+    if "Failed" in true_conditions:
+        return "Failed"
+    # Fallback for job data without conditions
+    if job.get("succeeded", 0) >= job.get("completions", 1):
+        return "Complete"
+    if "Suspended" in true_conditions:
+        return "Suspended"
+    if job.get("active", 0) > 0:
+        return "Running"
+    if job.get("failed", 0) > 0:
+        return "Retrying"
+    return "Pending"
