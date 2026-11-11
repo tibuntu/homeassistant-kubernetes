@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.17.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.16.0...v1.17.0) (2026-11-11)
+
+
+### Features
+
+* add CPU and memory usage sensors for DaemonSets ([3a52260](https://github.com/tibuntu/homeassistant-kubernetes/commit/3a522609d7399d975bedc117bd495addb6e6bf4e))
+* add http routes to network tab ([ee8326c](https://github.com/tibuntu/homeassistant-kubernetes/commit/ee8326cc6ba7db8a9b7b4d01a6096ff5d00901ab))
+* enrich all workload kinds with pod metrics in one pass ([9cdee3f](https://github.com/tibuntu/homeassistant-kubernetes/commit/9cdee3ff444e57f44d0e4641bd96a5e4e9398cdc))
+* watch http routes and allow disabling them ([2ce9f70](https://github.com/tibuntu/homeassistant-kubernetes/commit/2ce9f701e302c157fffc15c77235d8771ee6e70c))
+
+
+### Bug Fixes
+
+* keep a watch 403 remembered across a list 403 ([4ff8f67](https://github.com/tibuntu/homeassistant-kubernetes/commit/4ff8f67141ec793d478fc95560b884e1a4574947))
+* keep watch-forbidden state until the watch itself connects ([22c1762](https://github.com/tibuntu/homeassistant-kubernetes/commit/22c1762f91cf5b07352d0a80cc2bb8f83e250044))
+* only treat a watch 404 as unserved for optional resources ([e6b7bf3](https://github.com/tibuntu/homeassistant-kubernetes/commit/e6b7bf3ba8e540486aa2eff9a11cf8eb73d953b9))
+* report Ready when more replicas are ready than desired ([4d299c8](https://github.com/tibuntu/homeassistant-kubernetes/commit/4d299c8a7f0544a3d5a59c85a9f45ce9d4aca34e))
+* show job state from conditions in the panel's jobs view ([1bea793](https://github.com/tibuntu/homeassistant-kubernetes/commit/1bea793c6e566781dd50faf9184a79c67cfd9888))
+* tolerate a missing job state and tidy job docs and fixtures ([e089712](https://github.com/tibuntu/homeassistant-kubernetes/commit/e08971263bffe3c3ba87d535d85c1e2186daa536))
+
 ## [1.16.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.15.0...v1.16.0) (2026-11-05)
 
 A feature release: a **Failed Jobs** alert sensor, **more accurate Job and CronJob state**, and an option to **keep the sidebar panel away from non-admins**. It also makes `drain_node` safer. No new permissions are needed, but two behaviour changes are listed under *Upgrading*.
