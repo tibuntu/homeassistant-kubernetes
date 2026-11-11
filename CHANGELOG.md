@@ -2,23 +2,24 @@
 
 ## [1.17.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.16.0...v1.17.0) (2026-11-11)
 
+A feature release: **Gateway API HTTPRoutes** in the panel's Network tab and **CPU and memory usage sensors for DaemonSets**. It also stops the *Missing permissions* repair issue from flapping with the read-only `minimal` role and brings the panel's Job cards in line with the Job sensors. HTTPRoutes need one new permission, see *Upgrading*.
 
-### Features
+### New features
 
-* add CPU and memory usage sensors for DaemonSets ([3a52260](https://github.com/tibuntu/homeassistant-kubernetes/commit/3a522609d7399d975bedc117bd495addb6e6bf4e))
-* add http routes to network tab ([ee8326c](https://github.com/tibuntu/homeassistant-kubernetes/commit/ee8326cc6ba7db8a9b7b4d01a6096ff5d00901ab))
-* enrich all workload kinds with pod metrics in one pass ([9cdee3f](https://github.com/tibuntu/homeassistant-kubernetes/commit/9cdee3ff444e57f44d0e4641bd96a5e4e9398cdc))
-* watch http routes and allow disabling them ([2ce9f70](https://github.com/tibuntu/homeassistant-kubernetes/commit/2ce9f701e302c157fffc15c77235d8771ee6e70c))
+**Gateway API HTTPRoutes.** The panel's Network tab now lists HTTPRoutes between Ingresses and Services: clickable hostname URLs, the referenced Gateways, the backend services, age and an *Accepted* / *Not Ready* badge. A route reads *Accepted* only when every parent Gateway accepted it and resolved its references. The link scheme is a guess, because the Gateway itself is not read: `https` when the route pins port 443 or a listener whose name contains `https`, `tls` or `websecure`, otherwise `http`. Routes update live through the Watch API, and the type filter and search box cover them too. Clusters without the Gateway API see no extra section, and **HTTPRoutes** can be turned off under *Disable data collection for*. Thanks to @lukashankeln for the contribution. ([#543](https://github.com/tibuntu/homeassistant-kubernetes/pull/543))
 
+**DaemonSet CPU and memory usage.** Every DaemonSet now gets the same *CPU Usage* and *Memory Usage* sensors as Deployments and StatefulSets, summed over its pods. Like the others they need metrics-server and are not created when **Metrics** data collection is disabled. If a DaemonSet shares its name with a Deployment or StatefulSet in the same namespace, Home Assistant adds `_2` to one of the entity IDs.
 
-### Bug Fixes
+### Fixes & improvements
 
-* keep a watch 403 remembered across a list 403 ([4ff8f67](https://github.com/tibuntu/homeassistant-kubernetes/commit/4ff8f67141ec793d478fc95560b884e1a4574947))
-* keep watch-forbidden state until the watch itself connects ([22c1762](https://github.com/tibuntu/homeassistant-kubernetes/commit/22c1762f91cf5b07352d0a80cc2bb8f83e250044))
-* only treat a watch 404 as unserved for optional resources ([e6b7bf3](https://github.com/tibuntu/homeassistant-kubernetes/commit/e6b7bf3ba8e540486aa2eff9a11cf8eb73d953b9))
-* report Ready when more replicas are ready than desired ([4d299c8](https://github.com/tibuntu/homeassistant-kubernetes/commit/4d299c8a7f0544a3d5a59c85a9f45ce9d4aca34e))
-* show job state from conditions in the panel's jobs view ([1bea793](https://github.com/tibuntu/homeassistant-kubernetes/commit/1bea793c6e566781dd50faf9184a79c67cfd9888))
-* tolerate a missing job state and tidy job docs and fixtures ([e089712](https://github.com/tibuntu/homeassistant-kubernetes/commit/e08971263bffe3c3ba87d535d85c1e2186daa536))
+* **No more flapping *Missing permissions* issue with the `minimal` role.** A role that may list but not watch made the repair issue disappear and come back about once a minute, with a misleading "access granted again" line in the log each time. The issue now stays until the watch itself works.
+* **Workload status no longer flaps to *Degraded* during rollouts.** During a surge rollout or right after a scale-down, more replicas can be ready than desired, which the status sensors of Deployments, StatefulSets and DaemonSets read as *Degraded*. That now counts as *Ready*.
+* **Job cards in the panel show the real Job state.** The Workloads tab still judged Jobs by their success count, so a Job that had given up looked like one still retrying, and a Job completed by a success policy never read *Complete*. The cards now show the same state as the Job sensor (*Complete*, *Failed*, *Suspended*, *Running*, *Retrying*, *Pending*), and the healthy/degraded filters use it.
+* **Fewer API calls for workload metrics.** Pods and pod metrics are fetched once per poll for all workload kinds instead of once per kind.
+
+> **Upgrading — RBAC:** HTTPRoutes need `get`, `list` and `watch` on `httproutes` in `gateway.networking.k8s.io` (`minimal` mode: `get` and `list`). Helm users run `helm upgrade` with `--reset-then-reuse-values`; manifest users re-apply `manifests/full/` or `manifests/minimal/`. The rule is harmless on clusters without the Gateway API. Without it, clusters that have the Gateway API installed get a *Missing permissions* repair issue naming `httproutes`; everything else keeps working. If you do not want to grant the rule, disable **HTTPRoutes** under **Configure → Disable data collection for**.
+>
+> **New entities:** two sensors appear for every DaemonSet after the upgrade.
 
 ## [1.16.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.15.0...v1.16.0) (2026-11-05)
 
