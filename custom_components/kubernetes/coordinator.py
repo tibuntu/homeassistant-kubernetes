@@ -1292,8 +1292,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 got_event = False
                 in_watch = True
                 async for event in self.client.watch_stream(url, resource_version):
-                    if not got_event:
-                        _watch_authorized()
+                    _watch_authorized()  # no-op unless a watch 403 is pending
                     got_event = True
                     if self._watch_stop_event.is_set():
                         return
@@ -1465,8 +1464,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 got_event = False
                 in_watch = True
                 async for event in self.client.watch_stream(url, resource_version):
-                    if not got_event:
-                        _watch_authorized()
+                    _watch_authorized()  # no-op unless a watch 403 is pending
                     got_event = True
                     if self._watch_stop_event.is_set():
                         return
