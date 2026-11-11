@@ -4082,6 +4082,56 @@ class TestEventWatchLoop:
         assert sum("HTTP 403 Forbidden" in r.getMessage() for r in caplog.records) == 1
         assert "access granted again" not in caplog.text
 
+    async def test_event_watch_loop_watch_403_survives_interleaved_list_403(
+        self, coord_warning, mock_client, caplog
+    ):
+        """Events: list ok / watch 403, then list 403, then list ok / watch 403:
+        the watch is still denied, so the intervening list 403 must not forget
+        it and the next good list must not report access granted again."""
+        coord = coord_warning
+        coord._watch_tasks = [MagicMock()]
+        issue_id = f"watch_forbidden_{coord.config_entry.entry_id}"
+        calls = 0
+
+        def _forbidden():
+            return aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=403, message="Forbidden"
+            )
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls == 4:
+                coord._watch_stop_event.set()
+            if calls == 2:
+                raise _forbidden()
+            return [], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream_403(url, rv):
+            raise _forbidden()
+            yield  # pragma: no cover - unreachable, makes this an async generator
+
+        mock_client.watch_stream = _stream_403
+
+        with (
+            caplog.at_level("INFO", logger="custom_components.kubernetes.coordinator"),
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        assert calls == 4
+        assert not [c for c in delete.call_args_list if c.args[2] == issue_id]
+        assert "access granted again" not in caplog.text
+        assert coord._forbidden_resources == {"events"}
+
     async def test_event_watch_loop_list_403_clears_on_next_list(
         self, coord_warning, mock_client
     ):
