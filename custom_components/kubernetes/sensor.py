@@ -970,7 +970,7 @@ class KubernetesWorkloadStatusSensor(KubernetesBaseSensor):
             return "Scaled Down"
         if workload_data.get("rollout_stalled"):
             return "Rollout Stalled"
-        if ready_replicas == replicas:
+        if ready_replicas >= replicas:
             return "Ready"
         if ready_replicas == 0:
             return "Not Ready"
@@ -1043,7 +1043,7 @@ class KubernetesDaemonSetSensor(KubernetesBaseSensor):
 
         if desired == 0:
             return "Unknown"
-        if ready == desired:
+        if ready >= desired:
             return "Ready"
         if ready == 0:
             return "Not Ready"

@@ -63,7 +63,7 @@ Each DaemonSet sensor provides scheduling and readiness information:
 Each DaemonSet also gets CPU and memory usage sensors, described under [Workload Metric Sensors](#workload-metric-sensors).
 
 Status values:
-- `Ready` — all desired pods are ready (`ready == desired`)
+- `Ready` — all desired pods are ready (`ready >= desired`)
 - `Degraded` — some but not all pods are ready (`0 < ready < desired`)
 - `Not Ready` — no pods are ready (`ready == 0`)
 - `Unknown` — data is unavailable or no nodes are scheduled
@@ -78,7 +78,7 @@ The integration creates a readiness status sensor for each deployment and statef
 
 Status values:
 - `Rollout Stalled` — Deployments only: Kubernetes marked the rollout `Progressing=False` with reason `ProgressDeadlineExceeded` (no progress within `progressDeadlineSeconds`, 600 s by default). Takes priority over the readiness states below, because the old pods usually stay ready while the new ones fail. StatefulSets do not report this condition; a broken StatefulSet update already shows as `Degraded`.
-- `Ready` — all desired replicas are ready (`ready_replicas == replicas > 0`)
+- `Ready` — all desired replicas are ready (`ready_replicas >= replicas > 0`). The ready count can briefly exceed the desired count during a surge rollout or right after a scale-down; that still counts as `Ready`
 - `Degraded` — some but not all replicas are ready (`0 < ready_replicas < replicas`)
 - `Not Ready` — no replicas are ready (`ready_replicas == 0` and `replicas > 0`)
 - `Scaled Down` — workload is intentionally scaled to zero (`replicas == 0`)

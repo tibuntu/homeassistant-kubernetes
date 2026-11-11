@@ -1931,6 +1931,27 @@ class TestKubernetesDaemonSetSensor:
         )
         assert sensor.native_value == "Ready"
 
+    def test_native_value_ready_when_more_ready_than_desired(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """More ready pods than desired is still Ready, never Degraded."""
+        mock_coordinator.data = {
+            "daemonsets": {
+                "kube-system_fluentd": {
+                    "name": "fluentd",
+                    "namespace": "kube-system",
+                    "desired_number_scheduled": 2,
+                    "current_number_scheduled": 3,
+                    "number_ready": 3,
+                    "number_available": 3,
+                }
+            }
+        }
+        sensor = KubernetesDaemonSetSensor(
+            mock_coordinator, mock_client, mock_config_entry, "fluentd", "kube-system"
+        )
+        assert sensor.native_value == "Ready"
+
     def test_native_value_degraded(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -3505,6 +3526,7 @@ class TestKubernetesWorkloadStatusSensorExtended:
         [
             (3, 3, "Rollout Stalled"),  # old pods keep every replica ready
             (3, 1, "Rollout Stalled"),
+            (3, 4, "Rollout Stalled"),  # surge pod ready, rollout still stuck
             (0, 0, "Scaled Down"),
         ],
     )
@@ -3536,6 +3558,27 @@ class TestKubernetesWorkloadStatusSensorExtended:
         attrs = sensor.extra_state_attributes
         assert attrs["updated_replicas"] == 1
         assert attrs["rollout_reason"] == "ProgressDeadlineExceeded"
+
+    @pytest.mark.parametrize("workload_type", ["deployment", "statefulset"])
+    def test_native_value_ready_when_more_ready_than_desired(
+        self, mock_config_entry, mock_client, mock_coordinator, workload_type
+    ):
+        """More ready replicas than desired (surge rollout, scale-down) is Ready."""
+        mock_coordinator.data = {
+            f"{workload_type}s": {
+                "staging_web-app": {
+                    "name": "web-app",
+                    "namespace": "staging",
+                    "replicas": 3,
+                    "ready_replicas": 4,
+                    "available_replicas": 4,
+                }
+            }
+        }
+        sensor = self._make_sensor(
+            mock_coordinator, mock_client, mock_config_entry, workload_type
+        )
+        assert sensor.native_value == "Ready"
 
     def test_statefulset_workload_type(
         self, mock_config_entry, mock_client, mock_coordinator
