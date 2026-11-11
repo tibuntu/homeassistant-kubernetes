@@ -360,7 +360,7 @@ kubectl auth can-i patch nodes --as=system:serviceaccount:homeassistant:homeassi
 
 #### 3. "Real-time updates not working" / Watch API failing
 
-The **Watch API** (enabled by default; toggled via **Configure → Enable Watch API**) uses long-lived HTTP streams and requires the `watch` verb on all monitored resources. The `manifests/minimal/` set does **not** include `watch` verbs — without them each stream gets HTTP 403 on connect and retries once a minute, and a **Missing permissions** repair issue names the affected resource(s) until the watch connects (it clears on its own after the rule is added). Once every stream is forbidden, the integration falls back to polling at the regular interval instead of the slow watch fallback.
+The **Watch API** (enabled by default; toggled via **Configure → Enable Watch API**) uses long-lived HTTP streams and requires the `watch` verb on all monitored resources. The `manifests/minimal/` set does **not** include `watch` verbs — without them each stream gets HTTP 403 on connect and retries once a minute, and a **Missing permissions** repair issue names the affected resource(s) until the watch delivers an event or stays open (it clears on its own after the rule is added). Once every stream is forbidden, the integration falls back to polling at the regular interval instead of the slow watch fallback.
 
 ```bash
 # Verify watch permissions for key resources
