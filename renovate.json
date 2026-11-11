@@ -47,11 +47,6 @@
       "semanticCommitScope": "deps-actions"
     },
     {
-      "matchManagers": ["devcontainer"],
-      "groupName": "devcontainer",
-      "semanticCommitScope": "deps-devcontainer"
-    },
-    {
       "matchDepNames": ["ruff", "astral-sh/ruff-pre-commit"],
       "groupName": "ruff",
       "semanticCommitScope": "deps"
