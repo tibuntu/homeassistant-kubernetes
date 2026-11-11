@@ -291,7 +291,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # Per-(resource_type, url) loop key -> resource type, for every loop
         # whose last attempt got HTTP 403. Feeds the watch_forbidden repair
         # issue and detects when *every* watch task is forbidden; a loop drops
-        # out again once its retry lists successfully.
+        # out again once its retry lists successfully (a list 403) or its watch
+        # connects (a watch 403).
         self._forbidden_loops: dict[str, str] = {}
         # Set while the HPA list gets HTTP 403, so the warning logs once.
         self._hpas_forbidden = False
@@ -975,7 +976,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         backoff cap, because a 403 is not always permanent — right after an
         API server restart the RBAC authorizer can deny requests until its
         caches have synced — and `_clear_watch_forbidden` drops the loop again
-        once a retry succeeds. Re-creating the issue with the same id updates
+        once a retry succeeds: the next successful list after a list 403, or
+        the watch connecting after a watch 403. Re-creating the issue with the same id updates
         its placeholders in place. If every watch task is forbidden, there is
         no live data source left at all, so the poll interval is sped back up
         to the regular fast interval instead of staying at the slow watch
@@ -1006,11 +1008,13 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
     @callback
     def _clear_watch_forbidden(self, loop_key: str) -> None:
-        """Drop ``loop_key`` from the forbidden set after a successful list.
+        """Drop ``loop_key`` from the forbidden set once access is proven again.
 
-        Updates the issue's resource list, or deletes the issue once no
-        forbidden loop is left. The caller has just synced the poll interval
-        via `_sync_watch_repair_issue`, which covers the all-forbidden case.
+        Called after a successful list (when the 403 came from the list) or
+        once the watch connects (when it came from the watch). Updates the
+        issue's resource list, or deletes the issue once no forbidden loop is
+        left. The caller has just synced the poll interval via
+        `_sync_watch_repair_issue`, which covers the all-forbidden case.
         """
         resource_type = self._forbidden_loops.pop(loop_key, None)
         if resource_type is None:
@@ -1236,9 +1240,22 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # failing. resource_type itself stays the data-bucket key.
         loop_key = f"{resource_type}:{url}"
         namespace = _watch_url_namespace(url)
+        # True while the loop is inside the watch request; tells a watch 403
+        # (cleared only once the watch connects) from a list 403 (cleared by
+        # the next successful list).
+        in_watch = False
+        watch_forbidden = False
+
+        def _watch_authorized() -> None:
+            nonlocal watch_forbidden
+            if watch_forbidden:
+                watch_forbidden = False
+                self._sync_watch_repair_issue(loop_key, failing=False)
+                self._clear_watch_forbidden(loop_key)
 
         while not self._watch_stop_event.is_set():
             try:
+                in_watch = False
                 if resource_version == "0":
                     # Full list + extract resourceVersion to anchor the watch
                     generation = self._poll_generation
@@ -1265,12 +1282,18 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         resource_version,
                     )
                     failure_streak = 0
-                    self._sync_watch_repair_issue(loop_key, failing=False)
-                    self._clear_watch_forbidden(loop_key)
+                    # After a watch 403 the successful list proves nothing
+                    # about the watch permission; the watch clears it.
+                    if not watch_forbidden:
+                        self._sync_watch_repair_issue(loop_key, failing=False)
+                        self._clear_watch_forbidden(loop_key)
 
                 started = monotonic()
                 got_event = False
+                in_watch = True
                 async for event in self.client.watch_stream(url, resource_version):
+                    if not got_event:
+                        _watch_authorized()
                     got_event = True
                     if self._watch_stop_event.is_set():
                         return
@@ -1294,6 +1317,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 self._check_stream_not_closed_early(started, got_event)
                 # Stream ended cleanly (timeoutSeconds expired); reconnect immediately
                 failure_streak = 0
+                _watch_authorized()
                 self._sync_watch_repair_issue(loop_key, failing=False)
                 _LOGGER.debug(
                     "Watch %s: stream ended cleanly, reconnecting", resource_type
@@ -1308,6 +1332,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 resource_version = "0"
                 failure_streak = 0
                 self._sync_watch_repair_issue(loop_key, failing=False)
+                # A 410 is an API response to an accepted watch request.
+                _watch_authorized()
 
             except asyncio.CancelledError:
                 self._failing_watch_loops.discard(loop_key)
@@ -1316,8 +1342,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             except Exception as ex:
                 if isinstance(ex, aiohttp.ClientResponseError) and ex.status == 403:
                     self._handle_watch_forbidden(loop_key, resource_type)
-                    # Relist on retry: the successful list is what clears the
-                    # forbidden state, and data may have drifted meanwhile.
+                    watch_forbidden = in_watch
+                    # Relist on retry: data may have drifted meanwhile. A list
+                    # 403 clears on the next successful list; a watch 403 only
+                    # once the watch connects.
                     resource_version = "0"
                     delay = _forbidden_retry_delay()
                 elif (
@@ -1334,6 +1362,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     failure_streak = 0
                     self._sync_watch_repair_issue(loop_key, failing=False)
                     self._clear_watch_forbidden(loop_key)
+                    watch_forbidden = False
                     resource_version = "0"
                     delay = _forbidden_retry_delay()
                 else:
@@ -1407,8 +1436,20 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         resource_version = "0"
         failure_streak = 0
         rt = f"events:{url}"
+        # See `_run_watch_loop`: a watch 403 clears only once the watch connects.
+        in_watch = False
+        watch_forbidden = False
+
+        def _watch_authorized() -> None:
+            nonlocal watch_forbidden
+            if watch_forbidden:
+                watch_forbidden = False
+                self._sync_watch_repair_issue(rt, failing=False)
+                self._clear_watch_forbidden(rt)
+
         while not self._watch_stop_event.is_set():
             try:
+                in_watch = False
                 if resource_version == "0":
                     # Anchor rv only; do NOT fire the existing backlog.
                     (
@@ -1416,11 +1457,15 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         resource_version,
                     ) = await self.client.list_resource_with_version(url)
                     failure_streak = 0
-                    self._sync_watch_repair_issue(rt, failing=False)
-                    self._clear_watch_forbidden(rt)
+                    if not watch_forbidden:
+                        self._sync_watch_repair_issue(rt, failing=False)
+                        self._clear_watch_forbidden(rt)
                 started = monotonic()
                 got_event = False
+                in_watch = True
                 async for event in self.client.watch_stream(url, resource_version):
+                    if not got_event:
+                        _watch_authorized()
                     got_event = True
                     if self._watch_stop_event.is_set():
                         return
@@ -1433,6 +1478,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 self._check_stream_not_closed_early(started, got_event)
                 failure_streak = 0
                 self._sync_watch_repair_issue(rt, failing=False)
+                _watch_authorized()
                 _LOGGER.debug("Event watch: stream ended cleanly, reconnecting")
             except ResourceVersionExpired:
                 _LOGGER.info(
@@ -1442,12 +1488,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 resource_version = "0"
                 failure_streak = 0
                 self._sync_watch_repair_issue(rt, failing=False)
+                _watch_authorized()
             except asyncio.CancelledError:
                 self._failing_watch_loops.discard(rt)
                 return
             except Exception as ex:
                 if isinstance(ex, aiohttp.ClientResponseError) and ex.status == 403:
                     self._handle_watch_forbidden(rt, "events")
+                    watch_forbidden = in_watch
                     resource_version = "0"
                     delay = _forbidden_retry_delay()
                 else:

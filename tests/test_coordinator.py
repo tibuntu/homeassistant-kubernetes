@@ -2845,7 +2845,8 @@ class TestRunWatchLoopExtended:
         self, coord, mock_client
     ):
         """A 403 raised mid-stream (after a successful list) also retries, and
-        the retry relists so its success can clear the forbidden state."""
+        the retry relists; the forbidden state is cleared by the clean watch
+        end that follows, not by the list itself."""
         calls = 0
 
         async def _list(url):
@@ -2877,6 +2878,144 @@ class TestRunWatchLoopExtended:
             )
 
         assert calls == 2
+        assert coord._forbidden_resources == set()
+        delete.assert_any_call(
+            coord.hass, DOMAIN, f"watch_forbidden_{coord.config_entry.entry_id}"
+        )
+
+    async def test_run_watch_loop_watch_403_does_not_flap_after_list(
+        self, coord, mock_client, caplog
+    ):
+        """List-but-not-watch RBAC: the list succeeds every retry but the watch
+        keeps getting 403. The forbidden state must stay put: one warning, no
+        issue deletion, no 'access granted again', no fallback interval."""
+        coord._watch_tasks = [MagicMock()]
+        issue_id = f"watch_forbidden_{coord.config_entry.entry_id}"
+        calls = 0
+        seen = []
+        intervals = []
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls > 1:
+                seen.append(set(coord._forbidden_resources))
+                intervals.append(coord.update_interval)
+            if calls == 3:
+                coord._watch_stop_event.set()
+            return [], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream_403(url, rv):
+            raise self._forbidden()
+            yield  # pragma: no cover - unreachable, makes this an async generator
+
+        mock_client.watch_stream = _stream_403
+
+        with (
+            caplog.at_level("INFO", logger="custom_components.kubernetes.coordinator"),
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert calls == 3
+        assert seen == [{"pods"}, {"pods"}]
+        assert all(
+            i != timedelta(seconds=DEFAULT_FALLBACK_POLL_INTERVAL) for i in intervals
+        )
+        assert not [c for c in delete.call_args_list if c.args[2] == issue_id]
+        assert sum("HTTP 403 Forbidden" in r.getMessage() for r in caplog.records) == 1
+        assert "access granted again" not in caplog.text
+
+    async def test_run_watch_loop_watch_403_does_not_flap_with_sentinel_rv(
+        self, coord, mock_client, caplog
+    ):
+        """Same as above when the list returns the '0' sentinel resourceVersion."""
+        calls = 0
+        seen = []
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls > 1:
+                seen.append(set(coord._forbidden_resources))
+            if calls == 3:
+                coord._watch_stop_event.set()
+            return [], "0"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream_403(url, rv):
+            raise self._forbidden()
+            yield  # pragma: no cover - unreachable, makes this an async generator
+
+        mock_client.watch_stream = _stream_403
+
+        with (
+            caplog.at_level("INFO", logger="custom_components.kubernetes.coordinator"),
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert seen == [{"pods"}, {"pods"}]
+        delete.assert_not_called()
+        assert "access granted again" not in caplog.text
+
+    @pytest.mark.parametrize("ending", ["bookmark", "clean_end", "expired"])
+    async def test_run_watch_loop_watch_403_clears_once_watch_connects(
+        self, coord, mock_client, ending
+    ):
+        """After a watch 403 the state clears when the watch is proven
+        authorized: first event (even a BOOKMARK), clean end, or a 410."""
+        calls = 0
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                coord._watch_stop_event.set()
+            return [], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream(url, rv):
+            if calls == 1:
+                raise self._forbidden()
+            if ending == "bookmark":
+                yield {
+                    "type": "BOOKMARK",
+                    "object": {"metadata": {"resourceVersion": "101"}},
+                }
+            elif ending == "expired":
+                raise ResourceVersionExpired("410 Gone")
+
+        mock_client.watch_stream = _stream
+
+        with (
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert coord._forbidden_loops == {}
         assert coord._forbidden_resources == set()
         delete.assert_any_call(
             coord.hass, DOMAIN, f"watch_forbidden_{coord.config_entry.entry_id}"
@@ -3805,6 +3944,109 @@ class TestEventWatchLoop:
         assert coord_warning._failing_watch_loops == set()
         assert wf.call_args.kwargs["timeout"] >= WATCH_MAX_RECONNECT_DELAY
         assert coord_warning._forbidden_resources == set()
+
+    async def test_event_watch_loop_watch_403_does_not_flap_after_list(
+        self, coord_warning, mock_client, caplog
+    ):
+        """Events: list succeeds but the watch keeps getting 403 -> no flapping."""
+        coord = coord_warning
+        coord._watch_tasks = [MagicMock()]
+        issue_id = f"watch_forbidden_{coord.config_entry.entry_id}"
+        calls = 0
+        seen = []
+        intervals = []
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls > 1:
+                seen.append(set(coord._forbidden_resources))
+                intervals.append(coord.update_interval)
+            if calls == 3:
+                coord._watch_stop_event.set()
+            return [], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream_403(url, rv):
+            raise aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=403, message="Forbidden"
+            )
+            yield  # pragma: no cover - unreachable, makes this an async generator
+
+        mock_client.watch_stream = _stream_403
+
+        with (
+            caplog.at_level("INFO", logger="custom_components.kubernetes.coordinator"),
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        assert calls == 3
+        assert seen == [{"events"}, {"events"}]
+        assert all(
+            i != timedelta(seconds=DEFAULT_FALLBACK_POLL_INTERVAL) for i in intervals
+        )
+        assert not [c for c in delete.call_args_list if c.args[2] == issue_id]
+        assert sum("HTTP 403 Forbidden" in r.getMessage() for r in caplog.records) == 1
+        assert "access granted again" not in caplog.text
+
+    @pytest.mark.parametrize("ending", ["bookmark", "clean_end", "expired"])
+    async def test_event_watch_loop_watch_403_clears_once_watch_connects(
+        self, coord_warning, mock_client, ending
+    ):
+        """Events: a watch 403 clears on first event, clean end, or a 410."""
+        coord = coord_warning
+        calls = 0
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                coord._watch_stop_event.set()
+            return [], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream(url, rv):
+            if calls == 1:
+                raise aiohttp.ClientResponseError(
+                    request_info=MagicMock(),
+                    history=(),
+                    status=403,
+                    message="Forbidden",
+                )
+            if ending == "bookmark":
+                yield {
+                    "type": "BOOKMARK",
+                    "object": {"metadata": {"resourceVersion": "101"}},
+                }
+            elif ending == "expired":
+                raise ResourceVersionExpired("410 Gone")
+
+        mock_client.watch_stream = _stream
+
+        with (
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        assert coord._forbidden_loops == {}
+        delete.assert_any_call(
+            coord.hass, DOMAIN, f"watch_forbidden_{coord.config_entry.entry_id}"
+        )
 
     async def test_event_watch_loop_dispatches_modified_event(
         self, coord_warning, mock_client
