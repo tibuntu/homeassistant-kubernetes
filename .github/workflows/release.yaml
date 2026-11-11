@@ -85,12 +85,11 @@ jobs:
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
 
-      # `:!kubernetes` drops the stray devcontainer symlink tracked in the directory.
       - name: Attach the integration zip to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.release-please.outputs.tag_name }}
         run: |
           file=$(jq -r .filename hacs.json)
-          git archive --format=zip -o "$file" HEAD:custom_components/kubernetes ':!kubernetes'
+          git archive --format=zip -o "$file" HEAD:custom_components/kubernetes
           gh release upload "$TAG" "$file" --clobber
