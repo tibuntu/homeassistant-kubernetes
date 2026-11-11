@@ -2974,6 +2974,91 @@ class TestRunWatchLoopExtended:
         delete.assert_not_called()
         assert "access granted again" not in caplog.text
 
+    async def test_run_watch_loop_watch_403_survives_interleaved_list_403(
+        self, coord, mock_client, caplog
+    ):
+        """list ok / watch 403, then list 403, then list ok / watch 403: the
+        watch is still denied, so the intervening list 403 must not forget it
+        and the next good list must not report access granted again."""
+        coord._watch_tasks = [MagicMock()]
+        issue_id = f"watch_forbidden_{coord.config_entry.entry_id}"
+        calls = 0
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls == 4:
+                coord._watch_stop_event.set()
+            if calls == 2:
+                raise self._forbidden()
+            return [], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream_403(url, rv):
+            raise self._forbidden()
+            yield  # pragma: no cover - unreachable, makes this an async generator
+
+        mock_client.watch_stream = _stream_403
+
+        with (
+            caplog.at_level("INFO", logger="custom_components.kubernetes.coordinator"),
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert calls == 4
+        assert not [c for c in delete.call_args_list if c.args[2] == issue_id]
+        assert "access granted again" not in caplog.text
+        assert coord._forbidden_resources == {"pods"}
+
+    async def test_run_watch_loop_list_403_clears_on_next_list(
+        self, coord, mock_client
+    ):
+        """A list 403 clears on the next successful list, before the watch
+        connects: observed at watch_stream entry, where the watch then fails."""
+        calls = 0
+        at_watch = []
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise self._forbidden()
+            return [], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream(url, rv):
+            at_watch.append(dict(coord._forbidden_loops))
+            coord._watch_stop_event.set()
+            raise aiohttp.ClientError("boom")
+            yield  # pragma: no cover - unreachable, makes this an async generator
+
+        mock_client.watch_stream = _stream
+
+        with (
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_watch_loop(
+                "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
+            )
+
+        assert at_watch == [{}]
+        delete.assert_any_call(
+            coord.hass, DOMAIN, f"watch_forbidden_{coord.config_entry.entry_id}"
+        )
+
     @pytest.mark.parametrize("ending", ["bookmark", "clean_end", "expired"])
     async def test_run_watch_loop_watch_403_clears_once_watch_connects(
         self, coord, mock_client, ending
@@ -3996,6 +4081,53 @@ class TestEventWatchLoop:
         assert not [c for c in delete.call_args_list if c.args[2] == issue_id]
         assert sum("HTTP 403 Forbidden" in r.getMessage() for r in caplog.records) == 1
         assert "access granted again" not in caplog.text
+
+    async def test_event_watch_loop_list_403_clears_on_next_list(
+        self, coord_warning, mock_client
+    ):
+        """Events: a list 403 clears on the next successful list, before the
+        watch connects: observed at watch_stream entry, where the watch fails."""
+        coord = coord_warning
+        calls = 0
+        at_watch = []
+
+        async def _list(url):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise aiohttp.ClientResponseError(
+                    request_info=MagicMock(),
+                    history=(),
+                    status=403,
+                    message="Forbidden",
+                )
+            return [], "100"
+
+        mock_client.list_resource_with_version.side_effect = _list
+
+        async def _stream(url, rv):
+            at_watch.append(dict(coord._forbidden_loops))
+            coord._watch_stop_event.set()
+            raise aiohttp.ClientError("boom")
+            yield  # pragma: no cover - unreachable, makes this an async generator
+
+        mock_client.watch_stream = _stream
+
+        with (
+            patch("asyncio.wait_for", side_effect=TimeoutError),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+            patch(
+                "custom_components.kubernetes.coordinator.ir.async_delete_issue"
+            ) as delete,
+        ):
+            await coord._run_event_watch_loop(
+                "https://test-cluster.example.com:6443/api/v1/events"
+            )
+
+        assert at_watch == [{}]
+        delete.assert_any_call(
+            coord.hass, DOMAIN, f"watch_forbidden_{coord.config_entry.entry_id}"
+        )
 
     @pytest.mark.parametrize("ending", ["bookmark", "clean_end", "expired"])
     async def test_event_watch_loop_watch_403_clears_once_watch_connects(

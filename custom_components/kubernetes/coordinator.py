@@ -977,11 +977,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         API server restart the RBAC authorizer can deny requests until its
         caches have synced — and `_clear_watch_forbidden` drops the loop again
         once a retry succeeds: the next successful list after a list 403, or
-        the watch connecting after a watch 403. Re-creating the issue with the same id updates
-        its placeholders in place. If every watch task is forbidden, there is
-        no live data source left at all, so the poll interval is sped back up
-        to the regular fast interval instead of staying at the slow watch
-        fallback.
+        the watch delivering an event or staying open after a watch 403.
+        Re-creating the issue with the same id updates its placeholders in
+        place. If every watch task is forbidden, there is no live data source
+        left at all, so the poll interval is sped back up to the regular fast
+        interval instead of staying at the slow watch fallback.
         """
         if resource_type not in self._forbidden_resources:
             _LOGGER.warning(
@@ -1011,9 +1011,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         """Drop ``loop_key`` from the forbidden set once access is proven again.
 
         Called after a successful list (when the 403 came from the list) or
-        once the watch connects (when it came from the watch). Updates the
-        issue's resource list, or deletes the issue once no forbidden loop is
-        left. The caller has just synced the poll interval via
+        once the watch delivers an event or stays open (when it came from the
+        watch). Updates the issue's resource list, or deletes the issue once
+        no forbidden loop is left. The caller has just synced the poll interval via
         `_sync_watch_repair_issue`, which covers the all-forbidden case.
         """
         resource_type = self._forbidden_loops.pop(loop_key, None)
@@ -1241,8 +1241,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         loop_key = f"{resource_type}:{url}"
         namespace = _watch_url_namespace(url)
         # True while the loop is inside the watch request; tells a watch 403
-        # (cleared only once the watch connects) from a list 403 (cleared by
-        # the next successful list).
+        # (cleared only once the watch delivers an event or stays open) from a
+        # list 403 (cleared by the next successful list).
         in_watch = False
         watch_forbidden = False
 
@@ -1342,10 +1342,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             except Exception as ex:
                 if isinstance(ex, aiohttp.ClientResponseError) and ex.status == 403:
                     self._handle_watch_forbidden(loop_key, resource_type)
-                    watch_forbidden = in_watch
+                    watch_forbidden = watch_forbidden or in_watch
                     # Relist on retry: data may have drifted meanwhile. A list
                     # 403 clears on the next successful list; a watch 403 only
-                    # once the watch connects.
+                    # once the watch delivers an event or stays open.
                     resource_version = "0"
                     delay = _forbidden_retry_delay()
                 elif (
@@ -1436,7 +1436,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         resource_version = "0"
         failure_streak = 0
         rt = f"events:{url}"
-        # See `_run_watch_loop`: a watch 403 clears only once the watch connects.
+        # See `_run_watch_loop`: a watch 403 clears only once the watch
+        # delivers an event or stays open.
         in_watch = False
         watch_forbidden = False
 
@@ -1495,7 +1496,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             except Exception as ex:
                 if isinstance(ex, aiohttp.ClientResponseError) and ex.status == 403:
                     self._handle_watch_forbidden(rt, "events")
-                    watch_forbidden = in_watch
+                    watch_forbidden = watch_forbidden or in_watch
                     resource_version = "0"
                     delay = _forbidden_retry_delay()
                 else:
