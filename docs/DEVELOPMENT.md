@@ -302,10 +302,11 @@ mypy custom_components/kubernetes/
 
 ### Pre-commit Hooks
 
-Install pre-commit hooks (the Python hooks run on `python3.15`, set by `default_language_version` in `.pre-commit-config.yaml`):
+Install pre-commit hooks (the Python hooks run on `python3.15`, set by `default_language_version` in `.pre-commit-config.yaml`). The YAML and frontend hooks call the tools in `frontend/node_modules`, so install those first:
 
 ```bash
 pip install pre-commit
+(cd frontend && npm ci)
 pre-commit install
 ```
 
