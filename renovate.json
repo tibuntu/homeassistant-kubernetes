@@ -142,6 +142,11 @@
       "semanticCommitScope": "deps"
     },
     {
+      "description": "Active Lit projects with a slow release cadence, not abandoned",
+      "matchDepNames": ["lit", "eslint-plugin-lit"],
+      "abandonmentThreshold": null
+    },
+    {
       "description": "kind CLI pin for the compat CI matrix — the node images are resolved from the same kind release",
       "matchDepNames": ["kubernetes-sigs/kind"],
       "semanticCommitScope": "deps-actions"
