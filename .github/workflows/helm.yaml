@@ -38,7 +38,7 @@ jobs:
       # committed manifests/ were rendered with this Helm version.
       - uses: azure/setup-helm@v5
         with:
-          version: v4.3.1
+          version: v4.3.2
 
       - name: Lint both permission modes
         run: |
