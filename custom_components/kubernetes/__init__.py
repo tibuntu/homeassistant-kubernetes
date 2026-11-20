@@ -143,10 +143,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
     if entry.options.get(CONF_ENABLE_EVENTS, DEFAULT_ENABLE_EVENTS):
         await coordinator.async_start_event_watch_tasks()
 
-    # Reload the config entry when the user changes options so that the watch
-    # tasks (or lack thereof) are correctly started/stopped.
-    entry.async_on_unload(entry.add_update_listener(_async_update_options))
-
+    # No update listener: KubernetesOptionsFlow is an OptionsFlowWithReload and
+    # the reconfigure/reauth steps reload the entry themselves. Home Assistant
+    # raises on a listener plus that flow and logs a deprecation on a listener
+    # plus async_update_reload_and_abort.
     return True
 
 
@@ -319,13 +319,6 @@ def _async_remove_panel(hass: HomeAssistant) -> None:
     hass.data[DOMAIN]["panel_registered"] = False
     hass.data[DOMAIN].pop("panel_require_admin", None)
     _LOGGER.info("Removed Kubernetes sidebar panel")
-
-
-async def _async_update_options(
-    hass: HomeAssistant, entry: KubernetesConfigEntry
-) -> None:
-    """Handle options updates by reloading the config entry."""
-    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -> None:

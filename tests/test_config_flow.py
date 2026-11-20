@@ -1303,6 +1303,20 @@ class TestKubernetesOptionsFlow:
         assert result["type"] is FlowResultType.CREATE_ENTRY
         assert result["data"][CONF_ENABLE_WATCH] is False
 
+    async def test_options_flow_reloads_entry_on_change(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Changed options reload the entry (there is no update listener)."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        with patch.object(hass.config_entries, "async_schedule_reload") as mock_reload:
+            await hass.config_entries.options.async_configure(
+                result["flow_id"],
+                user_input={CONF_ENABLE_WATCH: False},
+            )
+        mock_reload.assert_called_once_with(mock_config_entry.entry_id)
+
     async def test_options_flow_uses_existing_options(self, hass: HomeAssistant):
         """When options already have enable_watch=True, the form should still render."""
         entry = MockConfigEntry(

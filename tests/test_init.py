@@ -718,30 +718,6 @@ class TestAsyncRemovePanel:
             mock_remove.assert_not_called()
 
 
-class TestAsyncUpdateOptions:
-    """Tests for _async_update_options."""
-
-    async def test_reloads_config_entry(self, hass: HomeAssistant):
-        """Test that _async_update_options calls async_reload with entry_id."""
-        from custom_components.kubernetes import _async_update_options
-
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            entry_id="test_reload_entry",
-            data={"host": "test"},
-            options={},
-        )
-        entry.add_to_hass(hass)
-
-        with patch.object(
-            hass.config_entries,
-            "async_reload",
-            new_callable=AsyncMock,
-        ) as mock_reload:
-            await _async_update_options(hass, entry)
-            mock_reload.assert_called_once_with("test_reload_entry")
-
-
 class TestAsyncSyncPanel:
     """Tests for _async_sync_panel."""
 
@@ -1133,12 +1109,16 @@ class TestAsyncUnloadEntryPanelRemovalWithRemainingEntries:
 
 
 class TestAsyncSetupEntryUpdateListener:
-    """Tests for the options update listener registration."""
+    """Setup must not register an options update listener."""
 
-    async def test_update_listener_registered(
+    async def test_no_update_listener_registered(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
     ):
-        """Test that an update listener is registered during setup."""
+        """The options flow reloads the entry itself (OptionsFlowWithReload).
+
+        Home Assistant raises when such a flow finishes for an entry that also
+        has an update listener, so setup must not add one.
+        """
         with (
             patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
             patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
@@ -1164,8 +1144,7 @@ class TestAsyncSetupEntryUpdateListener:
             result = await async_setup_entry(hass, mock_config_entry)
             assert result is True
 
-            # Verify that the entry has update listeners registered
-            assert len(mock_config_entry.update_listeners) > 0
+            assert mock_config_entry.update_listeners == []
 
 
 class TestMigrateUniqueIds:
