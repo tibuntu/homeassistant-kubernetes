@@ -44,7 +44,7 @@ window.__k8s = { calls, services, fail, push: () => subscribers.forEach((cb) => 
 // Stand-ins for HA's own elements: an undefined custom element would render
 // its children anyway, but defining `ha-card` makes `loadHaElements()` return
 // early instead of waiting ten seconds for HA's panel resolver.
-for (const tag of ["ha-card", "ha-icon", "ha-circular-progress"]) {
+for (const tag of ["ha-card", "ha-icon", "ha-spinner"]) {
   customElements.define(tag, class extends HTMLElement {});
 }
 

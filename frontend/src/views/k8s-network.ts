@@ -362,7 +362,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
   protected render() {
     if (this._loading) {
       return html`<div class="loading">
-        <ha-circular-progress indeterminate></ha-circular-progress>
+        <ha-spinner></ha-spinner>
       </div>`;
     }
 
