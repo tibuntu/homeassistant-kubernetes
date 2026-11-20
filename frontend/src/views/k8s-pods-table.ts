@@ -987,7 +987,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
           }
           ${
             this._logsLoading && !result
-              ? html`<ha-circular-progress indeterminate></ha-circular-progress>`
+              ? html`<ha-spinner></ha-spinner>`
               : result
                 ? html`<pre class="logs-output">${result.logs || "(no output)"}</pre>`
                 : nothing

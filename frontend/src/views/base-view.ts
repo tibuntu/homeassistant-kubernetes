@@ -209,7 +209,7 @@ export abstract class K8sDataView<T> extends LitElement {
     if (this._loading) {
       return html`
         <div class="loading">
-          <ha-circular-progress indeterminate></ha-circular-progress>
+          <ha-spinner></ha-spinner>
         </div>
       `;
     }
