@@ -872,8 +872,12 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             return []
 
 
-class KubernetesOptionsFlow(config_entries.OptionsFlow):
-    """Handle Kubernetes integration options."""
+class KubernetesOptionsFlow(config_entries.OptionsFlowWithReload):
+    """Handle Kubernetes integration options.
+
+    Changed options reload the entry, which rebuilds the client and the
+    coordinator and starts or stops the watch tasks.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
