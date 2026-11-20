@@ -2845,7 +2845,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       display: flex;
       flex-direction: column;
       height: 100%;
-      background: var(--primary-background-color);
+      /* Theme-wide panel background (HA 2026.11+); older versions fall back. */
+      background: var(--ha-panel-background, var(--primary-background-color));
       color: var(--primary-text-color);
     }
 
@@ -2880,7 +2881,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
 
     .tab-bar {
       display: flex;
-      background: var(--primary-background-color);
       border-bottom: 1px solid var(--divider-color);
       overflow-x: auto;
       scrollbar-width: none;
