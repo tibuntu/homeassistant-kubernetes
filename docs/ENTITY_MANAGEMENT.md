@@ -43,6 +43,12 @@ The integration now automatically removes orphaned entities during each polling 
    - Removes entities whose corresponding Kubernetes resources no longer exist
    - Removes namespace devices when namespaces no longer contain any resources
 
+4. **Deleted-entity records**:
+   - Home Assistant keeps a record (tombstone) of every removed entity, so a re-created entity gets its entity_id and customizations back. For a live config entry it never expires these records.
+   - Pod, Job and node names are usually generated (ReplicaSet hash, Job timestamp, autoscaled node names) and never come back, so the integration drops their records once the resource has been gone for an hour. This also clears records left by older versions.
+   - A StatefulSet pod or node that returns under its old name within that hour keeps its customizations; after that it comes back as a fresh entity.
+   - Records of Deployments, StatefulSets, DaemonSets and CronJobs are kept, because their names are stable.
+
 ### Logging
 
 The cleanup process provides detailed logging:

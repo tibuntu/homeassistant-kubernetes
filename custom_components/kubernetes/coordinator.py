@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 import logging
 import random
+import re
 import time
 from time import monotonic
 from typing import Any
@@ -16,11 +17,12 @@ import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import entity_registry as er, issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_DISABLED_RESOURCES,
@@ -82,6 +84,10 @@ ISSUE_WATCH_FORBIDDEN = "watch_forbidden"
 RBAC_LEARN_MORE_URL = (
     "https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md"
 )
+
+# How long a pod/Job/node tombstone is kept before the orphan cleanup drops
+# it: long enough for a StatefulSet pod or node to return under its old name.
+EPHEMERAL_TOMBSTONE_GRACE = timedelta(hours=1)
 
 # Usage fields merged in by the poll cycle from the Metrics API, which cannot
 # be watched. The single-item parsers never set them, so a watch event or
@@ -753,36 +759,47 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
     @callback
     def _purge_ephemeral_tombstones(
-        self, entity_registry: Any, expected_ids: set[str]
+        self, entity_registry: er.EntityRegistry, expected_ids: set[str]
     ) -> None:
-        """Drop deleted-entity records left behind by pods and Jobs.
+        """Drop deleted-entity records left behind by pods, Jobs and nodes.
 
         ``async_remove`` keeps a tombstone so a re-created entity gets its old
         entity_id and customizations back. Home Assistant only expires
         tombstones whose config entry is gone, so for a live entry they are
-        kept forever. Pod and Job names are generated (ReplicaSet hash, Job
-        timestamp) and never come back, so every pod and every CronJob run
-        adds a tombstone nothing can reuse. On a busy cluster that grew the
-        registry to 85k records and OOMKilled Home Assistant.
+        kept forever. Pod, Job and (autoscaled) node names are generated and
+        never come back, so every replaced pod, CronJob run and node adds a
+        tombstone nothing can reuse. On a busy cluster that grew the registry
+        to 85k records and OOMKilled Home Assistant.
 
-        Only pod and Job tombstones are dropped. Workload, node and CronJob
-        names are stable, so their tombstones still carry customizations
-        across a delete and re-create.
+        A tombstone is dropped only after ``EPHEMERAL_TOMBSTONE_GRACE``, so a
+        StatefulSet pod or a node that comes back under the same name (rolling
+        restart, rejoin) still gets its customizations back. Workload, DaemonSet
+        and CronJob names are stable, so their tombstones are never dropped.
         """
-        eid = self.config_entry.entry_id
-        ephemeral = (f"{eid}_pod_", f"{eid}_job_")
+        eid = re.escape(self.config_entry.entry_id)
+        # Names and namespaces are DNS-1123 and never contain "_", so each
+        # pattern matches exactly one entity kind and never a workload living
+        # in a namespace called "pod", "job" or "node".
+        patterns = {
+            "sensor": re.compile(rf"{eid}_(?:(?:pod|job)_[^_]+_[^_]+|node_[^_]+)"),
+            "binary_sensor": re.compile(rf"{eid}_node_[^_]+_.+"),
+            "switch": re.compile(rf"{eid}_node_[^_]+_schedulable"),
+        }
+        cutoff = dt_util.utcnow() - EPHEMERAL_TOMBSTONE_GRACE
         stale = [
             key
             for key, deleted in entity_registry.deleted_entities.items()
-            if deleted.config_entry_id == eid
-            and deleted.unique_id.startswith(ephemeral)
+            if deleted.config_entry_id == self.config_entry.entry_id
+            and deleted.modified_at < cutoff
             and deleted.unique_id not in expected_ids
+            and (pattern := patterns.get(deleted.domain)) is not None
+            and pattern.fullmatch(deleted.unique_id)
         ]
         for key in stale:
             entity_registry.deleted_entities.pop(key)
         if stale:
             entity_registry.async_schedule_save()
-            _LOGGER.debug("Purged %d pod/Job entity tombstones", len(stale))
+            _LOGGER.debug("Purged %d pod/Job/node entity tombstones", len(stale))
 
     async def _cleanup_orphaned_entities(self, current_data: dict[str, Any]) -> None:
         """Remove entities for Kubernetes resources that no longer exist."""
