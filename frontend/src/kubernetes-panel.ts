@@ -1,5 +1,5 @@
 import { LitElement, html, css, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, property } from "lit/decorators.js";
 import type { HomeAssistant } from "./types/homeassistant";
 import { loadHaElements } from "./utils/load-ha-elements";
 import "./views/k8s-overview";
@@ -8,8 +8,7 @@ import "./views/k8s-pods-table";
 import "./views/k8s-network";
 import "./views/k8s-workloads";
 import "./views/k8s-settings";
-import type { NetworkTypeFilter } from "./views/k8s-network";
-import type { WorkloadCategory } from "./views/k8s-workloads";
+import { navigate } from "./utils/nav";
 
 export type Tab = "overview" | "nodes" | "workloads" | "pods" | "network" | "settings";
 
@@ -22,36 +21,25 @@ const TABS = [
   { id: "settings", label: "Settings", icon: "mdi:cog" },
 ] as const satisfies { id: Tab; label: string; icon: string }[];
 
-/**
- * Fired by the overview's count cards and alerts to jump to a tab with a
- * preset. `filter` is the Workloads/Network type filter, `search` the target
- * view's search text (Nodes, Pods, Workloads).
- */
-export type NavigateDetail =
-  | { tab: "workloads"; filter?: WorkloadCategory; search?: string }
-  | { tab: "network"; filter?: NetworkTypeFilter; search?: never }
-  | { tab: "nodes" | "pods"; filter?: never; search?: string }
-  | {
-      tab: Exclude<Tab, "workloads" | "network" | "nodes" | "pods">;
-      filter?: never;
-      search?: never;
-    };
-
 @customElement("kubernetes-panel")
 export class KubernetesPanel extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
   @property({ type: Boolean, reflect: true }) public narrow = false;
-  @property({ attribute: false }) public route!: Record<string, unknown>;
+  /** `{prefix, path}` from HA's router; `path` (`/pods`) selects the tab. */
+  @property({ attribute: false }) public route!: { prefix: string; path: string };
   @property({ attribute: false }) public panel!: Record<string, unknown>;
 
-  @state() private _nav: NavigateDetail = { tab: "overview" };
+  private get _tab(): Tab {
+    const id = this.route?.path.split("/")[1];
+    return TABS.find((t) => t.id === id)?.id ?? "overview";
+  }
 
   protected firstUpdated(_changedProps: PropertyValues): void {
     loadHaElements();
   }
 
   private _handleTabChange(tab: Tab): void {
-    this._nav = { tab };
+    navigate(`${this.route.prefix}${tab === "overview" ? "" : `/${tab}`}`);
   }
 
   private _toggleSidebar(): void {
@@ -170,7 +158,7 @@ export class KubernetesPanel extends LitElement {
               class="tab"
               role="button"
               tabindex="0"
-              ?active=${this._nav.tab === tab.id}
+              ?active=${this._tab === tab.id}
               @click=${() => this._handleTabChange(tab.id)}
               @keydown=${(e: KeyboardEvent) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -190,38 +178,37 @@ export class KubernetesPanel extends LitElement {
   }
 
   private _renderActiveTab() {
-    const nav = this._nav;
-    switch (nav.tab) {
+    switch (this._tab) {
       case "overview":
         return html`<k8s-overview
           .hass=${this.hass}
-          @k8s-navigate=${(e: CustomEvent<NavigateDetail>) => {
-            this._nav = e.detail;
-          }}
+          .prefix=${this.route.prefix}
         ></k8s-overview>`;
       case "nodes":
         return html`<k8s-nodes-table
           .hass=${this.hass}
-          .initialSearch=${nav.search}
+          .prefix=${this.route.prefix}
         ></k8s-nodes-table>`;
       case "pods":
         return html`<k8s-pods-table
           .hass=${this.hass}
-          .initialSearch=${nav.search}
+          .prefix=${this.route.prefix}
         ></k8s-pods-table>`;
       case "workloads":
         return html`<k8s-workloads
           .hass=${this.hass}
-          .initialFilter=${nav.filter}
-          .initialSearch=${nav.search}
+          .prefix=${this.route.prefix}
         ></k8s-workloads>`;
       case "network":
         return html`<k8s-network
           .hass=${this.hass}
-          .initialFilter=${nav.filter}
+          .prefix=${this.route.prefix}
         ></k8s-network>`;
       case "settings":
-        return html`<k8s-settings .hass=${this.hass}></k8s-settings>`;
+        return html`<k8s-settings
+          .hass=${this.hass}
+          .prefix=${this.route.prefix}
+        ></k8s-settings>`;
     }
   }
 }
