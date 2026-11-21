@@ -226,6 +226,104 @@ test("pod logs dialog shows logs, refetches per container and closes on Escape",
   await expect(page.locator(".logs-dialog")).toHaveCount(0);
 });
 
+test("pod logs wrap by default, the choice persists and can be turned off", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  const open = async () => {
+    await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+    await expect(page.locator(".logs-output")).toBeVisible();
+  };
+  const metrics = () =>
+    page.locator(".logs-output").evaluate((el) => ({
+      ws: getComputedStyle(el).whiteSpace,
+      overflows: el.scrollWidth > el.clientWidth,
+    }));
+  await open();
+  expect(await metrics()).toEqual({ ws: "pre-wrap", overflows: false });
+
+  await page.locator(".logs-wrap-toggle").uncheck();
+  expect(await metrics()).toEqual({ ws: "pre", overflows: true });
+
+  await page.keyboard.press("Escape");
+  await open();
+  await expect(page.locator(".logs-wrap-toggle")).not.toBeChecked();
+  expect((await metrics()).ws).toBe("pre");
+
+  await page.reload();
+  await openTab(page, "Pods");
+  await open();
+  await expect(page.locator(".logs-wrap-toggle")).not.toBeChecked();
+});
+
+test("pod logs auto-refresh polls every 5 s and stops on close", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+  await expect(page.locator(".logs-output")).toBeVisible();
+  const count = () =>
+    page.evaluate(
+      () => window.__k8s.calls.filter((c) => c.type === "kubernetes/pods/logs").length,
+    );
+  expect(await count()).toBe(1);
+  await expect(page.locator(".logs-auto-toggle")).not.toBeChecked();
+
+  await page.locator(".logs-auto-toggle").check();
+  await page.clock.runFor(5100);
+  await expect.poll(count).toBe(2);
+
+  await page.locator(".logs-dialog .logs-previous input").check();
+  await expect(page.locator(".logs-auto-toggle")).toBeDisabled();
+  await expect(page.locator(".logs-auto-toggle")).not.toBeChecked();
+  await page.locator(".logs-dialog .logs-previous input").uncheck();
+  await page.locator(".logs-auto-toggle").check();
+  const before = await count();
+
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".logs-dialog")).toHaveCount(0);
+  await page.clock.runFor(15000);
+  expect(await count()).toBe(before);
+});
+
+test("pod logs keep the scroll position unless the view was at the bottom", async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+  const pre = page.locator(".logs-output");
+  await expect(pre).toBeVisible();
+  await page.locator(".logs-wrap-toggle").uncheck();
+  // Many lines so the output scrolls vertically.
+  await page.evaluate(() => {
+    window.__k8s.logs = Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n");
+  });
+  await page.locator(".logs-dialog .filter-chip", { hasText: "100" }).click();
+  await expect.poll(() => pre.evaluate((el) => el.scrollTop > 0)).toBe(true);
+  const atBottom = () =>
+    pre.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight < 8);
+  expect(await atBottom()).toBe(true);
+
+  await page.locator(".logs-auto-toggle").check();
+  await page.evaluate(() => {
+    window.__k8s.logs += "\nnew tail";
+  });
+  await page.clock.runFor(5100);
+  await expect(pre).toContainText("new tail");
+  expect(await atBottom()).toBe(true);
+
+  await pre.evaluate((el) => (el.scrollTop = 0));
+  await page.evaluate(() => {
+    window.__k8s.logs += "\nanother tail";
+  });
+  await page.clock.runFor(5100);
+  await expect(pre).toContainText("another tail");
+  expect(await pre.evaluate((el) => el.scrollTop)).toBe(0);
+});
+
 test("pod logs failure shows an inline error in the dialog", async ({ page }) => {
   await page.goto(`${HARNESS}?fail=kubernetes/pods/logs`);
   await openTab(page, "Pods");
