@@ -6,10 +6,12 @@ import itertools
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
+import attr
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -110,6 +112,18 @@ def _create_entity(
         config_entry=config_entry,
         suggested_object_id=entity_id.split(".")[1],
     )
+
+
+def _age_tombstones(hass: HomeAssistant, hours: float = 2) -> None:
+    """Backdate every tombstone past EPHEMERAL_TOMBSTONE_GRACE."""
+    registry = er.async_get(hass)
+    old = dt_util.utcnow() - timedelta(hours=hours)
+    for key, deleted in registry.deleted_entities.items():
+        registry.deleted_entities[key] = attr.evolve(deleted, modified_at=old)
+
+
+def _tombstone_ids(hass: HomeAssistant) -> set[str]:
+    return {d.unique_id for d in er.async_get(hass).deleted_entities.values()}
 
 
 class TestKubernetesDataCoordinator:
@@ -877,15 +891,42 @@ class TestKubernetesDataCoordinator:
             "sensor.backup_29920350",
         )
 
-        await coordinator._cleanup_orphaned_entities({"pods": {}, "jobs": {}})
+        _create_entity(
+            hass, mock_config_entry, "test-entry-id_node_spot-a1b2", "sensor.spot_a1b2"
+        )
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_node_spot-a1b2_memory_pressure",
+            "binary_sensor.spot_a1b2_memory_pressure",
+        )
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_node_spot-a1b2_schedulable",
+            "switch.spot_a1b2_schedulable",
+        )
+        ephemeral = {
+            "test-entry-id_pod_default_web-7d9f-abcde",
+            "test-entry-id_job_default_backup-29920350",
+            "test-entry-id_node_spot-a1b2",
+            "test-entry-id_node_spot-a1b2_memory_pressure",
+            "test-entry-id_node_spot-a1b2_schedulable",
+        }
+        data = {"pods": {}, "jobs": {}, "nodes": {}}
+
+        await coordinator._cleanup_orphaned_entities(data)
 
         registry = er.async_get(hass)
         assert registry.async_get("sensor.web_7d9f_abcde") is None
-        assert not [
-            d
-            for d in registry.deleted_entities.values()
-            if d.unique_id.startswith(("test-entry-id_pod_", "test-entry-id_job_"))
-        ]
+        # Within the grace period the tombstones stay, so a StatefulSet pod or
+        # node returning under the same name keeps its customizations.
+        assert ephemeral <= _tombstone_ids(hass)
+
+        _age_tombstones(hass)
+        await coordinator._cleanup_orphaned_entities(data)
+
+        assert not ephemeral & _tombstone_ids(hass)
 
     async def test_cleanup_purges_pod_tombstone_backlog(
         self, hass: HomeAssistant, coordinator, mock_config_entry
@@ -904,12 +945,10 @@ class TestKubernetesDataCoordinator:
             for d in registry.deleted_entities.values()
         )
 
+        _age_tombstones(hass)
         await coordinator._cleanup_orphaned_entities({"pods": {}})
 
-        assert not any(
-            d.unique_id == "test-entry-id_pod_default_old-pod"
-            for d in registry.deleted_entities.values()
-        )
+        assert "test-entry-id_pod_default_old-pod" not in _tombstone_ids(hass)
 
     async def test_cleanup_keeps_workload_tombstones(
         self, hass: HomeAssistant, coordinator, mock_config_entry
@@ -922,14 +961,26 @@ class TestKubernetesDataCoordinator:
             "switch.web_deployment",
         )
 
+        # Workloads in namespaces named like the ephemeral prefixes.
+        kept = {
+            "test-entry-id_default_web_deployment": "switch.web_deployment",
+            "test-entry-id_pod_web_deployment": "switch.pod_web_deployment",
+            "test-entry-id_job_web_deployment_status": "sensor.job_web_status",
+            "test-entry-id_node_web_statefulset_cpu": "sensor.node_web_cpu",
+            "test-entry-id_cronjob_default_nightly": "sensor.nightly",
+            "test-entry-id_daemonset_default_agent": "sensor.agent",
+        }
+        for unique_id, entity_id in kept.items():
+            if unique_id != "test-entry-id_default_web_deployment":
+                _create_entity(hass, mock_config_entry, unique_id, entity_id)
+
+        await coordinator._cleanup_orphaned_entities({"deployments": {}})
+        _age_tombstones(hass)
         await coordinator._cleanup_orphaned_entities({"deployments": {}})
 
         registry = er.async_get(hass)
         assert registry.async_get("switch.web_deployment") is None
-        assert any(
-            d.unique_id == "test-entry-id_default_web_deployment"
-            for d in registry.deleted_entities.values()
-        )
+        assert set(kept) <= _tombstone_ids(hass)
 
     async def test_cleanup_keeps_other_entry_pod_tombstones(
         self, hass: HomeAssistant, coordinator, mock_config_entry
@@ -942,6 +993,7 @@ class TestKubernetesDataCoordinator:
         )
         registry = er.async_get(hass)
         registry.async_remove("sensor.other_pod_x")
+        _age_tombstones(hass)
 
         await coordinator._cleanup_orphaned_entities({"pods": {}})
 

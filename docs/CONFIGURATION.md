@@ -121,14 +121,13 @@ Changing this option reloads the integration automatically.
 |--------|-------------|---------|
 | **Exclude Job and CronJob pods** | Skip pods owned by a Job or CronJob so they never become entities | `true` |
 
-Every run of a Job or CronJob creates a pod with a fresh, single-use name. Tracking those pods means one new entity per run, and Home Assistant keeps a record of each one in its entity registry forever — deleted entities that still belong to a live config entry are never purged. On a cluster with a handful of CronJobs this accumulates quickly: one deployment reached **265,000 registry records (200 MB)** from this alone, which is loaded into memory on every Home Assistant start.
+Every run of a Job or CronJob creates a pod with a fresh, single-use name. Tracking those pods means one new entity per run. Before the integration started purging pod tombstones (see [Entity Management](ENTITY_MANAGEMENT.md)), Home Assistant kept a record of each one in its entity registry forever: one deployment reached **265,000 registry records (200 MB)** from this alone. The records are now dropped an hour after the pod is gone, but every run still adds an entity, a recorder history and registry churn.
 
 Excluding them is the default. Pods owned by a Deployment, StatefulSet, DaemonSet or ReplicaSet, and pods with no owner at all, are unaffected — only `ownerReferences[0].kind == "Job"` is filtered. Because a CronJob owns a Job which owns the pod, this covers both.
 
-Two side effects to be aware of:
+One side effect to be aware of:
 
 - **Failed Job runs are no longer visible as pods.** A Job pod that ends in phase `Failed` does not appear in the panel's failed-pods alerts, and there is no pod sensor with a `problem` attribute for it. Use the [Job sensor](ENTITIES.md#individual-job-sensors) (`failed` / `succeeded` / `active` attributes) or the [Cluster Events](#cluster-events) entity (`BackOff`, `OOMKilling`, `Failed`, …) to alert on failing Jobs instead.
-- **Existing registry records are not removed.** The filter stops new records from accumulating; per-run pod entities that were already deleted stay in `deleted_entities` until Home Assistant purges them, which only happens after the integration's config entry is removed. If your `core.entity_registry` has already grown large, remove and re-add the integration once to let Home Assistant orphan and purge those records.
 
 Turn the option off if you genuinely need an entity per Job run. Note that the **Pods** count sensor then also counts Job pods; with the filter on it counts only the tracked pods.
 
