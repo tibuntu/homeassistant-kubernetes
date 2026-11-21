@@ -76,14 +76,14 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.build-matrix.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@2f5e7bc67f1f9972ab16657bb795f36d8f04de0e # v5
         with:
           version: v4.3.2
 
       - name: Create kind cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
         with:
           version: ${{ env.KIND_VERSION }}
           node_image: ${{ matrix.node-image }}
@@ -120,7 +120,7 @@ jobs:
           REV=$(kubectl -n kube-system exec "$ETCD_POD" -- "${ETCDCTL[@]}" endpoint status -w json | jq '.[0].Status.header.revision')
           kubectl -n kube-system exec "$ETCD_POD" -- "${ETCDCTL[@]}" compact "$REV"
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.15"
 
