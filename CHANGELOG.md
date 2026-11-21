@@ -2,26 +2,37 @@
 
 ## [1.18.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.17.0...v1.18.0) (2026-11-21)
 
+A feature release built around one question: **why is this pod broken?** The panel now shows a pod's real status, its containers and its events, plus CPU and memory usage per pod. Nodes get **CPU and memory usage sensors**, **cert-manager certificates** are monitored, and the panel remembers its tab and filters in the URL. The integration also no longer installs the `kubernetes` Python package. Certificates need one new permission, see *Upgrading*.
 
-### Features
+### New features
 
-* drop the kubernetes Python package dependency ([29e2359](https://github.com/tibuntu/homeassistant-kubernetes/commit/29e235968f42fa65cedc4d5a73351518fb363b41))
-* monitor cert-manager certificates and alert on expiry problems ([3c02149](https://github.com/tibuntu/homeassistant-kubernetes/commit/3c02149969f6beedbf50b8fa9048140512e90bfe))
-* **panel:** keep the active tab and filters in the URL ([45c2a1d](https://github.com/tibuntu/homeassistant-kubernetes/commit/45c2a1d05b4b042bed619136887eb3a43f99cb31))
-* **panel:** show pod and workload CPU/memory usage ([9e0df1c](https://github.com/tibuntu/homeassistant-kubernetes/commit/9e0df1ca28551030c828be6aa14e6f72a06920f6))
-* **panel:** show pod containers and events in a detail dialog ([e238f90](https://github.com/tibuntu/homeassistant-kubernetes/commit/e238f906f15b10179042994a517d494c580f9868))
-* **panel:** show pod status reason and make overview alerts clickable ([09aed5f](https://github.com/tibuntu/homeassistant-kubernetes/commit/09aed5f665f1dba098e5defc0cdaef4fcff3658f))
-* **panel:** wrap long pod log lines and add 5 s auto-refresh ([2d05e93](https://github.com/tibuntu/homeassistant-kubernetes/commit/2d05e93353ec8b9dfbd1288defd039a8ed019d75))
-* **sensor:** add per-node CPU and memory usage sensors ([fdf1df9](https://github.com/tibuntu/homeassistant-kubernetes/commit/fdf1df9e09314aa7b941c951430117e030ba8061))
+**Pod status and detail in the panel.** The Pods tab shows a pod's status the way `kubectl get pods` does: a pod stuck in `CrashLoopBackOff`, `ImagePullBackOff` or `Init:Error` now says so in red instead of showing a green *Running*. A new *Problems* filter lists exactly the pods the *Problem Pods* sensor counts. Clicking a pod name opens a detail dialog with every container (image, ready, restarts, current and last state with reason and exit code), the pod's conditions and its recent Kubernetes events, much like `kubectl describe pod`. The dialog is available to non-admin users too. Its *Logs* button opens the previous container's log for a pod that has restarted. With the read-only `minimal` role the dialog shows containers but no events.
 
+**Clickable alerts.** Every alert on the Overview tab now takes you to the thing it is about, with the search already filled in: pod alerts open the Pods tab, workload and failed-Job alerts the Workloads tab, node alerts the Nodes tab, certificate alerts the Network tab. The pod alert shows the reason (`CrashLoopBackOff`) instead of the phase.
 
-### Bug Fixes
+**CPU and memory usage in the panel.** The Pods tab gains sortable *CPU* and *Memory* columns, and the Deployment, StatefulSet and DaemonSet cards on the Workloads tab show their usage. Both need metrics-server and show a dash without it. If you had customised the Pods columns, the two new columns are added once; hide them again from the column menu if you don't want them.
 
-* **config_flow:** stop the deprecation warning on reconfigure and reauth ([998f572](https://github.com/tibuntu/homeassistant-kubernetes/commit/998f5722d6f19753e49a0e15f9f1c105613cdca4))
-* **coordinator:** purge node tombstones too and keep a 1 h grace ([232d24e](https://github.com/tibuntu/homeassistant-kubernetes/commit/232d24ed7d5b36b2e8c93c3e5b874131f67b70d7))
-* **coordinator:** purge pod and Job entity tombstones ([3c5ce90](https://github.com/tibuntu/homeassistant-kubernetes/commit/3c5ce90440463a6195567ea4bae547caea91ddfc))
-* **panel:** let themes set the panel background ([70ca788](https://github.com/tibuntu/homeassistant-kubernetes/commit/70ca7882ae1f88129e92466bf47e8bf972b6da39))
-* **panel:** show the loading spinner again ([f9373ad](https://github.com/tibuntu/homeassistant-kubernetes/commit/f9373adcf83d7df45e98db32e3280ae3f551f48d))
+**Node CPU and memory usage sensors.** Every node gets four sensors: *CPU Usage* (millicores), *Memory Usage* (MiB), and both as a percentage of the node's capacity, the same base the panel's Nodes tab uses (`kubectl top node` uses allocatable, so its numbers are slightly higher). You can graph them and trigger automations with a plain numeric-state trigger. They need metrics-server, refresh with each poll (every 5 minutes with the Watch API on), and are not created when **Nodes** or **Metrics** data collection is disabled. The *Monitor Node Resource Usage* example in the docs now uses them; the old example measured the kubelet's reservation, not load.
+
+**cert-manager certificates.** A new *Certificate Problems* sensor counts cert-manager Certificates that are not Ready, more than 24 hours overdue for renewal, or expired, and lists them in an attribute. This works for 90-day and for 6-day certificates alike. The Network tab gains a Certificates section with DNS names, issuer, expiry and status, and problem certificates appear among the Overview alerts. Without cert-manager the section stays hidden and the sensor stays at 0; disable **Certificates** under *Disable data collection for* to remove it. The integration never reads the certificates' TLS Secrets.
+
+**Panel links and the back button.** The panel's tab and filters now live in the URL. A reload keeps you where you were, the browser's back button moves between tabs, and you can link straight to a filtered view, for example from a notification: `/kubernetes_panel/pods?phase=problems`. The docs have a notification example and the full list of parameters.
+
+**Pod logs: line wrapping and auto-refresh.** Long log lines now wrap instead of scrolling sideways (untick *Wrap lines* for the old behaviour; the choice is remembered). *Auto-refresh* reloads the log every 5 seconds while the dialog is open, and keeps your scroll position unless you are at the bottom. Logs are still fetched snapshots, not a live stream.
+
+### Fixes & improvements
+
+* **No more `kubernetes` Python package.** The integration now talks to the Kubernetes API through aiohttp only and installs no Python requirements, so a release of that package can no longer make the integration uninstallable next to Home Assistant's own pins, as happened with 1.13.1. All API calls also share one connection pool per cluster instead of opening a new TLS connection each time.
+* **Entity registry no longer grows without bound.** Every replaced pod, every CronJob run and every autoscaled node left a deleted-entity record in Home Assistant's entity registry that was never cleaned up. On a busy cluster that grew to tens of thousands of records and could get Home Assistant OOM-killed. These records are now purged an hour after the pod, Job or node is gone, including the existing backlog. Records of workloads and CronJobs are kept, so their customizations survive a delete and re-create.
+* **No deprecation warning on reconfigure and reauth.** Reconfiguring or re-authenticating an entry logged a deprecation warning since Home Assistant 2026.6 and reloaded the entry twice. It now reloads once, quietly.
+* **Panel loading spinner is back.** Home Assistant removed the spinner element the panel used, so every loading state was blank.
+* **Themes can set the panel background.** The panel no longer paints over a theme's panel background (Home Assistant 2026.11+); older versions look as before.
+
+> **Upgrading — RBAC:** cert-manager support needs `get`, `list` and `watch` on `certificates` in `cert-manager.io` (`minimal` mode: `get` and `list`). Helm users run `helm upgrade` with `--reset-then-reuse-values`; manifest users re-apply `manifests/full/` or `manifests/minimal/`. Until you do, **every** cluster gets a *Missing permissions* repair issue naming `certificates`, also clusters without cert-manager, because Kubernetes checks permissions before it checks whether the API exists. Everything else keeps working. If you do not want to grant the rule, disable **Certificates** under **Configure → Disable data collection for**.
+>
+> **Custom roles and scaling:** scaling used to fall back to replacing the whole Deployment or StatefulSet when patching its `/scale` subresource failed. That fallback is gone. The shipped chart and manifests are not affected, but a hand-written role that grants `update` on `deployments`/`statefulsets` without `patch` on `deployments/scale`/`statefulsets/scale` can no longer scale; add the `patch` rule.
+>
+> **New entities:** four sensors per node (with metrics-server) and one *Certificate Problems* sensor per cluster appear after the upgrade.
 
 ## [1.17.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.16.0...v1.17.0) (2026-11-11)
 
