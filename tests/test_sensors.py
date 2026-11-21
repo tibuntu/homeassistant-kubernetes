@@ -1179,17 +1179,17 @@ class TestDynamicNodeSensorDiscovery:
                 return_value=mock_device_registry,
             ),
         ):
-            # First call: should discover and add 1 node sensor
+            # First call: node sensor plus its four usage sensors
             await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
 
         callback = mock_config_entry.runtime_data.sensor_add_entities
         callback.assert_called_once()
-        assert len(callback.call_args[0][0]) == 1
+        assert len(callback.call_args[0][0]) == 5
 
         # pending_ids should now contain the new entity's unique_id
-        assert len(pending_ids) == 1
+        assert len(pending_ids) == 5
 
         # Reset mock for second call
         callback.reset_mock()
