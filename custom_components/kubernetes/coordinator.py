@@ -751,6 +751,39 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
         return expected
 
+    @callback
+    def _purge_ephemeral_tombstones(
+        self, entity_registry: Any, expected_ids: set[str]
+    ) -> None:
+        """Drop deleted-entity records left behind by pods and Jobs.
+
+        ``async_remove`` keeps a tombstone so a re-created entity gets its old
+        entity_id and customizations back. Home Assistant only expires
+        tombstones whose config entry is gone, so for a live entry they are
+        kept forever. Pod and Job names are generated (ReplicaSet hash, Job
+        timestamp) and never come back, so every pod and every CronJob run
+        adds a tombstone nothing can reuse. On a busy cluster that grew the
+        registry to 85k records and OOMKilled Home Assistant.
+
+        Only pod and Job tombstones are dropped. Workload, node and CronJob
+        names are stable, so their tombstones still carry customizations
+        across a delete and re-create.
+        """
+        eid = self.config_entry.entry_id
+        ephemeral = (f"{eid}_pod_", f"{eid}_job_")
+        stale = [
+            key
+            for key, deleted in entity_registry.deleted_entities.items()
+            if deleted.config_entry_id == eid
+            and deleted.unique_id.startswith(ephemeral)
+            and deleted.unique_id not in expected_ids
+        ]
+        for key in stale:
+            entity_registry.deleted_entities.pop(key)
+        if stale:
+            entity_registry.async_schedule_save()
+            _LOGGER.debug("Purged %d pod/Job entity tombstones", len(stale))
+
     async def _cleanup_orphaned_entities(self, current_data: dict[str, Any]) -> None:
         """Remove entities for Kubernetes resources that no longer exist."""
         try:
@@ -800,6 +833,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.info("Removed %d orphaned entities", len(entities_to_remove))
             else:
                 _LOGGER.debug("No orphaned entities found")
+
+            self._purge_ephemeral_tombstones(entity_registry, expected_ids)
 
         except Exception as ex:
             _LOGGER.error("Failed to cleanup orphaned entities: %s", ex)

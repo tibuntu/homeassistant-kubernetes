@@ -860,6 +860,96 @@ class TestKubernetesDataCoordinator:
         registry = er.async_get(hass)
         assert registry.async_get("switch.nginx_deployment") is not None
 
+    async def test_cleanup_purges_pod_and_job_tombstones(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Removed pod/Job entities leave no deleted-entity record behind."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_pod_default_web-7d9f-abcde",
+            "sensor.web_7d9f_abcde",
+        )
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_job_default_backup-29920350",
+            "sensor.backup_29920350",
+        )
+
+        await coordinator._cleanup_orphaned_entities({"pods": {}, "jobs": {}})
+
+        registry = er.async_get(hass)
+        assert registry.async_get("sensor.web_7d9f_abcde") is None
+        assert not [
+            d
+            for d in registry.deleted_entities.values()
+            if d.unique_id.startswith(("test-entry-id_pod_", "test-entry-id_job_"))
+        ]
+
+    async def test_cleanup_purges_pod_tombstone_backlog(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Tombstones from before the fix are purged on the next cleanup."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_pod_default_old-pod",
+            "sensor.old_pod",
+        )
+        registry = er.async_get(hass)
+        registry.async_remove("sensor.old_pod")  # tombstone, as before the fix
+        assert any(
+            d.unique_id == "test-entry-id_pod_default_old-pod"
+            for d in registry.deleted_entities.values()
+        )
+
+        await coordinator._cleanup_orphaned_entities({"pods": {}})
+
+        assert not any(
+            d.unique_id == "test-entry-id_pod_default_old-pod"
+            for d in registry.deleted_entities.values()
+        )
+
+    async def test_cleanup_keeps_workload_tombstones(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Stable-name workloads keep their tombstone (customizations survive)."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_default_web_deployment",
+            "switch.web_deployment",
+        )
+
+        await coordinator._cleanup_orphaned_entities({"deployments": {}})
+
+        registry = er.async_get(hass)
+        assert registry.async_get("switch.web_deployment") is None
+        assert any(
+            d.unique_id == "test-entry-id_default_web_deployment"
+            for d in registry.deleted_entities.values()
+        )
+
+    async def test_cleanup_keeps_other_entry_pod_tombstones(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Pod tombstones owned by another config entry are left alone."""
+        other = MockConfigEntry(domain=DOMAIN, entry_id="other-entry-id")
+        other.add_to_hass(hass)
+        _create_entity(
+            hass, other, "other-entry-id_pod_default_x", "sensor.other_pod_x"
+        )
+        registry = er.async_get(hass)
+        registry.async_remove("sensor.other_pod_x")
+
+        await coordinator._cleanup_orphaned_entities({"pods": {}})
+
+        assert any(
+            d.unique_id == "other-entry-id_pod_default_x"
+            for d in registry.deleted_entities.values()
+        )
+
     async def test_cleanup_orphaned_entities_removes_node(
         self, hass: HomeAssistant, coordinator, mock_config_entry
     ):
