@@ -210,9 +210,9 @@ CI runs the `tests/k8s_compat/` suite against real kind clusters (Kubernetes N, 
 
 The latest supported Kubernetes version is pinned as `K8S_LATEST` in the workflow and tracked by Renovate (`kubernetes/kubernetes` github-releases). When a new release is tagged, Renovate opens a PR that bumps the pin and auto-updates the supported-version range in README.md and docs/SETUP.md via `scripts/update-k8s-support-range.sh`.
 
-### Home Assistant Requirement Compatibility
+### Python Requirements
 
-Home Assistant installs the `requirements` from `manifest.json` under its own `package_constraints.txt`, which pins shared packages such as pydantic, aiohttp, and urllib3. The pytest suite does not apply those pins, so a dependency bump can pass CI and still fail to install. `scripts/check-ha-requirements.sh` (needs `uv`, `jq`, and an authenticated `gh`) resolves the manifest requirements against the constraints of the minimum HA version in `hacs.json` and of the latest stable HA release; `.github/workflows/ha-requirements.yaml` runs it on PRs that touch `manifest.json` or `hacs.json` and weekly. If it fails, hold the bump or raise the `hacs.json` minimum to the oldest HA release that resolves.
+`manifest.json` lists no `requirements`: the client talks to the API server with `aiohttp`, which Home Assistant ships. Keep it that way — Home Assistant installs manifest requirements under its own `package_constraints.txt`, and a pinned package that conflicts with those pins makes the integration uninstallable (v1.13.1 shipped `kubernetes==37.0.0`, which needed a newer pydantic than Home Assistant allowed).
 
 ### Setting Up a Test Kubernetes Cluster
 
