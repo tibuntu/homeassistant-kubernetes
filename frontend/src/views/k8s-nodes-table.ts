@@ -1,5 +1,6 @@
 import { html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, state } from "lit/decorators.js";
+import { oneOf, queryParam } from "../utils/nav";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
@@ -59,13 +60,19 @@ const SKIP_REASONS: Record<string, string> = {
   home_assistant: "Home Assistant itself",
 };
 
+const NODE_STATUS_FILTERS = ["all", "ready", "not-ready"] as const;
+
 @customElement("k8s-nodes-table")
 export class K8sNodesTable extends K8sDataView<NodesResponse> {
-  /** Search text preset from an overview alert click. */
-  @property({ attribute: false }) public initialSearch?: string;
   @state() private _expandedNodes: Set<string> = new Set();
-  @state() private _statusFilter: string = "all";
+  @state() private _statusFilter: (typeof NODE_STATUS_FILTERS)[number] = "all";
   @state() private _searchQuery: string = "";
+  protected tab = "nodes";
+
+  protected readQuery(): void {
+    this._statusFilter = oneOf(queryParam("status"), NODE_STATUS_FILTERS, "all");
+    this._searchQuery = queryParam("search") ?? "";
+  }
   @state() private _actionInProgress: Set<string> = new Set();
   @state() private _actionError: string | null = null;
   @state() private _drainTarget: { entry_id: string; node: string } | null = null;
@@ -80,9 +87,12 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
 
   protected loadErrorFallback = "Failed to load nodes data";
 
-  protected willUpdate(changed: PropertyValues<this>): void {
-    if (changed.has("initialSearch") && this.initialSearch) {
-      this._searchQuery = this.initialSearch;
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("_statusFilter") || changed.has("_searchQuery")) {
+      this._syncQuery({
+        search: this._searchQuery,
+        status: this._statusFilter === "all" ? "" : this._statusFilter,
+      });
     }
   }
 
@@ -599,7 +609,7 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
               this._searchQuery = (e.target as HTMLInputElement).value;
             }}
           />
-          ${(["all", "ready", "not-ready"] as const).map(
+          ${NODE_STATUS_FILTERS.map(
             (f) => html`
               <button
                 class="filter-chip"

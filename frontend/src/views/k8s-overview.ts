@@ -1,9 +1,9 @@
 import { html, css, nothing } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { K8sDataView } from "./base-view";
 import { stateStyles, badgeStyles } from "../styles/shared";
 import { formatRelative, toggleInSet, CONDITION_LABELS } from "../utils/format";
-import type { NavigateDetail } from "../kubernetes-panel";
+import { navigate } from "../utils/nav";
 
 interface AlertNodePressure {
   name: string;
@@ -89,26 +89,30 @@ const RESOURCE_LABELS: Record<string, string> = {
   services: "Services",
 };
 
-const CARD_TARGETS: Record<string, NavigateDetail> = {
-  pods: { tab: "pods" },
-  nodes: { tab: "nodes" },
-  deployments: { tab: "workloads", filter: "deployments" },
-  statefulsets: { tab: "workloads", filter: "statefulsets" },
-  daemonsets: { tab: "workloads", filter: "daemonsets" },
-  cronjobs: { tab: "workloads", filter: "cronjobs" },
-  jobs: { tab: "workloads", filter: "jobs" },
-  ingresses: { tab: "network", filter: "Ingress" },
-  services: { tab: "network", filter: "Services" },
+/** Panel-relative target of a count card: tab path plus filter preset. */
+const CARD_TARGETS: Record<string, string> = {
+  pods: "/pods",
+  nodes: "/nodes",
+  deployments: "/workloads?category=deployments",
+  statefulsets: "/workloads?category=statefulsets",
+  daemonsets: "/workloads?category=daemonsets",
+  cronjobs: "/workloads?category=cronjobs",
+  jobs: "/workloads?category=jobs",
+  ingresses: "/network?type=Ingress",
+  services: "/network?type=Services",
 };
 
-const jobTarget = (job: AlertFailedJob): NavigateDetail => ({
-  tab: "workloads",
-  filter: "jobs",
-  search: job.name,
-});
+/** Panel-relative target of an alert: the tab searched for the resource name. */
+const searchTarget = (path: string, name: string, extra = ""): string =>
+  `${path}?${extra}search=${encodeURIComponent(name)}`;
+
+const jobTarget = (job: AlertFailedJob): string =>
+  searchTarget("/workloads", job.name, "category=jobs&");
 
 @customElement("k8s-overview")
 export class K8sOverview extends K8sDataView<OverviewResponse> {
+  /** Panel URL prefix (`route.prefix`); targets are appended to it. */
+  @property({ attribute: false }) public prefix = "";
   @state() private _expandedNamespaces: Set<string> = new Set();
 
   protected loadErrorFallback = "Failed to load cluster data";
@@ -125,18 +129,18 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
   }
 
   private _navigate(key: string): void {
-    const detail = CARD_TARGETS[key];
-    if (detail) this._go(detail);
+    const target = CARD_TARGETS[key];
+    if (target) this._go(target);
   }
 
-  private _go(detail: NavigateDetail): void {
-    this.dispatchEvent(new CustomEvent<NavigateDetail>("k8s-navigate", { detail }));
+  private _go(target: string): void {
+    navigate(`${this.prefix}${target}`);
   }
 
-  private _goOnKey(e: KeyboardEvent, detail: NavigateDetail): void {
+  private _goOnKey(e: KeyboardEvent, target: string): void {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      this._go(detail);
+      this._go(target);
     }
   }
 
@@ -583,9 +587,9 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
             class="alert-card alert-warning"
             role="button"
             tabindex="0"
-            @click=${() => this._go({ tab: "nodes", search: node.name })}
+            @click=${() => this._go(searchTarget("/nodes", node.name))}
             @keydown=${(e: KeyboardEvent) =>
-              this._goOnKey(e, { tab: "nodes", search: node.name })}
+              this._goOnKey(e, searchTarget("/nodes", node.name))}
           >
             <ha-icon icon="mdi:server-network-off"></ha-icon>
             <div>
@@ -603,9 +607,9 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
             class="alert-card alert-warning"
             role="button"
             tabindex="0"
-            @click=${() => this._go({ tab: "workloads", search: wl.name })}
+            @click=${() => this._go(searchTarget("/workloads", wl.name))}
             @keydown=${(e: KeyboardEvent) =>
-              this._goOnKey(e, { tab: "workloads", search: wl.name })}
+              this._goOnKey(e, searchTarget("/workloads", wl.name))}
           >
             <ha-icon icon="mdi:alert"></ha-icon>
             <div>
@@ -624,9 +628,9 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
             class="alert-card alert-error"
             role="button"
             tabindex="0"
-            @click=${() => this._go({ tab: "pods", search: pod.name })}
+            @click=${() => this._go(searchTarget("/pods", pod.name))}
             @keydown=${(e: KeyboardEvent) =>
-              this._goOnKey(e, { tab: "pods", search: pod.name })}
+              this._goOnKey(e, searchTarget("/pods", pod.name))}
           >
             <ha-icon icon="mdi:alert-octagon"></ha-icon>
             <div>
@@ -642,9 +646,9 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
             class="alert-card alert-warning"
             role="button"
             tabindex="0"
-            @click=${() => this._go({ tab: "pods", search: pod.name })}
+            @click=${() => this._go(searchTarget("/pods", pod.name))}
             @keydown=${(e: KeyboardEvent) =>
-              this._goOnKey(e, { tab: "pods", search: pod.name })}
+              this._goOnKey(e, searchTarget("/pods", pod.name))}
           >
             <ha-icon icon="mdi:restart-alert"></ha-icon>
             <div>

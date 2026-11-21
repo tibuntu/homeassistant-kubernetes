@@ -1,5 +1,6 @@
 import { html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, state } from "lit/decorators.js";
+import { oneOf, queryParam } from "../utils/nav";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
@@ -115,16 +116,43 @@ const REPLICA_KIND_META: Record<
   },
 };
 
+const WORKLOAD_CATEGORIES: readonly WorkloadCategory[] = [
+  "all",
+  "deployments",
+  "statefulsets",
+  "daemonsets",
+  "cronjobs",
+  "jobs",
+];
+const STATUS_FILTERS: readonly StatusFilter[] = [
+  "all",
+  "healthy",
+  "degraded",
+  "stopped",
+];
+
 @customElement("k8s-workloads")
 export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
-  /** Preset from an overview card click. */
-  @property({ attribute: false }) public initialFilter?: WorkloadCategory;
-  /** Search text preset from an overview alert click. */
-  @property({ attribute: false }) public initialSearch?: string;
   @state() private _namespaceFilter: string = "all";
   @state() private _categoryFilter: WorkloadCategory = "all";
   @state() private _statusFilter: StatusFilter = "all";
   @state() private _searchQuery: string = "";
+  protected tab = "workloads";
+
+  protected readQuery(): void {
+    this._namespaceFilter = queryParam("namespace") || "all";
+    this._categoryFilter = oneOf<WorkloadCategory>(
+      queryParam("category"),
+      WORKLOAD_CATEGORIES,
+      "all",
+    );
+    this._statusFilter = oneOf<StatusFilter>(
+      queryParam("status"),
+      STATUS_FILTERS,
+      "all",
+    );
+    this._searchQuery = queryParam("search") ?? "";
+  }
   @state() private _actionInProgress: Set<string> = new Set();
   @state() private _actionError: string | null = null;
   @state() private _jobDeleteConfirm: {
@@ -147,12 +175,27 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
 
   protected loadErrorFallback = "Failed to load workloads data";
 
-  protected willUpdate(changed: PropertyValues<this>): void {
-    if (changed.has("initialFilter") && this.initialFilter) {
-      this._categoryFilter = this.initialFilter;
+  protected willUpdate(changed: PropertyValues): void {
+    // A namespace that no longer exists falls back to "all".
+    // Skipped while no namespace is known at all, so a valid link survives.
+    if (this._data && this._namespaceFilter !== "all") {
+      const known = this._data.clusters.flatMap((c) => this._getNamespaces(c));
+      if (known.length && !known.includes(this._namespaceFilter)) {
+        this._namespaceFilter = "all";
+      }
     }
-    if (changed.has("initialSearch") && this.initialSearch) {
-      this._searchQuery = this.initialSearch;
+    if (
+      changed.has("_namespaceFilter") ||
+      changed.has("_categoryFilter") ||
+      changed.has("_statusFilter") ||
+      changed.has("_searchQuery")
+    ) {
+      this._syncQuery({
+        search: this._searchQuery,
+        namespace: this._namespaceFilter === "all" ? "" : this._namespaceFilter,
+        category: this._categoryFilter === "all" ? "" : this._categoryFilter,
+        status: this._statusFilter === "all" ? "" : this._statusFilter,
+      });
     }
   }
 
@@ -527,7 +570,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             }}
           >
             <option value="all">All namespaces</option>
-            ${namespaces.map((ns) => html`<option value=${ns}>${ns}</option>`)}
+            ${namespaces.map((ns) => html`<option value=${ns} ?selected=${ns === this._namespaceFilter}>${ns}</option>`)}
           </select>
 
           <select
@@ -546,7 +589,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             <option value="jobs">Jobs</option>
           </select>
 
-          ${(["all", "healthy", "degraded", "stopped"] as StatusFilter[]).map(
+          ${STATUS_FILTERS.map(
             (f) => html`
               <button
                 class="filter-chip"

@@ -2,6 +2,18 @@ import { expect, test, type Page } from "@playwright/test";
 
 const HARNESS = "/e2e/harness.html";
 
+// The harness has no router: deep links live under /e2e/harness.html/<tab>, which
+// Vite would 404 on a reload, so serve the harness page for those paths.
+test.beforeEach(async ({ page }) => {
+  await page.route(/\/e2e\/harness\.html\/./, async (route) => {
+    const url = new URL("/e2e/harness.html", route.request().url()).href;
+    await route.fulfill({ response: await route.fetch({ url }) });
+  });
+});
+
+const pathAndQuery = (page: Page) =>
+  page.evaluate(() => location.pathname + location.search);
+
 const openTab = (page: Page, label: string) =>
   page.locator(".tab", { hasText: label }).click();
 
@@ -17,6 +29,9 @@ test("overview count card opens the workloads tab with its category preset", asy
       .locator("select.filter-select")
       .filter({ has: page.locator('option[value="deployments"]') }),
   ).toHaveValue("deployments");
+  expect(await pathAndQuery(page)).toBe(
+    "/e2e/harness.html/workloads?category=deployments",
+  );
   await expect(page.locator(".workload-card", { hasText: "web" })).toBeVisible();
   await expect(page.locator(".workload-card", { hasText: "db" })).toHaveCount(0);
 });
@@ -58,6 +73,9 @@ test("overview pod alert shows the reason and opens the pods tab with a search",
   await expect(page.locator(".tab[active]")).toHaveText(/Pods/);
   await expect(page.locator(".search-input")).toHaveValue("crash-5c8d7-xyz99");
   await expect(page.locator("tbody tr")).toHaveCount(1);
+  expect(await pathAndQuery(page)).toBe(
+    "/e2e/harness.html/pods?search=crash-5c8d7-xyz99",
+  );
 });
 
 test("overview alerts are keyboard operable and reach Workloads Jobs", async ({
@@ -508,4 +526,120 @@ test("network type filter narrows to a single section", async ({ page }) => {
   await expect(page.locator("h2.section-title", { hasText: "Services" })).toHaveCount(
     0,
   );
+});
+
+test("reload restores the tab and its filters from the URL", async ({ page }) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  await page.locator(".search-input").fill("db");
+  await page.locator(".filter-chip", { hasText: "Running" }).click();
+  await page.locator("th", { hasText: "Restarts" }).click();
+  await page.locator("th", { hasText: "Restarts" }).click();
+  expect(await pathAndQuery(page)).toBe(
+    "/e2e/harness.html/pods?search=db&phase=Running&sort=restarts&dir=desc",
+  );
+
+  await page.reload();
+  await expect(page.locator(".tab[active]")).toHaveText(/Pods/);
+  await expect(page.locator(".search-input")).toHaveValue("db");
+  await expect(page.locator(".filter-chip[active]")).toHaveText("Running");
+  expect(await pathAndQuery(page)).toBe(
+    "/e2e/harness.html/pods?search=db&phase=Running&sort=restarts&dir=desc",
+  );
+});
+
+test("back returns to the previous tab and typing adds no history entries", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Nodes");
+  await openTab(page, "Pods");
+  const before = await page.evaluate(() => history.length);
+  await page.locator(".search-input").pressSequentially("worker");
+  expect(await page.evaluate(() => history.length)).toBe(before);
+
+  await page.goBack();
+  await expect(page.locator(".tab[active]")).toHaveText(/Nodes/);
+  await page.goBack();
+  await expect(page.locator(".tab[active]")).toHaveText(/Overview/);
+  await page.goForward();
+  await expect(page.locator(".tab[active]")).toHaveText(/Nodes/);
+});
+
+test("overview count card puts its preset in the URL", async ({ page }) => {
+  await page.goto(HARNESS);
+  await page.locator('.count-card[title="Show Services"]').click();
+  expect(await pathAndQuery(page)).toBe("/e2e/harness.html/network?type=Services");
+  await expect(page.locator(".tab[active]")).toHaveText(/Network/);
+});
+
+test("deep links apply search, namespace and the Problems phase", async ({ page }) => {
+  await page.goto(`${HARNESS}/pods?phase=problems&namespace=default`);
+  await expect(page.locator(".filter-chip[active]")).toContainText("Problems");
+  await expect(page.locator("select.filter-select")).toHaveValue("default");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).toContainText("crash-5c8d7-xyz99");
+});
+
+test("unknown query values fall back to all", async ({ page }) => {
+  await page.goto(`${HARNESS}/pods?phase=bogus&namespace=gone&sort=nope&dir=up`);
+  await expect(page.locator(".filter-chip[active]")).toHaveText("All");
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  await expect(page.locator("select.filter-select")).toHaveValue("all");
+  await expect(page.locator("tbody tr")).not.toHaveCount(0);
+  expect(await pathAndQuery(page)).toBe("/e2e/harness.html/pods");
+});
+
+test("an unknown path shows the overview", async ({ page }) => {
+  await page.goto(`${HARNESS}/nonsense`);
+  await expect(page.locator(".tab[active]")).toHaveText(/Overview/);
+});
+
+test("nodes, workloads and network read their filters from the URL", async ({
+  page,
+}) => {
+  await page.goto(`${HARNESS}/nodes?status=ready`);
+  await expect(page.locator(".filter-chip[active]")).toHaveText("Ready");
+  await page.goto(`${HARNESS}/workloads?category=jobs&status=degraded&search=backup`);
+  await expect(page.locator(".search-input")).toHaveValue("backup");
+  await expect(page.locator(".filter-chip[active]")).toHaveText("Degraded");
+  await page.goto(`${HARNESS}/network?type=NodePort&search=x`);
+  await expect(page.locator(".search-input")).toHaveValue("x");
+  await expect(page.locator("select.filter-select")).toHaveValue("NodePort");
+});
+
+const pushLink = (page: Page, url: string) =>
+  // What HA's navigate() does when a notification link opens while the panel is shown.
+  page.evaluate((u) => {
+    history.pushState(null, "", u);
+    window.dispatchEvent(
+      new CustomEvent("location-changed", { detail: { replace: false } }),
+    );
+  }, url);
+
+test("a link to the current tab replaces the filters", async ({ page }) => {
+  await page.goto(`${HARNESS}/pods?search=db`);
+  await expect(page.locator(".search-input")).toHaveValue("db");
+
+  await pushLink(page, "/e2e/harness.html/pods?phase=problems");
+  await expect(page.locator(".filter-chip[active]")).toContainText("Problems");
+  await expect(page.locator(".search-input")).toHaveValue("");
+  expect(await pathAndQuery(page)).toBe("/e2e/harness.html/pods?phase=problems");
+});
+
+test("clicking the current tab clears its filters", async ({ page }) => {
+  await page.goto(`${HARNESS}/pods?search=db`);
+  await openTab(page, "Pods");
+  await expect(page.locator(".search-input")).toHaveValue("");
+  expect(await pathAndQuery(page)).toBe("/e2e/harness.html/pods");
+});
+
+test("back and forward within one tab restore its filters", async ({ page }) => {
+  await page.goto(`${HARNESS}/pods?search=db`);
+  await pushLink(page, "/e2e/harness.html/pods?search=web");
+  await expect(page.locator(".search-input")).toHaveValue("web");
+  await page.goBack();
+  await expect(page.locator(".search-input")).toHaveValue("db");
+  await page.goForward();
+  await expect(page.locator(".search-input")).toHaveValue("web");
 });
