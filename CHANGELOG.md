@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.18.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.17.0...v1.18.0) (2026-11-21)
+
+
+### Features
+
+* drop the kubernetes Python package dependency ([29e2359](https://github.com/tibuntu/homeassistant-kubernetes/commit/29e235968f42fa65cedc4d5a73351518fb363b41))
+* monitor cert-manager certificates and alert on expiry problems ([3c02149](https://github.com/tibuntu/homeassistant-kubernetes/commit/3c02149969f6beedbf50b8fa9048140512e90bfe))
+* **panel:** keep the active tab and filters in the URL ([45c2a1d](https://github.com/tibuntu/homeassistant-kubernetes/commit/45c2a1d05b4b042bed619136887eb3a43f99cb31))
+* **panel:** show pod and workload CPU/memory usage ([9e0df1c](https://github.com/tibuntu/homeassistant-kubernetes/commit/9e0df1ca28551030c828be6aa14e6f72a06920f6))
+* **panel:** show pod containers and events in a detail dialog ([e238f90](https://github.com/tibuntu/homeassistant-kubernetes/commit/e238f906f15b10179042994a517d494c580f9868))
+* **panel:** show pod status reason and make overview alerts clickable ([09aed5f](https://github.com/tibuntu/homeassistant-kubernetes/commit/09aed5f665f1dba098e5defc0cdaef4fcff3658f))
+* **panel:** wrap long pod log lines and add 5 s auto-refresh ([2d05e93](https://github.com/tibuntu/homeassistant-kubernetes/commit/2d05e93353ec8b9dfbd1288defd039a8ed019d75))
+* **sensor:** add per-node CPU and memory usage sensors ([fdf1df9](https://github.com/tibuntu/homeassistant-kubernetes/commit/fdf1df9e09314aa7b941c951430117e030ba8061))
+
+
+### Bug Fixes
+
+* **config_flow:** stop the deprecation warning on reconfigure and reauth ([998f572](https://github.com/tibuntu/homeassistant-kubernetes/commit/998f5722d6f19753e49a0e15f9f1c105613cdca4))
+* **coordinator:** purge node tombstones too and keep a 1 h grace ([232d24e](https://github.com/tibuntu/homeassistant-kubernetes/commit/232d24ed7d5b36b2e8c93c3e5b874131f67b70d7))
+* **coordinator:** purge pod and Job entity tombstones ([3c5ce90](https://github.com/tibuntu/homeassistant-kubernetes/commit/3c5ce90440463a6195567ea4bae547caea91ddfc))
+* **panel:** let themes set the panel background ([70ca788](https://github.com/tibuntu/homeassistant-kubernetes/commit/70ca7882ae1f88129e92466bf47e8bf972b6da39))
+* **panel:** show the loading spinner again ([f9373ad](https://github.com/tibuntu/homeassistant-kubernetes/commit/f9373adcf83d7df45e98db32e3280ae3f551f48d))
+
 ## [1.17.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.16.0...v1.17.0) (2026-11-11)
 
 A feature release: **Gateway API HTTPRoutes** in the panel's Network tab and **CPU and memory usage sensors for DaemonSets**. It also stops the *Missing permissions* repair issue from flapping with the read-only `minimal` role and brings the panel's Job cards in line with the Job sensors. HTTPRoutes need one new permission, see *Upgrading*.
