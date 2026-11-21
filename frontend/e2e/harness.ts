@@ -6,7 +6,7 @@
  *
  * Query string: `?fail=<ws type>` (repeatable) makes those WebSocket calls
  * reject until the spec clears `window.__k8s.fail`. `?admin=0` mounts the
- * panel as a non-admin user. `?empty=<ws type>` (repeatable) answers those
+ * panel as a non-admin user. The panel's `route` follows the page path. `?empty=<ws type>` (repeatable) answers those
  * list calls with no clusters.
  */
 import { KubernetesPanel } from "../src/kubernetes-panel";
@@ -81,6 +81,21 @@ const hass: HomeAssistant = {
   },
 };
 
+// No HA router here: the panel lives at /e2e/harness.html[/<tab>][?filters]
+// and `route` is derived from the URL, like HA derives it from /kubernetes.
+// Specs serve the harness page for the sub-paths (see panel.spec.ts).
+const PREFIX = "/e2e/harness.html";
+const routeFromLocation = () => ({
+  prefix: PREFIX,
+  path: location.pathname.slice(PREFIX.length),
+});
+
 const panel = new KubernetesPanel();
 panel.hass = hass;
+panel.route = routeFromLocation();
+const syncRoute = () => {
+  panel.route = routeFromLocation();
+};
+window.addEventListener("location-changed", syncRoute);
+window.addEventListener("popstate", syncRoute);
 document.body.append(panel);

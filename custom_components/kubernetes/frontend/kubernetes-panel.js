@@ -1,9 +1,9 @@
-var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&&`adoptedStyleSheets`in Document.prototype&&`replace`in CSSStyleSheet.prototype,n=Symbol(),r=/* @__PURE__ */ new WeakMap,i=class{constructor(e,t,r){if(this._$cssResult$=!0,r!==n)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=e,this.t=t}get styleSheet(){let e=this.o,n=this.t;if(t&&e===void 0){let t=n!==void 0&&n.length===1;t&&(e=r.get(n)),e===void 0&&((this.o=e=new CSSStyleSheet).replaceSync(this.cssText),t&&r.set(n,e))}return e}toString(){return this.cssText}},a=e=>new i(typeof e==`string`?e:e+``,void 0,n),o=(e,...t)=>new i(e.length===1?e[0]:t.reduce((t,n,r)=>t+(e=>{if(!0===e._$cssResult$)return e.cssText;if(typeof e==`number`)return e;throw Error(`Value passed to 'css' function must be a 'css' function result: `+e+`. Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.`)})(n)+e[r+1],e[0]),e,n),s=(n,r)=>{if(t)n.adoptedStyleSheets=r.map(e=>e instanceof CSSStyleSheet?e:e.styleSheet);else for(let t of r){let r=document.createElement(`style`),i=e.litNonce;i!==void 0&&r.setAttribute(`nonce`,i),r.textContent=t.cssText,n.appendChild(r)}},c=t?e=>e:e=>e instanceof CSSStyleSheet?(e=>{let t=``;for(let n of e.cssRules)t+=n.cssText;return a(t)})(e):e,{is:l,defineProperty:u,getOwnPropertyDescriptor:ee,getOwnPropertyNames:te,getOwnPropertySymbols:ne,getPrototypeOf:re}=Object,d=globalThis,ie=d.trustedTypes,ae=ie?ie.emptyScript:``,oe=d.reactiveElementPolyfillSupport,f=(e,t)=>e,p={toAttribute(e,t){switch(t){case Boolean:e=e?ae:null;break;case Object:case Array:e=e==null?e:JSON.stringify(e)}return e},fromAttribute(e,t){let n=e;switch(t){case Boolean:n=e!==null;break;case Number:n=e===null?null:Number(e);break;case Object:case Array:try{n=JSON.parse(e)}catch{n=null}}return n}},se=(e,t)=>!l(e,t),ce={attribute:!0,type:String,converter:p,reflect:!1,useDefault:!1,hasChanged:se};Symbol.metadata??=Symbol(`metadata`),d.litPropertyMetadata??=/* @__PURE__ */ new WeakMap;var m=class extends HTMLElement{static addInitializer(e){this._$Ei(),(this.l??=[]).push(e)}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(e,t=ce){if(t.state&&(t.attribute=!1),this._$Ei(),this.prototype.hasOwnProperty(e)&&((t=Object.create(t)).wrapped=!0),this.elementProperties.set(e,t),!t.noAccessor){let n=Symbol(),r=this.getPropertyDescriptor(e,n,t);r!==void 0&&u(this.prototype,e,r)}}static getPropertyDescriptor(e,t,n){let{get:r,set:i}=ee(this.prototype,e)??{get(){return this[t]},set(e){this[t]=e}};return{get:r,set(t){let a=r?.call(this);i?.call(this,t),this.requestUpdate(e,a,n)},configurable:!0,enumerable:!0}}static getPropertyOptions(e){return this.elementProperties.get(e)??ce}static _$Ei(){if(this.hasOwnProperty(f(`elementProperties`)))return;let e=re(this);e.finalize(),e.l!==void 0&&(this.l=[...e.l]),this.elementProperties=new Map(e.elementProperties)}static finalize(){if(this.hasOwnProperty(f(`finalized`)))return;if(this.finalized=!0,this._$Ei(),this.hasOwnProperty(f(`properties`))){let e=this.properties,t=[...te(e),...ne(e)];for(let n of t)this.createProperty(n,e[n])}let e=this[Symbol.metadata];if(e!==null){let t=litPropertyMetadata.get(e);if(t!==void 0)for(let[e,n]of t)this.elementProperties.set(e,n)}this._$Eh=/* @__PURE__ */ new Map;for(let[e,t]of this.elementProperties){let n=this._$Eu(e,t);n!==void 0&&this._$Eh.set(n,e)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(e){let t=[];if(Array.isArray(e)){let n=new Set(e.flat(1/0).reverse());for(let e of n)t.unshift(c(e))}else e!==void 0&&t.push(c(e));return t}static _$Eu(e,t){let n=t.attribute;return!1===n?void 0:typeof n==`string`?n:typeof e==`string`?e.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this._$Em=null,this._$Ev()}_$Ev(){this._$ES=new Promise(e=>this.enableUpdating=e),this._$AL=/* @__PURE__ */ new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach(e=>e(this))}addController(e){(this._$EO??=/* @__PURE__ */ new Set).add(e),this.renderRoot!==void 0&&this.isConnected&&e.hostConnected?.()}removeController(e){this._$EO?.delete(e)}_$E_(){let e=/* @__PURE__ */ new Map,t=this.constructor.elementProperties;for(let n of t.keys())this.hasOwnProperty(n)&&(e.set(n,this[n]),delete this[n]);e.size>0&&(this._$Ep=e)}createRenderRoot(){let e=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return s(e,this.constructor.elementStyles),e}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this._$EO?.forEach(e=>e.hostConnected?.())}enableUpdating(e){}disconnectedCallback(){this._$EO?.forEach(e=>e.hostDisconnected?.())}attributeChangedCallback(e,t,n){this._$AK(e,n)}_$ET(e,t){let n=this.constructor.elementProperties.get(e),r=this.constructor._$Eu(e,n);if(r!==void 0&&!0===n.reflect){let i=(n.converter?.toAttribute===void 0?p:n.converter).toAttribute(t,n.type);this._$Em=e,i==null?this.removeAttribute(r):this.setAttribute(r,i),this._$Em=null}}_$AK(e,t){let n=this.constructor,r=n._$Eh.get(e);if(r!==void 0&&this._$Em!==r){let e=n.getPropertyOptions(r),i=typeof e.converter==`function`?{fromAttribute:e.converter}:e.converter?.fromAttribute===void 0?p:e.converter;this._$Em=r;let a=i.fromAttribute(t,e.type);this[r]=a??this._$Ej?.get(r)??a,this._$Em=null}}requestUpdate(e,t,n,r=!1,i){if(e!==void 0){let a=this.constructor;if(!1===r&&(i=this[e]),n??=a.getPropertyOptions(e),!((n.hasChanged??se)(i,t)||n.useDefault&&n.reflect&&i===this._$Ej?.get(e)&&!this.hasAttribute(a._$Eu(e,n))))return;this.C(e,t,n)}!1===this.isUpdatePending&&(this._$ES=this._$EP())}C(e,t,{useDefault:n,reflect:r,wrapped:i},a){n&&!(this._$Ej??=/* @__PURE__ */ new Map).has(e)&&(this._$Ej.set(e,a??t??this[e]),!0!==i||a!==void 0)||(this._$AL.has(e)||(this.hasUpdated||n||(t=void 0),this._$AL.set(e,t)),!0===r&&this._$Em!==e&&(this._$Eq??=/* @__PURE__ */ new Set).add(e))}async _$EP(){this.isUpdatePending=!0;try{await this._$ES}catch(e){Promise.reject(e)}let e=this.scheduleUpdate();return e!=null&&await e,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(let[e,t]of this._$Ep)this[e]=t;this._$Ep=void 0}let e=this.constructor.elementProperties;if(e.size>0)for(let[t,n]of e){let{wrapped:e}=n,r=this[t];!0!==e||this._$AL.has(t)||r===void 0||this.C(t,void 0,n,r)}}let e=!1,t=this._$AL;try{e=this.shouldUpdate(t),e?(this.willUpdate(t),this._$EO?.forEach(e=>e.hostUpdate?.()),this.update(t)):this._$EM()}catch(t){throw e=!1,this._$EM(),t}e&&this._$AE(t)}willUpdate(e){}_$AE(e){this._$EO?.forEach(e=>e.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(e)),this.updated(e)}_$EM(){this._$AL=/* @__PURE__ */ new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(e){return!0}update(e){this._$Eq&&=this._$Eq.forEach(e=>this._$ET(e,this[e])),this._$EM()}updated(e){}firstUpdated(e){}};m.elementStyles=[],m.shadowRootOptions={mode:`open`},m[f(`elementProperties`)]=/* @__PURE__ */ new Map,m[f(`finalized`)]=/* @__PURE__ */ new Map,oe?.({ReactiveElement:m}),(d.reactiveElementVersions??=[]).push(`2.1.2`);var le=globalThis,ue=e=>e,h=le.trustedTypes,de=h?h.createPolicy(`lit-html`,{createHTML:e=>e}):void 0,fe=`$lit$`,g=`lit$${Math.random().toFixed(9).slice(2)}$`,pe=`?`+g,me=`<${pe}>`,_=document,v=()=>_.createComment(``),y=e=>e===null||typeof e!=`object`&&typeof e!=`function`,b=Array.isArray,he=e=>b(e)||typeof e?.[Symbol.iterator]==`function`,x=`[ 	
-\f\r]`,S=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,ge=/-->/g,_e=/>/g,C=RegExp(`>|${x}(?:([^\\s"'>=/]+)(${x}*=${x}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,`g`),ve=/'/g,ye=/"/g,be=/^(?:script|style|textarea|title)$/i,w=(e=>(t,...n)=>({_$litType$:e,strings:t,values:n}))(1),T=Symbol.for(`lit-noChange`),E=Symbol.for(`lit-nothing`),xe=/* @__PURE__ */ new WeakMap,D=_.createTreeWalker(_,129);function Se(e,t){if(!b(e)||!e.hasOwnProperty(`raw`))throw Error(`invalid template strings array`);return de===void 0?t:de.createHTML(t)}var Ce=(e,t)=>{let n=e.length-1,r=[],i,a=t===2?`<svg>`:t===3?`<math>`:``,o=S;for(let t=0;t<n;t++){let n=e[t],s,c,l=-1,u=0;for(;u<n.length&&(o.lastIndex=u,c=o.exec(n),c!==null);)u=o.lastIndex,o===S?c[1]===`!--`?o=ge:c[1]===void 0?c[2]===void 0?c[3]!==void 0&&(o=C):(be.test(c[2])&&(i=RegExp(`</`+c[2],`g`)),o=C):o=_e:o===C?c[0]===`>`?(o=i??S,l=-1):c[1]===void 0?l=-2:(l=o.lastIndex-c[2].length,s=c[1],o=c[3]===void 0?C:c[3]===`"`?ye:ve):o===ye||o===ve?o=C:o===ge||o===_e?o=S:(o=C,i=void 0);let ee=o===C&&e[t+1].startsWith(`/>`)?` `:``;a+=o===S?n+me:l>=0?(r.push(s),n.slice(0,l)+fe+n.slice(l)+g+ee):n+g+(l===-2?t:ee)}return[Se(e,a+(e[n]||`<?>`)+(t===2?`</svg>`:t===3?`</math>`:``)),r]},O=class e{constructor({strings:t,_$litType$:n},r){let i;this.parts=[];let a=0,o=0,s=t.length-1,c=this.parts,[l,u]=Ce(t,n);if(this.el=e.createElement(l,r),D.currentNode=this.el.content,n===2||n===3){let e=this.el.content.firstChild;e.replaceWith(...e.childNodes)}for(;(i=D.nextNode())!==null&&c.length<s;){if(i.nodeType===1){if(i.hasAttributes())for(let e of i.getAttributeNames())if(e.endsWith(fe)){let t=u[o++],n=i.getAttribute(e).split(g),r=/([.?@])?(.*)/.exec(t);c.push({type:1,index:a,name:r[2],strings:n,ctor:r[1]===`.`?Te:r[1]===`?`?Ee:r[1]===`@`?De:j}),i.removeAttribute(e)}else e.startsWith(g)&&(c.push({type:6,index:a}),i.removeAttribute(e));if(be.test(i.tagName)){let e=i.textContent.split(g),t=e.length-1;if(t>0){i.textContent=h?h.emptyScript:``;for(let n=0;n<t;n++)i.append(e[n],v()),D.nextNode(),c.push({type:2,index:++a});i.append(e[t],v())}}}else if(i.nodeType===8){if(i.data===pe)c.push({type:2,index:a});else{let e=-1;for(;(e=i.data.indexOf(g,e+1))!==-1;)c.push({type:7,index:a}),e+=g.length-1}}a++}}static createElement(e,t){let n=_.createElement(`template`);return n.innerHTML=e,n}};function k(e,t,n=e,r){if(t===T)return t;let i=r===void 0?n._$Cl:n._$Co?.[r],a=y(t)?void 0:t._$litDirective$;return i?.constructor!==a&&(i?._$AO?.(!1),a===void 0?i=void 0:(i=new a(e),i._$AT(e,n,r)),r===void 0?n._$Cl=i:(n._$Co??=[])[r]=i),i!==void 0&&(t=k(e,i._$AS(e,t.values),i,r)),t}var we=class{constructor(e,t){this._$AV=[],this._$AN=void 0,this._$AD=e,this._$AM=t}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(e){let{el:{content:t},parts:n}=this._$AD,r=(e?.creationScope??_).importNode(t,!0);D.currentNode=r;let i=D.nextNode(),a=0,o=0,s=n[0];for(;s!==void 0;){if(a===s.index){let t;s.type===2?t=new A(i,i.nextSibling,this,e):s.type===1?t=new s.ctor(i,s.name,s.strings,this,e):s.type===6&&(t=new Oe(i,this,e)),this._$AV.push(t),s=n[++o]}a!==s?.index&&(i=D.nextNode(),a++)}return D.currentNode=_,r}p(e){let t=0;for(let n of this._$AV)n!==void 0&&(n.strings===void 0?n._$AI(e[t]):(n._$AI(e,n,t),t+=n.strings.length-2)),t++}},A=class e{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(e,t,n,r){this.type=2,this._$AH=E,this._$AN=void 0,this._$AA=e,this._$AB=t,this._$AM=n,this.options=r,this._$Cv=r?.isConnected??!0}get parentNode(){let e=this._$AA.parentNode,t=this._$AM;return t!==void 0&&e?.nodeType===11&&(e=t.parentNode),e}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(e,t=this){e=k(this,e,t),y(e)?e===E||e==null||e===``?(this._$AH!==E&&this._$AR(),this._$AH=E):e!==this._$AH&&e!==T&&this._(e):e._$litType$===void 0?e.nodeType===void 0?he(e)?this.k(e):this._(e):this.T(e):this.$(e)}O(e){return this._$AA.parentNode.insertBefore(e,this._$AB)}T(e){this._$AH!==e&&(this._$AR(),this._$AH=this.O(e))}_(e){this._$AH!==E&&y(this._$AH)?this._$AA.nextSibling.data=e:this.T(_.createTextNode(e)),this._$AH=e}$(e){let{values:t,_$litType$:n}=e,r=typeof n==`number`?this._$AC(e):(n.el===void 0&&(n.el=O.createElement(Se(n.h,n.h[0]),this.options)),n);if(this._$AH?._$AD===r)this._$AH.p(t);else{let e=new we(r,this),n=e.u(this.options);e.p(t),this.T(n),this._$AH=e}}_$AC(e){let t=xe.get(e.strings);return t===void 0&&xe.set(e.strings,t=new O(e)),t}k(t){b(this._$AH)||(this._$AH=[],this._$AR());let n=this._$AH,r,i=0;for(let a of t)i===n.length?n.push(r=new e(this.O(v()),this.O(v()),this,this.options)):r=n[i],r._$AI(a),i++;i<n.length&&(this._$AR(r&&r._$AB.nextSibling,i),n.length=i)}_$AR(e=this._$AA.nextSibling,t){for(this._$AP?.(!1,!0,t);e!==this._$AB;){let t=ue(e).nextSibling;ue(e).remove(),e=t}}setConnected(e){this._$AM===void 0&&(this._$Cv=e,this._$AP?.(e))}},j=class{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(e,t,n,r,i){this.type=1,this._$AH=E,this._$AN=void 0,this.element=e,this.name=t,this._$AM=r,this.options=i,n.length>2||n[0]!==``||n[1]!==``?(this._$AH=Array(n.length-1).fill(/* @__PURE__ */ new String),this.strings=n):this._$AH=E}_$AI(e,t=this,n,r){let i=this.strings,a=!1;if(i===void 0)e=k(this,e,t,0),a=!y(e)||e!==this._$AH&&e!==T,a&&(this._$AH=e);else{let r=e,o,s;for(e=i[0],o=0;o<i.length-1;o++)s=k(this,r[n+o],t,o),s===T&&(s=this._$AH[o]),a||=!y(s)||s!==this._$AH[o],s===E?e=E:e!==E&&(e+=(s??``)+i[o+1]),this._$AH[o]=s}a&&!r&&this.j(e)}j(e){e===E?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,e??``)}},Te=class extends j{constructor(){super(...arguments),this.type=3}j(e){this.element[this.name]=e===E?void 0:e}},Ee=class extends j{constructor(){super(...arguments),this.type=4}j(e){this.element.toggleAttribute(this.name,!!e&&e!==E)}},De=class extends j{constructor(e,t,n,r,i){super(e,t,n,r,i),this.type=5}_$AI(e,t=this){if((e=k(this,e,t,0)??E)===T)return;let n=this._$AH,r=e===E&&n!==E||e.capture!==n.capture||e.once!==n.once||e.passive!==n.passive,i=e!==E&&(n===E||r);r&&this.element.removeEventListener(this.name,this,n),i&&this.element.addEventListener(this.name,this,e),this._$AH=e}handleEvent(e){typeof this._$AH==`function`?this._$AH.call(this.options?.host??this.element,e):this._$AH.handleEvent(e)}},Oe=class{constructor(e,t,n){this.element=e,this.type=6,this._$AN=void 0,this._$AM=t,this.options=n}get _$AU(){return this._$AM._$AU}_$AI(e){k(this,e)}},ke={M:fe,P:g,A:pe,C:1,L:Ce,R:we,D:he,V:k,I:A,H:j,N:Ee,U:De,B:Te,F:Oe},Ae=le.litHtmlPolyfillSupport;Ae?.(O,A),(le.litHtmlVersions??=[]).push(`3.3.3`);var je=(e,t,n)=>{let r=n?.renderBefore??t,i=r._$litPart$;if(i===void 0){let e=n?.renderBefore??null;r._$litPart$=i=new A(t.insertBefore(v(),e),e,void 0,n??{})}return i._$AI(e),i},Me=globalThis,M=class extends m{constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){let e=super.createRenderRoot();return this.renderOptions.renderBefore??=e.firstChild,e}update(e){let t=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(e),this._$Do=je(t,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(!1)}render(){return T}};M._$litElement$=!0,M.finalized=!0,Me.litElementHydrateSupport?.({LitElement:M});var Ne=Me.litElementPolyfillSupport;Ne?.({LitElement:M}),(Me.litElementVersions??=[]).push(`4.2.2`);var N=e=>(t,n)=>{n===void 0?customElements.define(e,t):n.addInitializer(()=>{customElements.define(e,t)})},Pe={attribute:!0,type:String,converter:p,reflect:!1,hasChanged:se},Fe=(e=Pe,t,n)=>{let{kind:r,metadata:i}=n,a=globalThis.litPropertyMetadata.get(i);if(a===void 0&&globalThis.litPropertyMetadata.set(i,a=/* @__PURE__ */ new Map),r===`setter`&&((e=Object.create(e)).wrapped=!0),a.set(n.name,e),r===`accessor`){let{name:r}=n;return{set(n){let i=t.get.call(this);t.set.call(this,n),this.requestUpdate(r,i,e,!0,n)},init(t){return t!==void 0&&this.C(r,void 0,e,t),t}}}if(r===`setter`){let{name:r}=n;return function(n){let i=this[r];t.call(this,n),this.requestUpdate(r,i,e,!0,n)}}throw Error(`Unsupported decorator location: `+r)};function P(e){return(t,n)=>typeof n==`object`?Fe(e,t,n):((e,t,n)=>{let r=t.hasOwnProperty(n);return t.constructor.createProperty(n,e),r?Object.getOwnPropertyDescriptor(t,n):void 0})(e,t,n)}function F(e){return P({...e,state:!0,attribute:!1})}var Ie=1e4;async function Le(){await customElements.whenDefined(`partial-panel-resolver`);let e=document.createElement(`partial-panel-resolver`);e.hass={panels:[{url_path:`tmp`,component_name:`config`}]},e._updateRoutes(),await e.routerOptions.routes.tmp.load(),customElements.get(`ha-card`)||await customElements.whenDefined(`ha-card`)}var Re=async()=>{if(!customElements.get(`ha-card`))try{await Promise.race([Le(),new Promise((e,t)=>setTimeout(()=>t(/* @__PURE__ */ Error(`Timeout waiting for HA elements (${Ie}ms)`)),Ie))])}catch(e){console.warn(`[kubernetes-panel] Failed to load HA elements:`,e)}},{I:ze}=ke,Be=e=>e.strings===void 0,Ve={ATTRIBUTE:1,CHILD:2,PROPERTY:3,BOOLEAN_ATTRIBUTE:4,EVENT:5,ELEMENT:6},He=e=>(...t)=>({_$litDirective$:e,values:t}),Ue=class{constructor(e){}get _$AU(){return this._$AM._$AU}_$AT(e,t,n){this._$Ct=e,this._$AM=t,this._$Ci=n}_$AS(e,t){return this.update(e,t)}update(e,t){return this.render(...t)}},I=(e,t)=>{let n=e._$AN;if(n===void 0)return!1;for(let e of n)e._$AO?.(t,!1),I(e,t);return!0},L=e=>{let t,n;do{if((t=e._$AM)===void 0)break;n=t._$AN,n.delete(e),e=t}while(n?.size===0)},We=e=>{for(let t;t=e._$AM;e=t){let n=t._$AN;if(n===void 0)t._$AN=n=/* @__PURE__ */ new Set;else if(n.has(e))break;n.add(e),qe(t)}};function Ge(e){this._$AN===void 0?this._$AM=e:(L(this),this._$AM=e,We(this))}function Ke(e,t=!1,n=0){let r=this._$AH,i=this._$AN;if(i!==void 0&&i.size!==0){if(t){if(Array.isArray(r))for(let e=n;e<r.length;e++)I(r[e],!1),L(r[e]);else r!=null&&(I(r,!1),L(r))}else I(this,e)}}var qe=e=>{e.type==Ve.CHILD&&(e._$AP??=Ke,e._$AQ??=Ge)},Je=class extends Ue{constructor(){super(...arguments),this._$AN=void 0}_$AT(e,t,n){super._$AT(e,t,n),We(this),this.isConnected=e._$AU}_$AO(e,t=!0){e!==this.isConnected&&(this.isConnected=e,e?this.reconnected?.():this.disconnected?.()),t&&(I(this,e),L(this))}setValue(e){if(Be(this._$Ct))this._$Ct._$AI(e,this);else{let t=[...this._$Ct._$AH];t[this._$Ci]=e,this._$Ct._$AI(t,this,0)}}disconnected(){}reconnected(){}},Ye=/* @__PURE__ */ new WeakMap,Xe=He(class extends Je{render(e){return E}update(e,[t]){let n=t!==this.G;return n&&this.rt(void 0),(n||this.lt!==this.ct)&&(this.G=t,this.ht=e.options?.host,this.rt(this.ct=e.element)),E}rt(e){if(this.G!==void 0){if(this.isConnected||(e=void 0),typeof this.G==`function`){let t=this.ht??globalThis,n=Ye.get(t);n===void 0&&(n=/* @__PURE__ */ new WeakMap,Ye.set(t,n)),n.get(this.G)!==void 0&&this.G.call(this.ht,void 0),n.set(this.G,e),e!==void 0&&this.G.call(this.ht,e)}else this.G.value=e}}get lt(){return typeof this.G==`function`?Ye.get(this.ht??globalThis)?.get(this.G):this.G?.value}disconnected(){this.lt===this.ct&&this.rt(void 0)}reconnected(){this.rt(this.ct)}});function R(e){return e?.user?.is_admin??!1}var Ze={memory_pressure:`Memory Pressure`,disk_pressure:`Disk Pressure`,pid_pressure:`PID Pressure`,network_unavailable:`Network Unavailable`};function z(e){if(!e||e===`N/A`)return`N/A`;let t=new Date(e).getTime(),n=Math.max(0,Math.floor((Date.now()-t)/1e3));return n<60?`${n}s`:n<3600?`${Math.floor(n/60)}m`:n<86400?`${Math.floor(n/3600)}h`:`${Math.floor(n/86400)}d`}function Qe(e){if(!e)return`Never`;let t=Date.now()/1e3,n=Math.max(0,Math.floor(t-e));return n<60?`${n}s ago`:n<3600?`${Math.floor(n/60)}m ago`:n<86400?`${Math.floor(n/3600)}h ago`:`${Math.floor(n/86400)}d ago`}function $e(e,t){let n=new Set(e);return n.has(t)?n.delete(t):n.add(t),n}function B(e,t){return typeof e==`object`&&e&&`message`in e&&typeof e.message==`string`&&e.message?e.message:t}function V(e,t,n,r){var i=arguments.length,a=i<3?t:r===null?r=Object.getOwnPropertyDescriptor(t,n):r,o;if(typeof Reflect==`object`&&typeof Reflect.decorate==`function`)a=Reflect.decorate(e,t,n,r);else for(var s=e.length-1;s>=0;s--)(o=e[s])&&(a=(i<3?o(a):i>3?o(t,n,a):o(t,n))||a);return i>3&&a&&Object.defineProperty(t,n,a),a}var H=class extends M{constructor(...e){super(...e),this._data=null,this._loading=!0,this._error=null,this.pollMs=6e4,this.subscribe=!0,this.loadErrorFallback=`Failed to load data`,this.emptyMessage=`No Kubernetes clusters configured.`,this._loadingInFlight=!1,this._boundVisibilityHandler=this._handleVisibilityChange.bind(this)}hasData(){return this._data!==null}firstUpdated(e){this._loadData(),this.pollMs>0&&(this._startPolling(),document.addEventListener(`visibilitychange`,this._boundVisibilityHandler)),this.subscribe&&this._subscribeUpdates()}disconnectedCallback(){super.disconnectedCallback(),this._stopPolling(),document.removeEventListener(`visibilitychange`,this._boundVisibilityHandler),this._unsubUpdates?.().catch(()=>{}),this._unsubUpdates=void 0,this._updateDebounce&&=(clearTimeout(this._updateDebounce),void 0),this._reloadTimer&&=(clearTimeout(this._reloadTimer),void 0)}_handleVisibilityChange(){document.hidden?this._stopPolling():(this._loadData(),this._startPolling())}_startPolling(){this._refreshInterval||=setInterval(()=>this._loadData(),this.pollMs)}_stopPolling(){this._refreshInterval&&=(clearInterval(this._refreshInterval),void 0)}async _subscribeUpdates(){try{let e=await this.hass.connection.subscribeMessage(()=>this._scheduleLoad(),{type:`kubernetes/subscribe_updates`});if(!this.isConnected){e().catch(()=>{});return}this._unsubUpdates=e}catch{}}_scheduleLoad(){document.hidden||(this._updateDebounce||=setTimeout(()=>{this._updateDebounce=void 0,this._loadData()},1e3))}_scheduleReload(e){this._reloadTimer&&clearTimeout(this._reloadTimer),this._reloadTimer=setTimeout(()=>{this._reloadTimer=void 0,this._loadData()},e)}async _loadData(){if(!this._loadingInFlight){this._loadingInFlight=!0,this.hasData()||(this._loading=!0),this._error=null;try{await this.fetchData()}catch(e){this._error=B(e,this.loadErrorFallback)}finally{this._loading=!1,this._loadingInFlight=!1}}}_onOverlayKeydown(e){return t=>{t.key===`Escape`&&e!==E&&e.call(this)}}_autofocusOverlay(){return Xe(e=>{let t=e;t&&queueMicrotask(()=>{t.isConnected&&!t.matches(`:focus-within`)&&t.focus({preventScroll:!0})})})}renderState(e){return this._loading?w`
+var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&&`adoptedStyleSheets`in Document.prototype&&`replace`in CSSStyleSheet.prototype,n=Symbol(),r=/* @__PURE__ */ new WeakMap,i=class{constructor(e,t,r){if(this._$cssResult$=!0,r!==n)throw Error("CSSResult is not constructable. Use `unsafeCSS` or `css` instead.");this.cssText=e,this.t=t}get styleSheet(){let e=this.o,n=this.t;if(t&&e===void 0){let t=n!==void 0&&n.length===1;t&&(e=r.get(n)),e===void 0&&((this.o=e=new CSSStyleSheet).replaceSync(this.cssText),t&&r.set(n,e))}return e}toString(){return this.cssText}},a=e=>new i(typeof e==`string`?e:e+``,void 0,n),o=(e,...t)=>new i(e.length===1?e[0]:t.reduce((t,n,r)=>t+(e=>{if(!0===e._$cssResult$)return e.cssText;if(typeof e==`number`)return e;throw Error(`Value passed to 'css' function must be a 'css' function result: `+e+`. Use 'unsafeCSS' to pass non-literal values, but take care to ensure page security.`)})(n)+e[r+1],e[0]),e,n),s=(n,r)=>{if(t)n.adoptedStyleSheets=r.map(e=>e instanceof CSSStyleSheet?e:e.styleSheet);else for(let t of r){let r=document.createElement(`style`),i=e.litNonce;i!==void 0&&r.setAttribute(`nonce`,i),r.textContent=t.cssText,n.appendChild(r)}},c=t?e=>e:e=>e instanceof CSSStyleSheet?(e=>{let t=``;for(let n of e.cssRules)t+=n.cssText;return a(t)})(e):e,{is:l,defineProperty:u,getOwnPropertyDescriptor:ee,getOwnPropertyNames:te,getOwnPropertySymbols:ne,getPrototypeOf:re}=Object,d=globalThis,ie=d.trustedTypes,ae=ie?ie.emptyScript:``,oe=d.reactiveElementPolyfillSupport,f=(e,t)=>e,p={toAttribute(e,t){switch(t){case Boolean:e=e?ae:null;break;case Object:case Array:e=e==null?e:JSON.stringify(e)}return e},fromAttribute(e,t){let n=e;switch(t){case Boolean:n=e!==null;break;case Number:n=e===null?null:Number(e);break;case Object:case Array:try{n=JSON.parse(e)}catch{n=null}}return n}},se=(e,t)=>!l(e,t),ce={attribute:!0,type:String,converter:p,reflect:!1,useDefault:!1,hasChanged:se};Symbol.metadata??=Symbol(`metadata`),d.litPropertyMetadata??=/* @__PURE__ */ new WeakMap;var m=class extends HTMLElement{static addInitializer(e){this._$Ei(),(this.l??=[]).push(e)}static get observedAttributes(){return this.finalize(),this._$Eh&&[...this._$Eh.keys()]}static createProperty(e,t=ce){if(t.state&&(t.attribute=!1),this._$Ei(),this.prototype.hasOwnProperty(e)&&((t=Object.create(t)).wrapped=!0),this.elementProperties.set(e,t),!t.noAccessor){let n=Symbol(),r=this.getPropertyDescriptor(e,n,t);r!==void 0&&u(this.prototype,e,r)}}static getPropertyDescriptor(e,t,n){let{get:r,set:i}=ee(this.prototype,e)??{get(){return this[t]},set(e){this[t]=e}};return{get:r,set(t){let a=r?.call(this);i?.call(this,t),this.requestUpdate(e,a,n)},configurable:!0,enumerable:!0}}static getPropertyOptions(e){return this.elementProperties.get(e)??ce}static _$Ei(){if(this.hasOwnProperty(f(`elementProperties`)))return;let e=re(this);e.finalize(),e.l!==void 0&&(this.l=[...e.l]),this.elementProperties=new Map(e.elementProperties)}static finalize(){if(this.hasOwnProperty(f(`finalized`)))return;if(this.finalized=!0,this._$Ei(),this.hasOwnProperty(f(`properties`))){let e=this.properties,t=[...te(e),...ne(e)];for(let n of t)this.createProperty(n,e[n])}let e=this[Symbol.metadata];if(e!==null){let t=litPropertyMetadata.get(e);if(t!==void 0)for(let[e,n]of t)this.elementProperties.set(e,n)}this._$Eh=/* @__PURE__ */ new Map;for(let[e,t]of this.elementProperties){let n=this._$Eu(e,t);n!==void 0&&this._$Eh.set(n,e)}this.elementStyles=this.finalizeStyles(this.styles)}static finalizeStyles(e){let t=[];if(Array.isArray(e)){let n=new Set(e.flat(1/0).reverse());for(let e of n)t.unshift(c(e))}else e!==void 0&&t.push(c(e));return t}static _$Eu(e,t){let n=t.attribute;return!1===n?void 0:typeof n==`string`?n:typeof e==`string`?e.toLowerCase():void 0}constructor(){super(),this._$Ep=void 0,this.isUpdatePending=!1,this.hasUpdated=!1,this._$Em=null,this._$Ev()}_$Ev(){this._$ES=new Promise(e=>this.enableUpdating=e),this._$AL=/* @__PURE__ */ new Map,this._$E_(),this.requestUpdate(),this.constructor.l?.forEach(e=>e(this))}addController(e){(this._$EO??=/* @__PURE__ */ new Set).add(e),this.renderRoot!==void 0&&this.isConnected&&e.hostConnected?.()}removeController(e){this._$EO?.delete(e)}_$E_(){let e=/* @__PURE__ */ new Map,t=this.constructor.elementProperties;for(let n of t.keys())this.hasOwnProperty(n)&&(e.set(n,this[n]),delete this[n]);e.size>0&&(this._$Ep=e)}createRenderRoot(){let e=this.shadowRoot??this.attachShadow(this.constructor.shadowRootOptions);return s(e,this.constructor.elementStyles),e}connectedCallback(){this.renderRoot??=this.createRenderRoot(),this.enableUpdating(!0),this._$EO?.forEach(e=>e.hostConnected?.())}enableUpdating(e){}disconnectedCallback(){this._$EO?.forEach(e=>e.hostDisconnected?.())}attributeChangedCallback(e,t,n){this._$AK(e,n)}_$ET(e,t){let n=this.constructor.elementProperties.get(e),r=this.constructor._$Eu(e,n);if(r!==void 0&&!0===n.reflect){let i=(n.converter?.toAttribute===void 0?p:n.converter).toAttribute(t,n.type);this._$Em=e,i==null?this.removeAttribute(r):this.setAttribute(r,i),this._$Em=null}}_$AK(e,t){let n=this.constructor,r=n._$Eh.get(e);if(r!==void 0&&this._$Em!==r){let e=n.getPropertyOptions(r),i=typeof e.converter==`function`?{fromAttribute:e.converter}:e.converter?.fromAttribute===void 0?p:e.converter;this._$Em=r;let a=i.fromAttribute(t,e.type);this[r]=a??this._$Ej?.get(r)??a,this._$Em=null}}requestUpdate(e,t,n,r=!1,i){if(e!==void 0){let a=this.constructor;if(!1===r&&(i=this[e]),n??=a.getPropertyOptions(e),!((n.hasChanged??se)(i,t)||n.useDefault&&n.reflect&&i===this._$Ej?.get(e)&&!this.hasAttribute(a._$Eu(e,n))))return;this.C(e,t,n)}!1===this.isUpdatePending&&(this._$ES=this._$EP())}C(e,t,{useDefault:n,reflect:r,wrapped:i},a){n&&!(this._$Ej??=/* @__PURE__ */ new Map).has(e)&&(this._$Ej.set(e,a??t??this[e]),!0!==i||a!==void 0)||(this._$AL.has(e)||(this.hasUpdated||n||(t=void 0),this._$AL.set(e,t)),!0===r&&this._$Em!==e&&(this._$Eq??=/* @__PURE__ */ new Set).add(e))}async _$EP(){this.isUpdatePending=!0;try{await this._$ES}catch(e){Promise.reject(e)}let e=this.scheduleUpdate();return e!=null&&await e,!this.isUpdatePending}scheduleUpdate(){return this.performUpdate()}performUpdate(){if(!this.isUpdatePending)return;if(!this.hasUpdated){if(this.renderRoot??=this.createRenderRoot(),this._$Ep){for(let[e,t]of this._$Ep)this[e]=t;this._$Ep=void 0}let e=this.constructor.elementProperties;if(e.size>0)for(let[t,n]of e){let{wrapped:e}=n,r=this[t];!0!==e||this._$AL.has(t)||r===void 0||this.C(t,void 0,n,r)}}let e=!1,t=this._$AL;try{e=this.shouldUpdate(t),e?(this.willUpdate(t),this._$EO?.forEach(e=>e.hostUpdate?.()),this.update(t)):this._$EM()}catch(t){throw e=!1,this._$EM(),t}e&&this._$AE(t)}willUpdate(e){}_$AE(e){this._$EO?.forEach(e=>e.hostUpdated?.()),this.hasUpdated||(this.hasUpdated=!0,this.firstUpdated(e)),this.updated(e)}_$EM(){this._$AL=/* @__PURE__ */ new Map,this.isUpdatePending=!1}get updateComplete(){return this.getUpdateComplete()}getUpdateComplete(){return this._$ES}shouldUpdate(e){return!0}update(e){this._$Eq&&=this._$Eq.forEach(e=>this._$ET(e,this[e])),this._$EM()}updated(e){}firstUpdated(e){}};m.elementStyles=[],m.shadowRootOptions={mode:`open`},m[f(`elementProperties`)]=/* @__PURE__ */ new Map,m[f(`finalized`)]=/* @__PURE__ */ new Map,oe?.({ReactiveElement:m}),(d.reactiveElementVersions??=[]).push(`2.1.2`);var le=globalThis,ue=e=>e,h=le.trustedTypes,de=h?h.createPolicy(`lit-html`,{createHTML:e=>e}):void 0,fe=`$lit$`,g=`lit$${Math.random().toFixed(9).slice(2)}$`,pe=`?`+g,me=`<${pe}>`,_=document,v=()=>_.createComment(``),y=e=>e===null||typeof e!=`object`&&typeof e!=`function`,he=Array.isArray,ge=e=>he(e)||typeof e?.[Symbol.iterator]==`function`,_e=`[ 	
+\f\r]`,b=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,ve=/-->/g,ye=/>/g,x=RegExp(`>|${_e}(?:([^\\s"'>=/]+)(${_e}*=${_e}*(?:[^ \t\n\f\r"'\`<>=]|("|')|))|$)`,`g`),be=/'/g,xe=/"/g,Se=/^(?:script|style|textarea|title)$/i,S=(e=>(t,...n)=>({_$litType$:e,strings:t,values:n}))(1),C=Symbol.for(`lit-noChange`),w=Symbol.for(`lit-nothing`),Ce=/* @__PURE__ */ new WeakMap,T=_.createTreeWalker(_,129);function we(e,t){if(!he(e)||!e.hasOwnProperty(`raw`))throw Error(`invalid template strings array`);return de===void 0?t:de.createHTML(t)}var Te=(e,t)=>{let n=e.length-1,r=[],i,a=t===2?`<svg>`:t===3?`<math>`:``,o=b;for(let t=0;t<n;t++){let n=e[t],s,c,l=-1,u=0;for(;u<n.length&&(o.lastIndex=u,c=o.exec(n),c!==null);)u=o.lastIndex,o===b?c[1]===`!--`?o=ve:c[1]===void 0?c[2]===void 0?c[3]!==void 0&&(o=x):(Se.test(c[2])&&(i=RegExp(`</`+c[2],`g`)),o=x):o=ye:o===x?c[0]===`>`?(o=i??b,l=-1):c[1]===void 0?l=-2:(l=o.lastIndex-c[2].length,s=c[1],o=c[3]===void 0?x:c[3]===`"`?xe:be):o===xe||o===be?o=x:o===ve||o===ye?o=b:(o=x,i=void 0);let ee=o===x&&e[t+1].startsWith(`/>`)?` `:``;a+=o===b?n+me:l>=0?(r.push(s),n.slice(0,l)+fe+n.slice(l)+g+ee):n+g+(l===-2?t:ee)}return[we(e,a+(e[n]||`<?>`)+(t===2?`</svg>`:t===3?`</math>`:``)),r]},Ee=class e{constructor({strings:t,_$litType$:n},r){let i;this.parts=[];let a=0,o=0,s=t.length-1,c=this.parts,[l,u]=Te(t,n);if(this.el=e.createElement(l,r),T.currentNode=this.el.content,n===2||n===3){let e=this.el.content.firstChild;e.replaceWith(...e.childNodes)}for(;(i=T.nextNode())!==null&&c.length<s;){if(i.nodeType===1){if(i.hasAttributes())for(let e of i.getAttributeNames())if(e.endsWith(fe)){let t=u[o++],n=i.getAttribute(e).split(g),r=/([.?@])?(.*)/.exec(t);c.push({type:1,index:a,name:r[2],strings:n,ctor:r[1]===`.`?Oe:r[1]===`?`?ke:r[1]===`@`?Ae:O}),i.removeAttribute(e)}else e.startsWith(g)&&(c.push({type:6,index:a}),i.removeAttribute(e));if(Se.test(i.tagName)){let e=i.textContent.split(g),t=e.length-1;if(t>0){i.textContent=h?h.emptyScript:``;for(let n=0;n<t;n++)i.append(e[n],v()),T.nextNode(),c.push({type:2,index:++a});i.append(e[t],v())}}}else if(i.nodeType===8){if(i.data===pe)c.push({type:2,index:a});else{let e=-1;for(;(e=i.data.indexOf(g,e+1))!==-1;)c.push({type:7,index:a}),e+=g.length-1}}a++}}static createElement(e,t){let n=_.createElement(`template`);return n.innerHTML=e,n}};function E(e,t,n=e,r){if(t===C)return t;let i=r===void 0?n._$Cl:n._$Co?.[r],a=y(t)?void 0:t._$litDirective$;return i?.constructor!==a&&(i?._$AO?.(!1),a===void 0?i=void 0:(i=new a(e),i._$AT(e,n,r)),r===void 0?n._$Cl=i:(n._$Co??=[])[r]=i),i!==void 0&&(t=E(e,i._$AS(e,t.values),i,r)),t}var De=class{constructor(e,t){this._$AV=[],this._$AN=void 0,this._$AD=e,this._$AM=t}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}u(e){let{el:{content:t},parts:n}=this._$AD,r=(e?.creationScope??_).importNode(t,!0);T.currentNode=r;let i=T.nextNode(),a=0,o=0,s=n[0];for(;s!==void 0;){if(a===s.index){let t;s.type===2?t=new D(i,i.nextSibling,this,e):s.type===1?t=new s.ctor(i,s.name,s.strings,this,e):s.type===6&&(t=new je(i,this,e)),this._$AV.push(t),s=n[++o]}a!==s?.index&&(i=T.nextNode(),a++)}return T.currentNode=_,r}p(e){let t=0;for(let n of this._$AV)n!==void 0&&(n.strings===void 0?n._$AI(e[t]):(n._$AI(e,n,t),t+=n.strings.length-2)),t++}},D=class e{get _$AU(){return this._$AM?._$AU??this._$Cv}constructor(e,t,n,r){this.type=2,this._$AH=w,this._$AN=void 0,this._$AA=e,this._$AB=t,this._$AM=n,this.options=r,this._$Cv=r?.isConnected??!0}get parentNode(){let e=this._$AA.parentNode,t=this._$AM;return t!==void 0&&e?.nodeType===11&&(e=t.parentNode),e}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(e,t=this){e=E(this,e,t),y(e)?e===w||e==null||e===``?(this._$AH!==w&&this._$AR(),this._$AH=w):e!==this._$AH&&e!==C&&this._(e):e._$litType$===void 0?e.nodeType===void 0?ge(e)?this.k(e):this._(e):this.T(e):this.$(e)}O(e){return this._$AA.parentNode.insertBefore(e,this._$AB)}T(e){this._$AH!==e&&(this._$AR(),this._$AH=this.O(e))}_(e){this._$AH!==w&&y(this._$AH)?this._$AA.nextSibling.data=e:this.T(_.createTextNode(e)),this._$AH=e}$(e){let{values:t,_$litType$:n}=e,r=typeof n==`number`?this._$AC(e):(n.el===void 0&&(n.el=Ee.createElement(we(n.h,n.h[0]),this.options)),n);if(this._$AH?._$AD===r)this._$AH.p(t);else{let e=new De(r,this),n=e.u(this.options);e.p(t),this.T(n),this._$AH=e}}_$AC(e){let t=Ce.get(e.strings);return t===void 0&&Ce.set(e.strings,t=new Ee(e)),t}k(t){he(this._$AH)||(this._$AH=[],this._$AR());let n=this._$AH,r,i=0;for(let a of t)i===n.length?n.push(r=new e(this.O(v()),this.O(v()),this,this.options)):r=n[i],r._$AI(a),i++;i<n.length&&(this._$AR(r&&r._$AB.nextSibling,i),n.length=i)}_$AR(e=this._$AA.nextSibling,t){for(this._$AP?.(!1,!0,t);e!==this._$AB;){let t=ue(e).nextSibling;ue(e).remove(),e=t}}setConnected(e){this._$AM===void 0&&(this._$Cv=e,this._$AP?.(e))}},O=class{get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}constructor(e,t,n,r,i){this.type=1,this._$AH=w,this._$AN=void 0,this.element=e,this.name=t,this._$AM=r,this.options=i,n.length>2||n[0]!==``||n[1]!==``?(this._$AH=Array(n.length-1).fill(/* @__PURE__ */ new String),this.strings=n):this._$AH=w}_$AI(e,t=this,n,r){let i=this.strings,a=!1;if(i===void 0)e=E(this,e,t,0),a=!y(e)||e!==this._$AH&&e!==C,a&&(this._$AH=e);else{let r=e,o,s;for(e=i[0],o=0;o<i.length-1;o++)s=E(this,r[n+o],t,o),s===C&&(s=this._$AH[o]),a||=!y(s)||s!==this._$AH[o],s===w?e=w:e!==w&&(e+=(s??``)+i[o+1]),this._$AH[o]=s}a&&!r&&this.j(e)}j(e){e===w?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,e??``)}},Oe=class extends O{constructor(){super(...arguments),this.type=3}j(e){this.element[this.name]=e===w?void 0:e}},ke=class extends O{constructor(){super(...arguments),this.type=4}j(e){this.element.toggleAttribute(this.name,!!e&&e!==w)}},Ae=class extends O{constructor(e,t,n,r,i){super(e,t,n,r,i),this.type=5}_$AI(e,t=this){if((e=E(this,e,t,0)??w)===C)return;let n=this._$AH,r=e===w&&n!==w||e.capture!==n.capture||e.once!==n.once||e.passive!==n.passive,i=e!==w&&(n===w||r);r&&this.element.removeEventListener(this.name,this,n),i&&this.element.addEventListener(this.name,this,e),this._$AH=e}handleEvent(e){typeof this._$AH==`function`?this._$AH.call(this.options?.host??this.element,e):this._$AH.handleEvent(e)}},je=class{constructor(e,t,n){this.element=e,this.type=6,this._$AN=void 0,this._$AM=t,this.options=n}get _$AU(){return this._$AM._$AU}_$AI(e){E(this,e)}},Me={M:fe,P:g,A:pe,C:1,L:Te,R:De,D:ge,V:E,I:D,H:O,N:ke,U:Ae,B:Oe,F:je},Ne=le.litHtmlPolyfillSupport;Ne?.(Ee,D),(le.litHtmlVersions??=[]).push(`3.3.3`);var Pe=(e,t,n)=>{let r=n?.renderBefore??t,i=r._$litPart$;if(i===void 0){let e=n?.renderBefore??null;r._$litPart$=i=new D(t.insertBefore(v(),e),e,void 0,n??{})}return i._$AI(e),i},Fe=globalThis,k=class extends m{constructor(){super(...arguments),this.renderOptions={host:this},this._$Do=void 0}createRenderRoot(){let e=super.createRenderRoot();return this.renderOptions.renderBefore??=e.firstChild,e}update(e){let t=this.render();this.hasUpdated||(this.renderOptions.isConnected=this.isConnected),super.update(e),this._$Do=Pe(t,this.renderRoot,this.renderOptions)}connectedCallback(){super.connectedCallback(),this._$Do?.setConnected(!0)}disconnectedCallback(){super.disconnectedCallback(),this._$Do?.setConnected(!1)}render(){return C}};k._$litElement$=!0,k.finalized=!0,Fe.litElementHydrateSupport?.({LitElement:k});var Ie=Fe.litElementPolyfillSupport;Ie?.({LitElement:k}),(Fe.litElementVersions??=[]).push(`4.2.2`);var A=e=>(t,n)=>{n===void 0?customElements.define(e,t):n.addInitializer(()=>{customElements.define(e,t)})},Le={attribute:!0,type:String,converter:p,reflect:!1,hasChanged:se},Re=(e=Le,t,n)=>{let{kind:r,metadata:i}=n,a=globalThis.litPropertyMetadata.get(i);if(a===void 0&&globalThis.litPropertyMetadata.set(i,a=/* @__PURE__ */ new Map),r===`setter`&&((e=Object.create(e)).wrapped=!0),a.set(n.name,e),r===`accessor`){let{name:r}=n;return{set(n){let i=t.get.call(this);t.set.call(this,n),this.requestUpdate(r,i,e,!0,n)},init(t){return t!==void 0&&this.C(r,void 0,e,t),t}}}if(r===`setter`){let{name:r}=n;return function(n){let i=this[r];t.call(this,n),this.requestUpdate(r,i,e,!0,n)}}throw Error(`Unsupported decorator location: `+r)};function j(e){return(t,n)=>typeof n==`object`?Re(e,t,n):((e,t,n)=>{let r=t.hasOwnProperty(n);return t.constructor.createProperty(n,e),r?Object.getOwnPropertyDescriptor(t,n):void 0})(e,t,n)}function M(e){return j({...e,state:!0,attribute:!1})}var ze=1e4;async function Be(){await customElements.whenDefined(`partial-panel-resolver`);let e=document.createElement(`partial-panel-resolver`);e.hass={panels:[{url_path:`tmp`,component_name:`config`}]},e._updateRoutes(),await e.routerOptions.routes.tmp.load(),customElements.get(`ha-card`)||await customElements.whenDefined(`ha-card`)}var Ve=async()=>{if(!customElements.get(`ha-card`))try{await Promise.race([Be(),new Promise((e,t)=>setTimeout(()=>t(/* @__PURE__ */ Error(`Timeout waiting for HA elements (${ze}ms)`)),ze))])}catch(e){console.warn(`[kubernetes-panel] Failed to load HA elements:`,e)}},{I:He}=Me,Ue=e=>e.strings===void 0,We={ATTRIBUTE:1,CHILD:2,PROPERTY:3,BOOLEAN_ATTRIBUTE:4,EVENT:5,ELEMENT:6},Ge=e=>(...t)=>({_$litDirective$:e,values:t}),Ke=class{constructor(e){}get _$AU(){return this._$AM._$AU}_$AT(e,t,n){this._$Ct=e,this._$AM=t,this._$Ci=n}_$AS(e,t){return this.update(e,t)}update(e,t){return this.render(...t)}},N=(e,t)=>{let n=e._$AN;if(n===void 0)return!1;for(let e of n)e._$AO?.(t,!1),N(e,t);return!0},P=e=>{let t,n;do{if((t=e._$AM)===void 0)break;n=t._$AN,n.delete(e),e=t}while(n?.size===0)},qe=e=>{for(let t;t=e._$AM;e=t){let n=t._$AN;if(n===void 0)t._$AN=n=/* @__PURE__ */ new Set;else if(n.has(e))break;n.add(e),Xe(t)}};function Je(e){this._$AN===void 0?this._$AM=e:(P(this),this._$AM=e,qe(this))}function Ye(e,t=!1,n=0){let r=this._$AH,i=this._$AN;if(i!==void 0&&i.size!==0){if(t){if(Array.isArray(r))for(let e=n;e<r.length;e++)N(r[e],!1),P(r[e]);else r!=null&&(N(r,!1),P(r))}else N(this,e)}}var Xe=e=>{e.type==We.CHILD&&(e._$AP??=Ye,e._$AQ??=Je)},Ze=class extends Ke{constructor(){super(...arguments),this._$AN=void 0}_$AT(e,t,n){super._$AT(e,t,n),qe(this),this.isConnected=e._$AU}_$AO(e,t=!0){e!==this.isConnected&&(this.isConnected=e,e?this.reconnected?.():this.disconnected?.()),t&&(N(this,e),P(this))}setValue(e){if(Ue(this._$Ct))this._$Ct._$AI(e,this);else{let t=[...this._$Ct._$AH];t[this._$Ci]=e,this._$Ct._$AI(t,this,0)}}disconnected(){}reconnected(){}},Qe=/* @__PURE__ */ new WeakMap,$e=Ge(class extends Ze{render(e){return w}update(e,[t]){let n=t!==this.G;return n&&this.rt(void 0),(n||this.lt!==this.ct)&&(this.G=t,this.ht=e.options?.host,this.rt(this.ct=e.element)),w}rt(e){if(this.G!==void 0){if(this.isConnected||(e=void 0),typeof this.G==`function`){let t=this.ht??globalThis,n=Qe.get(t);n===void 0&&(n=/* @__PURE__ */ new WeakMap,Qe.set(t,n)),n.get(this.G)!==void 0&&this.G.call(this.ht,void 0),n.set(this.G,e),e!==void 0&&this.G.call(this.ht,e)}else this.G.value=e}}get lt(){return typeof this.G==`function`?Qe.get(this.ht??globalThis)?.get(this.G):this.G?.value}disconnected(){this.lt===this.ct&&this.rt(void 0)}reconnected(){this.rt(this.ct)}});function F(e){return e?.user?.is_admin??!1}var et={memory_pressure:`Memory Pressure`,disk_pressure:`Disk Pressure`,pid_pressure:`PID Pressure`,network_unavailable:`Network Unavailable`};function I(e){if(!e||e===`N/A`)return`N/A`;let t=new Date(e).getTime(),n=Math.max(0,Math.floor((Date.now()-t)/1e3));return n<60?`${n}s`:n<3600?`${Math.floor(n/60)}m`:n<86400?`${Math.floor(n/3600)}h`:`${Math.floor(n/86400)}d`}function tt(e){if(!e)return`Never`;let t=Date.now()/1e3,n=Math.max(0,Math.floor(t-e));return n<60?`${n}s ago`:n<3600?`${Math.floor(n/60)}m ago`:n<86400?`${Math.floor(n/3600)}h ago`:`${Math.floor(n/86400)}d ago`}function nt(e,t){let n=new Set(e);return n.has(t)?n.delete(t):n.add(t),n}function L(e,t){return typeof e==`object`&&e&&`message`in e&&typeof e.message==`string`&&e.message?e.message:t}function rt(e,t=!1){t?history.replaceState(history.state,``,e):history.pushState(null,``,e),window.dispatchEvent(new CustomEvent(`location-changed`,{detail:{replace:t}}))}function R(e){return new URLSearchParams(location.search).get(e)}function z(e,t,n){return t.includes(e)?e:n}function it(e){let t=new URLSearchParams(location.search);for(let[n,r]of Object.entries(e))r?t.set(n,r):t.delete(n);let n=t.toString();history.replaceState(history.state,``,`${location.pathname}${n?`?${n}`:``}`)}function B(e,t,n,r){var i=arguments.length,a=i<3?t:r===null?r=Object.getOwnPropertyDescriptor(t,n):r,o;if(typeof Reflect==`object`&&typeof Reflect.decorate==`function`)a=Reflect.decorate(e,t,n,r);else for(var s=e.length-1;s>=0;s--)(o=e[s])&&(a=(i<3?o(a):i>3?o(t,n,a):o(t,n))||a);return i>3&&a&&Object.defineProperty(t,n,a),a}var V=class extends k{constructor(...e){super(...e),this._data=null,this._loading=!0,this._error=null,this.pollMs=6e4,this.subscribe=!0,this.loadErrorFallback=`Failed to load data`,this.emptyMessage=`No Kubernetes clusters configured.`,this._loadingInFlight=!1,this._boundVisibilityHandler=this._handleVisibilityChange.bind(this),this.prefix=``,this.tab=``,this._onLocationChange=()=>{this._inTab()&&this.readQuery()}}readQuery(){}_inTab(){return this.tab!==``&&location.pathname.replace(/\/$/,``)===`${this.prefix}/${this.tab}`}_syncQuery(e){this.isConnected&&this._inTab()&&it(e)}connectedCallback(){super.connectedCallback(),this.readQuery(),window.addEventListener(`location-changed`,this._onLocationChange),window.addEventListener(`popstate`,this._onLocationChange)}hasData(){return this._data!==null}firstUpdated(e){this._loadData(),this.pollMs>0&&(this._startPolling(),document.addEventListener(`visibilitychange`,this._boundVisibilityHandler)),this.subscribe&&this._subscribeUpdates()}disconnectedCallback(){super.disconnectedCallback(),window.removeEventListener(`location-changed`,this._onLocationChange),window.removeEventListener(`popstate`,this._onLocationChange),this._stopPolling(),document.removeEventListener(`visibilitychange`,this._boundVisibilityHandler),this._unsubUpdates?.().catch(()=>{}),this._unsubUpdates=void 0,this._updateDebounce&&=(clearTimeout(this._updateDebounce),void 0),this._reloadTimer&&=(clearTimeout(this._reloadTimer),void 0)}_handleVisibilityChange(){document.hidden?this._stopPolling():(this._loadData(),this._startPolling())}_startPolling(){this._refreshInterval||=setInterval(()=>this._loadData(),this.pollMs)}_stopPolling(){this._refreshInterval&&=(clearInterval(this._refreshInterval),void 0)}async _subscribeUpdates(){try{let e=await this.hass.connection.subscribeMessage(()=>this._scheduleLoad(),{type:`kubernetes/subscribe_updates`});if(!this.isConnected){e().catch(()=>{});return}this._unsubUpdates=e}catch{}}_scheduleLoad(){document.hidden||(this._updateDebounce||=setTimeout(()=>{this._updateDebounce=void 0,this._loadData()},1e3))}_scheduleReload(e){this._reloadTimer&&clearTimeout(this._reloadTimer),this._reloadTimer=setTimeout(()=>{this._reloadTimer=void 0,this._loadData()},e)}async _loadData(){if(!this._loadingInFlight){this._loadingInFlight=!0,this.hasData()||(this._loading=!0),this._error=null;try{await this.fetchData()}catch(e){this._error=L(e,this.loadErrorFallback)}finally{this._loading=!1,this._loadingInFlight=!1}}}_onOverlayKeydown(e){return t=>{t.key===`Escape`&&e!==w&&e.call(this)}}_autofocusOverlay(){return $e(e=>{let t=e;t&&queueMicrotask(()=>{t.isConnected&&!t.matches(`:focus-within`)&&t.focus({preventScroll:!0})})})}renderState(e){return this._loading?S`
         <div class="loading">
           <ha-spinner></ha-spinner>
         </div>
-      `:this._error?w`
+      `:this._error?S`
         <ha-card>
           <div class="error-card">
             <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -11,7 +11,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <button class="retry-btn" @click=${this._loadData}>Retry</button>
           </div>
         </ha-card>
-      `:e?w`<div class="empty">${this.emptyMessage}</div>`:E}};V([P({attribute:!1})],H.prototype,`hass`,void 0),V([F()],H.prototype,`_data`,void 0),V([F()],H.prototype,`_loading`,void 0),V([F()],H.prototype,`_error`,void 0);var U=o`
+      `:e?S`<div class="empty">${this.emptyMessage}</div>`:w}};B([j({attribute:!1})],V.prototype,`hass`,void 0),B([M()],V.prototype,`_data`,void 0),B([M()],V.prototype,`_loading`,void 0),B([M()],V.prototype,`_error`,void 0),B([j({attribute:!1})],V.prototype,`prefix`,void 0);var H=o`
   :host {
     display: block;
   }
@@ -57,7 +57,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     color: var(--secondary-text-color);
     font-size: 16px;
   }
-`,W=o`
+`,U=o`
   .filters {
     display: flex;
     gap: 12px;
@@ -115,7 +115,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     border-color: var(--primary-color);
     color: var(--primary-color);
   }
-`,G=o`
+`,W=o`
   .badge {
     display: inline-flex;
     align-items: center;
@@ -168,7 +168,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     background: rgba(var(--rgb-info-color, 33, 150, 243), 0.15);
     color: var(--info-color, #2196f3);
   }
-`,K=o`
+`,at=o`
   .confirm-overlay {
     position: fixed;
     top: 0;
@@ -244,11 +244,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
     opacity: 0.6;
     cursor: not-allowed;
   }
-`,et=o`
+`,ot=o`
   .table-wrapper {
     overflow-x: auto;
   }
-`,tt={pods:`mdi:cube-outline`,nodes:`mdi:server`,deployments:`mdi:rocket-launch`,statefulsets:`mdi:database`,daemonsets:`mdi:lan`,cronjobs:`mdi:clock-outline`,jobs:`mdi:briefcase-check`,ingresses:`mdi:earth`,services:`mdi:swap-horizontal`},nt={pods:`Pods`,nodes:`Nodes`,deployments:`Deployments`,statefulsets:`StatefulSets`,daemonsets:`DaemonSets`,cronjobs:`CronJobs`,jobs:`Jobs`,ingresses:`Ingresses`,services:`Services`},rt={pods:{tab:`pods`},nodes:{tab:`nodes`},deployments:{tab:`workloads`,filter:`deployments`},statefulsets:{tab:`workloads`,filter:`statefulsets`},daemonsets:{tab:`workloads`,filter:`daemonsets`},cronjobs:{tab:`workloads`,filter:`cronjobs`},jobs:{tab:`workloads`,filter:`jobs`},ingresses:{tab:`network`,filter:`Ingress`},services:{tab:`network`,filter:`Services`}},it=e=>({tab:`workloads`,filter:`jobs`,search:e.name}),at=class extends H{constructor(...e){super(...e),this._expandedNamespaces=/* @__PURE__ */ new Set,this.loadErrorFallback=`Failed to load cluster data`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/cluster/overview`});this._data=e}_toggleNamespaces(e){this._expandedNamespaces=$e(this._expandedNamespaces,e)}_navigate(e){let t=rt[e];t&&this._go(t)}_go(e){this.dispatchEvent(new CustomEvent(`k8s-navigate`,{detail:e}))}_goOnKey(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._go(t))}static{this.styles=[U,G,o`
+`,st={pods:`mdi:cube-outline`,nodes:`mdi:server`,deployments:`mdi:rocket-launch`,statefulsets:`mdi:database`,daemonsets:`mdi:lan`,cronjobs:`mdi:clock-outline`,jobs:`mdi:briefcase-check`,ingresses:`mdi:earth`,services:`mdi:swap-horizontal`},ct={pods:`Pods`,nodes:`Nodes`,deployments:`Deployments`,statefulsets:`StatefulSets`,daemonsets:`DaemonSets`,cronjobs:`CronJobs`,jobs:`Jobs`,ingresses:`Ingresses`,services:`Services`},lt={pods:`/pods`,nodes:`/nodes`,deployments:`/workloads?category=deployments`,statefulsets:`/workloads?category=statefulsets`,daemonsets:`/workloads?category=daemonsets`,cronjobs:`/workloads?category=cronjobs`,jobs:`/workloads?category=jobs`,ingresses:`/network?type=Ingress`,services:`/network?type=Services`},G=(e,t,n=``)=>`${e}?${n}search=${encodeURIComponent(t)}`,ut=e=>G(`/workloads`,e.name,`category=jobs&`),K=class extends V{constructor(...e){super(...e),this.prefix=``,this._expandedNamespaces=/* @__PURE__ */ new Set,this.loadErrorFallback=`Failed to load cluster data`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/cluster/overview`});this._data=e}_toggleNamespaces(e){this._expandedNamespaces=nt(this._expandedNamespaces,e)}_navigate(e){let t=lt[e];t&&this._go(t)}_go(e){rt(`${this.prefix}${e}`)}_goOnKey(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._go(t))}static{this.styles=[H,W,o`
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -506,7 +506,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       .alerts-info-icon:hover .alerts-tooltip {
         display: block;
       }
-    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===E?w` ${this._data.clusters.map(e=>this._renderCluster(e))} `:e}_renderCluster(e){let t=e.alerts.nodes_with_pressure.length+e.alerts.degraded_workloads.length+e.alerts.failed_pods.length+e.alerts.restarting_pods.length+e.alerts.failed_jobs.length;return w`
+    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===w?S` ${this._data.clusters.map(e=>this._renderCluster(e))} `:e}_renderCluster(e){let t=e.alerts.nodes_with_pressure.length+e.alerts.degraded_workloads.length+e.alerts.failed_pods.length+e.alerts.restarting_pods.length+e.alerts.failed_jobs.length;return S`
       <div class="cluster-section">
         <div class="cluster-header">
           <span class="cluster-name">${e.cluster_name}</span>
@@ -516,30 +516,30 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         <div class="meta-row">
           <div class="meta-item">
             <ha-icon icon="mdi:update"></ha-icon>
-            <span>Updated ${Qe(e.last_update)}</span>
+            <span>Updated ${tt(e.last_update)}</span>
           </div>
-          ${e.server_version?w`<div class="meta-item">
+          ${e.server_version?S`<div class="meta-item">
                   <ha-icon icon="mdi:kubernetes"></ha-icon>
                   <span>${e.server_version}</span>
-                </div>`:E}
+                </div>`:w}
           <button class="refresh-btn" @click=${this._loadData} title="Refresh data">
             <ha-icon icon="mdi:refresh"></ha-icon>
           </button>
         </div>
 
         <div class="counts-grid">
-          ${Object.entries(e.counts).map(([e,t])=>w`
+          ${Object.entries(e.counts).map(([e,t])=>S`
               <ha-card
                 class="count-card"
                 role="button"
                 tabindex="0"
-                title="Show ${nt[e]||e}"
+                title="Show ${ct[e]||e}"
                 @click=${()=>this._navigate(e)}
                 @keydown=${t=>{(t.key===`Enter`||t.key===` `)&&(t.preventDefault(),this._navigate(e))}}
               >
-                <ha-icon icon=${tt[e]||`mdi:help`}></ha-icon>
+                <ha-icon icon=${st[e]||`mdi:help`}></ha-icon>
                 <div class="count-value">${t}</div>
-                <div class="count-label">${nt[e]||e}</div>
+                <div class="count-label">${ct[e]||e}</div>
               </ha-card>
             `)}
         </div>
@@ -559,7 +559,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               </div>
             </span>
           </div>
-          ${t>0?this._renderAlerts(e.alerts):w`
+          ${t>0?this._renderAlerts(e.alerts):S`
                   <div class="no-alerts">
                     <ha-icon icon="mdi:check-circle"></ha-icon>
                     <div class="no-alerts-text">
@@ -574,7 +574,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
 
         ${this._renderNamespaceSection(e)}
       </div>
-    `}_renderHealthBadge(e){return e===!0?w`<span class="badge badge-healthy">Healthy</span>`:e===!1?w`<span class="badge badge-unhealthy">Unhealthy</span>`:w`<span class="badge badge-unknown">Unknown</span>`}_renderNamespaceSection(e){let t=Object.entries(e.namespaces);if(t.length===0)return E;let n=this._expandedNamespaces.has(e.entry_id);return w`
+    `}_renderHealthBadge(e){return e===!0?S`<span class="badge badge-healthy">Healthy</span>`:e===!1?S`<span class="badge badge-unhealthy">Unhealthy</span>`:S`<span class="badge badge-unknown">Unknown</span>`}_renderNamespaceSection(e){let t=Object.entries(e.namespaces);if(t.length===0)return w;let n=this._expandedNamespaces.has(e.entry_id);return S`
       <div
         class="section-header"
         role="button"
@@ -585,49 +585,49 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         <ha-icon icon=${n?`mdi:chevron-down`:`mdi:chevron-right`}></ha-icon>
         <span>Namespaces (${t.length})</span>
       </div>
-      ${n?this._renderNamespaceTable(t):E}
-    `}_renderNamespaceTable(e){let t=[`pods`,`deployments`,`statefulsets`,`daemonsets`,`cronjobs`,`jobs`];return w`
+      ${n?this._renderNamespaceTable(t):w}
+    `}_renderNamespaceTable(e){let t=[`pods`,`deployments`,`statefulsets`,`daemonsets`,`cronjobs`,`jobs`];return S`
       <table class="ns-table">
         <thead>
           <tr>
             <th>Namespace</th>
-            ${t.map(e=>w`<th>${nt[e]||e}</th>`)}
+            ${t.map(e=>S`<th>${ct[e]||e}</th>`)}
           </tr>
         </thead>
         <tbody>
-          ${e.sort(([e],[t])=>e.localeCompare(t)).map(([e,n])=>w`
+          ${e.sort(([e],[t])=>e.localeCompare(t)).map(([e,n])=>S`
                 <tr>
                   <td>${e}</td>
-                  ${t.map(e=>w`<td>${n[e]||0}</td>`)}
+                  ${t.map(e=>S`<td>${n[e]||0}</td>`)}
                 </tr>
               `)}
         </tbody>
       </table>
-    `}_renderAlerts(e){return w`
-      ${e.nodes_with_pressure.map(e=>w`
+    `}_renderAlerts(e){return S`
+      ${e.nodes_with_pressure.map(e=>S`
           <div
             class="alert-card alert-warning"
             role="button"
             tabindex="0"
-            @click=${()=>this._go({tab:`nodes`,search:e.name})}
-            @keydown=${t=>this._goOnKey(t,{tab:`nodes`,search:e.name})}
+            @click=${()=>this._go(G(`/nodes`,e.name))}
+            @keydown=${t=>this._goOnKey(t,G(`/nodes`,e.name))}
           >
             <ha-icon icon="mdi:server-network-off"></ha-icon>
             <div>
               <div class="alert-title">Node: ${e.name}</div>
               <div class="alert-detail">
-                ${e.conditions.map(e=>Ze[e]||e).join(`, `)}
+                ${e.conditions.map(e=>et[e]||e).join(`, `)}
               </div>
             </div>
           </div>
         `)}
-      ${e.degraded_workloads.map(e=>w`
+      ${e.degraded_workloads.map(e=>S`
           <div
             class="alert-card alert-warning"
             role="button"
             tabindex="0"
-            @click=${()=>this._go({tab:`workloads`,search:e.name})}
-            @keydown=${t=>this._goOnKey(t,{tab:`workloads`,search:e.name})}
+            @click=${()=>this._go(G(`/workloads`,e.name))}
+            @keydown=${t=>this._goOnKey(t,G(`/workloads`,e.name))}
           >
             <ha-icon icon="mdi:alert"></ha-icon>
             <div>
@@ -639,13 +639,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             </div>
           </div>
         `)}
-      ${e.failed_pods.map(e=>w`
+      ${e.failed_pods.map(e=>S`
           <div
             class="alert-card alert-error"
             role="button"
             tabindex="0"
-            @click=${()=>this._go({tab:`pods`,search:e.name})}
-            @keydown=${t=>this._goOnKey(t,{tab:`pods`,search:e.name})}
+            @click=${()=>this._go(G(`/pods`,e.name))}
+            @keydown=${t=>this._goOnKey(t,G(`/pods`,e.name))}
           >
             <ha-icon icon="mdi:alert-octagon"></ha-icon>
             <div>
@@ -654,13 +654,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             </div>
           </div>
         `)}
-      ${e.restarting_pods.map(e=>w`
+      ${e.restarting_pods.map(e=>S`
           <div
             class="alert-card alert-warning"
             role="button"
             tabindex="0"
-            @click=${()=>this._go({tab:`pods`,search:e.name})}
-            @keydown=${t=>this._goOnKey(t,{tab:`pods`,search:e.name})}
+            @click=${()=>this._go(G(`/pods`,e.name))}
+            @keydown=${t=>this._goOnKey(t,G(`/pods`,e.name))}
           >
             <ha-icon icon="mdi:restart-alert"></ha-icon>
             <div>
@@ -672,25 +672,25 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             </div>
           </div>
         `)}
-      ${e.failed_jobs.map(e=>w`
+      ${e.failed_jobs.map(e=>S`
           <div
             class="alert-card alert-error"
             role="button"
             tabindex="0"
-            @click=${()=>this._go(it(e))}
-            @keydown=${t=>this._goOnKey(t,it(e))}
+            @click=${()=>this._go(ut(e))}
+            @keydown=${t=>this._goOnKey(t,ut(e))}
           >
             <ha-icon icon="mdi:briefcase-remove-outline"></ha-icon>
             <div>
               <div class="alert-title">Job: ${e.namespace}/${e.name}</div>
               <div class="alert-detail">
                 Failed${e.reason?` (${e.reason})`:``}${e.cronjob?`, CronJob ${e.cronjob}`:``},
-                ${Qe(Date.parse(e.failed_at)/1e3)}
+                ${tt(Date.parse(e.failed_at)/1e3)}
               </div>
             </div>
           </div>
         `)}
-    `}};V([F()],at.prototype,`_expandedNamespaces`,void 0),at=V([N(`k8s-overview`)],at);var ot=o`
+    `}};B([j({attribute:!1})],K.prototype,`prefix`,void 0),B([M()],K.prototype,`_expandedNamespaces`,void 0),K=B([A(`k8s-overview`)],K);var dt=o`
   .action-btn {
     display: flex;
     align-items: center;
@@ -769,7 +769,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
   .action-error .dismiss-btn:hover {
     background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
   }
-`,st={mirror_pod:`static pod`,daemonset:`DaemonSet`,completed:`finished`,emptydir:`emptyDir data`,unmanaged:`no controller`,home_assistant:`Home Assistant itself`},q=class extends H{constructor(...e){super(...e),this._expandedNodes=/* @__PURE__ */ new Set,this._statusFilter=`all`,this._searchQuery=``,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._drainTarget=null,this._drainOptions={ignore_daemonsets:!0,delete_emptydir_data:!1,force:!1,timeout:120},this._draining=!1,this._drainResult=null,this.loadErrorFallback=`Failed to load nodes data`}willUpdate(e){e.has(`initialSearch`)&&this.initialSearch&&(this._searchQuery=this.initialSearch)}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/nodes/list`});this._data=e}_toggleNode(e){this._expandedNodes=$e(this._expandedNodes,e)}_getConditions(e){let t=[];return e.memory_pressure&&t.push(`memory_pressure`),e.disk_pressure&&t.push(`disk_pressure`),e.pid_pressure&&t.push(`pid_pressure`),e.network_unavailable&&t.push(`network_unavailable`),t}_getFilteredNodes(e){let t=e;if(this._statusFilter!==`all`&&(t=t.filter(e=>this._statusFilter===`ready`?e.status===`Ready`:e.status!==`Ready`)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.internal_ip.toLowerCase().includes(e)||t.kubelet_version.toLowerCase().includes(e))}return t}async _setSchedulable(e,t,n){let r=`${e}_${t.name}`,i=new Set(this._actionInProgress);i.add(r),this._actionInProgress=i;try{await this.hass.callService(`kubernetes`,n?`uncordon_node`:`cordon_node`,{node_name:t.name,entry_id:e}),await this._loadData()}catch(e){let t=B(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-nodes-table] Action failed:`,e)}finally{let e=new Set(this._actionInProgress);e.delete(r),this._actionInProgress=e}}_requestDrain(e,t){this._drainTarget={entry_id:e,node:t.name},this._drainResult=null}_closeDrain(){this._drainTarget=null,this._drainResult=null}async _confirmDrain(){if(!this._drainTarget)return;let{entry_id:e,node:t}=this._drainTarget;this._draining=!0;try{let n=(await this.hass.callService(`kubernetes`,`drain_node`,{node_name:t,entry_id:e,...this._drainOptions},void 0,!0,!0))?.response;this._drainResult=n?.[t]??{evicted:[],skipped:[],blocked:[]},await this._loadData()}catch(e){this._actionError=`Drain failed: ${B(e,`Action failed`)}`,this._drainTarget=null}finally{this._draining=!1}}static{this.styles=[ot,U,W,G,K,o`
+`,ft={mirror_pod:`static pod`,daemonset:`DaemonSet`,completed:`finished`,emptydir:`emptyDir data`,unmanaged:`no controller`,home_assistant:`Home Assistant itself`},pt=[`all`,`ready`,`not-ready`],q=class extends V{constructor(...e){super(...e),this._expandedNodes=/* @__PURE__ */ new Set,this._statusFilter=`all`,this._searchQuery=``,this.tab=`nodes`,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._drainTarget=null,this._drainOptions={ignore_daemonsets:!0,delete_emptydir_data:!1,force:!1,timeout:120},this._draining=!1,this._drainResult=null,this.loadErrorFallback=`Failed to load nodes data`}readQuery(){this._statusFilter=z(R(`status`),pt,`all`),this._searchQuery=R(`search`)??``}willUpdate(e){(e.has(`_statusFilter`)||e.has(`_searchQuery`))&&this._syncQuery({search:this._searchQuery,status:this._statusFilter===`all`?``:this._statusFilter})}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/nodes/list`});this._data=e}_toggleNode(e){this._expandedNodes=nt(this._expandedNodes,e)}_getConditions(e){let t=[];return e.memory_pressure&&t.push(`memory_pressure`),e.disk_pressure&&t.push(`disk_pressure`),e.pid_pressure&&t.push(`pid_pressure`),e.network_unavailable&&t.push(`network_unavailable`),t}_getFilteredNodes(e){let t=e;if(this._statusFilter!==`all`&&(t=t.filter(e=>this._statusFilter===`ready`?e.status===`Ready`:e.status!==`Ready`)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.internal_ip.toLowerCase().includes(e)||t.kubelet_version.toLowerCase().includes(e))}return t}async _setSchedulable(e,t,n){let r=`${e}_${t.name}`,i=new Set(this._actionInProgress);i.add(r),this._actionInProgress=i;try{await this.hass.callService(`kubernetes`,n?`uncordon_node`:`cordon_node`,{node_name:t.name,entry_id:e}),await this._loadData()}catch(e){let t=L(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-nodes-table] Action failed:`,e)}finally{let e=new Set(this._actionInProgress);e.delete(r),this._actionInProgress=e}}_requestDrain(e,t){this._drainTarget={entry_id:e,node:t.name},this._drainResult=null}_closeDrain(){this._drainTarget=null,this._drainResult=null}async _confirmDrain(){if(!this._drainTarget)return;let{entry_id:e,node:t}=this._drainTarget;this._draining=!0;try{let n=(await this.hass.callService(`kubernetes`,`drain_node`,{node_name:t,entry_id:e,...this._drainOptions},void 0,!0,!0))?.response;this._drainResult=n?.[t]??{evicted:[],skipped:[],blocked:[]},await this._loadData()}catch(e){this._actionError=`Drain failed: ${L(e,`Action failed`)}`,this._drainTarget=null}finally{this._draining=!1}}static{this.styles=[dt,H,U,W,at,o`
       .node-actions {
         display: flex;
         gap: 4px;
@@ -966,8 +966,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           display: none;
         }
       }
-    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===E?w`
-      ${this._actionError?w`
+    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===w?S`
+      ${this._actionError?S`
               <div class="action-error">
                 <span>${this._actionError}</span>
                 <button
@@ -978,20 +978,20 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   <ha-icon icon="mdi:close"></ha-icon>
                 </button>
               </div>
-            `:E}
+            `:w}
       ${this._data.clusters.map(e=>this._renderCluster(e))}
-      ${this._drainTarget?this._renderDrainDialog():E}
-    `:e}_renderDrainDialog(){let e=this._drainTarget.node,t=this._drainResult,n=this._drainOptions;return w`
+      ${this._drainTarget?this._renderDrainDialog():w}
+    `:e}_renderDrainDialog(){let e=this._drainTarget.node,t=this._drainResult,n=this._drainOptions;return S`
       <div
         class="confirm-overlay"
         tabindex="-1"
         ${this._autofocusOverlay()}
-        @click=${this._draining?E:this._closeDrain}
-        @keydown=${this._onOverlayKeydown(this._draining?E:this._closeDrain)}
+        @click=${this._draining?w:this._closeDrain}
+        @keydown=${this._onOverlayKeydown(this._draining?w:this._closeDrain)}
       >
         <div class="confirm-dialog" @click=${e=>e.stopPropagation()}>
           <h3>Drain Node</h3>
-          ${t?this._renderDrainResult(e,t):w`
+          ${t?this._renderDrainResult(e,t):S`
                   <p>
                     Cordon <span class="confirm-ref">${e}</span> and evict its pods.
                     PodDisruptionBudgets are honoured; blocked pods are retried until
@@ -1039,7 +1039,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   </label>
                 `}
           <div class="confirm-actions">
-            ${t?w`<button @click=${this._closeDrain}>Close</button>`:w`
+            ${t?S`<button @click=${this._closeDrain}>Close</button>`:S`
                     <button @click=${this._closeDrain} ?disabled=${this._draining}>
                       Cancel
                     </button>
@@ -1054,32 +1054,32 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}_renderDrainResult(e,t){return w`
+    `}_renderDrainResult(e,t){return S`
       <p>
         <span class="confirm-ref">${e}</span> is cordoned. ${t.evicted.length}
         pod${t.evicted.length===1?``:`s`} evicted.
       </p>
-      ${t.blocked.length?w`<div class="drain-section blocked">
+      ${t.blocked.length?S`<div class="drain-section blocked">
               Still blocked by a PodDisruptionBudget:
               <ul>
-                ${t.blocked.map(e=>w`<li>${e}</li>`)}
+                ${t.blocked.map(e=>S`<li>${e}</li>`)}
               </ul>
-            </div>`:E}
-      ${t.evicted.length?w`<div class="drain-section">
+            </div>`:w}
+      ${t.evicted.length?S`<div class="drain-section">
               Evicted:
               <ul>
-                ${t.evicted.map(e=>w`<li>${e}</li>`)}
+                ${t.evicted.map(e=>S`<li>${e}</li>`)}
               </ul>
-            </div>`:E}
-      ${t.skipped.length?w`<div class="drain-section">
+            </div>`:w}
+      ${t.skipped.length?S`<div class="drain-section">
               Skipped:
               <ul>
-                ${t.skipped.map(e=>w`<li>${e.pod} (${st[e.reason]??e.reason})</li>`)}
+                ${t.skipped.map(e=>S`<li>${e.pod} (${ft[e.reason]??e.reason})</li>`)}
               </ul>
-            </div>`:E}
-    `}_renderCluster(e){let t=this._getFilteredNodes(e.nodes),n=e.nodes.filter(e=>e.status===`Ready`).length;return w`
+            </div>`:w}
+    `}_renderCluster(e){let t=this._getFilteredNodes(e.nodes),n=e.nodes.filter(e=>e.status===`Ready`).length;return S`
       <div class="cluster-section">
-        ${this._data.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
+        ${this._data.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
 
         <div class="filters">
           <input
@@ -1089,7 +1089,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             .value=${this._searchQuery}
             @input=${e=>{this._searchQuery=e.target.value}}
           />
-          ${[`all`,`ready`,`not-ready`].map(e=>w`
+          ${pt.map(e=>S`
               <button
                 class="filter-chip"
                 ?active=${this._statusFilter===e}
@@ -1102,12 +1102,12 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
 
         <div class="node-count">
           ${n}/${e.nodes.length} nodes ready
-          ${t.length===e.nodes.length?E:w` &middot; showing ${t.length}`}
+          ${t.length===e.nodes.length?w:S` &middot; showing ${t.length}`}
         </div>
 
-        ${t.length===0?w`<div class="empty">No nodes match your filters.</div>`:t.map(t=>this._renderNode(e.entry_id,t))}
+        ${t.length===0?S`<div class="empty">No nodes match your filters.</div>`:t.map(t=>this._renderNode(e.entry_id,t))}
       </div>
-    `}_renderNode(e,t){let n=`${e}_${t.name}`,r=this._expandedNodes.has(n),i=this._getConditions(t),a=t.cpu_usage_millicores!=null&&t.memory_usage_mib!=null,o=t.cpu_cores*1e3,s=a?Math.round(t.cpu_usage_millicores/o*100):0,c=a?t.memory_usage_mib/1024:0,l=a?Math.round(c/t.memory_capacity_gib*100):0;return w`
+    `}_renderNode(e,t){let n=`${e}_${t.name}`,r=this._expandedNodes.has(n),i=this._getConditions(t),a=t.cpu_usage_millicores!=null&&t.memory_usage_mib!=null,o=t.cpu_cores*1e3,s=a?Math.round(t.cpu_usage_millicores/o*100):0,c=a?t.memory_usage_mib/1024:0,l=a?Math.round(c/t.memory_capacity_gib*100):0;return S`
       <ha-card class="node-card">
         <div
           class="node-row"
@@ -1121,11 +1121,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               icon=${r?`mdi:chevron-down`:`mdi:chevron-right`}
             ></ha-icon>
             ${t.name}
-            ${t.schedulable?E:w`<span class="badge badge-unschedulable">Unschedulable</span>`}
-            ${i.length>0?w`<span class="badge badge-condition"
+            ${t.schedulable?w:S`<span class="badge badge-unschedulable">Unschedulable</span>`}
+            ${i.length>0?S`<span class="badge badge-condition"
                     >${i.length}
                     condition${i.length>1?`s`:``}</span
-                  >`:E}
+                  >`:w}
           </div>
           <span
             class="badge ${t.status===`Ready`?`badge-ready`:`badge-not-ready`}"
@@ -1134,7 +1134,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </span>
           <span class="node-ip">${t.internal_ip}</span>
           <div class="node-resources">
-            ${a?w`
+            ${a?S`
                     <div class="resource-bar-container" title="CPU usage">
                       <span class="resource-label">CPU</span>
                       <div class="resource-bar">
@@ -1155,13 +1155,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                       </div>
                       <span>${l}%</span>
                     </div>
-                  `:w`<span
+                  `:S`<span
                     >${t.cpu_cores} CPU &middot; ${t.memory_capacity_gib}
                     GiB</span
                   >`}
           </div>
-          <span class="node-age">${z(t.creation_timestamp)}</span>
-          ${R(this.hass)?w`<div class="node-actions">
+          <span class="node-age">${I(t.creation_timestamp)}</span>
+          ${F(this.hass)?S`<div class="node-actions">
                   <button
                     class="action-btn ${t.schedulable?`cordon`:`uncordon`}"
                     title=${t.schedulable?`Cordon (stop scheduling new pods)`:`Uncordon`}
@@ -1179,11 +1179,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   >
                     <ha-icon icon="mdi:tray-arrow-up"></ha-icon>
                   </button>
-                </div>`:w`<div class="node-actions"></div>`}
+                </div>`:S`<div class="node-actions"></div>`}
         </div>
-        ${r?this._renderNodeDetails(t,i):E}
+        ${r?this._renderNodeDetails(t,i):w}
       </ha-card>
-    `}_renderNodeDetails(e,t){let n=e.cpu_usage_millicores!=null&&e.memory_usage_mib!=null,r=n?Math.round(e.memory_usage_mib/1024*100)/100:null;return w`
+    `}_renderNodeDetails(e,t){let n=e.cpu_usage_millicores!=null&&e.memory_usage_mib!=null,r=n?Math.round(e.memory_usage_mib/1024*100)/100:null;return S`
       <div class="node-details">
         <div class="details-grid">
           <div class="detail-item">
@@ -1198,14 +1198,14 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <span class="detail-label">CPU Cores</span>
             <span class="detail-value">${e.cpu_cores}</span>
           </div>
-          ${n?w`
+          ${n?S`
                   <div class="detail-item">
                     <span class="detail-label">CPU Usage</span>
                     <span class="detail-value"
                       >${e.cpu_usage_millicores}m / ${e.cpu_cores*1e3}m</span
                     >
                   </div>
-                `:E}
+                `:w}
           <div class="detail-item">
             <span class="detail-label">Memory Capacity</span>
             <span class="detail-value">${e.memory_capacity_gib} GiB</span>
@@ -1214,14 +1214,14 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <span class="detail-label">Memory Allocatable</span>
             <span class="detail-value">${e.memory_allocatable_gib} GiB</span>
           </div>
-          ${n?w`
+          ${n?S`
                   <div class="detail-item">
                     <span class="detail-label">Memory Usage</span>
                     <span class="detail-value"
                       >${r} / ${e.memory_capacity_gib} GiB</span
                     >
                   </div>
-                `:E}
+                `:w}
           <div class="detail-item">
             <span class="detail-label">OS Image</span>
             <span class="detail-value">${e.os_image}</span>
@@ -1247,17 +1247,17 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <span class="detail-value">${e.creation_timestamp}</span>
           </div>
         </div>
-        ${t.length>0?w`
+        ${t.length>0?S`
                 <div class="conditions-row">
-                  ${t.map(e=>w`
+                  ${t.map(e=>S`
                       <span class="badge badge-condition">
-                        ${Ze[e]||e}
+                        ${et[e]||e}
                       </span>
                     `)}
                 </div>
-              `:E}
+              `:w}
       </div>
-    `}};V([P({attribute:!1})],q.prototype,`initialSearch`,void 0),V([F()],q.prototype,`_expandedNodes`,void 0),V([F()],q.prototype,`_statusFilter`,void 0),V([F()],q.prototype,`_searchQuery`,void 0),V([F()],q.prototype,`_actionInProgress`,void 0),V([F()],q.prototype,`_actionError`,void 0),V([F()],q.prototype,`_drainTarget`,void 0),V([F()],q.prototype,`_drainOptions`,void 0),V([F()],q.prototype,`_draining`,void 0),V([F()],q.prototype,`_drainResult`,void 0),q=V([N(`k8s-nodes-table`)],q);var ct=e=>!!e.problem||e.phase===`Failed`||e.phase===`Unknown`,lt=e=>e.problem&&e.problem_reason?e.problem_reason:e.phase,ut=[100,500,2e3],dt=`https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md`,ft={Running:`badge-running`,Succeeded:`badge-succeeded`,Pending:`badge-pending`,Failed:`badge-failed`,Unknown:`badge-unknown`},pt=[{key:`ready`,label:`Ready`},{key:`restarts`,label:`Restarts`},{key:`node`,label:`Node`},{key:`ip`,label:`IP`},{key:`owner`,label:`Owner`},{key:`age`,label:`Age`}],mt=new Set(pt.map(e=>e.key)),ht=`k8s-pods-columns`,gt=`__problems`,_t=`k8s-pods-log-wrap`,vt=5e3;function yt(){try{return localStorage.getItem(_t)!==`0`}catch{return!0}}function bt(e){try{localStorage.setItem(_t,e?`1`:`0`)}catch{}}function xt(){try{let e=localStorage.getItem(ht);if(e){let t=JSON.parse(e).filter(e=>mt.has(e));if(t.length)return new Set(t)}}catch{}return new Set(mt)}function St(e){try{localStorage.setItem(ht,JSON.stringify([...e]))}catch{}}var J=class extends H{constructor(...e){super(...e),this._searchQuery=``,this._phaseFilter=`all`,this._namespaceFilter=`all`,this._sortField=`name`,this._sortAsc=!0,this._deleteConfirm=null,this._deleting=!1,this._visibleColumns=xt(),this._columnMenuOpen=!1,this._actionError=null,this._logsTarget=null,this._logsContainer=``,this._logsTail=500,this._logsPrevious=!1,this._logsResult=null,this._logsLoading=!1,this._logsError=null,this._logsCopied=!1,this._logsWrap=yt(),this._logsAuto=!1,this._logsStick=!0,this._logsRequest=0,this.loadErrorFallback=`Failed to load pods data`,this._boundCloseMenu=()=>{this._columnMenuOpen=!1}}firstUpdated(e){super.firstUpdated(e),document.addEventListener(`click`,this._boundCloseMenu)}disconnectedCallback(){super.disconnectedCallback(),document.removeEventListener(`click`,this._boundCloseMenu),this._setLogsAuto(!1)}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/pods/list`});this._data=e}_getNamespaces(e){return[...new Set(e.map(e=>e.namespace))].sort()}_getFilteredPods(e){let t=e;if(this._phaseFilter===gt?t=t.filter(ct):this._phaseFilter!==`all`&&(t=t.filter(e=>e.phase===this._phaseFilter)),this._namespaceFilter!==`all`&&(t=t.filter(e=>e.namespace===this._namespaceFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.node_name.toLowerCase().includes(e)||t.owner_name.toLowerCase().includes(e))}return t=[...t].sort((e,t)=>{let n,r,i=this._sortField;i===`restarts`?(n=e.restart_count,r=t.restart_count):i===`age`?(n=e.creation_timestamp||``,r=t.creation_timestamp||``):i===`phase`?(n=lt(e),r=lt(t)):(n=e[i]||``,r=t[i]||``);let a=n<r?-1:+(n>r);return this._sortAsc?a:-a}),t}_handleSort(e){this._sortField===e?this._sortAsc=!this._sortAsc:(this._sortField=e,this._sortAsc=!0)}_handleSortKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._handleSort(t))}_requestDelete(e,t){this._deleteConfirm={entry_id:e,pod_name:t.name,namespace:t.namespace}}_cancelDelete(){this._deleteConfirm=null}async _confirmDelete(){if(this._deleteConfirm){this._deleting=!0;try{await this.hass.callWS({type:`kubernetes/pods/delete`,entry_id:this._deleteConfirm.entry_id,pod_name:this._deleteConfirm.pod_name,namespace:this._deleteConfirm.namespace}),this._deleteConfirm=null,await this._loadData()}catch(e){this._actionError=B(e,`Failed to delete pod`),this._deleteConfirm=null}finally{this._deleting=!1}}}_openLogs(e,t){let n=t.containers??[];this._logsTarget={entry_id:e,pod_name:t.name,namespace:t.namespace,containers:n},this._logsContainer=n[0]??``,this._logsPrevious=!1,this._logsResult=null,this._logsStick=!0,this._fetchLogs(!0)}_closeLogs(){this._logsTarget=null,this._logsRequest++,this._setLogsAuto(!1)}_stopLogsTimer(){clearInterval(this._logsTimer),this._logsTimer=void 0}_setLogsAuto(e){this._logsAuto=e,this._stopLogsTimer(),e&&(this._logsTimer=setInterval(()=>{!document.hidden&&!this._logsLoading&&this._fetchLogs(!1)},vt))}async _fetchLogs(e=!0){let t=this._logsTarget;if(!t)return;let n=++this._logsRequest;this._logsLoading=!0,this._logsError=null,e&&(this._logsCopied=!1);try{let e=await this.hass.callWS({type:`kubernetes/pods/logs`,entry_id:t.entry_id,pod_name:t.pod_name,namespace:t.namespace,...this._logsContainer?{container:this._logsContainer}:{},tail_lines:this._logsTail,previous:this._logsPrevious});if(n!==this._logsRequest)return;this._logsResult=e}catch(e){if(n!==this._logsRequest)return;this._logsResult=null,this._setLogsAuto(!1),this._logsError={message:B(e,`Failed to fetch logs`),forbidden:typeof e==`object`&&!!e&&`code`in e&&e.code===`forbidden`}}finally{n===this._logsRequest&&(this._logsLoading=!1)}}_setLogsOption(e){e(),this._fetchLogs()}async _copyLogs(){if(this._logsResult)try{await navigator.clipboard.writeText(this._logsResult.logs),this._logsCopied=!0}catch{}}willUpdate(e){if(super.willUpdate(e),e.has(`initialSearch`)&&this.initialSearch&&(this._searchQuery=this.initialSearch),e.has(`_logsResult`)){let e=this.renderRoot?.querySelector(`.logs-output`);this._logsStick=!e||e.scrollHeight-e.scrollTop-e.clientHeight<8}}updated(e){if(super.updated(e),e.has(`_logsResult`)&&this._logsResult&&this._logsStick){let e=this.renderRoot.querySelector(`.logs-output`);e&&(e.scrollTop=e.scrollHeight)}}_sortIcon(e){return this._sortField===e?this._sortAsc?`mdi:arrow-up`:`mdi:arrow-down`:``}static{this.styles=[ot,U,W,G,K,et,o`
+    `}};B([M()],q.prototype,`_expandedNodes`,void 0),B([M()],q.prototype,`_statusFilter`,void 0),B([M()],q.prototype,`_searchQuery`,void 0),B([M()],q.prototype,`_actionInProgress`,void 0),B([M()],q.prototype,`_actionError`,void 0),B([M()],q.prototype,`_drainTarget`,void 0),B([M()],q.prototype,`_drainOptions`,void 0),B([M()],q.prototype,`_draining`,void 0),B([M()],q.prototype,`_drainResult`,void 0),q=B([A(`k8s-nodes-table`)],q);var mt=e=>!!e.problem||e.phase===`Failed`||e.phase===`Unknown`,ht=e=>e.problem&&e.problem_reason?e.problem_reason:e.phase,gt=[100,500,2e3],_t=`https://github.com/tibuntu/homeassistant-kubernetes/blob/main/docs/RBAC.md`,vt={Running:`badge-running`,Succeeded:`badge-succeeded`,Pending:`badge-pending`,Failed:`badge-failed`,Unknown:`badge-unknown`},yt=[{key:`ready`,label:`Ready`},{key:`restarts`,label:`Restarts`},{key:`node`,label:`Node`},{key:`ip`,label:`IP`},{key:`owner`,label:`Owner`},{key:`age`,label:`Age`}],bt=new Set(yt.map(e=>e.key)),xt=`k8s-pods-columns`,J=`__problems`,St=`k8s-pods-log-wrap`,Ct=5e3;function wt(){try{return localStorage.getItem(St)!==`0`}catch{return!0}}function Tt(e){try{localStorage.setItem(St,e?`1`:`0`)}catch{}}var Et=[`namespace`,`name`,`phase`,`restarts`,`node_name`,`age`];function Dt(e){return e===`problems`?J:e&&Object.hasOwn(vt,e)?e:`all`}function Ot(){try{let e=localStorage.getItem(xt);if(e){let t=JSON.parse(e).filter(e=>bt.has(e));if(t.length)return new Set(t)}}catch{}return new Set(bt)}function kt(e){try{localStorage.setItem(xt,JSON.stringify([...e]))}catch{}}var Y=class extends V{constructor(...e){super(...e),this._searchQuery=``,this._phaseFilter=`all`,this._namespaceFilter=`all`,this._sortField=`name`,this._sortAsc=!0,this.tab=`pods`,this._deleteConfirm=null,this._deleting=!1,this._visibleColumns=Ot(),this._columnMenuOpen=!1,this._actionError=null,this._logsTarget=null,this._logsContainer=``,this._logsTail=500,this._logsPrevious=!1,this._logsResult=null,this._logsLoading=!1,this._logsError=null,this._logsCopied=!1,this._logsWrap=wt(),this._logsAuto=!1,this._logsStick=!0,this._logsRequest=0,this.loadErrorFallback=`Failed to load pods data`,this._boundCloseMenu=()=>{this._columnMenuOpen=!1}}readQuery(){this._searchQuery=R(`search`)??``,this._phaseFilter=Dt(R(`phase`)),this._namespaceFilter=R(`namespace`)||`all`,this._sortField=z(R(`sort`),Et,`name`),this._sortAsc=R(`dir`)!==`desc`}firstUpdated(e){super.firstUpdated(e),document.addEventListener(`click`,this._boundCloseMenu)}disconnectedCallback(){super.disconnectedCallback(),document.removeEventListener(`click`,this._boundCloseMenu),this._setLogsAuto(!1)}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/pods/list`});this._data=e}_getNamespaces(e){return[...new Set(e.map(e=>e.namespace))].sort()}_getFilteredPods(e){let t=e;if(this._phaseFilter===J?t=t.filter(mt):this._phaseFilter!==`all`&&(t=t.filter(e=>e.phase===this._phaseFilter)),this._namespaceFilter!==`all`&&(t=t.filter(e=>e.namespace===this._namespaceFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.node_name.toLowerCase().includes(e)||t.owner_name.toLowerCase().includes(e))}return t=[...t].sort((e,t)=>{let n,r,i=this._sortField;i===`restarts`?(n=e.restart_count,r=t.restart_count):i===`age`?(n=e.creation_timestamp||``,r=t.creation_timestamp||``):i===`phase`?(n=ht(e),r=ht(t)):(n=e[i]||``,r=t[i]||``);let a=n<r?-1:+(n>r);return this._sortAsc?a:-a}),t}_handleSort(e){this._sortField===e?this._sortAsc=!this._sortAsc:(this._sortField=e,this._sortAsc=!0)}_handleSortKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._handleSort(t))}_requestDelete(e,t){this._deleteConfirm={entry_id:e,pod_name:t.name,namespace:t.namespace}}_cancelDelete(){this._deleteConfirm=null}async _confirmDelete(){if(this._deleteConfirm){this._deleting=!0;try{await this.hass.callWS({type:`kubernetes/pods/delete`,entry_id:this._deleteConfirm.entry_id,pod_name:this._deleteConfirm.pod_name,namespace:this._deleteConfirm.namespace}),this._deleteConfirm=null,await this._loadData()}catch(e){this._actionError=L(e,`Failed to delete pod`),this._deleteConfirm=null}finally{this._deleting=!1}}}_openLogs(e,t){let n=t.containers??[];this._logsTarget={entry_id:e,pod_name:t.name,namespace:t.namespace,containers:n},this._logsContainer=n[0]??``,this._logsPrevious=!1,this._logsResult=null,this._logsStick=!0,this._fetchLogs(!0)}_closeLogs(){this._logsTarget=null,this._logsRequest++,this._setLogsAuto(!1)}_stopLogsTimer(){clearInterval(this._logsTimer),this._logsTimer=void 0}_setLogsAuto(e){this._logsAuto=e,this._stopLogsTimer(),e&&(this._logsTimer=setInterval(()=>{!document.hidden&&!this._logsLoading&&this._fetchLogs(!1)},Ct))}async _fetchLogs(e=!0){let t=this._logsTarget;if(!t)return;let n=++this._logsRequest;this._logsLoading=!0,this._logsError=null,e&&(this._logsCopied=!1);try{let e=await this.hass.callWS({type:`kubernetes/pods/logs`,entry_id:t.entry_id,pod_name:t.pod_name,namespace:t.namespace,...this._logsContainer?{container:this._logsContainer}:{},tail_lines:this._logsTail,previous:this._logsPrevious});if(n!==this._logsRequest)return;this._logsResult=e}catch(e){if(n!==this._logsRequest)return;this._logsResult=null,this._setLogsAuto(!1),this._logsError={message:L(e,`Failed to fetch logs`),forbidden:typeof e==`object`&&!!e&&`code`in e&&e.code===`forbidden`}}finally{n===this._logsRequest&&(this._logsLoading=!1)}}_setLogsOption(e){e(),this._fetchLogs()}async _copyLogs(){if(this._logsResult)try{await navigator.clipboard.writeText(this._logsResult.logs),this._logsCopied=!0}catch{}}willUpdate(e){if(super.willUpdate(e),this._data&&this._namespaceFilter!==`all`){let e=this._data.clusters.flatMap(e=>this._getNamespaces(e.pods));e.length&&!e.includes(this._namespaceFilter)&&(this._namespaceFilter=`all`)}if([`_searchQuery`,`_phaseFilter`,`_namespaceFilter`,`_sortField`,`_sortAsc`].some(t=>e.has(t))&&this._syncQuery({search:this._searchQuery,namespace:this._namespaceFilter===`all`?``:this._namespaceFilter,phase:this._phaseFilter===`all`?``:this._phaseFilter===J?`problems`:this._phaseFilter,sort:this._sortField===`name`?``:this._sortField,dir:this._sortAsc?``:`desc`}),e.has(`_logsResult`)){let e=this.renderRoot?.querySelector(`.logs-output`);this._logsStick=!e||e.scrollHeight-e.scrollTop-e.clientHeight<8}}updated(e){if(super.updated(e),e.has(`_logsResult`)&&this._logsResult&&this._logsStick){let e=this.renderRoot.querySelector(`.logs-output`);e&&(e.scrollTop=e.scrollHeight)}}_sortIcon(e){return this._sortField===e?this._sortAsc?`mdi:arrow-up`:`mdi:arrow-down`:``}static{this.styles=[dt,H,U,W,at,ot,o`
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -1486,8 +1486,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       .column-option input[type="checkbox"] {
         accent-color: var(--primary-color);
       }
-    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===E?w`
-      ${this._actionError?w`
+    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===w?S`
+      ${this._actionError?S`
               <div class="action-error">
                 <span>${this._actionError}</span>
                 <button
@@ -1498,13 +1498,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   <ha-icon icon="mdi:close"></ha-icon>
                 </button>
               </div>
-            `:E}
+            `:w}
       ${this._data.clusters.map(e=>this._renderCluster(e))}
-      ${this._deleteConfirm?this._renderDeleteDialog():E}
-      ${this._logsTarget?this._renderLogsDialog():E}
-    `:e}_renderCluster(e){let t=this._getFilteredPods(e.pods),n=this._getNamespaces(e.pods),r=[...new Set(e.pods.map(e=>e.phase))].sort();return w`
+      ${this._deleteConfirm?this._renderDeleteDialog():w}
+      ${this._logsTarget?this._renderLogsDialog():w}
+    `:e}_renderCluster(e){let t=this._getFilteredPods(e.pods),n=this._getNamespaces(e.pods),r=[...new Set(e.pods.map(e=>e.phase))].sort();return S`
       <div class="cluster-section">
-        ${this._data.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
+        ${this._data.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
 
         <div class="filters">
           <input
@@ -1521,7 +1521,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             @change=${e=>{this._namespaceFilter=e.target.value}}
           >
             <option value="all">All namespaces</option>
-            ${n.map(e=>w`<option value=${e}>${e}</option>`)}
+            ${n.map(e=>S`<option value=${e} ?selected=${e===this._namespaceFilter}>${e}</option>`)}
           </select>
 
           <button
@@ -1531,7 +1531,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           >
             All
           </button>
-          ${r.map(e=>w`
+          ${r.map(e=>S`
               <button
                 class="filter-chip"
                 ?active=${this._phaseFilter===e}
@@ -1542,17 +1542,17 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             `)}
           <button
             class="filter-chip"
-            ?active=${this._phaseFilter===gt}
-            @click=${()=>{this._phaseFilter=gt}}
+            ?active=${this._phaseFilter===J}
+            @click=${()=>{this._phaseFilter=J}}
           >
-            Problems (${e.pods.filter(ct).length})
+            Problems (${e.pods.filter(mt).length})
           </button>
           ${this._renderColumnMenu()}
         </div>
 
         <div class="pod-count">${t.length}/${e.pods.length} pods</div>
 
-        ${t.length===0?w`<div class="empty">No pods match your filters.</div>`:w`
+        ${t.length===0?S`<div class="empty">No pods match your filters.</div>`:S`
                 <ha-card>
                   <div class="table-wrapper">
                     <table class="pods-table">
@@ -1565,9 +1565,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                             @keydown=${e=>this._handleSortKeydown(e,`namespace`)}
                           >
                             Namespace
-                            ${this._sortIcon(`namespace`)?w`<ha-icon
+                            ${this._sortIcon(`namespace`)?S`<ha-icon
                                     icon=${this._sortIcon(`namespace`)}
-                                  ></ha-icon>`:E}
+                                  ></ha-icon>`:w}
                           </th>
                           <th
                             role="button"
@@ -1576,9 +1576,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                             @keydown=${e=>this._handleSortKeydown(e,`name`)}
                           >
                             Name
-                            ${this._sortIcon(`name`)?w`<ha-icon
+                            ${this._sortIcon(`name`)?S`<ha-icon
                                     icon=${this._sortIcon(`name`)}
-                                  ></ha-icon>`:E}
+                                  ></ha-icon>`:w}
                           </th>
                           <th
                             role="button"
@@ -1587,40 +1587,40 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                             @keydown=${e=>this._handleSortKeydown(e,`phase`)}
                           >
                             Status
-                            ${this._sortIcon(`phase`)?w`<ha-icon
+                            ${this._sortIcon(`phase`)?S`<ha-icon
                                     icon=${this._sortIcon(`phase`)}
-                                  ></ha-icon>`:E}
+                                  ></ha-icon>`:w}
                           </th>
-                          ${this._colVisible(`ready`)?w`<th>Ready</th>`:E}
-                          ${this._colVisible(`restarts`)?w`<th
+                          ${this._colVisible(`ready`)?S`<th>Ready</th>`:w}
+                          ${this._colVisible(`restarts`)?S`<th
                                   role="button"
                                   tabindex="0"
                                   @click=${()=>this._handleSort(`restarts`)}
                                   @keydown=${e=>this._handleSortKeydown(e,`restarts`)}
                                 >
                                   Restarts
-                                  ${this._sortIcon(`restarts`)?w`<ha-icon icon=${this._sortIcon(`restarts`)}></ha-icon>`:E}
-                                </th>`:E}
-                          ${this._colVisible(`node`)?w`<th
+                                  ${this._sortIcon(`restarts`)?S`<ha-icon icon=${this._sortIcon(`restarts`)}></ha-icon>`:w}
+                                </th>`:w}
+                          ${this._colVisible(`node`)?S`<th
                                   role="button"
                                   tabindex="0"
                                   @click=${()=>this._handleSort(`node_name`)}
                                   @keydown=${e=>this._handleSortKeydown(e,`node_name`)}
                                 >
                                   Node
-                                  ${this._sortIcon(`node_name`)?w`<ha-icon icon=${this._sortIcon(`node_name`)}></ha-icon>`:E}
-                                </th>`:E}
-                          ${this._colVisible(`ip`)?w`<th>IP</th>`:E}
-                          ${this._colVisible(`owner`)?w`<th>Owner</th>`:E}
-                          ${this._colVisible(`age`)?w`<th
+                                  ${this._sortIcon(`node_name`)?S`<ha-icon icon=${this._sortIcon(`node_name`)}></ha-icon>`:w}
+                                </th>`:w}
+                          ${this._colVisible(`ip`)?S`<th>IP</th>`:w}
+                          ${this._colVisible(`owner`)?S`<th>Owner</th>`:w}
+                          ${this._colVisible(`age`)?S`<th
                                   role="button"
                                   tabindex="0"
                                   @click=${()=>this._handleSort(`age`)}
                                   @keydown=${e=>this._handleSortKeydown(e,`age`)}
                                 >
                                   Age
-                                  ${this._sortIcon(`age`)?w`<ha-icon icon=${this._sortIcon(`age`)}></ha-icon>`:E}
-                                </th>`:E}
+                                  ${this._sortIcon(`age`)?S`<ha-icon icon=${this._sortIcon(`age`)}></ha-icon>`:w}
+                                </th>`:w}
                           <th class="col-actions"></th>
                         </tr>
                       </thead>
@@ -1632,7 +1632,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 </ha-card>
               `}
       </div>
-    `}_colVisible(e){return this._visibleColumns.has(e)}_toggleColumn(e){let t=new Set(this._visibleColumns);t.has(e)?t.delete(e):t.add(e),this._visibleColumns=t,St(t)}_renderColumnMenu(){return w`
+    `}_colVisible(e){return this._visibleColumns.has(e)}_toggleColumn(e){let t=new Set(this._visibleColumns);t.has(e)?t.delete(e):t.add(e),this._visibleColumns=t,kt(t)}_renderColumnMenu(){return S`
       <div class="column-menu-wrapper">
         <button
           class="column-toggle-btn"
@@ -1641,9 +1641,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         >
           <ha-icon icon="mdi:table-column"></ha-icon>
         </button>
-        ${this._columnMenuOpen?w`
+        ${this._columnMenuOpen?S`
                 <div class="column-menu" @click=${e=>e.stopPropagation()}>
-                  ${pt.map(e=>w`
+                  ${yt.map(e=>S`
                       <label class="column-option">
                         <input
                           type="checkbox"
@@ -1654,28 +1654,28 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                       </label>
                     `)}
                 </div>
-              `:E}
+              `:w}
       </div>
-    `}_renderPodRow(e,t){let n=e.entry_id,r=t.problem&&t.problem_reason?`badge-failed`:ft[t.phase]||`badge-unknown`;return w`
+    `}_renderPodRow(e,t){let n=e.entry_id,r=t.problem&&t.problem_reason?`badge-failed`:vt[t.phase]||`badge-unknown`;return S`
       <tr>
         <td>${t.namespace}</td>
         <td class="pod-name">${t.name}</td>
-        <td><span class="badge ${r}">${lt(t)}</span></td>
-        ${this._colVisible(`ready`)?w`<td>${t.ready_containers}/${t.total_containers}</td>`:E}
-        ${this._colVisible(`restarts`)?w`<td class=${t.restart_count>5?`restart-warn`:``}>${t.restart_count}</td>`:E}
-        ${this._colVisible(`node`)?w`<td>${t.node_name}</td>`:E}
-        ${this._colVisible(`ip`)?w`<td class="mono">${t.pod_ip}</td>`:E}
-        ${this._colVisible(`owner`)?w`<td>${t.owner_kind===`N/A`?w`<span class="owner-info">-</span>`:w`<span class="owner-info">${t.owner_kind}/${t.owner_name}</span>`}</td>`:E}
-        ${this._colVisible(`age`)?w`<td>${z(t.creation_timestamp)}</td>`:E}
+        <td><span class="badge ${r}">${ht(t)}</span></td>
+        ${this._colVisible(`ready`)?S`<td>${t.ready_containers}/${t.total_containers}</td>`:w}
+        ${this._colVisible(`restarts`)?S`<td class=${t.restart_count>5?`restart-warn`:``}>${t.restart_count}</td>`:w}
+        ${this._colVisible(`node`)?S`<td>${t.node_name}</td>`:w}
+        ${this._colVisible(`ip`)?S`<td class="mono">${t.pod_ip}</td>`:w}
+        ${this._colVisible(`owner`)?S`<td>${t.owner_kind===`N/A`?S`<span class="owner-info">-</span>`:S`<span class="owner-info">${t.owner_kind}/${t.owner_name}</span>`}</td>`:w}
+        ${this._colVisible(`age`)?S`<td>${I(t.creation_timestamp)}</td>`:w}
         <td>
-          ${R(this.hass)?w`<div class="row-actions">
-                  ${e.pod_logs_enabled?w`<button
+          ${F(this.hass)?S`<div class="row-actions">
+                  ${e.pod_logs_enabled?S`<button
                           class="delete-btn logs-btn"
                           title="Show logs"
                           @click=${()=>this._openLogs(n,t)}
                         >
                           <ha-icon icon="mdi:text-box-outline"></ha-icon>
-                        </button>`:E}
+                        </button>`:w}
                   <button
                     class="delete-btn"
                     title="Delete pod"
@@ -1683,16 +1683,16 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   >
                     <ha-icon icon="mdi:delete-outline"></ha-icon>
                   </button>
-                </div>`:E}
+                </div>`:w}
         </td>
       </tr>
-    `}_renderDeleteDialog(){let e=this._deleteConfirm;return w`
+    `}_renderDeleteDialog(){let e=this._deleteConfirm;return S`
       <div
         class="confirm-overlay"
         tabindex="-1"
         ${this._autofocusOverlay()}
-        @click=${this._deleting?E:this._cancelDelete}
-        @keydown=${this._onOverlayKeydown(this._deleting?E:this._cancelDelete)}
+        @click=${this._deleting?w:this._cancelDelete}
+        @keydown=${this._onOverlayKeydown(this._deleting?w:this._cancelDelete)}
       >
         <div class="confirm-dialog" @click=${e=>e.stopPropagation()}>
           <h3>Delete Pod</h3>
@@ -1715,7 +1715,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}_renderLogsDialog(){let e=this._logsTarget,t=this._logsResult,n=this._logsWrap?`logs-output wrap`:`logs-output`;return w`
+    `}_renderLogsDialog(){let e=this._logsTarget,t=this._logsResult,n=this._logsWrap?`logs-output wrap`:`logs-output`;return S`
       <div
         class="confirm-overlay"
         tabindex="-1"
@@ -1732,17 +1732,17 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <span class="confirm-ref">${e.namespace}/${e.pod_name}</span>
           </h3>
           <div class="logs-controls">
-            ${e.containers.length>1?w`
+            ${e.containers.length>1?S`
                     <select
                       class="filter-select"
                       title="Container"
                       .value=${this._logsContainer}
                       @change=${e=>this._setLogsOption(()=>{this._logsContainer=e.target.value})}
                     >
-                      ${e.containers.map(e=>w`<option value=${e}>${e}</option>`)}
+                      ${e.containers.map(e=>S`<option value=${e}>${e}</option>`)}
                     </select>
-                  `:E}
-            ${ut.map(e=>w`
+                  `:w}
+            ${gt.map(e=>S`
                 <button
                   class="filter-chip"
                   ?active=${this._logsTail===e}
@@ -1764,7 +1764,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 type="checkbox"
                 class="logs-wrap-toggle"
                 .checked=${this._logsWrap}
-                @change=${e=>{this._logsWrap=e.target.checked,bt(this._logsWrap)}}
+                @change=${e=>{this._logsWrap=e.target.checked,Tt(this._logsWrap)}}
               />
               Wrap lines
             </label>
@@ -1779,20 +1779,20 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               Auto-refresh
             </label>
           </div>
-          ${this._logsError?w`
+          ${this._logsError?S`
                   <div class="inline-error">
                     ${this._logsError.message}
-                    ${this._logsError.forbidden?w`<br />The integration's ServiceAccount needs
+                    ${this._logsError.forbidden?S`<br />The integration's ServiceAccount needs
                             <code>get</code> on <code>pods/log</code> — see the
-                            <a href=${dt} target="_blank" rel="noreferrer"
+                            <a href=${_t} target="_blank" rel="noreferrer"
                               >RBAC docs</a
-                            >.`:E}
+                            >.`:w}
                   </div>
-                `:E}
-          ${t?.truncated?w`<div class="logs-note">
+                `:w}
+          ${t?.truncated?S`<div class="logs-note">
                   Output truncated — showing the newest part only.
-                </div>`:E}
-          ${this._logsLoading&&!t?w`<ha-spinner></ha-spinner>`:t?w`<pre class=${n}>${t.logs||`(no output)`}</pre>`:E}
+                </div>`:w}
+          ${this._logsLoading&&!t?S`<ha-spinner></ha-spinner>`:t?S`<pre class=${n}>${t.logs||`(no output)`}</pre>`:w}
           <div class="confirm-actions">
             <button @click=${()=>this._fetchLogs()} ?disabled=${this._logsLoading}>
               ${this._logsLoading?`Loading...`:`Refresh`}
@@ -1804,7 +1804,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}};V([P({attribute:!1})],J.prototype,`initialSearch`,void 0),V([F()],J.prototype,`_searchQuery`,void 0),V([F()],J.prototype,`_phaseFilter`,void 0),V([F()],J.prototype,`_namespaceFilter`,void 0),V([F()],J.prototype,`_sortField`,void 0),V([F()],J.prototype,`_sortAsc`,void 0),V([F()],J.prototype,`_deleteConfirm`,void 0),V([F()],J.prototype,`_deleting`,void 0),V([F()],J.prototype,`_visibleColumns`,void 0),V([F()],J.prototype,`_columnMenuOpen`,void 0),V([F()],J.prototype,`_actionError`,void 0),V([F()],J.prototype,`_logsTarget`,void 0),V([F()],J.prototype,`_logsContainer`,void 0),V([F()],J.prototype,`_logsTail`,void 0),V([F()],J.prototype,`_logsPrevious`,void 0),V([F()],J.prototype,`_logsResult`,void 0),V([F()],J.prototype,`_logsLoading`,void 0),V([F()],J.prototype,`_logsError`,void 0),V([F()],J.prototype,`_logsCopied`,void 0),V([F()],J.prototype,`_logsWrap`,void 0),V([F()],J.prototype,`_logsAuto`,void 0),J=V([N(`k8s-pods-table`)],J);var Ct=[`Ingress`,`HTTPRoute`,`LoadBalancer`,`NodePort`,`ClusterIP`,`ExternalName`],Y=class extends H{constructor(...e){super(...e),this._services=null,this._httproutes=null,this._ingressError=null,this._servicesError=null,this._httprouteError=null,this._searchQuery=``,this._typeFilter=`all`,this.loadErrorFallback=`Failed to load network data`}willUpdate(e){e.has(`initialFilter`)&&this.initialFilter&&(this._typeFilter=this.initialFilter)}hasData(){return this._data!==null||this._services!==null||this._httproutes!==null}async fetchData(){let[e,t,n]=await Promise.allSettled([this.hass.callWS({type:`kubernetes/ingresses/list`}),this.hass.callWS({type:`kubernetes/services/list`}),this.hass.callWS({type:`kubernetes/httproutes/list`})]);e.status===`fulfilled`?(this._data=e.value,this._ingressError=null):this._ingressError=B(e.reason,`Failed to load ingress data`),t.status===`fulfilled`?(this._services=t.value,this._servicesError=null):this._servicesError=B(t.reason,`Failed to load service data`),n.status===`fulfilled`?(this._httproutes=n.value,this._httprouteError=null):this._httprouteError=B(n.reason,`Failed to load HTTPRoute data`)}_getFilteredIngresses(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.rules.some(e=>(e.host||``).toLowerCase().includes(t)))}_getFilteredServices(e){let t=e;if(this._typeFilter!==`all`&&this._typeFilter!==`Services`&&this._typeFilter!==`Ingress`&&this._typeFilter!==`HTTPRoute`&&(t=t.filter(e=>e.type===this._typeFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.external_ips.some(t=>t.toLowerCase().includes(e)))}return t}_getFilteredHTTPRoutes(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.hostnames.some(e=>e.toLowerCase().includes(t)))}_gatewaysOf(e){return[...new Set(e.parent_refs.map(e=>e.name))].filter(Boolean).join(`, `)||`—`}_backendsOf(e){let t=e.rules.flatMap(e=>e.backend_refs.map(e=>e.name));return[...new Set(t)].filter(Boolean).join(`, `)||`—`}_services_of(e){return[...new Set(e.rules.map(e=>e.service_name))].filter(Boolean).join(`, `)}_hasTls(e){return e.tls_hosts.length>0||e.urls.some(e=>e.startsWith(`https://`))}_formatPort(e){let t=e.target_port!=null&&String(e.target_port)!==String(e.port)?`→${e.target_port}`:``,n=e.node_port?` (node ${e.node_port})`:``;return`${e.port}${t}/${e.protocol}${n}`}static{this.styles=[U,W,G,et,o`
+    `}};B([M()],Y.prototype,`_searchQuery`,void 0),B([M()],Y.prototype,`_phaseFilter`,void 0),B([M()],Y.prototype,`_namespaceFilter`,void 0),B([M()],Y.prototype,`_sortField`,void 0),B([M()],Y.prototype,`_sortAsc`,void 0),B([M()],Y.prototype,`_deleteConfirm`,void 0),B([M()],Y.prototype,`_deleting`,void 0),B([M()],Y.prototype,`_visibleColumns`,void 0),B([M()],Y.prototype,`_columnMenuOpen`,void 0),B([M()],Y.prototype,`_actionError`,void 0),B([M()],Y.prototype,`_logsTarget`,void 0),B([M()],Y.prototype,`_logsContainer`,void 0),B([M()],Y.prototype,`_logsTail`,void 0),B([M()],Y.prototype,`_logsPrevious`,void 0),B([M()],Y.prototype,`_logsResult`,void 0),B([M()],Y.prototype,`_logsLoading`,void 0),B([M()],Y.prototype,`_logsError`,void 0),B([M()],Y.prototype,`_logsCopied`,void 0),B([M()],Y.prototype,`_logsWrap`,void 0),B([M()],Y.prototype,`_logsAuto`,void 0),Y=B([A(`k8s-pods-table`)],Y);var At=[`Ingress`,`HTTPRoute`,`LoadBalancer`,`NodePort`,`ClusterIP`,`ExternalName`],X=class extends V{constructor(...e){super(...e),this._services=null,this._httproutes=null,this._ingressError=null,this._servicesError=null,this._httprouteError=null,this._searchQuery=``,this._typeFilter=`all`,this.tab=`network`,this.loadErrorFallback=`Failed to load network data`}readQuery(){this._searchQuery=R(`search`)??``,this._typeFilter=z(R(`type`),[`all`,`Services`,...At],`all`)}willUpdate(e){(e.has(`_typeFilter`)||e.has(`_searchQuery`))&&this._syncQuery({search:this._searchQuery,type:this._typeFilter===`all`?``:this._typeFilter})}hasData(){return this._data!==null||this._services!==null||this._httproutes!==null}async fetchData(){let[e,t,n]=await Promise.allSettled([this.hass.callWS({type:`kubernetes/ingresses/list`}),this.hass.callWS({type:`kubernetes/services/list`}),this.hass.callWS({type:`kubernetes/httproutes/list`})]);e.status===`fulfilled`?(this._data=e.value,this._ingressError=null):this._ingressError=L(e.reason,`Failed to load ingress data`),t.status===`fulfilled`?(this._services=t.value,this._servicesError=null):this._servicesError=L(t.reason,`Failed to load service data`),n.status===`fulfilled`?(this._httproutes=n.value,this._httprouteError=null):this._httprouteError=L(n.reason,`Failed to load HTTPRoute data`)}_getFilteredIngresses(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.rules.some(e=>(e.host||``).toLowerCase().includes(t)))}_getFilteredServices(e){let t=e;if(this._typeFilter!==`all`&&this._typeFilter!==`Services`&&this._typeFilter!==`Ingress`&&this._typeFilter!==`HTTPRoute`&&(t=t.filter(e=>e.type===this._typeFilter)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.namespace.toLowerCase().includes(e)||t.external_ips.some(t=>t.toLowerCase().includes(e)))}return t}_getFilteredHTTPRoutes(e){if(!this._searchQuery)return e;let t=this._searchQuery.toLowerCase();return e.filter(e=>e.name.toLowerCase().includes(t)||e.namespace.toLowerCase().includes(t)||e.hostnames.some(e=>e.toLowerCase().includes(t)))}_gatewaysOf(e){return[...new Set(e.parent_refs.map(e=>e.name))].filter(Boolean).join(`, `)||`—`}_backendsOf(e){let t=e.rules.flatMap(e=>e.backend_refs.map(e=>e.name));return[...new Set(t)].filter(Boolean).join(`, `)||`—`}_services_of(e){return[...new Set(e.rules.map(e=>e.service_name))].filter(Boolean).join(`, `)}_hasTls(e){return e.tls_hosts.length>0||e.urls.some(e=>e.startsWith(`https://`))}_formatPort(e){let t=e.target_port!=null&&String(e.target_port)!==String(e.port)?`→${e.target_port}`:``,n=e.node_port?` (node ${e.node_port})`:``;return`${e.port}${t}/${e.protocol}${n}`}static{this.styles=[H,U,W,ot,o`
       /* stateStyles' .empty is 64px padding; network uses .empty for five
        in-section messages, where that much padding doubles up. */
       .empty {
@@ -1900,9 +1900,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         background: rgba(var(--rgb-secondary-text-color, 114, 114, 114), 0.15);
         color: var(--secondary-text-color);
       }
-    `]}render(){if(this._loading)return w`<div class="loading">
+    `]}render(){if(this._loading)return S`<div class="loading">
         <ha-spinner></ha-spinner>
-      </div>`;if(this._ingressError&&this._servicesError&&this._httprouteError)return w`
+      </div>`;if(this._ingressError&&this._servicesError&&this._httprouteError)return S`
         <ha-card>
           <div class="error-card">
             <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -1910,9 +1910,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <button class="retry-btn" @click=${()=>this._loadData()}>Retry</button>
           </div>
         </ha-card>
-      `;let e=this._data?.clusters??[],t=this._services?.clusters??[],n=this._httproutes?.clusters??[],r=e.some(e=>e.ingresses.length>0),i=t.some(e=>e.services.length>0),a=n.some(e=>e.httproutes.length>0);return!this._ingressError&&!this._servicesError&&!this._httprouteError&&!r&&!i&&!a?w`<div class="empty">
+      `;let e=this._data?.clusters??[],t=this._services?.clusters??[],n=this._httproutes?.clusters??[],r=e.some(e=>e.ingresses.length>0),i=t.some(e=>e.services.length>0),a=n.some(e=>e.httproutes.length>0);return!this._ingressError&&!this._servicesError&&!this._httprouteError&&!r&&!i&&!a?S`<div class="empty">
         No ingresses, HTTPRoutes, or services found.
-      </div>`:w`
+      </div>`:S`
       <div class="filters">
         <input
           class="search-input"
@@ -1928,33 +1928,33 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         >
           <option value="all">All types</option>
           <option value="Services">Services</option>
-          ${Ct.map(e=>w`<option value=${e}>${e}</option>`)}
+          ${At.map(e=>S`<option value=${e} ?selected=${e===this._typeFilter}>${e}</option>`)}
         </select>
       </div>
 
-      ${this._typeFilter===`all`||this._typeFilter===`Ingress`?w`
+      ${this._typeFilter===`all`||this._typeFilter===`Ingress`?S`
               <h2 class="section-title">Ingresses</h2>
-              ${this._ingressError?this._renderInlineError(this._ingressError):r?e.map(e=>this._renderCluster(e)):w`<div class="empty">No ingresses found.</div>`}
-            `:E}
-      ${this._typeFilter===`HTTPRoute`||this._typeFilter===`all`&&(a||this._httprouteError)?w`
+              ${this._ingressError?this._renderInlineError(this._ingressError):r?e.map(e=>this._renderCluster(e)):S`<div class="empty">No ingresses found.</div>`}
+            `:w}
+      ${this._typeFilter===`HTTPRoute`||this._typeFilter===`all`&&(a||this._httprouteError)?S`
               <h2 class="section-title">HTTPRoutes</h2>
-              ${this._httprouteError?this._renderInlineError(this._httprouteError):a?n.map(e=>this._renderHTTPRouteCluster(e)):w`<div class="empty">No HTTPRoutes found.</div>`}
-            `:E}
-      ${this._typeFilter!==`Ingress`&&this._typeFilter!==`HTTPRoute`?w`
+              ${this._httprouteError?this._renderInlineError(this._httprouteError):a?n.map(e=>this._renderHTTPRouteCluster(e)):S`<div class="empty">No HTTPRoutes found.</div>`}
+            `:w}
+      ${this._typeFilter!==`Ingress`&&this._typeFilter!==`HTTPRoute`?S`
               <h2 class="section-title">Services</h2>
-              ${this._servicesError?this._renderInlineError(this._servicesError):i?t.map(e=>this._renderServiceCluster(e)):w`<div class="empty">No services found.</div>`}
-            `:E}
-    `}_renderInlineError(e){return w`
+              ${this._servicesError?this._renderInlineError(this._servicesError):i?t.map(e=>this._renderServiceCluster(e)):S`<div class="empty">No services found.</div>`}
+            `:w}
+    `}_renderInlineError(e){return S`
       <div class="inline-error">
         <ha-icon icon="mdi:alert-circle"></ha-icon>
         <span>${e}</span>
       </div>
-    `}_renderCluster(e){if(!e.ingresses.length)return E;let t=this._getFilteredIngresses(e.ingresses);return w`
+    `}_renderCluster(e){if(!e.ingresses.length)return w;let t=this._getFilteredIngresses(e.ingresses);return S`
       <div class="cluster-section">
-        ${this._data.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
-        ${t.length===0?w`<div class="empty">No ingresses match your search.</div>`:this._renderTable(t)}
+        ${this._data.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
+        ${t.length===0?S`<div class="empty">No ingresses match your search.</div>`:this._renderTable(t)}
       </div>
-    `}_renderTable(e){return w`
+    `}_renderTable(e){return S`
       <ha-card>
         <div class="table-wrapper">
           <table class="network-table">
@@ -1970,7 +1970,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               </tr>
             </thead>
             <tbody>
-              ${e.map(e=>w`
+              ${e.map(e=>S`
                   <tr>
                     <td>${e.name}</td>
                     <td>${e.namespace}</td>
@@ -1978,19 +1978,19 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     <td>${this._renderUrls(e.urls)}</td>
                     <td>${this._services_of(e)||`—`}</td>
                     <td>${this._renderTlsBadge(e)}</td>
-                    <td>${z(e.creation_timestamp)}</td>
+                    <td>${I(e.creation_timestamp)}</td>
                   </tr>
                 `)}
             </tbody>
           </table>
         </div>
       </ha-card>
-    `}_renderHTTPRouteCluster(e){if(!e.httproutes.length)return E;let t=this._getFilteredHTTPRoutes(e.httproutes);return w`
+    `}_renderHTTPRouteCluster(e){if(!e.httproutes.length)return w;let t=this._getFilteredHTTPRoutes(e.httproutes);return S`
       <div class="cluster-section">
-        ${this._httproutes.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
-        ${t.length===0?w`<div class="empty">No HTTPRoutes match your search.</div>`:this._renderHTTPRoutesTable(t)}
+        ${this._httproutes.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
+        ${t.length===0?S`<div class="empty">No HTTPRoutes match your search.</div>`:this._renderHTTPRoutesTable(t)}
       </div>
-    `}_renderHTTPRoutesTable(e){return w`
+    `}_renderHTTPRoutesTable(e){return S`
       <ha-card>
         <div class="table-wrapper">
           <table class="network-table">
@@ -2006,7 +2006,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               </tr>
             </thead>
             <tbody>
-              ${e.map(e=>w`
+              ${e.map(e=>S`
                   <tr>
                     <td>${e.name}</td>
                     <td>${e.namespace}</td>
@@ -2014,19 +2014,19 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     <td>${this._gatewaysOf(e)}</td>
                     <td>${this._backendsOf(e)}</td>
                     <td>${this._renderHTTPRouteStatusBadge(e)}</td>
-                    <td>${z(e.creation_timestamp)}</td>
+                    <td>${I(e.creation_timestamp)}</td>
                   </tr>
                 `)}
             </tbody>
           </table>
         </div>
       </ha-card>
-    `}_renderHTTPRouteStatusBadge(e){return e.accepted&&e.resolved_refs?w`<span class="badge badge-ready">Accepted</span>`:w`<span class="badge badge-pending">Not Ready</span>`}_renderServiceCluster(e){if(!e.services.length)return E;let t=this._getFilteredServices(e.services);return w`
+    `}_renderHTTPRouteStatusBadge(e){return e.accepted&&e.resolved_refs?S`<span class="badge badge-ready">Accepted</span>`:S`<span class="badge badge-pending">Not Ready</span>`}_renderServiceCluster(e){if(!e.services.length)return w;let t=this._getFilteredServices(e.services);return S`
       <div class="cluster-section">
-        ${this._services.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
-        ${t.length===0?w`<div class="empty">No services match your filters.</div>`:this._renderServicesTable(t)}
+        ${this._services.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
+        ${t.length===0?S`<div class="empty">No services match your filters.</div>`:this._renderServicesTable(t)}
       </div>
-    `}_renderServicesTable(e){return w`
+    `}_renderServicesTable(e){return S`
       <ha-card>
         <div class="table-wrapper">
           <table class="network-table">
@@ -2042,7 +2042,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               </tr>
             </thead>
             <tbody>
-              ${e.map(e=>w`
+              ${e.map(e=>S`
                   <tr>
                     <td>${e.name}</td>
                     <td>${e.namespace}</td>
@@ -2054,20 +2054,20 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     <td class="mono">${e.cluster_ip||`—`}</td>
                     <td>${this._renderExternal(e)}</td>
                     <td class="mono">
-                      ${e.ports.length?e.ports.map(e=>w`<div>${this._formatPort(e)}</div>`):`—`}
+                      ${e.ports.length?e.ports.map(e=>S`<div>${this._formatPort(e)}</div>`):`—`}
                     </td>
-                    <td>${z(e.creation_timestamp)}</td>
+                    <td>${I(e.creation_timestamp)}</td>
                   </tr>
                 `)}
             </tbody>
           </table>
         </div>
       </ha-card>
-    `}_renderExternal(e){return e.urls.length?this._renderUrls(e.urls):e.external_ips.length?e.external_ips.map(e=>w`<div class="mono">${e}</div>`):`—`}_renderUrls(e){return e.length?e.map(e=>w`
+    `}_renderExternal(e){return e.urls.length?this._renderUrls(e.urls):e.external_ips.length?e.external_ips.map(e=>S`<div class="mono">${e}</div>`):`—`}_renderUrls(e){return e.length?e.map(e=>S`
         <a class="url-link" href=${e} target="_blank" rel="noopener noreferrer"
           >${e}</a
         >
-      `):`—`}_renderTlsBadge(e){return this._hasTls(e)?w`<span class="badge badge-tls">TLS</span>`:w`<span class="badge badge-plain">HTTP</span>`}};V([F()],Y.prototype,`_services`,void 0),V([F()],Y.prototype,`_httproutes`,void 0),V([F()],Y.prototype,`_ingressError`,void 0),V([F()],Y.prototype,`_servicesError`,void 0),V([F()],Y.prototype,`_httprouteError`,void 0),V([F()],Y.prototype,`_searchQuery`,void 0),V([F()],Y.prototype,`_typeFilter`,void 0),V([P({attribute:!1})],Y.prototype,`initialFilter`,void 0),Y=V([N(`k8s-network`)],Y);var wt={Complete:`complete`,Failed:`failed`,Retrying:`degraded`,Running:`running`,Suspended:`suspended`,Pending:`pending`},X={healthy:{badgeClass:`badge-healthy`,label:`Healthy`},degraded:{badgeClass:`badge-degraded`,label:`Degraded`},stopped:{badgeClass:`badge-stopped`,label:`Stopped`}},Z={deployment:{category:`deployments`,icon:`mdi:rocket-launch`,label:`Deployments`,emptyLabel:`deployments`,readyField:`available_replicas`,actionPrefix:`deploy_`},statefulset:{category:`statefulsets`,icon:`mdi:database`,label:`StatefulSets`,emptyLabel:`statefulsets`,readyField:`ready_replicas`,actionPrefix:`sts_`}},Q=class extends H{constructor(...e){super(...e),this._namespaceFilter=`all`,this._categoryFilter=`all`,this._statusFilter=`all`,this._searchQuery=``,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._jobDeleteConfirm=null,this._deletingJob=!1,this._collapsedCategories=/* @__PURE__ */ new Set,this._scaleTarget=null,this._scaleValue=0,this._scaling=!1,this.loadErrorFallback=`Failed to load workloads data`}willUpdate(e){e.has(`initialFilter`)&&this.initialFilter&&(this._categoryFilter=this.initialFilter),e.has(`initialSearch`)&&this.initialSearch&&(this._searchQuery=this.initialSearch)}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/workloads/list`});this._data=e}_getNamespaces(e){let t=/* @__PURE__ */ new Set;for(let n of e.deployments)t.add(n.namespace);for(let n of e.statefulsets)t.add(n.namespace);for(let n of e.daemonsets)t.add(n.namespace);for(let n of e.cronjobs)t.add(n.namespace);for(let n of e.jobs)t.add(n.namespace);return[...t].sort()}_toggleCategory(e){let t=new Set(this._collapsedCategories);t.has(e)?t.delete(e):t.add(e),this._collapsedCategories=t}_handleCategoryKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._toggleCategory(t))}_matchesNamespace(e){return this._namespaceFilter===`all`||e===this._namespaceFilter}_matchesSearch(e){return!this._searchQuery||e.toLowerCase().includes(this._searchQuery.toLowerCase())}_formatAgo(e){let t=z(e);return t===`N/A`?t:`${t} ago`}async _runAction(e,t){let n=new Set(this._actionInProgress);n.add(e),this._actionInProgress=n;try{await t()}catch(e){let t=B(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-workloads] Action failed:`,e)}finally{let t=new Set(this._actionInProgress);t.delete(e),this._actionInProgress=t}}_callService(e,t,n){return this._runAction(n,async()=>{await this.hass.callService(`kubernetes`,e,t),this._scheduleReload(2e3)})}_setCronJobSuspend(e,t,n,r){return this._runAction(r,async()=>{await this.hass.callWS({type:`kubernetes/cronjobs/suspend`,entry_id:e,cronjob_name:t.name,namespace:t.namespace,suspend:n}),await this._loadData()})}static{this.styles=[ot,U,W,G,K,o`
+      `):`—`}_renderTlsBadge(e){return this._hasTls(e)?S`<span class="badge badge-tls">TLS</span>`:S`<span class="badge badge-plain">HTTP</span>`}};B([M()],X.prototype,`_services`,void 0),B([M()],X.prototype,`_httproutes`,void 0),B([M()],X.prototype,`_ingressError`,void 0),B([M()],X.prototype,`_servicesError`,void 0),B([M()],X.prototype,`_httprouteError`,void 0),B([M()],X.prototype,`_searchQuery`,void 0),B([M()],X.prototype,`_typeFilter`,void 0),X=B([A(`k8s-network`)],X);var jt={Complete:`complete`,Failed:`failed`,Retrying:`degraded`,Running:`running`,Suspended:`suspended`,Pending:`pending`},Z={healthy:{badgeClass:`badge-healthy`,label:`Healthy`},degraded:{badgeClass:`badge-degraded`,label:`Degraded`},stopped:{badgeClass:`badge-stopped`,label:`Stopped`}},Mt={deployment:{category:`deployments`,icon:`mdi:rocket-launch`,label:`Deployments`,emptyLabel:`deployments`,readyField:`available_replicas`,actionPrefix:`deploy_`},statefulset:{category:`statefulsets`,icon:`mdi:database`,label:`StatefulSets`,emptyLabel:`statefulsets`,readyField:`ready_replicas`,actionPrefix:`sts_`}},Nt=[`all`,`deployments`,`statefulsets`,`daemonsets`,`cronjobs`,`jobs`],Pt=[`all`,`healthy`,`degraded`,`stopped`],Q=class extends V{constructor(...e){super(...e),this._namespaceFilter=`all`,this._categoryFilter=`all`,this._statusFilter=`all`,this._searchQuery=``,this.tab=`workloads`,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._jobDeleteConfirm=null,this._deletingJob=!1,this._collapsedCategories=/* @__PURE__ */ new Set,this._scaleTarget=null,this._scaleValue=0,this._scaling=!1,this.loadErrorFallback=`Failed to load workloads data`}readQuery(){this._namespaceFilter=R(`namespace`)||`all`,this._categoryFilter=z(R(`category`),Nt,`all`),this._statusFilter=z(R(`status`),Pt,`all`),this._searchQuery=R(`search`)??``}willUpdate(e){if(this._data&&this._namespaceFilter!==`all`){let e=this._data.clusters.flatMap(e=>this._getNamespaces(e));e.length&&!e.includes(this._namespaceFilter)&&(this._namespaceFilter=`all`)}(e.has(`_namespaceFilter`)||e.has(`_categoryFilter`)||e.has(`_statusFilter`)||e.has(`_searchQuery`))&&this._syncQuery({search:this._searchQuery,namespace:this._namespaceFilter===`all`?``:this._namespaceFilter,category:this._categoryFilter===`all`?``:this._categoryFilter,status:this._statusFilter===`all`?``:this._statusFilter})}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/workloads/list`});this._data=e}_getNamespaces(e){let t=/* @__PURE__ */ new Set;for(let n of e.deployments)t.add(n.namespace);for(let n of e.statefulsets)t.add(n.namespace);for(let n of e.daemonsets)t.add(n.namespace);for(let n of e.cronjobs)t.add(n.namespace);for(let n of e.jobs)t.add(n.namespace);return[...t].sort()}_toggleCategory(e){let t=new Set(this._collapsedCategories);t.has(e)?t.delete(e):t.add(e),this._collapsedCategories=t}_handleCategoryKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._toggleCategory(t))}_matchesNamespace(e){return this._namespaceFilter===`all`||e===this._namespaceFilter}_matchesSearch(e){return!this._searchQuery||e.toLowerCase().includes(this._searchQuery.toLowerCase())}_formatAgo(e){let t=I(e);return t===`N/A`?t:`${t} ago`}async _runAction(e,t){let n=new Set(this._actionInProgress);n.add(e),this._actionInProgress=n;try{await t()}catch(e){let t=L(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-workloads] Action failed:`,e)}finally{let t=new Set(this._actionInProgress);t.delete(e),this._actionInProgress=t}}_callService(e,t,n){return this._runAction(n,async()=>{await this.hass.callService(`kubernetes`,e,t),this._scheduleReload(2e3)})}_setCronJobSuspend(e,t,n,r){return this._runAction(r,async()=>{await this.hass.callWS({type:`kubernetes/cronjobs/suspend`,entry_id:e,cronjob_name:t.name,namespace:t.namespace,suspend:n}),await this._loadData()})}static{this.styles=[dt,H,U,W,at,o`
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -2272,8 +2272,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           display: none;
         }
       }
-    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===E?w`
-      ${this._actionError?w`
+    `]}render(){let e=this.renderState(!this._data?.clusters.length);return e===w?S`
+      ${this._actionError?S`
               <div class="action-error">
                 <span>${this._actionError}</span>
                 <button
@@ -2284,13 +2284,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   <ha-icon icon="mdi:close"></ha-icon>
                 </button>
               </div>
-            `:E}
+            `:w}
       ${this._data.clusters.map(e=>this._renderCluster(e))}
-      ${this._jobDeleteConfirm?this._renderJobDeleteDialog():E}
-      ${this._scaleTarget?this._renderScaleDialog():E}
-    `:e}_renderCluster(e){let t=this._getNamespaces(e);return w`
+      ${this._jobDeleteConfirm?this._renderJobDeleteDialog():w}
+      ${this._scaleTarget?this._renderScaleDialog():w}
+    `:e}_renderCluster(e){let t=this._getNamespaces(e);return S`
       <div class="cluster-section">
-        ${this._data.clusters.length>1?w`<div class="cluster-name">${e.cluster_name}</div>`:E}
+        ${this._data.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
 
         <div class="filters">
           <input
@@ -2307,7 +2307,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             @change=${e=>{this._namespaceFilter=e.target.value}}
           >
             <option value="all">All namespaces</option>
-            ${t.map(e=>w`<option value=${e}>${e}</option>`)}
+            ${t.map(e=>S`<option value=${e} ?selected=${e===this._namespaceFilter}>${e}</option>`)}
           </select>
 
           <select
@@ -2323,7 +2323,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <option value="jobs">Jobs</option>
           </select>
 
-          ${[`all`,`healthy`,`degraded`,`stopped`].map(e=>w`
+          ${Pt.map(e=>S`
               <button
                 class="filter-chip"
                 ?active=${this._statusFilter===e}
@@ -2334,13 +2334,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             `)}
         </div>
 
-        ${this._shouldShowCategory(`deployments`)?this._renderReplicaCategory(`deployment`,e.deployments,e.entry_id):E}
-        ${this._shouldShowCategory(`statefulsets`)?this._renderReplicaCategory(`statefulset`,e.statefulsets,e.entry_id):E}
-        ${this._shouldShowCategory(`daemonsets`)?this._renderDaemonSets(e.daemonsets,e.entry_id):E}
-        ${this._shouldShowCategory(`cronjobs`)?this._renderCronJobs(e.cronjobs,e.entry_id):E}
-        ${this._shouldShowCategory(`jobs`)?this._renderJobs(e.entry_id,e.jobs):E}
+        ${this._shouldShowCategory(`deployments`)?this._renderReplicaCategory(`deployment`,e.deployments,e.entry_id):w}
+        ${this._shouldShowCategory(`statefulsets`)?this._renderReplicaCategory(`statefulset`,e.statefulsets,e.entry_id):w}
+        ${this._shouldShowCategory(`daemonsets`)?this._renderDaemonSets(e.daemonsets,e.entry_id):w}
+        ${this._shouldShowCategory(`cronjobs`)?this._renderCronJobs(e.cronjobs,e.entry_id):w}
+        ${this._shouldShowCategory(`jobs`)?this._renderJobs(e.entry_id,e.jobs):w}
       </div>
-    `}_shouldShowCategory(e){return this._categoryFilter===`all`||this._categoryFilter===e}_getReplicaStatus(e,t){return e.replicas===0?`stopped`:e.rollout_stalled||(e[Z[t].readyField]||0)<e.replicas?`degraded`:`healthy`}_getDaemonSetStatus(e){return e.desired_number_scheduled===0?`stopped`:(e.number_available||0)<e.desired_number_scheduled?`degraded`:`healthy`}_matchesStatusFilter(e){return this._statusFilter===`all`||this._statusFilter===e}_renderReplicaCategory(e,t,n){let r=Z[e],i=t.filter(t=>this._matchesNamespace(t.namespace)&&this._matchesSearch(t.name)&&this._matchesStatusFilter(this._getReplicaStatus(t,e)));return i.length===0&&this._categoryFilter!==`all`?w`<div class="empty">No ${r.emptyLabel} match your filters.</div>`:i.length===0?E:w`
+    `}_shouldShowCategory(e){return this._categoryFilter===`all`||this._categoryFilter===e}_getReplicaStatus(e,t){return e.replicas===0?`stopped`:e.rollout_stalled||(e[Mt[t].readyField]||0)<e.replicas?`degraded`:`healthy`}_getDaemonSetStatus(e){return e.desired_number_scheduled===0?`stopped`:(e.number_available||0)<e.desired_number_scheduled?`degraded`:`healthy`}_matchesStatusFilter(e){return this._statusFilter===`all`||this._statusFilter===e}_renderReplicaCategory(e,t,n){let r=Mt[e],i=t.filter(t=>this._matchesNamespace(t.namespace)&&this._matchesSearch(t.name)&&this._matchesStatusFilter(this._getReplicaStatus(t,e)));return i.length===0&&this._categoryFilter!==`all`?S`<div class="empty">No ${r.emptyLabel} match your filters.</div>`:i.length===0?w:S`
       <div class="category-section">
         <div
           class="category-header"
@@ -2358,16 +2358,16 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             ?data-collapsed=${this._collapsedCategories.has(r.category)}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has(r.category)?E:i.map(t=>this._renderReplicaCard(e,t,n))}
+        ${this._collapsedCategories.has(r.category)?w:i.map(t=>this._renderReplicaCard(e,t,n))}
       </div>
-    `}_renderReplicaCard(e,t,n){let r=Z[e],i=this._getReplicaStatus(t,e),a=`${r.actionPrefix}${t.namespace}_${t.name}`,o=this._actionInProgress.has(a),s=t[r.readyField]??0;return w`
+    `}_renderReplicaCard(e,t,n){let r=Mt[e],i=this._getReplicaStatus(t,e),a=`${r.actionPrefix}${t.namespace}_${t.name}`,o=this._actionInProgress.has(a),s=t[r.readyField]??0;return S`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
             <div class="workload-name">${t.name}</div>
             <div class="workload-namespace">${t.namespace}</div>
           </div>
-          ${R(this.hass)?w`<span
+          ${F(this.hass)?S`<span
                   class="replica-info scalable"
                   role="button"
                   tabindex="0"
@@ -2376,25 +2376,25 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   @keydown=${e=>{(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._openScaleDialog(n,t))}}
                 >
                   ${s}/${t.replicas} ready
-                </span>`:w`<span class="replica-info">
+                </span>`:S`<span class="replica-info">
                   ${s}/${t.replicas} ready
                 </span>`}
-          <span class="badge ${X[i].badgeClass}">
-            ${X[i].label}
+          <span class="badge ${Z[i].badgeClass}">
+            ${Z[i].label}
           </span>
-          ${t.rollout_stalled?w`<span
+          ${t.rollout_stalled?S`<span
                   class="badge badge-rollout-stalled"
                   title="Rollout stalled: ${t.rollout_reason??`unknown reason`}"
                   >Rollout stalled</span
-                >`:E}
-          ${t.hpa_managed?w`<span
+                >`:w}
+          ${t.hpa_managed?S`<span
                   class="badge badge-hpa"
                   title="Managed by HPA ${t.hpa_name} (${t.hpa_min_replicas}–${t.hpa_max_replicas} replicas)"
                   >HPA</span
-                >`:E}
+                >`:w}
           <div class="workload-actions">
-            ${R(this.hass)?w`
-                    ${t.replicas===0?w`
+            ${F(this.hass)?S`
+                    ${t.replicas===0?S`
                             <button
                               class="action-btn start"
                               title="Start (scale to 1)"
@@ -2403,7 +2403,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                             >
                               <ha-icon icon="mdi:play"></ha-icon>
                             </button>
-                          `:w`
+                          `:S`
                             <button
                               class="action-btn stop"
                               title="Stop (scale to 0)"
@@ -2421,11 +2421,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     >
                       <ha-icon icon="mdi:restart"></ha-icon>
                     </button>
-                  `:E}
+                  `:w}
           </div>
         </div>
       </ha-card>
-    `}_renderDaemonSets(e,t){let n=e.filter(e=>this._matchesNamespace(e.namespace)&&this._matchesSearch(e.name)&&this._matchesStatusFilter(this._getDaemonSetStatus(e)));return n.length===0&&this._categoryFilter!==`all`?w`<div class="empty">No daemonsets match your filters.</div>`:n.length===0?E:w`
+    `}_renderDaemonSets(e,t){let n=e.filter(e=>this._matchesNamespace(e.namespace)&&this._matchesSearch(e.name)&&this._matchesStatusFilter(this._getDaemonSetStatus(e)));return n.length===0&&this._categoryFilter!==`all`?S`<div class="empty">No daemonsets match your filters.</div>`:n.length===0?w:S`
       <div class="category-section">
         <div
           class="category-header"
@@ -2443,9 +2443,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             ?data-collapsed=${this._collapsedCategories.has(`daemonsets`)}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has(`daemonsets`)?E:n.map(e=>this._renderDaemonSetCard(e,t))}
+        ${this._collapsedCategories.has(`daemonsets`)?w:n.map(e=>this._renderDaemonSetCard(e,t))}
       </div>
-    `}_renderDaemonSetCard(e,t){let n=this._getDaemonSetStatus(e),r=`ds_${e.namespace}_${e.name}`,i=this._actionInProgress.has(r);return w`
+    `}_renderDaemonSetCard(e,t){let n=this._getDaemonSetStatus(e),r=`ds_${e.namespace}_${e.name}`,i=this._actionInProgress.has(r);return S`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
@@ -2455,11 +2455,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           <span class="replica-info">
             ${e.number_available??0}/${e.desired_number_scheduled} available
           </span>
-          <span class="badge ${X[n].badgeClass}">
-            ${X[n].label}
+          <span class="badge ${Z[n].badgeClass}">
+            ${Z[n].label}
           </span>
           <div class="workload-actions">
-            ${R(this.hass)?w`
+            ${F(this.hass)?S`
                     <button
                       class="action-btn restart"
                       title="Rolling restart"
@@ -2468,11 +2468,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     >
                       <ha-icon icon="mdi:restart"></ha-icon>
                     </button>
-                  `:E}
+                  `:w}
           </div>
         </div>
       </ha-card>
-    `}_renderCronJobs(e,t){let n=e.filter(e=>this._matchesNamespace(e.namespace)&&this._matchesSearch(e.name)),r=this._statusFilter===`all`?n:n.filter(e=>this._statusFilter===`stopped`?e.suspend:this._statusFilter===`healthy`&&!e.suspend);return r.length===0&&this._categoryFilter!==`all`?w`<div class="empty">No cronjobs match your filters.</div>`:r.length===0?E:w`
+    `}_renderCronJobs(e,t){let n=e.filter(e=>this._matchesNamespace(e.namespace)&&this._matchesSearch(e.name)),r=this._statusFilter===`all`?n:n.filter(e=>this._statusFilter===`stopped`?e.suspend:this._statusFilter===`healthy`&&!e.suspend);return r.length===0&&this._categoryFilter!==`all`?S`<div class="empty">No cronjobs match your filters.</div>`:r.length===0?w:S`
       <div class="category-section">
         <div
           class="category-header"
@@ -2490,9 +2490,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             ?data-collapsed=${this._collapsedCategories.has(`cronjobs`)}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has(`cronjobs`)?E:r.map(e=>this._renderCronJobCard(e,t))}
+        ${this._collapsedCategories.has(`cronjobs`)?w:r.map(e=>this._renderCronJobCard(e,t))}
       </div>
-    `}_renderCronJobCard(e,t){let n=`cj_${e.namespace}_${e.name}`,r=this._actionInProgress.has(n);return w`
+    `}_renderCronJobCard(e,t){let n=`cj_${e.namespace}_${e.name}`,r=this._actionInProgress.has(n);return S`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
@@ -2500,15 +2500,15 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <div class="workload-namespace">${e.namespace}</div>
           </div>
           <span class="schedule-info">${e.schedule}</span>
-          ${e.active_jobs_count>0?w`<span class="badge badge-active"
+          ${e.active_jobs_count>0?S`<span class="badge badge-active"
                   >${e.active_jobs_count} active</span
-                >`:E}
-          ${e.suspend?w`<span class="badge badge-suspended">Suspended</span>`:w`<span class="badge badge-healthy">Active</span>`}
-          ${e.last_schedule_time?w`<span class="last-schedule"
+                >`:w}
+          ${e.suspend?S`<span class="badge badge-suspended">Suspended</span>`:S`<span class="badge badge-healthy">Active</span>`}
+          ${e.last_schedule_time?S`<span class="last-schedule"
                   >Last: ${this._formatAgo(e.last_schedule_time)}</span
-                >`:E}
+                >`:w}
           <div class="workload-actions">
-            ${R(this.hass)?w`
+            ${F(this.hass)?S`
                     <button
                       class="action-btn ${e.suspend?`start`:`suspend`}"
                       title=${e.suspend?`Resume schedule`:`Suspend schedule`}
@@ -2527,11 +2527,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     >
                       <ha-icon icon="mdi:play"></ha-icon>
                     </button>
-                  `:E}
+                  `:w}
           </div>
         </div>
       </ha-card>
-    `}_renderJobs(e,t){let n=t.filter(e=>this._matchesNamespace(e.namespace)&&this._matchesSearch(e.name)),r=this._statusFilter===`all`?n:n.filter(e=>this._statusFilter===`healthy`?e.state===`Complete`:this._statusFilter===`degraded`?e.state===`Failed`||e.failed>0&&e.state!==`Complete`:this._statusFilter!==`stopped`||e.active===0);return r.length===0&&this._categoryFilter!==`all`?w`<div class="empty">No jobs match your filters.</div>`:r.length===0?E:w`
+    `}_renderJobs(e,t){let n=t.filter(e=>this._matchesNamespace(e.namespace)&&this._matchesSearch(e.name)),r=this._statusFilter===`all`?n:n.filter(e=>this._statusFilter===`healthy`?e.state===`Complete`:this._statusFilter===`degraded`?e.state===`Failed`||e.failed>0&&e.state!==`Complete`:this._statusFilter!==`stopped`||e.active===0);return r.length===0&&this._categoryFilter!==`all`?S`<div class="empty">No jobs match your filters.</div>`:r.length===0?w:S`
       <div class="category-section">
         <div
           class="category-header"
@@ -2549,9 +2549,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             ?data-collapsed=${this._collapsedCategories.has(`jobs`)}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has(`jobs`)?E:r.map(t=>this._renderJobCard(e,t))}
+        ${this._collapsedCategories.has(`jobs`)?w:r.map(t=>this._renderJobCard(e,t))}
       </div>
-    `}_renderJobCard(e,t){let n=t.state??`Unknown`,r=wt[n]??`pending`,i=t.failed>0;return w`
+    `}_renderJobCard(e,t){let n=t.state??`Unknown`,r=jt[n]??`pending`,i=t.failed>0;return S`
       <ha-card class="workload-card">
         <div class="workload-row">
           <div class="workload-info">
@@ -2559,14 +2559,14 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <div class="workload-namespace">${t.namespace}</div>
           </div>
           <span class="replica-info"> ${t.succeeded}/${t.completions} completed </span>
-          ${t.active>0?w`<span class="badge badge-active">${t.active} active</span>`:E}
-          ${i?w`<span class="badge badge-failed">${t.failed} failed</span>`:E}
+          ${t.active>0?S`<span class="badge badge-active">${t.active} active</span>`:w}
+          ${i?S`<span class="badge badge-failed">${t.failed} failed</span>`:w}
           <span class="badge badge-${r}">${n}</span>
-          ${t.start_time?w`<span class="last-schedule"
+          ${t.start_time?S`<span class="last-schedule"
                   >Started: ${this._formatAgo(t.start_time)}</span
-                >`:E}
+                >`:w}
           <div class="workload-actions">
-            ${R(this.hass)?w`
+            ${F(this.hass)?S`
                     <button
                       class="action-btn delete"
                       title="Delete Job"
@@ -2575,28 +2575,28 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     >
                       <ha-icon icon="mdi:delete-outline"></ha-icon>
                     </button>
-                  `:E}
+                  `:w}
           </div>
         </div>
       </ha-card>
-    `}_openScaleDialog(e,t){this._scaleTarget={entry_id:e,workload_name:t.name,namespace:t.namespace,current:t.replicas,hpa:t.hpa_managed?t.hpa_name??null:null},this._scaleValue=t.replicas}_cancelScale(){this._scaleTarget=null}async _confirmScale(){if(this._scaleTarget){this._scaling=!0;try{await this.hass.callService(`kubernetes`,`scale_workload`,{workload_name:this._scaleTarget.workload_name,namespace:this._scaleTarget.namespace,entry_id:this._scaleTarget.entry_id,replicas:this._scaleValue}),this._scaleTarget=null,this._scheduleReload(2e3)}catch(e){this._actionError=B(e,`Failed to scale workload`),this._scaleTarget=null}finally{this._scaling=!1}}}_renderScaleDialog(){let e=this._scaleTarget;return w`
+    `}_openScaleDialog(e,t){this._scaleTarget={entry_id:e,workload_name:t.name,namespace:t.namespace,current:t.replicas,hpa:t.hpa_managed?t.hpa_name??null:null},this._scaleValue=t.replicas}_cancelScale(){this._scaleTarget=null}async _confirmScale(){if(this._scaleTarget){this._scaling=!0;try{await this.hass.callService(`kubernetes`,`scale_workload`,{workload_name:this._scaleTarget.workload_name,namespace:this._scaleTarget.namespace,entry_id:this._scaleTarget.entry_id,replicas:this._scaleValue}),this._scaleTarget=null,this._scheduleReload(2e3)}catch(e){this._actionError=L(e,`Failed to scale workload`),this._scaleTarget=null}finally{this._scaling=!1}}}_renderScaleDialog(){let e=this._scaleTarget;return S`
       <div
         class="confirm-overlay"
         tabindex="-1"
         ${this._autofocusOverlay()}
-        @click=${this._scaling?E:this._cancelScale}
-        @keydown=${this._onOverlayKeydown(this._scaling?E:this._cancelScale)}
+        @click=${this._scaling?w:this._cancelScale}
+        @keydown=${this._onOverlayKeydown(this._scaling?w:this._cancelScale)}
       >
         <div class="confirm-dialog" @click=${e=>e.stopPropagation()}>
           <h3>Scale Workload</h3>
           <p>
             <span class="confirm-ref">${e.namespace}/${e.workload_name}</span>
           </p>
-          ${e.hpa?w`<p class="hpa-warning">
+          ${e.hpa?S`<p class="hpa-warning">
                   Managed by HPA <strong>${e.hpa}</strong>, which reverts any other
                   count. Only scaling to 0 sticks; adjust the HPA's min/max replicas
                   instead.
-                </p>`:E}
+                </p>`:w}
           <div class="scale-controls">
             <button
               class="scale-btn"
@@ -2635,13 +2635,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}_requestJobDelete(e,t){this._jobDeleteConfirm={entry_id:e,job_name:t.name,namespace:t.namespace}}_cancelJobDelete(){this._jobDeleteConfirm=null}async _confirmJobDelete(){if(this._jobDeleteConfirm){this._deletingJob=!0;try{await this.hass.callWS({type:`kubernetes/jobs/delete`,entry_id:this._jobDeleteConfirm.entry_id,job_name:this._jobDeleteConfirm.job_name,namespace:this._jobDeleteConfirm.namespace}),this._jobDeleteConfirm=null,await this._loadData()}catch(e){this._actionError=B(e,`Failed to delete job`),this._jobDeleteConfirm=null}finally{this._deletingJob=!1}}}_renderJobDeleteDialog(){let e=this._jobDeleteConfirm;return w`
+    `}_requestJobDelete(e,t){this._jobDeleteConfirm={entry_id:e,job_name:t.name,namespace:t.namespace}}_cancelJobDelete(){this._jobDeleteConfirm=null}async _confirmJobDelete(){if(this._jobDeleteConfirm){this._deletingJob=!0;try{await this.hass.callWS({type:`kubernetes/jobs/delete`,entry_id:this._jobDeleteConfirm.entry_id,job_name:this._jobDeleteConfirm.job_name,namespace:this._jobDeleteConfirm.namespace}),this._jobDeleteConfirm=null,await this._loadData()}catch(e){this._actionError=L(e,`Failed to delete job`),this._jobDeleteConfirm=null}finally{this._deletingJob=!1}}}_renderJobDeleteDialog(){let e=this._jobDeleteConfirm;return S`
       <div
         class="confirm-overlay"
         tabindex="-1"
         ${this._autofocusOverlay()}
-        @click=${this._deletingJob?E:this._cancelJobDelete}
-        @keydown=${this._onOverlayKeydown(this._deletingJob?E:this._cancelJobDelete)}
+        @click=${this._deletingJob?w:this._cancelJobDelete}
+        @keydown=${this._onOverlayKeydown(this._deletingJob?w:this._cancelJobDelete)}
       >
         <div class="confirm-dialog" @click=${e=>e.stopPropagation()}>
           <h3>Delete Job</h3>
@@ -2664,7 +2664,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </div>
-    `}};V([P({attribute:!1})],Q.prototype,`initialFilter`,void 0),V([P({attribute:!1})],Q.prototype,`initialSearch`,void 0),V([F()],Q.prototype,`_namespaceFilter`,void 0),V([F()],Q.prototype,`_categoryFilter`,void 0),V([F()],Q.prototype,`_statusFilter`,void 0),V([F()],Q.prototype,`_searchQuery`,void 0),V([F()],Q.prototype,`_actionInProgress`,void 0),V([F()],Q.prototype,`_actionError`,void 0),V([F()],Q.prototype,`_jobDeleteConfirm`,void 0),V([F()],Q.prototype,`_deletingJob`,void 0),V([F()],Q.prototype,`_collapsedCategories`,void 0),V([F()],Q.prototype,`_scaleTarget`,void 0),V([F()],Q.prototype,`_scaleValue`,void 0),V([F()],Q.prototype,`_scaling`,void 0),Q=V([N(`k8s-workloads`)],Q);var Tt=class extends H{constructor(...e){super(...e),this.pollMs=0,this.subscribe=!1,this.loadErrorFallback=`Failed to load configuration`,this.emptyMessage=`No Kubernetes entries configured.`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/config/list`});this._data=e}_navigateToIntegration(){window.open(`/config/integrations/integration/kubernetes`,`_blank`)}static{this.styles=[U,G,o`
+    `}};B([M()],Q.prototype,`_namespaceFilter`,void 0),B([M()],Q.prototype,`_categoryFilter`,void 0),B([M()],Q.prototype,`_statusFilter`,void 0),B([M()],Q.prototype,`_searchQuery`,void 0),B([M()],Q.prototype,`_actionInProgress`,void 0),B([M()],Q.prototype,`_actionError`,void 0),B([M()],Q.prototype,`_jobDeleteConfirm`,void 0),B([M()],Q.prototype,`_deletingJob`,void 0),B([M()],Q.prototype,`_collapsedCategories`,void 0),B([M()],Q.prototype,`_scaleTarget`,void 0),B([M()],Q.prototype,`_scaleValue`,void 0),B([M()],Q.prototype,`_scaling`,void 0),Q=B([A(`k8s-workloads`)],Q);var Ft=class extends V{constructor(...e){super(...e),this.pollMs=0,this.subscribe=!1,this.loadErrorFallback=`Failed to load configuration`,this.emptyMessage=`No Kubernetes entries configured.`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/config/list`});this._data=e}_navigateToIntegration(){window.open(`/config/integrations/integration/kubernetes`,`_blank`)}static{this.styles=[H,W,o`
       .entry-section {
         margin-bottom: 24px;
       }
@@ -2794,7 +2794,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         border-color: var(--primary-color);
         color: var(--primary-color);
       }
-    `]}render(){let e=this.renderState(!this._data?.entries.length);return e===E?w`${this._data.entries.map(e=>this._renderEntry(e))}`:e}_renderEntry(e){return w`
+    `]}render(){let e=this.renderState(!this._data?.entries.length);return e===w?S`${this._data.entries.map(e=>this._renderEntry(e))}`:e}_renderEntry(e){return S`
       <div class="entry-section">
         <div class="entry-header">
           <span class="entry-name">${e.cluster_name}</span>
@@ -2813,7 +2813,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </button>
         </div>
       </div>
-    `}_renderHealthBadge(e){return e===!0?w`<span class="badge badge-healthy">Connected</span>`:e===!1?w`<span class="badge badge-unhealthy">Disconnected</span>`:w`<span class="badge badge-unknown">Unknown</span>`}_renderConnectionCard(e){return w`
+    `}_renderHealthBadge(e){return e===!0?S`<span class="badge badge-healthy">Connected</span>`:e===!1?S`<span class="badge badge-unhealthy">Disconnected</span>`:S`<span class="badge badge-unknown">Unknown</span>`}_renderConnectionCard(e){return S`
       <ha-card class="settings-card">
         <div class="card-title">
           <ha-icon icon="mdi:connection"></ha-icon>
@@ -2832,7 +2832,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           <span class="setting-value">${this._renderBool(e.verify_ssl)}</span>
         </div>
       </ha-card>
-    `}_renderNamespaceCard(e){return w`
+    `}_renderNamespaceCard(e){return S`
       <ha-card class="settings-card">
         <div class="card-title">
           <ha-icon icon="mdi:folder-multiple"></ha-icon>
@@ -2844,16 +2844,16 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             >${this._renderBool(e.monitor_all_namespaces)}</span
           >
         </div>
-        ${!e.monitor_all_namespaces&&e.namespaces.length>0?w`
+        ${!e.monitor_all_namespaces&&e.namespaces.length>0?S`
                 <div class="setting-row">
                   <span class="setting-label">Selected</span>
                   <span class="setting-value">
                     <div class="namespace-tags">
-                      ${e.namespaces.map(e=>w`<span class="ns-tag">${e}</span>`)}
+                      ${e.namespaces.map(e=>S`<span class="ns-tag">${e}</span>`)}
                     </div>
                   </span>
                 </div>
-              `:E}
+              `:w}
         <div class="setting-row">
           <span class="setting-label">Device Grouping</span>
           <span class="setting-value"
@@ -2861,7 +2861,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           >
         </div>
       </ha-card>
-    `}_renderTimingCard(e){return w`
+    `}_renderTimingCard(e){return S`
       <ha-card class="settings-card">
         <div class="card-title">
           <ha-icon icon="mdi:timer-cog"></ha-icon>
@@ -2886,7 +2886,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           >
         </div>
       </ha-card>
-    `}_renderFeaturesCard(e){return w`
+    `}_renderFeaturesCard(e){return S`
       <ha-card class="settings-card">
         <div class="card-title">
           <ha-icon icon="mdi:flask"></ha-icon>
@@ -2905,15 +2905,15 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           <span class="setting-value">${this._renderBool(e.pod_logs_enabled)}</span>
         </div>
       </ha-card>
-    `}_renderBool(e){return e?w`
+    `}_renderBool(e){return e?S`
         <span class="setting-value-bool bool-true">
           <ha-icon icon="mdi:check-circle"></ha-icon> Enabled
         </span>
-      `:w`
+      `:S`
       <span class="setting-value-bool bool-false">
         <ha-icon icon="mdi:close-circle-outline"></ha-icon> Disabled
       </span>
-    `}};Tt=V([N(`k8s-settings`)],Tt);var Et=[{id:`overview`,label:`Overview`,icon:`mdi:view-dashboard`},{id:`nodes`,label:`Nodes`,icon:`mdi:server`},{id:`workloads`,label:`Workloads`,icon:`mdi:application-cog`},{id:`pods`,label:`Pods`,icon:`mdi:cube-outline`},{id:`network`,label:`Network`,icon:`mdi:lan`},{id:`settings`,label:`Settings`,icon:`mdi:cog`}],$=class extends M{constructor(...e){super(...e),this.narrow=!1,this._nav={tab:`overview`}}firstUpdated(e){Re()}_handleTabChange(e){this._nav={tab:e}}_toggleSidebar(){this.dispatchEvent(new Event(`hass-toggle-menu`,{bubbles:!0,composed:!0}))}static{this.styles=o`
+    `}};Ft=B([A(`k8s-settings`)],Ft);var It=[{id:`overview`,label:`Overview`,icon:`mdi:view-dashboard`},{id:`nodes`,label:`Nodes`,icon:`mdi:server`},{id:`workloads`,label:`Workloads`,icon:`mdi:application-cog`},{id:`pods`,label:`Pods`,icon:`mdi:cube-outline`},{id:`network`,label:`Network`,icon:`mdi:lan`},{id:`settings`,label:`Settings`,icon:`mdi:cog`}],$=class extends k{constructor(...e){super(...e),this.narrow=!1}get _tab(){let e=this.route?.path.split(`/`)[1];return It.find(t=>t.id===e)?.id??`overview`}firstUpdated(e){Ve()}_handleTabChange(e){rt(`${this.route.prefix}${e===`overview`?``:`/${e}`}`)}_toggleSidebar(){this.dispatchEvent(new Event(`hass-toggle-menu`,{bubbles:!0,composed:!0}))}static{this.styles=o`
     :host {
       display: flex;
       flex-direction: column;
@@ -2995,7 +2995,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       flex: 1;
       box-sizing: border-box;
     }
-  `}render(){return w`
+  `}render(){return S`
       <div class="toolbar">
         <div
           class="menu-btn"
@@ -3009,12 +3009,12 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         <h1>Kubernetes</h1>
       </div>
       <div class="tab-bar">
-        ${Et.map(e=>w`
+        ${It.map(e=>S`
             <div
               class="tab"
               role="button"
               tabindex="0"
-              ?active=${this._nav.tab===e.id}
+              ?active=${this._tab===e.id}
               @click=${()=>this._handleTabChange(e.id)}
               @keydown=${t=>{(t.key===`Enter`||t.key===` `)&&(t.preventDefault(),this._handleTabChange(e.id))}}
             >
@@ -3024,20 +3024,22 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           `)}
       </div>
       <div class="content">${this._renderActiveTab()}</div>
-    `}_renderActiveTab(){let e=this._nav;switch(e.tab){case`overview`:return w`<k8s-overview
+    `}_renderActiveTab(){switch(this._tab){case`overview`:return S`<k8s-overview
           .hass=${this.hass}
-          @k8s-navigate=${e=>{this._nav=e.detail}}
-        ></k8s-overview>`;case`nodes`:return w`<k8s-nodes-table
+          .prefix=${this.route.prefix}
+        ></k8s-overview>`;case`nodes`:return S`<k8s-nodes-table
           .hass=${this.hass}
-          .initialSearch=${e.search}
-        ></k8s-nodes-table>`;case`pods`:return w`<k8s-pods-table
+          .prefix=${this.route.prefix}
+        ></k8s-nodes-table>`;case`pods`:return S`<k8s-pods-table
           .hass=${this.hass}
-          .initialSearch=${e.search}
-        ></k8s-pods-table>`;case`workloads`:return w`<k8s-workloads
+          .prefix=${this.route.prefix}
+        ></k8s-pods-table>`;case`workloads`:return S`<k8s-workloads
           .hass=${this.hass}
-          .initialFilter=${e.filter}
-          .initialSearch=${e.search}
-        ></k8s-workloads>`;case`network`:return w`<k8s-network
+          .prefix=${this.route.prefix}
+        ></k8s-workloads>`;case`network`:return S`<k8s-network
           .hass=${this.hass}
-          .initialFilter=${e.filter}
-        ></k8s-network>`;case`settings`:return w`<k8s-settings .hass=${this.hass}></k8s-settings>`}}};V([P({attribute:!1})],$.prototype,`hass`,void 0),V([P({type:Boolean,reflect:!0})],$.prototype,`narrow`,void 0),V([P({attribute:!1})],$.prototype,`route`,void 0),V([P({attribute:!1})],$.prototype,`panel`,void 0),V([F()],$.prototype,`_nav`,void 0),$=V([N(`kubernetes-panel`)],$);export{$ as KubernetesPanel};
+          .prefix=${this.route.prefix}
+        ></k8s-network>`;case`settings`:return S`<k8s-settings
+          .hass=${this.hass}
+          .prefix=${this.route.prefix}
+        ></k8s-settings>`}}};B([j({attribute:!1})],$.prototype,`hass`,void 0),B([j({type:Boolean,reflect:!0})],$.prototype,`narrow`,void 0),B([j({attribute:!1})],$.prototype,`route`,void 0),B([j({attribute:!1})],$.prototype,`panel`,void 0),$=B([A(`kubernetes-panel`)],$);export{$ as KubernetesPanel};

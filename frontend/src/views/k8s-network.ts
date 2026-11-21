@@ -1,5 +1,6 @@
 import { html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, state } from "lit/decorators.js";
+import { oneOf, queryParam } from "../utils/nav";
 import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, tableStyles } from "../styles/shared";
 import { formatAge, errorMessage } from "../utils/format";
@@ -122,14 +123,25 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
   @state() private _httprouteError: string | null = null;
   @state() private _searchQuery: string = "";
   @state() private _typeFilter: NetworkTypeFilter = "all";
-  /** Preset from an overview card click. */
-  @property({ attribute: false }) public initialFilter?: NetworkTypeFilter;
+  protected tab = "network";
+
+  protected readQuery(): void {
+    this._searchQuery = queryParam("search") ?? "";
+    this._typeFilter = oneOf<NetworkTypeFilter>(
+      queryParam("type"),
+      ["all", "Services", ...NETWORK_TYPES],
+      "all",
+    );
+  }
 
   protected loadErrorFallback = "Failed to load network data";
 
-  protected willUpdate(changed: PropertyValues<this>): void {
-    if (changed.has("initialFilter") && this.initialFilter) {
-      this._typeFilter = this.initialFilter;
+  protected willUpdate(changed: PropertyValues): void {
+    if (changed.has("_typeFilter") || changed.has("_searchQuery")) {
+      this._syncQuery({
+        search: this._searchQuery,
+        type: this._typeFilter === "all" ? "" : this._typeFilter,
+      });
     }
   }
 
@@ -417,7 +429,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         >
           <option value="all">All types</option>
           <option value="Services">Services</option>
-          ${NETWORK_TYPES.map((t) => html`<option value=${t}>${t}</option>`)}
+          ${NETWORK_TYPES.map((t) => html`<option value=${t} ?selected=${t === this._typeFilter}>${t}</option>`)}
         </select>
       </div>
 

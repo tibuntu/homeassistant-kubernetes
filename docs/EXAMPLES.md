@@ -552,6 +552,34 @@ automation:
 
 *Degraded Workloads* (`workloads` attribute) and *Nodes Under Pressure* (`nodes` attribute) work the same way. Keep the `for:` delay on *Degraded Workloads* in particular: every rolling update briefly has fewer available replicas than desired, so without it the automation fires on each deploy.
 
+### Link a Notification to the Panel
+
+The sidebar panel keeps its tab and filters in the URL, so a notification can open the Pods tab already filtered. The mobile app opens the `uri` of a notification action (or `clickAction` on Android and `url` on iOS for a tap on the notification itself) inside Home Assistant:
+
+```yaml
+automation:
+  - alias: "Notify on problem pods with a panel link"
+    trigger:
+      platform: numeric_state
+      entity_id: sensor.production_problem_pods
+      above: 0
+      for: "00:05:00"
+    action:
+      - service: notify.mobile_app
+        data:
+          title: "Kubernetes: problem pods"
+          message: "{{ states('sensor.production_problem_pods') }} pod(s) are not healthy."
+          data:
+            clickAction: "/kubernetes_panel/pods?phase=problems&namespace=default"
+            url: "/kubernetes_panel/pods?phase=problems&namespace=default"  # iOS
+            actions:
+              - action: URI
+                title: "Open failed jobs"
+                uri: "/kubernetes_panel/workloads?category=jobs&status=degraded"
+```
+
+See [URL scheme](CONFIGURATION.md#dashboard-panel) for the tabs and query parameters.
+
 ### Cluster Health Monitoring
 
 ```yaml

@@ -1,5 +1,6 @@
 import { html, css, nothing, PropertyValues } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, state } from "lit/decorators.js";
+import { oneOf, queryParam } from "../utils/nav";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import {
@@ -106,7 +107,21 @@ function saveWrapPref(wrap: boolean): void {
   }
 }
 
-type SortField = "namespace" | "name" | "phase" | "restarts" | "node_name" | "age";
+const SORT_FIELDS = [
+  "namespace",
+  "name",
+  "phase",
+  "restarts",
+  "node_name",
+  "age",
+] as const;
+type SortField = (typeof SORT_FIELDS)[number];
+
+/** `?phase=` value to filter state: a known phase, `problems`, else all. */
+function phaseFromQuery(value: string | null): string {
+  if (value === "problems") return PROBLEMS_FILTER;
+  return value && Object.hasOwn(PHASE_CLASSES, value) ? value : "all";
+}
 
 function loadColumnPrefs(): Set<ColumnKey> {
   try {
@@ -132,13 +147,20 @@ function saveColumnPrefs(cols: Set<ColumnKey>): void {
 
 @customElement("k8s-pods-table")
 export class K8sPodsTable extends K8sDataView<PodsResponse> {
-  /** Search text preset from an overview alert click. */
-  @property({ attribute: false }) public initialSearch?: string;
   @state() private _searchQuery: string = "";
   @state() private _phaseFilter: string = "all";
   @state() private _namespaceFilter: string = "all";
   @state() private _sortField: SortField = "name";
   @state() private _sortAsc: boolean = true;
+  protected tab = "pods";
+
+  protected readQuery(): void {
+    this._searchQuery = queryParam("search") ?? "";
+    this._phaseFilter = phaseFromQuery(queryParam("phase"));
+    this._namespaceFilter = queryParam("namespace") || "all";
+    this._sortField = oneOf(queryParam("sort"), SORT_FIELDS, "name");
+    this._sortAsc = queryParam("dir") !== "desc";
+  }
   @state() private _deleteConfirm: PodIdentifier | null = null;
   @state() private _deleting = false;
   @state() private _visibleColumns: Set<ColumnKey> = loadColumnPrefs();
@@ -373,8 +395,35 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
 
   protected willUpdate(changedProps: PropertyValues): void {
     super.willUpdate(changedProps);
-    if (changedProps.has("initialSearch") && this.initialSearch) {
-      this._searchQuery = this.initialSearch;
+    // A namespace that no longer exists falls back to "all".
+    // Skipped while no namespace is known at all (pods disabled), so a valid link survives.
+    if (this._data && this._namespaceFilter !== "all") {
+      const known = this._data.clusters.flatMap((c) => this._getNamespaces(c.pods));
+      if (known.length && !known.includes(this._namespaceFilter)) {
+        this._namespaceFilter = "all";
+      }
+    }
+    if (
+      [
+        "_searchQuery",
+        "_phaseFilter",
+        "_namespaceFilter",
+        "_sortField",
+        "_sortAsc",
+      ].some((k) => changedProps.has(k))
+    ) {
+      this._syncQuery({
+        search: this._searchQuery,
+        namespace: this._namespaceFilter === "all" ? "" : this._namespaceFilter,
+        phase:
+          this._phaseFilter === "all"
+            ? ""
+            : this._phaseFilter === PROBLEMS_FILTER
+              ? "problems"
+              : this._phaseFilter,
+        sort: this._sortField === "name" ? "" : this._sortField,
+        dir: this._sortAsc ? "" : "desc",
+      });
     }
     if (changedProps.has("_logsResult")) {
       // Follow the tail only if the view was at the bottom before this update.
@@ -696,7 +745,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
             }}
           >
             <option value="all">All namespaces</option>
-            ${namespaces.map((ns) => html`<option value=${ns}>${ns}</option>`)}
+            ${namespaces.map((ns) => html`<option value=${ns} ?selected=${ns === this._namespaceFilter}>${ns}</option>`)}
           </select>
 
           <button
