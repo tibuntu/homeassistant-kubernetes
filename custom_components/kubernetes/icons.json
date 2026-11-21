@@ -9,6 +9,18 @@
       "node": {
         "default": "mdi:server"
       },
+      "node_cpu": {
+        "default": "mdi:cpu-64-bit"
+      },
+      "node_memory": {
+        "default": "mdi:memory"
+      },
+      "node_cpu_percent": {
+        "default": "mdi:cpu-64-bit"
+      },
+      "node_memory_percent": {
+        "default": "mdi:memory"
+      },
       "pod": {
         "default": "mdi:kubernetes"
       },

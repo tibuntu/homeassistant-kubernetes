@@ -243,35 +243,22 @@ automation:
 
 #### Monitor Node Resource Usage
 
+Each node has a *Memory Usage Percent* sensor (relative to node capacity, needs metrics-server). Replace `sensor.production_worker_1_memory_usage_percent` with your node's entity.
+
 ```yaml
 automation:
   - alias: "High memory usage alert"
     trigger:
-      - platform: template
-        value_template: >
-          {# Node sensors are identified by the OS_image attribute, since their
-             entity_id no longer has a distinguishing prefix (see Entity Naming). #}
-          {% set nodes = states.sensor | selectattr('attributes.OS_image', 'defined') | list %}
-          {% for node in nodes %}
-            {# memory_capacity_(GiB) / memory_allocatable_(GiB) are formatted
-               strings like "16 GiB" — strip the unit before casting to float. #}
-            {% set capacity = state_attr(node.entity_id, 'memory_capacity_(GiB)') %}
-            {% set allocatable = state_attr(node.entity_id, 'memory_allocatable_(GiB)') %}
-            {% if capacity and allocatable %}
-              {% set memory_total = capacity.split(' ')[0] | float %}
-              {% set memory_used = memory_total - (allocatable.split(' ')[0] | float) %}
-              {% if memory_total > 0 and memory_used / memory_total > 0.9 %}
-                true
-              {% endif %}
-            {% endif %}
-          {% endfor %}
+      - platform: numeric_state
+        entity_id: sensor.production_worker_1_memory_usage_percent
+        above: 90
+        for: "00:05:00"
     action:
       - service: notify.persistent_notification
         data:
           title: "High Memory Usage"
           message: >
-            One or more nodes are running low on memory.
-            Check the node monitoring dashboard for details.
+            {{ trigger.to_state.name }} is at {{ trigger.to_state.state }}%.
 ```
 
 #### Log Node Status Changes

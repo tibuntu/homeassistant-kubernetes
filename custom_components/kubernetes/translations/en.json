@@ -440,6 +440,18 @@
       "node": {
         "name": "{name}"
       },
+      "node_cpu": {
+        "name": "{name} CPU Usage"
+      },
+      "node_memory": {
+        "name": "{name} Memory Usage"
+      },
+      "node_cpu_percent": {
+        "name": "{name} CPU Usage Percent"
+      },
+      "node_memory_percent": {
+        "name": "{name} Memory Usage Percent"
+      },
       "pod": {
         "name": "{name}"
       },
