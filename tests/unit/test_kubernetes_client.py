@@ -2441,6 +2441,16 @@ async def test_get_node_metrics_aiohttp_403(mock_client):
     assert result == {}
 
 
+async def test_get_node_metrics_aiohttp_unavailable(mock_client):
+    """Test _get_node_metrics_aiohttp returns empty when the API is not served."""
+    mock_session = mock_aiohttp_session(get=404)
+
+    with patch.object(mock_client, "_session", mock_session):
+        result = await mock_client._get_node_metrics_aiohttp()
+
+    assert result == {}
+
+
 async def test_get_node_metrics_aiohttp_exception(mock_client):
     """Test _get_node_metrics_aiohttp returns empty on exception."""
     mock_session = mock_aiohttp_session(get=Exception("Connection refused"))
