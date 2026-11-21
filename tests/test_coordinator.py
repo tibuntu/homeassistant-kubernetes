@@ -86,6 +86,7 @@ def mock_client():
     client.get_server_version = AsyncMock(return_value="v1.36.2")
     client._test_connection = AsyncMock(return_value=True)
     client.enrich_workloads_with_metrics = AsyncMock()
+    client.get_pod_metrics = AsyncMock(return_value={})
     return client
 
 
@@ -1345,6 +1346,7 @@ class TestWatchSupport:
         """Mock Kubernetes client for watch tests."""
         client = MagicMock()
         client.enrich_workloads_with_metrics = AsyncMock()
+        client.get_pod_metrics = AsyncMock(return_value={})
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -1777,6 +1779,7 @@ class TestPopulateFromList:
         """Mock Kubernetes client."""
         client = MagicMock()
         client.enrich_workloads_with_metrics = AsyncMock()
+        client.get_pod_metrics = AsyncMock(return_value={})
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -1957,6 +1960,7 @@ class TestApplyWatchEventExtended:
         """Mock Kubernetes client."""
         client = MagicMock()
         client.enrich_workloads_with_metrics = AsyncMock()
+        client.get_pod_metrics = AsyncMock(return_value={})
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -2225,6 +2229,7 @@ class TestRelistPruning:
         """Mock Kubernetes client."""
         client = MagicMock()
         client.enrich_workloads_with_metrics = AsyncMock()
+        client.get_pod_metrics = AsyncMock(return_value={})
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -2512,6 +2517,7 @@ class TestRunWatchLoopExtended:
         """Mock Kubernetes client."""
         client = MagicMock()
         client.enrich_workloads_with_metrics = AsyncMock()
+        client.get_pod_metrics = AsyncMock(return_value={})
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -3482,6 +3488,7 @@ class TestBuildWatchConfigs:
         """Mock Kubernetes client."""
         client = MagicMock()
         client.enrich_workloads_with_metrics = AsyncMock()
+        client.get_pod_metrics = AsyncMock(return_value={})
         client.host = "test-cluster.example.com"
         client.port = 6443
         client._parse_pod_item = MagicMock()
@@ -3751,6 +3758,7 @@ class TestStartStopWatchTasksExtended:
         """Mock Kubernetes client."""
         client = MagicMock()
         client.enrich_workloads_with_metrics = AsyncMock()
+        client.get_pod_metrics = AsyncMock(return_value={})
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -3853,6 +3861,7 @@ class TestEventWatchLoop:
         """Mock Kubernetes client for event watch tests."""
         client = MagicMock()
         client.enrich_workloads_with_metrics = AsyncMock()
+        client.get_pod_metrics = AsyncMock(return_value={})
         client.host = "test-cluster.example.com"
         client.port = 6443
         client.monitor_all_namespaces = True
@@ -5002,6 +5011,113 @@ class TestDisabledResources:
         await coordinator._async_update_data()
 
         mock_client.enrich_workloads_with_metrics.assert_not_awaited()
+
+    async def test_one_pods_list_and_one_metrics_fetch_per_poll(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """A poll lists pods once, fetches pod metrics once and shares both."""
+        coordinator = self._make_coordinator(hass, mock_client, [])
+        dep = {"name": "d", "namespace": "x"}
+        mock_client.get_deployments.return_value = [dep]
+        mock_client.get_pods.return_value = [
+            {"name": "p1", "namespace": "x"},
+            {"name": "p2", "namespace": "x"},
+        ]
+        metrics = {"x/p1": {"cpu": 120.0, "memory": 256.0}}
+        mock_client.get_pod_metrics.return_value = metrics
+
+        data = await coordinator._async_update_data()
+
+        mock_client.get_pods.assert_awaited_once()
+        mock_client.get_pod_metrics.assert_awaited_once()
+        mock_client.enrich_workloads_with_metrics.assert_awaited_once()
+        call = mock_client.enrich_workloads_with_metrics.await_args
+        assert call.kwargs["metrics"] is metrics
+        assert call.kwargs["pods"] is mock_client.get_pods.return_value
+        assert data["pod_metrics_available"] is True
+        assert data["pods"]["x_p1"]["cpu_usage"] == 120.0
+        assert data["pods"]["x_p1"]["memory_usage"] == 256.0
+        # A pod without a metrics entry carries no usage keys at all.
+        assert "cpu_usage" not in data["pods"]["x_p2"]
+        assert "memory_usage" not in data["pods"]["x_p2"]
+
+    async def test_no_pod_metrics_marks_unavailable(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """An empty metrics result (no metrics-server) clears the flag."""
+        coordinator = self._make_coordinator(hass, mock_client, [])
+        mock_client.get_pods.return_value = [{"name": "p1", "namespace": "x"}]
+
+        data = await coordinator._async_update_data()
+
+        assert data["pod_metrics_available"] is False
+        assert "cpu_usage" not in data["pods"]["x_p1"]
+
+    async def test_pods_disabled_workloads_list_their_own_pods(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """With pods off the bucket is empty, so the client lists pods itself."""
+        coordinator = self._make_coordinator(hass, mock_client, ["pods"])
+        mock_client.get_deployments.return_value = [{"name": "d", "namespace": "x"}]
+        metrics = {"x/p1": {"cpu": 1.0, "memory": 2.0}}
+        mock_client.get_pod_metrics.return_value = metrics
+
+        data = await coordinator._async_update_data()
+
+        mock_client.get_pods.assert_not_called()
+        call = mock_client.enrich_workloads_with_metrics.await_args
+        assert call.kwargs["pods"] is None
+        assert call.kwargs["metrics"] is metrics
+        assert data["pods"] == {}
+        assert data["pod_metrics_available"] is True
+
+    async def test_metrics_disabled_leaves_pod_usage_unset(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Metrics opt-out skips the pod-metrics fetch and sets no usage keys."""
+        coordinator = self._make_coordinator(hass, mock_client, ["metrics"])
+        mock_client.get_pods.return_value = [{"name": "p1", "namespace": "x"}]
+
+        data = await coordinator._async_update_data()
+
+        mock_client.get_pod_metrics.assert_not_called()
+        assert data["pod_metrics_available"] is False
+        assert "cpu_usage" not in data["pods"]["x_p1"]
+
+    async def test_pod_modified_event_keeps_usage(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """A watch MODIFIED event keeps the poll-time per-pod usage."""
+        coordinator = self._make_coordinator(hass, mock_client, [])
+        coordinator.async_update_listeners = MagicMock()
+        coordinator.data = {
+            "pods": {
+                "x_p1": {
+                    "name": "p1",
+                    "namespace": "x",
+                    "phase": "Pending",
+                    "cpu_usage": 120.0,
+                    "memory_usage": 256.0,
+                }
+            }
+        }
+        mock_client._parse_pod_item.return_value = {
+            "name": "p1",
+            "namespace": "x",
+            "phase": "Running",
+        }
+
+        coordinator._apply_watch_event(
+            "pods",
+            "MODIFIED",
+            {"metadata": {"name": "p1", "namespace": "x"}},
+            mock_client._parse_pod_item,
+        )
+
+        pod = coordinator.data["pods"]["x_p1"]
+        assert pod["phase"] == "Running"
+        assert pod["cpu_usage"] == 120.0
+        assert pod["memory_usage"] == 256.0
 
     async def test_watch_configs_skip_fully_off_resources(
         self, hass: HomeAssistant, mock_client

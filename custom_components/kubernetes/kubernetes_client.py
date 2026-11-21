@@ -2421,13 +2421,29 @@ class KubernetesClient:
         return cpu_usage, memory_usage
 
     async def enrich_workloads_with_metrics(
-        self, workloads: list[dict[str, Any]]
+        self,
+        workloads: list[dict[str, Any]],
+        *,
+        pods: list[dict[str, Any]] | None = None,
+        metrics: dict[str, dict[str, float]] | None = None,
     ) -> None:
-        """Enrich a mixed list of workloads with one pods + metrics fetch."""
-        await self._enrich_workloads_with_metrics(workloads, "workload")
+        """Enrich a mixed list of workloads with CPU/memory usage.
+
+        ``pods`` and ``metrics`` let the caller (the coordinator) share the
+        pods list and pod-metrics fetch it already made; each is fetched here
+        only when ``None``.
+        """
+        await self._enrich_workloads_with_metrics(
+            workloads, "workload", pods=pods, metrics=metrics
+        )
 
     async def _enrich_workloads_with_metrics(
-        self, workloads: list[dict[str, Any]], workload_type_label: str
+        self,
+        workloads: list[dict[str, Any]],
+        workload_type_label: str,
+        *,
+        pods: list[dict[str, Any]] | None = None,
+        metrics: dict[str, dict[str, float]] | None = None,
     ) -> None:
         """Enrich workloads (deployments/statefulsets/daemonsets) with CPU and memory usage metrics."""
         # Initialize all workloads with 0.0 values first
@@ -2437,11 +2453,13 @@ class KubernetesClient:
 
         try:
             # Get pods based on namespace monitoring configuration
-            if self.monitor_all_namespaces:
-                pods = await self._get_pods_all_namespaces_aiohttp()
-            else:
-                pods = await self._get_pods_aiohttp()
-            metrics = await self._get_pod_metrics_aiohttp()
+            if pods is None:
+                if self.monitor_all_namespaces:
+                    pods = await self._get_pods_all_namespaces_aiohttp()
+                else:
+                    pods = await self._get_pods_aiohttp()
+            if metrics is None:
+                metrics = await self._get_pod_metrics_aiohttp()
 
             if not pods:
                 _LOGGER.debug(

@@ -25,6 +25,7 @@ def _client() -> MagicMock:
     client = MagicMock()
     client.auth_failed = False
     client.enrich_workloads_with_metrics = AsyncMock()
+    client.get_pod_metrics = AsyncMock(return_value={})
     client.get_deployments = AsyncMock(
         return_value=[
             {"name": "web", "namespace": "default", "replicas": 2, "is_running": True}
