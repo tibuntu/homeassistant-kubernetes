@@ -11,13 +11,6 @@
   },
   "packageRules": [
     {
-      "matchManagers": ["npm"],
-      "lockFileMaintenance": {
-        "enabled": true,
-        "schedule": ["on sunday"]
-      }
-    },
-    {
       "matchFileNames": ["pyproject.toml"],
       "semanticCommitScope": "deps",
       "groupName": "dev dependencies"
