@@ -42,12 +42,21 @@ interface AlertFailedJob {
   failed_at: string;
 }
 
+interface AlertCertificate {
+  name: string;
+  namespace: string;
+  reason: string;
+  message: string | null;
+  not_after: string | null;
+}
+
 interface ClusterAlerts {
   nodes_with_pressure: AlertNodePressure[];
   degraded_workloads: AlertDegradedWorkload[];
   failed_pods: AlertFailedPod[];
   restarting_pods: AlertRestartingPod[];
   failed_jobs: AlertFailedJob[];
+  certificate_problems: AlertCertificate[];
 }
 
 interface ClusterOverview {
@@ -108,6 +117,14 @@ const searchTarget = (path: string, name: string, extra = ""): string =>
 
 const jobTarget = (job: AlertFailedJob): string =>
   searchTarget("/workloads", job.name, "category=jobs&");
+
+const certificateTarget = (cert: AlertCertificate): string =>
+  searchTarget("/network", cert.name, "type=Certificate&");
+
+const CERTIFICATE_REASONS: Record<string, string> = {
+  Expired: "Expired",
+  RenewalOverdue: "Renewal overdue",
+};
 
 @customElement("k8s-overview")
 export class K8sOverview extends K8sDataView<OverviewResponse> {
@@ -421,7 +438,8 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
       cluster.alerts.degraded_workloads.length +
       cluster.alerts.failed_pods.length +
       cluster.alerts.restarting_pods.length +
-      cluster.alerts.failed_jobs.length;
+      cluster.alerts.failed_jobs.length +
+      cluster.alerts.certificate_problems.length;
 
     return html`
       <div class="cluster-section">
@@ -686,6 +704,29 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
                   job.cronjob ? `, CronJob ${job.cronjob}` : ""
                 },
                 ${formatRelative(Date.parse(job.failed_at) / 1000)}
+              </div>
+            </div>
+          </div>
+        `,
+      )}
+      ${alerts.certificate_problems.map(
+        (cert) => html`
+          <div
+            class="alert-card alert-error"
+            role="button"
+            tabindex="0"
+            @click=${() => this._go(certificateTarget(cert))}
+            @keydown=${(e: KeyboardEvent) => this._goOnKey(e, certificateTarget(cert))}
+          >
+            <ha-icon icon="mdi:certificate-outline"></ha-icon>
+            <div>
+              <div class="alert-title">Certificate: ${cert.namespace}/${cert.name}</div>
+              <div class="alert-detail">
+                ${CERTIFICATE_REASONS[cert.reason] ?? `Not ready (${cert.reason})`}${
+                  cert.not_after
+                    ? `, not after ${new Date(cert.not_after).toLocaleString()}`
+                    : ""
+                }
               </div>
             </div>
           </div>

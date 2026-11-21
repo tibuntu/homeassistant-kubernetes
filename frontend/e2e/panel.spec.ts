@@ -698,6 +698,59 @@ test("network tab hides the HTTPRoutes section without routes", async ({ page })
   await expect(page.locator(".empty")).toHaveText("No HTTPRoutes found.");
 });
 
+test("network tab lists certificates with issuer, expiry and status", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Network");
+
+  await expect(
+    page.locator("h2.section-title", { hasText: "Certificates" }),
+  ).toBeVisible();
+  const ready = page.locator(".network-table tr", { hasText: "web-tls" });
+  await expect(ready).toContainText("ClusterIssuer/letsencrypt");
+  await expect(ready).toContainText("web.example.com");
+  await expect(ready).toContainText(/in \d+d/);
+  await expect(ready.locator(".badge-ready")).toHaveText("Ready");
+  const overdue = page.locator(".network-table tr", { hasText: "api-tls" });
+  await expect(overdue.locator(".badge-failed")).toHaveText("Renewal Overdue");
+});
+
+test("network tab hides the Certificates section without cert-manager", async ({
+  page,
+}) => {
+  await page.goto(`${HARNESS}?empty=kubernetes/certificates/list`);
+  await openTab(page, "Network");
+
+  await expect(
+    page.locator("h2.section-title", { hasText: "Ingresses" }),
+  ).toBeVisible();
+  await expect(
+    page.locator("h2.section-title", { hasText: "Certificates" }),
+  ).toHaveCount(0);
+
+  await page.locator("select.filter-select").selectOption("Certificate");
+  await expect(page.locator(".empty")).toHaveText("No certificates found.");
+});
+
+test("overview certificate alert opens the Network tab filtered to it", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  const card = page.locator(".alert-card", { hasText: "default/api-tls" });
+  await expect(card).toContainText("Renewal overdue");
+  await card.click();
+  await expect(page.locator(".tab[active]")).toHaveText(/Network/);
+  await expect(page.locator(".search-input")).toHaveValue("api-tls");
+  await expect(
+    page.locator("h2.section-title", { hasText: "Certificates" }),
+  ).toBeVisible();
+  await expect(page.locator("h2.section-title", { hasText: "Services" })).toHaveCount(
+    0,
+  );
+  await expect(page.locator(".network-table tbody tr")).toHaveCount(1);
+});
+
 test("network type filter narrows to a single section", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Network");

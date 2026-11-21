@@ -90,6 +90,7 @@ Enables all integration features:
 - Switches (deployment / statefulset scaling, CronJob suspension, node cordon/uncordon)
 - Workload rollout restart (deployments, statefulsets, daemonsets)
 - Ingress, HTTPRoute, and Service monitoring (Network tab in the sidebar panel, with clickable URLs)
+- cert-manager Certificate monitoring (Certificate Problems sensor + Network tab; the TLS Secrets are never read)
 - Pod and Job deletion from the sidebar panel (requires Home Assistant admin role)
 - Node drain via the `drain_node` service (`pods/eviction`)
 - Cluster Events platform (`events`)
@@ -156,6 +157,12 @@ Read-only access to every resource the integration monitors. No write permission
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
 | **httproutes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | HTTPRoutes in the Network tab. Optional: on a cluster without the Gateway API CRDs the rule is harmless and the Network tab shows no HTTPRoutes section. Without the rule the *Missing permissions* repair issue names `httproutes`; re-apply the RBAC or disable **HTTPRoutes** under *Disable data collection for* |
+
+### cert-manager API Group (`cert-manager.io`)
+
+| Resource | Verbs | Full | Minimal | Purpose |
+|----------|-------|:----:|:-------:|---------|
+| **certificates** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Certificate Problems sensor and the Certificates section of the Network tab. Optional: on a cluster without cert-manager the rule is harmless, the section does not appear and the sensor stays at 0. Without the rule the *Missing permissions* repair issue names `certificates` (the API server answers 403 even when cert-manager is not installed); re-apply the RBAC or disable **Certificates** under *Disable data collection for*. No access to Secrets is needed |
 
 ### Autoscaling API Group (`autoscaling`)
 
@@ -325,6 +332,9 @@ rules:
   verbs: ["get", "list", "watch"]
 - apiGroups: ["gateway.networking.k8s.io"]
   resources: ["httproutes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["cert-manager.io"]
+  resources: ["certificates"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["autoscaling"]
   resources: ["horizontalpodautoscalers"]

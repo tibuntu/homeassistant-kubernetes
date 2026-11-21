@@ -1051,6 +1051,133 @@ async def test_parse_hpa_item_malformed(mock_client):
 
 
 # ---------------------------------------------------------------------------
+# cert-manager Certificates
+# ---------------------------------------------------------------------------
+
+
+async def test_get_certificates_success(mock_client):
+    """Certificates are fetched from cert-manager.io/v1 with their parser."""
+    mock_client._fetch_resource_list = AsyncMock(
+        return_value=[{"name": "web-tls", "namespace": "default"}]
+    )
+
+    certificates = await mock_client.get_certificates()
+
+    assert certificates == [{"name": "web-tls", "namespace": "default"}]
+    mock_client._fetch_resource_list.assert_awaited_once_with(
+        "apis/cert-manager.io/v1",
+        "certificates",
+        mock_client._parse_certificate_item,
+    )
+
+
+async def test_get_certificates_empty(mock_client):
+    """Certificate retrieval when none exist."""
+    mock_client._fetch_resource_list = AsyncMock(return_value=[])
+
+    assert await mock_client.get_certificates() == []
+
+
+@pytest.mark.parametrize("status", [403, 404])
+async def test_get_certificates_forbidden_or_missing_crd_not_logged(
+    mock_client, status
+):
+    """A 403 (RBAC) or 404 (cert-manager absent) is re-raised without
+    _log_error; the coordinator reports it once per episode."""
+    mock_client._fetch_resource_list = AsyncMock(
+        side_effect=KubernetesApiError("boom", status)
+    )
+    mock_client._log_error = MagicMock()
+
+    with pytest.raises(KubernetesApiError):
+        await mock_client.get_certificates()
+
+    mock_client._log_error.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error", [KubernetesApiError("boom", 500), Exception("API Error")]
+)
+async def test_get_certificates_other_errors_logged(mock_client, error):
+    """Any other failure is re-raised and logged."""
+    mock_client._fetch_resource_list = AsyncMock(side_effect=error)
+    mock_client._log_error = MagicMock()
+
+    with pytest.raises(type(error)):
+        await mock_client.get_certificates()
+
+    mock_client._log_error.assert_called_once()
+
+
+def test_parse_certificate_item_full(mock_client):
+    """Status times, the Ready condition, issuer and spec fields are parsed."""
+    item = {
+        "metadata": {
+            "name": "web-tls",
+            "namespace": "default",
+            "creationTimestamp": "2026-01-01T00:00:00Z",
+        },
+        "spec": {
+            "secretName": "web-tls-secret",
+            "dnsNames": ["web.example.com"],
+            "issuerRef": {"name": "letsencrypt", "kind": "ClusterIssuer"},
+        },
+        "status": {
+            "notAfter": "2027-01-01T00:00:00Z",
+            "renewalTime": "2026-12-01T00:00:00Z",
+            "conditions": [
+                {"type": "Issuing", "status": "False"},
+                {
+                    "type": "Ready",
+                    "status": "True",
+                    "reason": "Ready",
+                    "message": "Certificate is up to date and has not expired",
+                },
+            ],
+        },
+    }
+
+    assert mock_client._parse_certificate_item(item) == {
+        "name": "web-tls",
+        "namespace": "default",
+        "not_after": "2027-01-01T00:00:00Z",
+        "renewal_time": "2026-12-01T00:00:00Z",
+        "ready": True,
+        "reason": "Ready",
+        "message": "Certificate is up to date and has not expired",
+        "issuer_name": "letsencrypt",
+        "issuer_kind": "ClusterIssuer",
+        "dns_names": ["web.example.com"],
+        "secret_name": "web-tls-secret",
+        "creation_timestamp": "2026-01-01T00:00:00Z",
+    }
+
+
+def test_parse_certificate_item_without_status(mock_client):
+    """A freshly created Certificate has no status yet: not ready, no times,
+    and the issuer kind defaults to Issuer like cert-manager does."""
+    item = {
+        "metadata": {"name": "new", "namespace": "ns"},
+        "spec": {"issuerRef": {"name": "ca"}},
+    }
+
+    result = mock_client._parse_certificate_item(item)
+
+    assert result["ready"] is False
+    assert result["reason"] is None
+    assert result["not_after"] is None
+    assert result["renewal_time"] is None
+    assert result["issuer_kind"] == "Issuer"
+    assert result["dns_names"] == []
+    assert result["secret_name"] == ""
+
+
+def test_parse_certificate_item_invalid(mock_client):
+    """An item without metadata is dropped."""
+    assert mock_client._parse_certificate_item({}) is None
+
+
+# ---------------------------------------------------------------------------
 # HTTPRoutes
 # ---------------------------------------------------------------------------
 

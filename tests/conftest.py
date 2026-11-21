@@ -219,6 +219,7 @@ def mock_client():
     client.get_services = AsyncMock(return_value=[])
     client.get_hpas = AsyncMock(return_value=[])
     client.get_httproutes = AsyncMock(return_value=[])
+    client.get_certificates = AsyncMock(return_value=[])
     client.get_services_count = AsyncMock(return_value=0)
     client.is_cluster_healthy = AsyncMock(return_value=True)
     return client

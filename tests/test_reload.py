@@ -47,6 +47,10 @@ def _client() -> MagicMock:
         "get_pods",
     ):
         setattr(client, method, AsyncMock(return_value=[]))
+    # A problem certificate, so the Certificate Problems sensor has a list
+    client.get_certificates = AsyncMock(
+        return_value=[{"name": "web-tls", "namespace": "default", "ready": False}]
+    )
     client.get_nodes = AsyncMock(return_value=[{"name": "node-1", "status": "Ready"}])
     client.get_nodes_count = AsyncMock(return_value=1)
     client.get_node_metrics = AsyncMock(
@@ -112,6 +116,10 @@ async def test_all_entities_provided_after_reload(
             f"{entry.entry_id}_node_node-1_{m}"
             for m in ("cpu", "memory", "cpu_percent", "memory_percent")
         }
+
+        assert registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_certificate_problems"
+        )
 
         assert await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()

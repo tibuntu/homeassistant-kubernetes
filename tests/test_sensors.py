@@ -19,6 +19,7 @@ from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.sensor import (
     _SIMPLE_DISCOVERY,
     KubernetesAlertSensor,
+    KubernetesCertificateProblemsSensor,
     KubernetesCountSensor,
     KubernetesCronJobSensor,
     KubernetesCronJobsSensor,
@@ -369,8 +370,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 9 base + 5 alert + (1 node sensor + 4 node usage sensors) per node
-        expected_count = 9 + 5 + 5 * len(mock_coordinator.get_all_nodes_data())
+        # 9 base + 6 alert + (1 node sensor + 4 node usage sensors) per node
+        expected_count = 9 + 6 + 5 * len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
@@ -497,7 +498,30 @@ class TestDisabledResourceGating:
             "test_entry_id_problem_pods",
             "test_entry_id_restarting_pods",
             "test_entry_id_failed_jobs",
+            "test_entry_id_certificate_problems",
         }
+
+    @pytest.mark.parametrize(
+        ("disabled", "created"), [([], True), (["certificates"], False)]
+    )
+    async def test_setup_certificate_problems_gated_by_category_only(
+        self, hass: HomeAssistant, mock_client, mock_coordinator, disabled, created
+    ):
+        """The Certificate Problems sensor exists unless Certificates is
+        disabled — whatever the fetch returned (no cert-manager data here)."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_coordinator.data = None
+        entry = self._entry(hass, ["counts", "nodes", *disabled])
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data, client=mock_client, coordinator=mock_coordinator
+        )
+
+        mock_add_entities = AsyncMock()
+        await async_setup_entry(hass, entry, mock_add_entities)
+
+        unique_ids = {s.unique_id for s in mock_add_entities.call_args[0][0]}
+        assert ("test_entry_id_certificate_problems" in unique_ids) is created
 
     async def test_setup_skips_disabled_workload_sensors(
         self, hass: HomeAssistant, mock_client, mock_coordinator
@@ -3807,8 +3831,8 @@ class TestAsyncSetupEntryWithResources:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         sensors = mock_add_entities.call_args[0][0]
-        # 9 aggregate + 5 alerts + 1 node + 4 node usage + 2 pods + 1 daemonset + 2 status + 6 metrics + 1 cronjob + 1 job = 32
-        assert len(sensors) == 32
+        # 9 aggregate + 6 alerts + 1 node + 4 node usage + 2 pods + 1 daemonset + 2 status + 6 metrics + 1 cronjob + 1 job = 33
+        assert len(sensors) == 33
 
     async def test_stores_add_entities_callback(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
@@ -4640,6 +4664,18 @@ _ALERT_DATA = {
         },
         "default_ok": {"name": "ok", "namespace": "default", "conditions": []},
     },
+    "certificates": {
+        "default_web-tls": {
+            "name": "web-tls",
+            "namespace": "default",
+            "ready": False,
+            "reason": "DoesNotExist",
+            "message": "Issuing certificate as Secret does not exist",
+            "not_after": None,
+            "renewal_time": None,
+        },
+        "default_ok": {"name": "ok", "namespace": "default", "ready": True},
+    },
     "deployments": {
         "default_web": {
             "name": "web",
@@ -4741,6 +4777,21 @@ class TestKubernetesAlertSensor:
                 "nodes",
                 [{"name": "n1", "conditions": ["memory_pressure"]}],
             ),
+            (
+                KubernetesCertificateProblemsSensor,
+                "certificate_problems",
+                "certificates",
+                [
+                    {
+                        "name": "web-tls",
+                        "namespace": "default",
+                        "reason": "DoesNotExist",
+                        "message": "Issuing certificate as Secret does not exist",
+                        "not_after": None,
+                        "renewal_time": None,
+                    }
+                ],
+            ),
         ],
     )
     def test_value_and_attributes(
@@ -4811,6 +4862,7 @@ class TestKubernetesAlertSensor:
                     "statefulsets",
                     "daemonsets",
                     "jobs",
+                    "certificates",
                 ]
             }
         )

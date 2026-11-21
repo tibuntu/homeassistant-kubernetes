@@ -9,6 +9,7 @@ from typing import Any
 RESTART_ALERT_THRESHOLD = 3
 RESTART_ALERT_WINDOW = timedelta(minutes=60)
 FAILED_JOB_ALERT_WINDOW = timedelta(hours=24)
+CERTIFICATE_RENEWAL_GRACE = timedelta(hours=24)
 
 _PRESSURE_KEYS: tuple[str, ...] = (
     "memory_pressure",
@@ -180,6 +181,53 @@ def failed_jobs(
     return alerts
 
 
+def _parse_time(value: Any) -> datetime | None:
+    """Parse an RFC 3339 timestamp; None when missing, malformed or naive."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else None
+
+
+def certificate_problems(
+    data: dict[str, Any], now: datetime | None = None
+) -> list[dict[str, Any]]:
+    """Return cert-manager Certificates that need attention.
+
+    A Certificate is listed when it is not Ready, when its ``renewal_time``
+    passed more than ``CERTIFICATE_RENEWAL_GRACE`` ago (cert-manager failed to
+    renew it), or when ``not_after`` is in the past. Independent of the
+    certificate lifetime, so 90-day and 6-day certificates are judged alike.
+    ``reason`` is ``Expired``, else the Ready condition's reason (``NotReady``
+    without one), else ``RenewalOverdue``.
+    """
+    now = now or datetime.now(UTC)
+    alerts = []
+    for cert in data.get("certificates", {}).values():
+        not_after = _parse_time(cert.get("not_after"))
+        renewal_time = _parse_time(cert.get("renewal_time"))
+        if not_after and not_after < now:
+            reason = "Expired"
+        elif not cert.get("ready"):
+            reason = cert.get("reason") or "NotReady"
+        elif renewal_time and renewal_time < now - CERTIFICATE_RENEWAL_GRACE:
+            reason = "RenewalOverdue"
+        else:
+            continue
+        alerts.append(
+            {
+                "name": cert.get("name", ""),
+                "namespace": cert.get("namespace", "unknown"),
+                "reason": reason,
+                "message": cert.get("message"),
+                "not_after": cert.get("not_after"),
+                "renewal_time": cert.get("renewal_time"),
+            }
+        )
+    return alerts
+
+
 def build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     """Build all alert lists for one cluster's coordinator data."""
     return {
@@ -188,6 +236,7 @@ def build_alerts(data: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         "failed_pods": problem_pods(data),
         "restarting_pods": restarting_pods(data),
         "failed_jobs": failed_jobs(data),
+        "certificate_problems": certificate_problems(data),
     }
 
 

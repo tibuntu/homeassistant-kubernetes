@@ -73,6 +73,12 @@ rules:
     resources: ["httproutes"]
     verbs: ["get", "list", "watch"]
 
+  # cert-manager — Certificate expiry/renewal problems (monitoring only;
+  # harmless when cert-manager is not installed). Secrets are never read.
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list", "watch"]
+
   # Autoscaling — detect HPA-managed workloads (scale guard + HPA badge)
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]

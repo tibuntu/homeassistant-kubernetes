@@ -236,7 +236,7 @@ class TestAsyncRegisterWebsocketCommands:
             "custom_components.kubernetes.websocket_api.websocket_api"
         ) as mock_ws_api:
             async_register_websocket_commands(mock_hass)
-            assert mock_ws_api.async_register_command.call_count == 14
+            assert mock_ws_api.async_register_command.call_count == 15
 
 
 class TestWebsocketClusterOverview:
@@ -1313,6 +1313,51 @@ class TestWebsocketHttproutesList:
         ]
 
 
+class TestWebsocketCertificatesList:
+    """Tests for the kubernetes/certificates/list command."""
+
+    async def test_end_to_end_over_websocket(self, hass: HomeAssistant, hass_ws_client):
+        """The registered command returns each cluster's certificates."""
+        coordinator = MagicMock()
+        coordinator.data = {
+            "certificates": {
+                "default_web-tls": {
+                    "name": "web-tls",
+                    "namespace": "default",
+                    "ready": True,
+                    "not_after": "2027-01-01T00:00:00Z",
+                }
+            }
+        }
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="entry_1",
+            data={"host": "test", "cluster_name": "test"},
+            state=ConfigEntryState.LOADED,
+        )
+        entry.add_to_hass(hass)
+        entry.runtime_data = KubernetesEntryData(
+            config=entry.data, client=MagicMock(), coordinator=coordinator
+        )
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
+
+        await ws.send_json({"id": 3, "type": "kubernetes/certificates/list"})
+        msg = await ws.receive_json()
+
+        assert msg["success"] is True
+        cluster = msg["result"]["clusters"][0]
+        assert cluster["cluster_name"] == "test"
+        assert cluster["certificates"] == [
+            {
+                "name": "web-tls",
+                "namespace": "default",
+                "ready": True,
+                "not_after": "2027-01-01T00:00:00Z",
+            }
+        ]
+
+
 class TestReadCommandsEndToEnd:
     """Each read-only list/overview command answers a real WebSocket request.
 
@@ -1331,6 +1376,7 @@ class TestReadCommandsEndToEnd:
             ("kubernetes/ingresses/list", "clusters"),
             ("kubernetes/services/list", "clusters"),
             ("kubernetes/httproutes/list", "clusters"),
+            ("kubernetes/certificates/list", "clusters"),
             ("kubernetes/config/list", "entries"),
         ],
     )
@@ -1360,6 +1406,7 @@ class TestReadCommandsEndToEnd:
             "ingresses": {},
             "services": {},
             "httproutes": {},
+            "certificates": {},
             "last_update": 0.0,
         }
         async_register_websocket_commands(hass)
@@ -1380,6 +1427,7 @@ _PANEL_READ_COMMANDS = [
     "kubernetes/ingresses/list",
     "kubernetes/services/list",
     "kubernetes/httproutes/list",
+    "kubernetes/certificates/list",
     "kubernetes/config/list",
     "kubernetes/subscribe_updates",
 ]
@@ -2162,6 +2210,7 @@ class TestHandlersEdgeCases:
         assert cluster["alerts"]["failed_pods"] == []
         assert cluster["alerts"]["restarting_pods"] == []
         assert cluster["alerts"]["failed_jobs"] == []
+        assert cluster["alerts"]["certificate_problems"] == []
 
     def test_nodes_list_empty_nodes_dict(self, mock_hass):
         """Test nodes list returns empty list when nodes dict is empty."""

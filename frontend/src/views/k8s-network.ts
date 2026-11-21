@@ -103,24 +103,78 @@ interface HTTPRoutesResponse {
   clusters: ClusterHTTPRoutes[];
 }
 
+interface CertificateData {
+  name: string;
+  namespace: string;
+  not_after: string | null;
+  renewal_time: string | null;
+  ready: boolean;
+  reason: string | null;
+  message: string | null;
+  issuer_name: string;
+  issuer_kind: string;
+  dns_names: string[];
+  secret_name: string;
+}
+
+interface ClusterCertificates {
+  entry_id: string;
+  cluster_name: string;
+  certificates: CertificateData[];
+}
+
+interface CertificatesResponse {
+  clusters: ClusterCertificates[];
+}
+
+const RENEWAL_GRACE_MS = 24 * 3600 * 1000;
+
+/** Status badge text; mirrors `alerts.certificate_problems` in the backend. */
+function certificateStatus(cert: CertificateData): string {
+  const now = Date.now();
+  if (cert.not_after && Date.parse(cert.not_after) < now) return "Expired";
+  if (!cert.ready) return "Not Ready";
+  if (cert.renewal_time && Date.parse(cert.renewal_time) < now - RENEWAL_GRACE_MS) {
+    return "Renewal Overdue";
+  }
+  return "Ready";
+}
+
+/** Time until an ISO timestamp as "in 5d" / "3h ago". */
+function formatUntil(iso: string): string {
+  const diff = Date.parse(iso) - Date.now();
+  const abs = Math.abs(diff) / 1000;
+  const text =
+    abs < 3600
+      ? `${Math.floor(abs / 60)}m`
+      : abs < 86400
+        ? `${Math.floor(abs / 3600)}h`
+        : `${Math.floor(abs / 86400)}d`;
+  return diff >= 0 ? `in ${text}` : `${text} ago`;
+}
+
 const NETWORK_TYPES = [
   "Ingress",
   "HTTPRoute",
+  "Certificate",
   "LoadBalancer",
   "NodePort",
   "ClusterIP",
   "ExternalName",
 ] as const;
-// "Services" shows every service type and hides the ingress/HTTPRoute sections.
+// "Services" shows every service type and hides the ingress/HTTPRoute/
+// Certificate sections.
 export type NetworkTypeFilter = "all" | "Services" | (typeof NETWORK_TYPES)[number];
 
 @customElement("k8s-network")
 export class K8sNetwork extends K8sDataView<IngressesResponse> {
   @state() private _services: ServicesResponse | null = null;
   @state() private _httproutes: HTTPRoutesResponse | null = null;
+  @state() private _certificates: CertificatesResponse | null = null;
   @state() private _ingressError: string | null = null;
   @state() private _servicesError: string | null = null;
   @state() private _httprouteError: string | null = null;
+  @state() private _certificateError: string | null = null;
   @state() private _searchQuery: string = "";
   @state() private _typeFilter: NetworkTypeFilter = "all";
   protected tab = "network";
@@ -146,17 +200,23 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
   }
 
   protected hasData(): boolean {
-    return this._data !== null || this._services !== null || this._httproutes !== null;
+    return (
+      this._data !== null ||
+      this._services !== null ||
+      this._httproutes !== null ||
+      this._certificates !== null
+    );
   }
 
   protected async fetchData(): Promise<void> {
     // Each list fails on its own, so a missing RBAC rule (or, for
-    // HTTPRoutes, an absent Gateway API CRD) for one resource does not
+    // HTTPRoutes and Certificates, an absent CRD) for one resource does not
     // blank the other sections.
-    const [ingresses, services, httproutes] = await Promise.allSettled([
+    const [ingresses, services, httproutes, certificates] = await Promise.allSettled([
       this.hass.callWS<IngressesResponse>({ type: "kubernetes/ingresses/list" }),
       this.hass.callWS<ServicesResponse>({ type: "kubernetes/services/list" }),
       this.hass.callWS<HTTPRoutesResponse>({ type: "kubernetes/httproutes/list" }),
+      this.hass.callWS<CertificatesResponse>({ type: "kubernetes/certificates/list" }),
     ]);
     if (ingresses.status === "fulfilled") {
       this._data = ingresses.value;
@@ -185,6 +245,15 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         "Failed to load HTTPRoute data",
       );
     }
+    if (certificates.status === "fulfilled") {
+      this._certificates = certificates.value;
+      this._certificateError = null;
+    } else {
+      this._certificateError = errorMessage(
+        certificates.reason,
+        "Failed to load certificate data",
+      );
+    }
   }
 
   private _getFilteredIngresses(ingresses: IngressData[]): IngressData[] {
@@ -204,7 +273,8 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
       this._typeFilter !== "all" &&
       this._typeFilter !== "Services" &&
       this._typeFilter !== "Ingress" &&
-      this._typeFilter !== "HTTPRoute"
+      this._typeFilter !== "HTTPRoute" &&
+      this._typeFilter !== "Certificate"
     ) {
       filtered = filtered.filter((s) => s.type === this._typeFilter);
     }
@@ -228,6 +298,17 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         r.name.toLowerCase().includes(q) ||
         r.namespace.toLowerCase().includes(q) ||
         r.hostnames.some((h) => h.toLowerCase().includes(q)),
+    );
+  }
+
+  private _getFilteredCertificates(certificates: CertificateData[]): CertificateData[] {
+    if (!this._searchQuery) return certificates;
+    const q = this._searchQuery.toLowerCase();
+    return certificates.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.namespace.toLowerCase().includes(q) ||
+        c.dns_names.some((d) => d.toLowerCase().includes(q)),
     );
   }
 
@@ -364,6 +445,12 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         color: var(--primary-color);
       }
 
+      .secondary {
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
       .badge-type-clusterip {
         background: rgba(var(--rgb-secondary-text-color, 114, 114, 114), 0.15);
         color: var(--secondary-text-color);
@@ -378,7 +465,12 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
       </div>`;
     }
 
-    if (this._ingressError && this._servicesError && this._httprouteError) {
+    if (
+      this._ingressError &&
+      this._servicesError &&
+      this._httprouteError &&
+      this._certificateError
+    ) {
       return html`
         <ha-card>
           <div class="error-card">
@@ -396,16 +488,20 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
     const hasIngresses = ingressClusters.some((c) => c.ingresses.length > 0);
     const hasServices = serviceClusters.some((c) => c.services.length > 0);
     const hasHTTPRoutes = httprouteClusters.some((c) => c.httproutes.length > 0);
+    const certificateClusters = this._certificates?.clusters ?? [];
+    const hasCertificates = certificateClusters.some((c) => c.certificates.length > 0);
     if (
       !this._ingressError &&
       !this._servicesError &&
       !this._httprouteError &&
+      !this._certificateError &&
       !hasIngresses &&
       !hasServices &&
-      !hasHTTPRoutes
+      !hasHTTPRoutes &&
+      !hasCertificates
     ) {
       return html`<div class="empty">
-        No ingresses, HTTPRoutes, or services found.
+        No ingresses, HTTPRoutes, certificates, or services found.
       </div>`;
     }
 
@@ -414,7 +510,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         <input
           class="search-input"
           type="text"
-          placeholder="Search ingresses, HTTPRoutes, and services…"
+          placeholder="Search ingresses, HTTPRoutes, certificates, and services…"
           .value=${this._searchQuery}
           @input=${(e: InputEvent) =>
             (this._searchQuery = (e.target as HTMLInputElement).value)}
@@ -467,7 +563,27 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
           : nothing
       }
       ${
-        this._typeFilter !== "Ingress" && this._typeFilter !== "HTTPRoute"
+        // cert-manager is optional too: same rule as the HTTPRoutes section.
+        this._typeFilter === "Certificate" ||
+        (this._typeFilter === "all" && (hasCertificates || this._certificateError))
+          ? html`
+              <h2 class="section-title">Certificates</h2>
+              ${
+                this._certificateError
+                  ? this._renderInlineError(this._certificateError)
+                  : hasCertificates
+                    ? certificateClusters.map((cluster) =>
+                        this._renderCertificateCluster(cluster),
+                      )
+                    : html`<div class="empty">No certificates found.</div>`
+              }
+            `
+          : nothing
+      }
+      ${
+        this._typeFilter !== "Ingress" &&
+        this._typeFilter !== "HTTPRoute" &&
+        this._typeFilter !== "Certificate"
           ? html`
               <h2 class="section-title">Services</h2>
               ${
@@ -612,6 +728,85 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
     return route.accepted && route.resolved_refs
       ? html`<span class="badge badge-ready">Accepted</span>`
       : html`<span class="badge badge-pending">Not Ready</span>`;
+  }
+
+  private _renderCertificateCluster(cluster: ClusterCertificates) {
+    if (!cluster.certificates.length) return nothing;
+    const certificates = this._getFilteredCertificates(cluster.certificates);
+
+    return html`
+      <div class="cluster-section">
+        ${
+          this._certificates!.clusters.length > 1
+            ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
+            : nothing
+        }
+        ${
+          certificates.length === 0
+            ? html`<div class="empty">No certificates match your search.</div>`
+            : this._renderCertificatesTable(certificates)
+        }
+      </div>
+    `;
+  }
+
+  private _renderCertificatesTable(certificates: CertificateData[]) {
+    return html`
+      <ha-card>
+        <div class="table-wrapper">
+          <table class="network-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Namespace</th>
+                <th>DNS Names</th>
+                <th>Issuer</th>
+                <th>Expires</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${certificates.map(
+                (cert) => html`
+                  <tr>
+                    <td>${cert.name}</td>
+                    <td>${cert.namespace}</td>
+                    <td>
+                      ${
+                        cert.dns_names.length
+                          ? cert.dns_names.map((d) => html`<div>${d}</div>`)
+                          : "—"
+                      }
+                    </td>
+                    <td>${cert.issuer_kind}/${cert.issuer_name || "—"}</td>
+                    <td>
+                      ${
+                        cert.not_after
+                          ? html`<div>${formatUntil(cert.not_after)}</div>
+                              <div class="secondary">
+                                ${new Date(cert.not_after).toLocaleString()}
+                              </div>`
+                          : "—"
+                      }
+                    </td>
+                    <td>${this._renderCertificateStatusBadge(cert)}</td>
+                  </tr>
+                `,
+              )}
+            </tbody>
+          </table>
+        </div>
+      </ha-card>
+    `;
+  }
+
+  private _renderCertificateStatusBadge(cert: CertificateData) {
+    const status = certificateStatus(cert);
+    return status === "Ready"
+      ? html`<span class="badge badge-ready">Ready</span>`
+      : html`<span class="badge badge-failed" title=${cert.message ?? ""}
+          >${status}</span
+        >`;
   }
 
   private _renderServiceCluster(cluster: ClusterServices) {

@@ -144,7 +144,7 @@ def _async_create_session(
 
     Not Home Assistant's shared session: its connector (which
     ``async_create_clientsession`` shares too) allows 100 connections per
-    host, and every watch loop holds one for good — 1 + 11 per namespace in
+    host, and every watch loop holds one for good — 1 + 12 per namespace in
     per-namespace mode with events on, so nine namespaces would leave polls
     and mutations queueing behind the watches.
     """

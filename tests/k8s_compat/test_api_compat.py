@@ -234,6 +234,16 @@ class TestHTTPRoutes:
         assert exc_info.value.status == 404
 
 
+class TestCertificates:
+    async def test_get_certificates_without_cert_manager_raises_404(self, k8s_client):
+        # kind ships no cert-manager. The coordinator relies on a 404 (with
+        # the chart's rule applied) to drop the Certificate Problems sensor.
+        api_error = sys.modules[type(k8s_client).__module__].KubernetesApiError
+        with pytest.raises(api_error) as exc_info:
+            await k8s_client.get_certificates()
+        assert exc_info.value.status == 404
+
+
 class TestHPAs:
     async def test_get_hpas_finds_target_deployment(self, k8s_client):
         hpas = await k8s_client.get_hpas()

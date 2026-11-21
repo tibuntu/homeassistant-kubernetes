@@ -19,6 +19,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 from .alerts import (
+    certificate_problems,
     degraded_workloads,
     failed_jobs,
     job_state,
@@ -95,6 +96,12 @@ async def async_setup_entry(
         if "jobs" not in disabled:
             sensors.append(
                 KubernetesFailedJobsSensor(coordinator, client, config_entry)
+            )
+        # Exists without cert-manager too (shows 0): a transient 404 after an
+        # API-server restart must never delete the entity's customizations.
+        if "certificates" not in disabled:
+            sensors.append(
+                KubernetesCertificateProblemsSensor(coordinator, client, config_entry)
             )
 
         # Ensure cluster device exists (coordinator already refreshed in __init__.py)
@@ -765,6 +772,18 @@ class KubernetesFailedJobsSensor(KubernetesAlertSensor):
 
     def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         return failed_jobs(data)
+
+
+class KubernetesCertificateProblemsSensor(KubernetesAlertSensor):
+    """cert-manager Certificates needing attention (``alerts.certificate_problems``)."""
+
+    _attr_native_unit_of_measurement = "certificates"
+    _unique_suffix = "certificate_problems"
+    _list_attr = "certificates"
+    _unrecorded_attributes = frozenset({"certificates"})
+
+    def _compute(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        return certificate_problems(data)
 
 
 class KubernetesNodeSensor(KubernetesBaseSensor):
