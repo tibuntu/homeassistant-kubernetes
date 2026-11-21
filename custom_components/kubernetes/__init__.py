@@ -56,8 +56,6 @@ _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-ISSUE_KUBERNETES_PACKAGE_MISSING = "kubernetes_package_missing"
-
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Kubernetes integration."""
@@ -73,23 +71,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
     # entry.runtime_data.
     hass.data.setdefault(DOMAIN, {})
 
-    # Check if kubernetes package is available before creating client
-    try:
-        import kubernetes.client
-
-        _LOGGER.debug("Kubernetes package is available")
-        ir.async_delete_issue(hass, DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
-    except ImportError as e:
-        _LOGGER.error("Kubernetes package not available: %s", e)
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            ISSUE_KUBERNETES_PACKAGE_MISSING,
-            is_fixable=False,
-            severity=ir.IssueSeverity.ERROR,
-            translation_key=ISSUE_KUBERNETES_PACKAGE_MISSING,
-        )
-        return False
+    # ponytail: releases before the integration dropped the `kubernetes`
+    # package raised this issue when it was missing; nothing else clears an
+    # issue stored before the upgrade. Remove this line in a later release.
+    ir.async_delete_issue(hass, DOMAIN, "kubernetes_package_missing")
 
     # Create Kubernetes client
     # Options are user-editable after setup; the client only ever sees
@@ -322,13 +307,7 @@ def _async_remove_panel(hass: HomeAssistant) -> None:
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -> None:
-    """Clean up integration-wide state when an entry is removed.
-
-    Setup failures (e.g. ImportError) skip async_unload_entry, so the
-    package-missing repair issue would otherwise linger after the user
-    deletes the broken entry.
-    """
-    ir.async_delete_issue(hass, DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
+    """Clean up integration-wide state when an entry is removed."""
     # An entry that never loaded registered the panel without an unload to
     # take it back, and a removed entry may have been the one restricting it.
     if DOMAIN in hass.data:

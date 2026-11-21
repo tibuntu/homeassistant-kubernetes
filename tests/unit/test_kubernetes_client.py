@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import aiohttp
-from kubernetes.client import ApiException
 import pytest
 
 from custom_components.kubernetes.const import POD_LOGS_LIMIT_BYTES
@@ -38,18 +37,8 @@ def mock_config():
 
 @pytest.fixture
 def mock_client(mock_config):
-    """Mock Kubernetes client."""
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.k8s_client"
-    ) as mock_k8s_client:
-        mock_api = MagicMock()
-        mock_k8s_client.CoreV1Api.return_value = mock_api
-        mock_k8s_client.AppsV1Api.return_value = mock_api
-
-        client = KubernetesClient(mock_config)
-        client._core_api = mock_api
-        client._apps_api = mock_api
-        return client
+    """Kubernetes client under test."""
+    return KubernetesClient(mock_config)
 
 
 class TestNormalizeHost:
@@ -96,70 +85,39 @@ def test_kubernetes_client_initialization_brackets_ipv6_host():
         "verify_ssl": True,
         "monitor_all_namespaces": False,
     }
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.k8s_client"
-    ) as mock_k8s_client:
-        mock_api = MagicMock()
-        mock_k8s_client.CoreV1Api.return_value = mock_api
-        mock_k8s_client.AppsV1Api.return_value = mock_api
+    client = KubernetesClient(config)
 
-        client = KubernetesClient(config)
-
-        assert client.host == "[aaaa:bbbb:cccc::1]"
-        # The URL the reporter saw fail must now be well-formed.
-        assert (
-            f"https://{client.host}:{client.port}/api/v1/"
-            == "https://[aaaa:bbbb:cccc::1]:443/api/v1/"
-        )
+    assert client.host == "[aaaa:bbbb:cccc::1]"
+    # The URL the reporter saw fail must now be well-formed.
+    assert (
+        f"https://{client.host}:{client.port}/api/v1/"
+        == "https://[aaaa:bbbb:cccc::1]:443/api/v1/"
+    )
 
 
 def test_kubernetes_client_initialization(mock_config):
     """Test Kubernetes client initialization."""
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.k8s_client"
-    ) as mock_k8s_client:
-        mock_api = MagicMock()
-        mock_k8s_client.CoreV1Api.return_value = mock_api
-        mock_k8s_client.AppsV1Api.return_value = mock_api
-
-        client = KubernetesClient(mock_config)
-
-        assert client.host == mock_config["host"]
-        assert client.port == mock_config["port"]
-        assert client.api_token == mock_config["api_token"]
-        assert client.namespace == mock_config["namespace"]
-        assert client.verify_ssl == mock_config["verify_ssl"]
-
-
-def test_official_client_sends_single_bearer_prefix(mock_config):
-    """The real Configuration builds 'Bearer <token>', never 'Bearer Bearer …'."""
     client = KubernetesClient(mock_config)
 
-    auth = client.core_v1.api_client.configuration.auth_settings()
-
-    assert auth["BearerToken"]["value"] == "Bearer test-token"
+    assert client.host == mock_config["host"]
+    assert client.port == mock_config["port"]
+    assert client.api_token == mock_config["api_token"]
+    assert client.namespace == mock_config["namespace"]
+    assert client.verify_ssl == mock_config["verify_ssl"]
 
 
 def test_kubernetes_client_initialization_with_ca_cert(mock_config):
     """Test Kubernetes client initialization with CA certificate."""
     mock_config["ca_cert"] = "test-ca-cert"
 
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.k8s_client"
-    ) as mock_k8s_client:
-        mock_api = MagicMock()
-        mock_k8s_client.CoreV1Api.return_value = mock_api
-        mock_k8s_client.AppsV1Api.return_value = mock_api
+    client = KubernetesClient(mock_config)
 
-        client = KubernetesClient(mock_config)
-
-        assert client.ca_cert == "test-ca-cert"
+    assert client.ca_cert == "test-ca-cert"
 
 
 def _make_client(config):
-    """Build a KubernetesClient with the k8s official client patched out."""
-    with patch("custom_components.kubernetes.kubernetes_client.k8s_client"):
-        return KubernetesClient(config)
+    """Build a KubernetesClient."""
+    return KubernetesClient(config)
 
 
 def _mock_response(status: int = 200, **awaitable_attrs: Any) -> MagicMock:
@@ -352,8 +310,8 @@ class TestSslParam:
 
         assert mock_session.get.call_args.kwargs["ssl"] is sentinel_ctx
 
-    async def test_scale_fallback_passes_ssl_context_not_false(self, mock_config):
-        """Write fallback no longer hardcodes ssl=False; it honors the SSLContext."""
+    async def test_scale_passes_ssl_context_not_false(self, mock_config):
+        """A write call honors the SSLContext instead of hardcoding ssl=False."""
         mock_config["ca_cert"] = "/path/ca.crt"
         client = _make_client(mock_config)
         sentinel_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -1853,8 +1811,7 @@ def _trigger_guard_client(mock_config, *, monitor_all: bool) -> KubernetesClient
     """Client monitoring "default" and "apps" for the trigger namespace guard."""
     mock_config["namespace"] = ["default", "apps"]
     mock_config["monitor_all_namespaces"] = monitor_all
-    with patch("custom_components.kubernetes.kubernetes_client.k8s_client"):
-        return KubernetesClient(mock_config)
+    return KubernetesClient(mock_config)
 
 
 def _trigger_session() -> MagicMock:
@@ -1932,80 +1889,29 @@ async def test_trigger_cronjob_monitor_all_namespaces_lifts_guard(mock_config):
     assert post_url.endswith("/apis/batch/v1/namespaces/other/jobs")
 
 
-async def test_scale_deployment_api_exception(mock_client):
-    """Test deployment scaling when API raises exception."""
-    mock_client._apps_api.read_namespaced_deployment.side_effect = ApiException(
-        status=404, reason="Not Found"
-    )
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [
+        ("scale_deployment", ("nginx-deployment", 5, "default")),
+        ("start_deployment", ("nginx-deployment", 1, "default")),
+        ("stop_deployment", ("nginx-deployment", "default")),
+        ("scale_statefulset", ("redis-statefulset", 5, "default")),
+        ("start_statefulset", ("redis-statefulset", 1, "default")),
+        ("stop_statefulset", ("redis-statefulset", "default")),
+    ],
+)
+async def test_scale_methods_return_false_on_api_error(mock_client, method, args):
+    """A rejected /scale PATCH makes every scale wrapper return False."""
+    session = mock_aiohttp_session(patch=_mock_response(404, text="not found"))
 
-    result = await mock_client.scale_deployment("nginx-deployment", 5, "default")
-
-    assert result is False
-
-
-async def test_start_deployment_api_exception(mock_client):
-    """Test deployment start when API raises exception."""
-    from kubernetes.client.rest import ApiException
-
-    mock_client._apps_api.read_namespaced_deployment.side_effect = ApiException(
-        status=404, reason="Not Found"
-    )
-
-    result = await mock_client.start_deployment("nginx-deployment", 1, "default")
-
-    assert result is False
-
-
-async def test_stop_deployment_api_exception(mock_client):
-    """Test deployment stop when API raises exception."""
-    from kubernetes.client.rest import ApiException
-
-    mock_client._apps_api.read_namespaced_deployment.side_effect = ApiException(
-        status=404, reason="Not Found"
-    )
-
-    result = await mock_client.stop_deployment("nginx-deployment", "default")
+    with patch(
+        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
+        return_value=session,
+    ):
+        result = await getattr(mock_client, method)(*args)
 
     assert result is False
-
-
-async def test_scale_statefulset_api_exception(mock_client):
-    """Test statefulset scaling when API raises exception."""
-    from kubernetes.client.rest import ApiException
-
-    mock_client._apps_api.read_namespaced_stateful_set.side_effect = ApiException(
-        status=404, reason="Not Found"
-    )
-
-    result = await mock_client.scale_statefulset("redis-statefulset", 5, "default")
-
-    assert result is False
-
-
-async def test_start_statefulset_api_exception(mock_client):
-    """Test statefulset start when API raises exception."""
-    from kubernetes.client.rest import ApiException
-
-    mock_client._apps_api.read_namespaced_stateful_set.side_effect = ApiException(
-        status=404, reason="Not Found"
-    )
-
-    result = await mock_client.start_statefulset("redis-statefulset", 1, "default")
-
-    assert result is False
-
-
-async def test_stop_statefulset_api_exception(mock_client):
-    """Test statefulset stop when API raises exception."""
-    from kubernetes.client.rest import ApiException
-
-    mock_client._apps_api.read_namespaced_stateful_set.side_effect = ApiException(
-        status=404, reason="Not Found"
-    )
-
-    result = await mock_client.stop_statefulset("redis-statefulset", "default")
-
-    assert result is False
+    session.patch.assert_called_once()
 
 
 class TestKubernetesClientCronJobOperations:
@@ -2256,90 +2162,58 @@ class TestKubernetesClientCronJobOperations:
         # Update config to allow all namespaces
         mock_config["monitor_all_namespaces"] = True
 
-        with patch("kubernetes.config"):
-            with patch("kubernetes.client") as mock_client_module:
-                # Mock the Kubernetes client
-                mock_apps_v1 = MagicMock()
-                mock_core_v1 = MagicMock()
-                mock_batch_v1 = MagicMock()
+        client = KubernetesClient(mock_config)
+        client._patch_cronjob_aiohttp = AsyncMock(
+            return_value={
+                "success": True,
+                "cronjob_name": "test-cronjob",
+                "namespace": "other-namespace",
+            }
+        )
 
-                mock_client_module.AppsV1Api.return_value = mock_apps_v1
-                mock_client_module.CoreV1Api.return_value = mock_core_v1
-                mock_client_module.BatchV1Api.return_value = mock_batch_v1
+        # Execute with different namespace
+        result = await client.suspend_cronjob("test-cronjob", "other-namespace")
 
-                client = KubernetesClient(mock_config)
-                client.apps_v1 = mock_apps_v1
-                client.core_v1 = mock_core_v1
-                client.batch_v1 = mock_batch_v1
+        # Verify
+        assert result["success"] is True
+        assert result["namespace"] == "other-namespace"
 
-                # Mock the aiohttp method since we now use it first
-                client._patch_cronjob_aiohttp = AsyncMock(
-                    return_value={
-                        "success": True,
-                        "cronjob_name": "test-cronjob",
-                        "namespace": "other-namespace",
-                    }
-                )
-
-                # Execute with different namespace
-                result = await client.suspend_cronjob("test-cronjob", "other-namespace")
-
-                # Verify
-                assert result["success"] is True
-                assert result["namespace"] == "other-namespace"
-
-                # Verify the aiohttp method was called with the specified namespace
-                client._patch_cronjob_aiohttp.assert_called_once_with(
-                    "test-cronjob",
-                    "other-namespace",
-                    {"spec": {"suspend": True}},
-                    "suspend",
-                )
+        # Verify the aiohttp method was called with the specified namespace
+        client._patch_cronjob_aiohttp.assert_called_once_with(
+            "test-cronjob",
+            "other-namespace",
+            {"spec": {"suspend": True}},
+            "suspend",
+        )
 
     async def test_resume_cronjob_with_monitor_all_namespaces(self, mock_config):
         """Test CronJob resume when monitor_all_namespaces is True."""
         # Update config to allow all namespaces
         mock_config["monitor_all_namespaces"] = True
 
-        with patch("kubernetes.config"):
-            with patch("kubernetes.client") as mock_client_module:
-                # Mock the Kubernetes client
-                mock_apps_v1 = MagicMock()
-                mock_core_v1 = MagicMock()
-                mock_batch_v1 = MagicMock()
+        client = KubernetesClient(mock_config)
+        client._patch_cronjob_aiohttp = AsyncMock(
+            return_value={
+                "success": True,
+                "cronjob_name": "test-cronjob",
+                "namespace": "other-namespace",
+            }
+        )
 
-                mock_client_module.AppsV1Api.return_value = mock_apps_v1
-                mock_client_module.CoreV1Api.return_value = mock_core_v1
-                mock_client_module.BatchV1Api.return_value = mock_batch_v1
+        # Execute with different namespace
+        result = await client.resume_cronjob("test-cronjob", "other-namespace")
 
-                client = KubernetesClient(mock_config)
-                client.apps_v1 = mock_apps_v1
-                client.core_v1 = mock_core_v1
-                client.batch_v1 = mock_batch_v1
+        # Verify
+        assert result["success"] is True
+        assert result["namespace"] == "other-namespace"
 
-                # Mock the aiohttp method since we now use it first
-                client._patch_cronjob_aiohttp = AsyncMock(
-                    return_value={
-                        "success": True,
-                        "cronjob_name": "test-cronjob",
-                        "namespace": "other-namespace",
-                    }
-                )
-
-                # Execute with different namespace
-                result = await client.resume_cronjob("test-cronjob", "other-namespace")
-
-                # Verify
-                assert result["success"] is True
-                assert result["namespace"] == "other-namespace"
-
-                # Verify the aiohttp method was called with the specified namespace
-                client._patch_cronjob_aiohttp.assert_called_once_with(
-                    "test-cronjob",
-                    "other-namespace",
-                    {"spec": {"suspend": False}},
-                    "resume",
-                )
+        # Verify the aiohttp method was called with the specified namespace
+        client._patch_cronjob_aiohttp.assert_called_once_with(
+            "test-cronjob",
+            "other-namespace",
+            {"spec": {"suspend": False}},
+            "resume",
+        )
 
 
 def test_parse_memory(mock_client):
@@ -2609,14 +2483,7 @@ async def test_get_node_metrics_aiohttp_exception(mock_client):
 @pytest.fixture
 def extended_client(mock_config):
     """Create a Kubernetes client instance for extended tests."""
-    with (
-        patch("kubernetes.client.Configuration"),
-        patch("kubernetes.client.ApiClient"),
-        patch("kubernetes.client.CoreV1Api"),
-        patch("kubernetes.client.AppsV1Api"),
-        patch("kubernetes.client.BatchV1Api"),
-    ):
-        return KubernetesClient(mock_config)
+    return KubernetesClient(mock_config)
 
 
 class TestKubernetesClientExtended:
@@ -2624,42 +2491,6 @@ class TestKubernetesClientExtended:
 
     def test_log_error(self, extended_client):
         """Test _log_error method with various exceptions."""
-        # Test ApiException 401 (Auth)
-        error_401 = ApiException(status=401, reason="Unauthorized")
-        with patch(
-            "custom_components.kubernetes.kubernetes_client._LOGGER"
-        ) as mock_logger:
-            extended_client._log_error("test_op", error_401)
-            mock_logger.error.assert_called()
-
-            # Test deduplication (should be debug)
-            extended_client._log_error("test_op", error_401)
-            mock_logger.debug.assert_called()
-
-        # Test ApiException 403 (Forbidden)
-        error_403 = ApiException(status=403, reason="Forbidden")
-        with patch(
-            "custom_components.kubernetes.kubernetes_client._LOGGER"
-        ) as mock_logger:
-            extended_client._log_error("test_op", error_403)
-            mock_logger.error.assert_called()
-
-        # Test ApiException 404 (Not Found)
-        error_404 = ApiException(status=404, reason="Not Found")
-        with patch(
-            "custom_components.kubernetes.kubernetes_client._LOGGER"
-        ) as mock_logger:
-            extended_client._log_error("test_op", error_404)
-            mock_logger.error.assert_called()
-
-        # Test ApiException 500 (Server Error)
-        error_500 = ApiException(status=500, reason="Server Error")
-        with patch(
-            "custom_components.kubernetes.kubernetes_client._LOGGER"
-        ) as mock_logger:
-            extended_client._log_error("test_op", error_500)
-            mock_logger.error.assert_called()
-
         # Test aiohttp.ClientError
         error_aiohttp = aiohttp.ClientError("Network error")
         with patch(
@@ -4666,11 +4497,6 @@ class TestScaleDeploymentExtended:
             patch=_mock_response(422, text="Unprocessable Entity")
         )
 
-        # Also make the k8s client fallback fail
-        mock_client.apps_v1.read_namespaced_deployment = MagicMock(
-            side_effect=ApiException(status=500, reason="Server Error")
-        )
-
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.scale_deployment("test-deploy", 3, "default")
 
@@ -4680,36 +4506,20 @@ class TestScaleDeploymentExtended:
         """scale_deployment returns False when aiohttp raises an exception."""
         mock_session = mock_aiohttp_session(patch=Exception("Connection timeout"))
 
-        # Also make the k8s client fallback fail
-        mock_client.apps_v1.read_namespaced_deployment = MagicMock(
-            side_effect=ApiException(status=404, reason="Not Found")
-        )
-
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.scale_deployment("test-deploy", 3, "default")
 
         assert result is False
 
-    async def test_scale_deployment_official_client_fallback_succeeds(
-        self, mock_client
-    ):
-        """When the aiohttp PATCH fails, the official read/replace path scales."""
-        mock_session = mock_aiohttp_session(patch=_mock_response(500, text="boom"))
-
-        deployment = MagicMock()
-        mock_client.apps_v1.read_namespaced_deployment = MagicMock(
-            return_value=deployment
-        )
-        mock_client.apps_v1.replace_namespaced_deployment = MagicMock()
+    async def test_scale_deployment_success(self, mock_client):
+        """A 200 on the /scale PATCH makes scale_deployment return True."""
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.scale_deployment("test-deploy", 4, "default")
 
         assert result is True
-        assert deployment.spec.replicas == 4
-        mock_client.apps_v1.replace_namespaced_deployment.assert_called_once_with(
-            "test-deploy", "default", deployment
-        )
+        mock_session.patch.assert_called_once()
 
     async def test_scale_workload_aiohttp_builds_scale_url(self, mock_client):
         """_scale_workload_aiohttp PATCHes the /scale subresource of the given type."""
@@ -4735,11 +4545,6 @@ class TestScaleStatefulsetExtended:
         """scale_statefulset returns False when aiohttp PATCH returns non-200."""
         mock_session = mock_aiohttp_session(patch=_mock_response(403, text="Forbidden"))
 
-        # Also make the k8s client fallback fail
-        mock_client.apps_v1.read_namespaced_stateful_set = MagicMock(
-            side_effect=ApiException(status=500, reason="Server Error")
-        )
-
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.scale_statefulset("test-ss", 3, "default")
 
@@ -4748,10 +4553,6 @@ class TestScaleStatefulsetExtended:
     async def test_scale_statefulset_aiohttp_exception(self, mock_client):
         """scale_statefulset returns False when aiohttp raises an exception."""
         mock_session = mock_aiohttp_session(patch=Exception("Network failure"))
-
-        mock_client.apps_v1.read_namespaced_stateful_set = MagicMock(
-            side_effect=ApiException(status=404, reason="Not Found")
-        )
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.scale_statefulset("test-ss", 2, "default")
@@ -5992,14 +5793,7 @@ class TestInitNamespaceParsing:
         """Test legacy string namespace format is handled."""
         mock_config["namespace"] = "my-namespace"
 
-        with (
-            patch("kubernetes.client.Configuration"),
-            patch("kubernetes.client.ApiClient"),
-            patch("kubernetes.client.CoreV1Api"),
-            patch("kubernetes.client.AppsV1Api"),
-            patch("kubernetes.client.BatchV1Api"),
-        ):
-            client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config)
 
         assert client.namespaces == ["my-namespace"]
         assert client.namespace == "my-namespace"
@@ -6008,14 +5802,7 @@ class TestInitNamespaceParsing:
         """Test comma-separated string namespace is treated as single namespace."""
         mock_config["namespace"] = "ns1,ns2"
 
-        with (
-            patch("kubernetes.client.Configuration"),
-            patch("kubernetes.client.ApiClient"),
-            patch("kubernetes.client.CoreV1Api"),
-            patch("kubernetes.client.AppsV1Api"),
-            patch("kubernetes.client.BatchV1Api"),
-        ):
-            client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config)
 
         # Legacy string format: treated as single namespace string
         assert client.namespaces == ["ns1,ns2"]
@@ -6024,14 +5811,7 @@ class TestInitNamespaceParsing:
         """Test empty list namespace defaults to ['default']."""
         mock_config["namespace"] = []
 
-        with (
-            patch("kubernetes.client.Configuration"),
-            patch("kubernetes.client.ApiClient"),
-            patch("kubernetes.client.CoreV1Api"),
-            patch("kubernetes.client.AppsV1Api"),
-            patch("kubernetes.client.BatchV1Api"),
-        ):
-            client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config)
 
         assert client.namespaces == ["default"]
         assert client.namespace == "default"
@@ -6040,14 +5820,7 @@ class TestInitNamespaceParsing:
         """Test list namespace is preserved as-is."""
         mock_config["namespace"] = ["ns1", "ns2", "ns3"]
 
-        with (
-            patch("kubernetes.client.Configuration"),
-            patch("kubernetes.client.ApiClient"),
-            patch("kubernetes.client.CoreV1Api"),
-            patch("kubernetes.client.AppsV1Api"),
-            patch("kubernetes.client.BatchV1Api"),
-        ):
-            client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config)
 
         assert client.namespaces == ["ns1", "ns2", "ns3"]
         assert client.namespace == "ns1"
@@ -6056,14 +5829,7 @@ class TestInitNamespaceParsing:
         """Test non-string, non-list namespace defaults to ['default']."""
         mock_config["namespace"] = 42
 
-        with (
-            patch("kubernetes.client.Configuration"),
-            patch("kubernetes.client.ApiClient"),
-            patch("kubernetes.client.CoreV1Api"),
-            patch("kubernetes.client.AppsV1Api"),
-            patch("kubernetes.client.BatchV1Api"),
-        ):
-            client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config)
 
         assert client.namespaces == ["default"]
 
@@ -6071,32 +5837,13 @@ class TestInitNamespaceParsing:
         """Test missing namespace key defaults to ['default']."""
         del mock_config["namespace"]
 
-        with (
-            patch("kubernetes.client.Configuration"),
-            patch("kubernetes.client.ApiClient"),
-            patch("kubernetes.client.CoreV1Api"),
-            patch("kubernetes.client.AppsV1Api"),
-            patch("kubernetes.client.BatchV1Api"),
-        ):
-            client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config)
 
         assert client.namespaces == ["default"]
 
 
 class TestLogErrorGenericBranch:
     """Tests for _log_error generic/other status branch."""
-
-    def test_api_exception_other_status(self, extended_client):
-        """Test _log_error with ApiException status not 401/403/404/5xx."""
-        error = ApiException(status=409, reason="Conflict")
-        with patch(
-            "custom_components.kubernetes.kubernetes_client._LOGGER"
-        ) as mock_logger:
-            extended_client._log_error("test_op", error)
-            # Should hit the generic API error branch
-            mock_logger.error.assert_called_once()
-            call_args = mock_logger.error.call_args[0]
-            assert "API error during" in call_args[0]
 
     def test_generic_exception(self, extended_client):
         """Test _log_error with a non-standard exception type."""
@@ -6359,30 +6106,10 @@ class TestDeletePod:
 
         assert result is True
 
-    async def test_delete_pod_aiohttp_failure_falls_back_to_kubernetes(
-        self, mock_client
-    ):
-        """delete_pod falls back to official client when aiohttp fails."""
-        mock_session = mock_aiohttp_session(
-            delete=_mock_response(403, text="Forbidden")
-        )
-
-        # Official client succeeds
-        mock_client.core_v1.delete_namespaced_pod = MagicMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
-            result = await mock_client.delete_pod("test-pod", "default")
-
-        assert result is True
-
-    async def test_delete_pod_both_methods_fail(self, mock_client):
-        """delete_pod returns False when both aiohttp and official client fail."""
+    async def test_delete_pod_non_2xx_returns_false(self, mock_client):
+        """delete_pod returns False when the DELETE is rejected."""
         mock_session = mock_aiohttp_session(
             delete=_mock_response(500, text="Server Error")
-        )
-
-        mock_client.core_v1.delete_namespaced_pod = MagicMock(
-            side_effect=ApiException(status=404, reason="Not Found")
         )
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
@@ -6399,29 +6126,10 @@ class TestDeletePod:
 
         assert result is True
 
-    async def test_delete_pod_aiohttp_exception_kubernetes_fallback_succeeds(
-        self, mock_client
-    ):
-        """delete_pod falls back to official client when aiohttp raises exception."""
+    async def test_delete_pod_aiohttp_exception_returns_false(self, mock_client):
+        """delete_pod returns False when the request raises."""
         mock_session = mock_aiohttp_session(
             delete=aiohttp.ClientError("Connection refused")
-        )
-
-        mock_client.core_v1.delete_namespaced_pod = MagicMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
-            result = await mock_client.delete_pod("test-pod", "default")
-
-        assert result is True
-
-    async def test_delete_pod_aiohttp_exception_both_fail(self, mock_client):
-        """delete_pod returns False when both aiohttp exception and official client fail."""
-        mock_session = mock_aiohttp_session(
-            delete=aiohttp.ClientError("Connection refused")
-        )
-
-        mock_client.core_v1.delete_namespaced_pod = MagicMock(
-            side_effect=ApiException(status=500, reason="Server Error")
         )
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
@@ -6442,18 +6150,6 @@ class TestDeleteJob:
             assert await mock_client.delete_job("j1", "default") is True
         assert "propagationPolicy=Background" in sess.delete.call_args[0][0]
 
-    async def test_delete_job_falls_back_to_official_client(self, mock_client):
-        mock_client._delete_job_aiohttp = AsyncMock(return_value=False)
-        mock_client._delete_job_kubernetes = AsyncMock(return_value=True)
-        assert await mock_client.delete_job("j1", "default") is True
-        mock_client._delete_job_kubernetes.assert_called_once()
-
-    async def test_delete_job_kubernetes_uses_background(self, mock_client):
-        mock_client.batch_v1 = MagicMock()
-        assert await mock_client._delete_job_kubernetes("j1", "default") is True
-        _, kwargs = mock_client.batch_v1.delete_namespaced_job.call_args
-        assert kwargs.get("propagation_policy") == "Background"
-
     async def test_delete_job_aiohttp_non_200_returns_false(self, mock_client):
         sess = mock_aiohttp_session(delete=_mock_response(404, text="not found"))
         with patch(
@@ -6469,16 +6165,10 @@ class TestDeleteJob:
         ):
             assert await mock_client._delete_job_aiohttp("j1", "default") is False
 
-    async def test_delete_job_kubernetes_exception_returns_false(self, mock_client):
-        mock_client.batch_v1 = MagicMock()
-        mock_client.batch_v1.delete_namespaced_job.side_effect = Exception("boom")
-        assert await mock_client._delete_job_kubernetes("j1", "default") is False
-
-    async def test_delete_job_both_paths_fail_returns_false(self, mock_client):
+    async def test_delete_job_aiohttp_failure_returns_false(self, mock_client):
         mock_client._delete_job_aiohttp = AsyncMock(return_value=False)
-        mock_client._delete_job_kubernetes = AsyncMock(return_value=False)
         assert await mock_client.delete_job("j1", "default") is False
-        mock_client._delete_job_kubernetes.assert_called_once()
+        mock_client._delete_job_aiohttp.assert_called_once_with("j1", "default")
 
 
 class TestRolloutRestart:
@@ -6515,46 +6205,23 @@ class TestRolloutRestart:
 
         assert result is True
 
-    async def test_rollout_restart_aiohttp_failure_falls_back_to_kubernetes(
-        self, mock_client
-    ):
-        """rollout_restart falls back to official client when aiohttp fails."""
-        mock_session = mock_aiohttp_session(patch=_mock_response(403, text="Forbidden"))
-
-        # Official client: mock patch
-        mock_client.apps_v1.patch_namespaced_deployment = MagicMock(return_value=None)
-
-        with patch("aiohttp.ClientSession", return_value=mock_session):
-            result = await mock_client.rollout_restart_deployment("nginx", "default")
-
-        assert result is True
-        mock_client.apps_v1.patch_namespaced_deployment.assert_called_once()
-
-    async def test_rollout_restart_aiohttp_exception_falls_back(self, mock_client):
-        """rollout_restart falls back when aiohttp raises exception."""
+    async def test_rollout_restart_aiohttp_exception_returns_false(self, mock_client):
+        """rollout_restart returns False when the PATCH raises."""
         mock_session = mock_aiohttp_session(
             patch=aiohttp.ClientError("Connection refused")
         )
-
-        # Official client: mock patch
-        mock_client.apps_v1.patch_namespaced_stateful_set = MagicMock(return_value=None)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.rollout_restart_statefulset(
                 "postgres", "default"
             )
 
-        assert result is True
-        mock_client.apps_v1.patch_namespaced_stateful_set.assert_called_once()
+        assert result is False
 
-    async def test_rollout_restart_both_methods_fail(self, mock_client):
-        """rollout_restart returns False when both aiohttp and official client fail."""
+    async def test_rollout_restart_non_2xx_returns_false(self, mock_client):
+        """rollout_restart returns False when the PATCH is rejected."""
         mock_session = mock_aiohttp_session(
             patch=_mock_response(500, text="Internal Server Error")
-        )
-
-        mock_client.apps_v1.patch_namespaced_deployment = MagicMock(
-            side_effect=ApiException(status=404, reason="Not Found")
         )
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
@@ -6562,11 +6229,9 @@ class TestRolloutRestart:
 
         assert result is False
 
-    async def test_rollout_restart_kubernetes_patch_body(self, mock_client):
-        """rollout_restart_kubernetes sends correct patch body with restartedAt."""
-        mock_session = mock_aiohttp_session(patch=_mock_response(403, text="Forbidden"))
-
-        mock_client.apps_v1.patch_namespaced_daemon_set = MagicMock(return_value=None)
+    async def test_rollout_restart_patch_body(self, mock_client):
+        """rollout_restart PATCHes the restartedAt template annotation."""
+        mock_session = mock_aiohttp_session(patch=200)
 
         with patch("aiohttp.ClientSession", return_value=mock_session):
             result = await mock_client.rollout_restart_daemonset(
@@ -6574,8 +6239,9 @@ class TestRolloutRestart:
             )
 
         assert result is True
-        call_args = mock_client.apps_v1.patch_namespaced_daemon_set.call_args
-        patch_body = call_args[0][2]
+        url = mock_session.patch.call_args[0][0]
+        assert url.endswith("/apis/apps/v1/namespaces/kube-system/daemonsets/fluentd")
+        patch_body = mock_session.patch.call_args.kwargs["json"]
         assert (
             "kubectl.kubernetes.io/restartedAt"
             in (patch_body["spec"]["template"]["metadata"]["annotations"])
@@ -7130,8 +6796,8 @@ class TestNodeCordon:
         assert call.args[0].endswith("/api/v1/nodes/node-1")
         assert call.kwargs["json"] == {"spec": {"unschedulable": False}}
 
-    async def test_cordon_node_falls_back_to_official_client(self, mock_client):
-        """Test cordon_node falls back to the official client when aiohttp fails."""
+    async def test_cordon_node_non_2xx_returns_false(self, mock_client):
+        """Test cordon_node returns False when the PATCH is rejected."""
         mock_session = mock_aiohttp_session(
             patch=_mock_response(500, text="error body")
         )
@@ -7141,14 +6807,10 @@ class TestNodeCordon:
         ):
             result = await mock_client.cordon_node("node-1")
 
-        assert result is True
-        mock_client.core_v1.patch_node.assert_called_once_with(
-            "node-1", {"spec": {"unschedulable": True}}
-        )
+        assert result is False
 
-    async def test_cordon_node_both_paths_fail(self, mock_client):
-        """Test cordon_node returns False when aiohttp and the client both fail."""
-        mock_client.core_v1.patch_node.side_effect = ApiException(status=403)
+    async def test_cordon_node_exception_returns_false(self, mock_client):
+        """Test cordon_node returns False when the request raises."""
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             side_effect=aiohttp.ClientError("boom"),
@@ -7157,21 +6819,16 @@ class TestNodeCordon:
 
         assert result is False
 
-    async def test_uncordon_node_falls_back_to_official_client(self, mock_client):
-        """Test uncordon_node falls back to the official client when aiohttp fails."""
-        mock_session = mock_aiohttp_session(
-            patch=_mock_response(500, text="error body")
-        )
+    async def test_uncordon_node_non_2xx_returns_false(self, mock_client):
+        """Test uncordon_node returns False when the PATCH is rejected."""
+        mock_session = mock_aiohttp_session(patch=_mock_response(403, text="forbidden"))
         with patch(
             "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
             return_value=mock_session,
         ):
             result = await mock_client.uncordon_node("node-1")
 
-        assert result is True
-        mock_client.core_v1.patch_node.assert_called_once_with(
-            "node-1", {"spec": {"unschedulable": False}}
-        )
+        assert result is False
 
 
 def _probe_responses(*statuses: int) -> list[MagicMock]:
@@ -7191,6 +6848,8 @@ class TestAuthFailureSignal:
             assert await client._test_connection_aiohttp() is False
 
         assert client.auth_failed is True
+        # Diagnostics report when the last confirmed 401 happened.
+        assert client._last_auth_error_time > 0
         # Not in-cluster: no token-rotation retry, so exactly one request.
         assert mock_get.call_count == 1
 
@@ -7858,14 +7517,11 @@ BAD_SEGMENTS = [".", "..", "%2E", "a/b"]
 
 
 class TestMutationGuards:
-    """Invalid names/namespaces never reach aiohttp or the official client."""
+    """Invalid names/namespaces never reach the API server."""
 
     @staticmethod
     def _assert_no_requests(client, session_cls):
         session_cls.assert_not_called()
-        assert not client.core_v1.mock_calls
-        assert not client.apps_v1.mock_calls
-        assert not client.batch_v1.mock_calls
 
     @pytest.mark.parametrize("bad", BAD_SEGMENTS)
     @pytest.mark.parametrize("position", ["name", "namespace", "default_namespace"])

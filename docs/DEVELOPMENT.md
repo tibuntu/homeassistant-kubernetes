@@ -408,6 +408,6 @@ logger:
 ## Resources
 
 - [Home Assistant Developer Documentation](https://developers.home-assistant.io/)
-- [Kubernetes Python Client](https://github.com/kubernetes-client/python)
+- [Kubernetes API reference](https://kubernetes.io/docs/reference/kubernetes-api/)
 - [Home Assistant Integration Guidelines](https://developers.home-assistant.io/docs/creating_integration_manifest/)
 - [Home Assistant Architecture](https://developers.home-assistant.io/docs/architecture_index/)

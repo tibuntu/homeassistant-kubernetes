@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, ClassVar
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from homeassistant import config_entries
@@ -185,10 +185,6 @@ async def test_user_step_prefills_when_in_cluster_detected(hass: HomeAssistant):
     }
     with (
         patch(
-            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
-            return_value=True,
-        ),
-        patch(
             "custom_components.kubernetes.config_flow.async_detect_in_cluster_config",
             new_callable=AsyncMock,
             return_value=detected,
@@ -219,10 +215,6 @@ async def test_user_step_no_prefill_when_not_in_cluster(hass: HomeAssistant):
     """Without in-cluster credentials, no fields carry suggested_value."""
     with (
         patch(
-            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
-            return_value=True,
-        ),
-        patch(
             "custom_components.kubernetes.config_flow.async_detect_in_cluster_config",
             new_callable=AsyncMock,
             return_value=None,
@@ -247,10 +239,6 @@ async def test_user_step_use_in_cluster_default_true_when_detected(
     detected = {"host": "10.0.0.1", "port": 6443, "api_token": "t"}
     with (
         patch(
-            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
-            return_value=True,
-        ),
-        patch(
             "custom_components.kubernetes.config_flow.async_detect_in_cluster_config",
             new_callable=AsyncMock,
             return_value=detected,
@@ -271,10 +259,6 @@ async def test_user_step_use_in_cluster_default_true_when_detected(
 async def test_user_step_use_in_cluster_default_false_outside(hass: HomeAssistant):
     """Outside the cluster the checkbox defaults to False so behaviour is unchanged."""
     with (
-        patch(
-            "custom_components.kubernetes.config_flow._ensure_kubernetes_imported",
-            return_value=True,
-        ),
         patch(
             "custom_components.kubernetes.config_flow.async_detect_in_cluster_config",
             new_callable=AsyncMock,
@@ -301,15 +285,14 @@ async def test_user_step_use_in_cluster_default_false_outside(hass: HomeAssistan
 def _make_client(
     *, use_in_cluster: bool = True, static_token: str = "fallback-token"
 ) -> KubernetesClient:
-    """Build a real KubernetesClient with the official-client setup short-circuited."""
+    """Build a real KubernetesClient."""
     config = {
         CONF_HOST: "10.0.0.1",
         CONF_PORT: 6443,
         CONF_API_TOKEN: static_token,
         CONF_USE_IN_CLUSTER: use_in_cluster,
     }
-    with patch.object(KubernetesClient, "_setup_kubernetes_client"):
-        return KubernetesClient(config)
+    return KubernetesClient(config)
 
 
 def test_api_token_returns_static_when_use_in_cluster_disabled():
@@ -424,82 +407,6 @@ def test_invalidate_token_cache_forces_reread(monkeypatch):
         token = client.api_token
 
     assert token == "rotated"
-
-
-def test_refresh_api_key_hook_updates_configuration():
-    """The hook installed on the official-client Configuration receives the live token."""
-    client = _make_client(use_in_cluster=True)
-
-    class _Cfg:
-        api_key: ClassVar[dict[str, str]] = {}
-
-    cfg = _Cfg()
-    cfg.api_key = {"authorization": "Bearer stale"}
-
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.open",
-        mock_open(read_data="rotated-token"),
-    ):
-        client._refresh_api_key_hook(cfg)
-
-    assert cfg.api_key["authorization"] == "Bearer rotated-token"
-
-
-def test_log_error_invalidates_token_cache_on_401():
-    """A 401 ApiException must drop the cached SA token so the next call re-reads."""
-    from kubernetes.client.rest import ApiException
-
-    client = _make_client(use_in_cluster=True)
-    # Seed a fresh-looking cache.
-    client._token_cache = "stale-token"
-    client._token_cache_time = 1_000_000.0
-
-    err = ApiException(status=401, reason="Unauthorized")
-    client._log_error("get_pods", err)
-
-    assert client._token_cache_time == 0.0
-
-
-def test_log_error_does_not_invalidate_cache_when_not_in_cluster():
-    """Static-token mode must not touch the cache state on 401."""
-    from kubernetes.client.rest import ApiException
-
-    client = _make_client(use_in_cluster=False)
-    client._token_cache_time = 1_000_000.0
-
-    err = ApiException(status=401, reason="Unauthorized")
-    client._log_error("get_pods", err)
-
-    assert client._token_cache_time == 1_000_000.0
-
-
-def test_setup_kubernetes_client_wires_hook_when_in_cluster():
-    """_setup_kubernetes_client installs the refresh hook only when use_in_cluster=True."""
-    config = {
-        CONF_HOST: "10.0.0.1",
-        CONF_PORT: 6443,
-        CONF_API_TOKEN: "static",
-        CONF_USE_IN_CLUSTER: True,
-    }
-    fake_cfg = MagicMock()
-    fake_cfg.api_key = {}
-
-    with (
-        patch(
-            "custom_components.kubernetes.kubernetes_client.k8s_client.Configuration",
-            return_value=fake_cfg,
-        ),
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client.ApiClient"),
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client.CoreV1Api"),
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client.AppsV1Api"),
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client.BatchV1Api"),
-    ):
-        client = KubernetesClient(config)
-
-    # The hook must be the bound method, and the initial api_key must use the
-    # static token (not trigger a file read on the event loop).
-    assert fake_cfg.refresh_api_key_hook == client._refresh_api_key_hook
-    assert fake_cfg.api_key == {"authorization": "Bearer static"}
 
 
 def test_api_token_setter_updates_static_and_clears_cache():
@@ -742,29 +649,3 @@ def test_read_service_account_token_helper_returns_file_contents():
 
     with patch("pathlib.Path.read_text", return_value="raw-token\n"):
         assert _read_service_account_token() == "raw-token\n"
-
-
-def test_setup_kubernetes_client_skips_hook_for_static_mode():
-    """Static-token mode leaves Configuration.refresh_api_key_hook untouched."""
-    config = {
-        CONF_HOST: "10.0.0.1",
-        CONF_PORT: 6443,
-        CONF_API_TOKEN: "static",
-        CONF_USE_IN_CLUSTER: False,
-    }
-    fake_cfg = MagicMock(spec_set=["host", "api_key", "api_key_prefix", "verify_ssl"])
-    fake_cfg.api_key = {}
-
-    with (
-        patch(
-            "custom_components.kubernetes.kubernetes_client.k8s_client.Configuration",
-            return_value=fake_cfg,
-        ),
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client.ApiClient"),
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client.CoreV1Api"),
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client.AppsV1Api"),
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client.BatchV1Api"),
-    ):
-        # spec_set without refresh_api_key_hook means an attempt to set it
-        # would AttributeError — proving the production code didn't try.
-        KubernetesClient(config)
