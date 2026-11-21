@@ -89,7 +89,7 @@ The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `n
 
 ## Known limitations
 
-- **CPU and memory need metrics-server.** Without it the workload and node CPU/memory sensors stay empty and a repair issue says so. With the Watch API on (the default), metrics refresh every 5 minutes, because the Metrics API cannot be watched.
+- **CPU and memory need metrics-server.** Without it the workload and node CPU/memory sensors stay empty and a repair issue says so. The panel's Pods table and workload cards show the same usage, as `-` or hidden when the cluster has no metrics. With the Watch API on (the default), metrics refresh every 5 minutes, because the Metrics API cannot be watched. Usage of a workload only counts pods the integration collects, so Job-owned pods do not count while *Exclude Job pods* is on.
 - **Pod, Job and node customizations expire an hour after the resource is gone.** Their names are usually generated, so the entity-registry records of removed ones are purged to keep the registry from growing without bound. A StatefulSet pod or node that comes back later than that gets a fresh entity without its earlier entity_id, name or area.
 - **HPA-managed workloads cannot be scaled to a fixed count.** The HorizontalPodAutoscaler would revert it, so scaling to anything but 0 is rejected; change the HPA's min/max replicas instead. Turning the switch back on hands control back to the HPA. See [HPA-managed workloads](https://tibuntu.github.io/homeassistant-kubernetes/ENTITIES/#hpa-managed-workloads).
 - **Ingresses, HTTPRoutes, and Services have no per-resource entities** — only count sensors and the sidebar panel's Network tab (HTTPRoutes have no count sensor at all). There are no PersistentVolumeClaim / storage sensors.
