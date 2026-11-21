@@ -21,14 +21,27 @@ cd homeassistant-kubernetes
 
 ### 2. Set Up a Virtual Environment
 
+CI installs the exact versions pinned in `uv.lock`. The quickest way to get the same environment is [uv](https://docs.astral.sh/uv/) (Python 3.14.2+, the minimum of the pinned Home Assistant):
+
 ```bash
-# Create virtual environment
+# Create .venv and install the locked dev dependencies
+uv sync --extra dev
+source .venv/bin/activate
+```
+
+Without uv, a plain virtual environment works too, but it resolves the unpinned transitive dependencies afresh:
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
-
-# Install dependencies
 pip install -e ".[dev]"
+```
 
+After changing dependencies in `pyproject.toml`, run `uv lock` and commit the updated `uv.lock` — CI's `uv sync --locked` fails when the two disagree. Renovate refreshes the lock file's transitive dependencies weekly (lock file maintenance, Sundays).
+
+Then link the integration into a Home Assistant config directory:
+
+```bash
 # Create Home Assistant config directory
 mkdir -p config/custom_components
 ln -sf "$(pwd)/custom_components/kubernetes" "config/custom_components/kubernetes"
