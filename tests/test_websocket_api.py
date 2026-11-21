@@ -2787,6 +2787,49 @@ class TestWebsocketPodLogs:
         assert msg["success"] is True
         assert msg["result"]["clusters"][0]["pod_logs_enabled"] is expected
 
+    @pytest.mark.parametrize(
+        ("data", "expected"),
+        [
+            ({"pods": {}, "pod_metrics_available": True}, True),
+            ({"pods": {}, "pod_metrics_available": False}, False),
+            ({"pods": {}}, False),
+        ],
+    )
+    async def test_pods_and_workloads_list_carry_metrics_available(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        data,
+        expected,
+    ):
+        """Both lists tell the panel per cluster whether pod metrics exist."""
+        coordinator = add_loaded_client_entry(MagicMock())
+        coordinator.data = data
+
+        pods = await self._send(
+            hass, hass_ws_client, {"id": 1, "type": "kubernetes/pods/list"}
+        )
+        workloads = await self._send(
+            hass, hass_ws_client, {"id": 2, "type": "kubernetes/workloads/list"}
+        )
+
+        assert pods["result"]["clusters"][0]["metrics_available"] is expected
+        assert workloads["result"]["clusters"][0]["metrics_available"] is expected
+
+    async def test_metrics_available_false_without_data(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """No coordinator data yet means metrics are not available."""
+        coordinator = add_loaded_client_entry(MagicMock())
+        coordinator.data = None
+
+        workloads = await self._send(
+            hass, hass_ws_client, {"id": 1, "type": "kubernetes/workloads/list"}
+        )
+
+        assert workloads["result"]["clusters"][0]["metrics_available"] is False
+
     async def test_pods_list_fetches_live_when_pods_disabled(
         self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
     ):

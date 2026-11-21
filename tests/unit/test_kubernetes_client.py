@@ -2409,6 +2409,43 @@ async def test_enrich_workloads_with_metrics_deployments(mock_client):
     assert deployments[0]["memory_usage"] == 128.0
 
 
+@pytest.mark.parametrize("all_namespaces", [True, False])
+async def test_enrich_uses_supplied_pods_and_metrics(mock_client, all_namespaces):
+    """Supplied pods/metrics are used as-is: no pods list, no metrics fetch."""
+    mock_client.monitor_all_namespaces = all_namespaces
+    mock_client._get_pods_aiohttp = AsyncMock()
+    mock_client._get_pods_all_namespaces_aiohttp = AsyncMock()
+    mock_client._get_pod_metrics_aiohttp = AsyncMock()
+    deployments = [{"name": "web", "namespace": "default", "selector": {"app": "test"}}]
+
+    await mock_client.enrich_workloads_with_metrics(
+        deployments,
+        pods=[{"name": "p", "namespace": "default", "labels": {"app": "test"}}],
+        metrics={"default/p": {"cpu": 0.5, "memory": 128.0}},
+    )
+
+    assert deployments[0]["cpu_usage"] == 0.5
+    assert deployments[0]["memory_usage"] == 128.0
+    mock_client._get_pods_aiohttp.assert_not_called()
+    mock_client._get_pods_all_namespaces_aiohttp.assert_not_called()
+    mock_client._get_pod_metrics_aiohttp.assert_not_called()
+
+
+async def test_enrich_supplied_empty_metrics_is_not_refetched(mock_client):
+    """An empty (but supplied) metrics dict leaves workloads at 0.0 without a refetch."""
+    mock_client._get_pod_metrics_aiohttp = AsyncMock()
+    deployments = [{"name": "web", "namespace": "default", "selector": {"app": "test"}}]
+
+    await mock_client.enrich_workloads_with_metrics(
+        deployments,
+        pods=[{"name": "p", "namespace": "default", "labels": {"app": "test"}}],
+        metrics={},
+    )
+
+    assert deployments[0]["cpu_usage"] == 0.0
+    mock_client._get_pod_metrics_aiohttp.assert_not_called()
+
+
 async def test_enrich_workloads_with_metrics_statefulsets(mock_client):
     """Test enriching statefulsets with metrics."""
     statefulsets = [
@@ -5305,7 +5342,7 @@ class TestParseReplicaWorkloadItem:
             mock_client, "_enrich_workloads_with_metrics", new=AsyncMock()
         ) as private:
             await mock_client.enrich_workloads_with_metrics(workloads)
-        private.assert_awaited_once_with(workloads, "workload")
+        private.assert_awaited_once_with(workloads, "workload", pods=None, metrics=None)
 
     def test_missing_selector(self, mock_client):
         """_parse_replica_workload_item handles missing selector gracefully."""
