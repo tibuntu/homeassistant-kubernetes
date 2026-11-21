@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import aiohttp
 from homeassistant.components.frontend import (
     async_register_built_in_panel,
     async_remove_panel,
 )
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_CLOSE, Platform
+from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import config_validation as cv, issue_registry as ir
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
@@ -85,7 +86,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
             CONF_EXCLUDE_JOB_PODS: entry.options.get(
                 CONF_EXCLUDE_JOB_PODS, DEFAULT_EXCLUDE_JOB_PODS
             ),
-        }
+        },
+        _async_create_session(hass, entry),
     )
     # Before the first request, or it goes out with the stale stored token.
     await hass.async_add_executor_job(client.load_in_cluster_token)
@@ -133,6 +135,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
     # raises on a listener plus that flow and logs a deprecation on a listener
     # plus async_update_reload_and_abort.
     return True
+
+
+def _async_create_session(
+    hass: HomeAssistant, entry: KubernetesConfigEntry
+) -> aiohttp.ClientSession:
+    """Return the entry's own session, closed on unload and on HA shutdown.
+
+    Not Home Assistant's shared session: its connector (which
+    ``async_create_clientsession`` shares too) allows 100 connections per
+    host, and every watch loop holds one for good — 1 + 11 per namespace in
+    per-namespace mode with events on, so nine namespaces would leave polls
+    and mutations queueing behind the watches.
+    """
+    session = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=0))
+
+    async def _async_close(_event: Event | None = None) -> None:
+        await session.close()
+
+    entry.async_on_unload(_async_close)
+    entry.async_on_unload(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_CLOSE, _async_close)
+    )
+    return session
 
 
 def _async_migrate_unique_ids(

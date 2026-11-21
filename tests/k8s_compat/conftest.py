@@ -7,8 +7,11 @@ k8s-compat workflow.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 import os
+from typing import Any
 
+import aiohttp
 import pytest
 
 
@@ -51,8 +54,12 @@ def _get_client_class():
 
 
 @pytest.fixture
-def k8s_client():
-    """Real KubernetesClient connected to the kind cluster."""
+async def k8s_client() -> AsyncIterator[Any]:
+    """Real KubernetesClient connected to the kind cluster.
+
+    Home Assistant normally injects the session; here a plain one is opened
+    and closed per test.
+    """
     server, token = _require_cluster()
     from urllib.parse import urlparse
 
@@ -62,16 +69,18 @@ def k8s_client():
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or 6443
 
-    return KubernetesClient(
-        {
-            "host": host,
-            "port": port,
-            "api_token": token,
-            "cluster_name": "compat-test",
-            "namespace": ["default"],
-            "monitor_all_namespaces": True,
-            "verify_ssl": False,
-            "use_in_cluster": False,
-            "exclude_job_pods": True,
-        }
-    )
+    async with aiohttp.ClientSession() as session:
+        yield KubernetesClient(
+            {
+                "host": host,
+                "port": port,
+                "api_token": token,
+                "cluster_name": "compat-test",
+                "namespace": ["default"],
+                "monitor_all_namespaces": True,
+                "verify_ssl": False,
+                "use_in_cluster": False,
+                "exclude_job_pods": True,
+            },
+            session,
+        )

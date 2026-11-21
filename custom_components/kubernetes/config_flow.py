@@ -15,6 +15,7 @@ from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.helpers import selector
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import SelectOptionDict
 import voluptuous as vol
 
@@ -696,23 +697,22 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             port = user_input.get(CONF_PORT, DEFAULT_PORT)
             ssl_param = await self._ssl_param(user_input)
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{host}:{port}/api/v1/",
-                    headers=headers,
-                    ssl=ssl_param,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        _LOGGER.info(
-                            "Successfully connected to Kubernetes API using aiohttp"
-                        )
-                        return True
-                    else:
-                        _LOGGER.error(
-                            "aiohttp connection failed with status: %s", response.status
-                        )
-                        return False
+            async with async_get_clientsession(self.hass).get(
+                f"https://{host}:{port}/api/v1/",
+                headers=headers,
+                ssl=ssl_param,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status == 200:
+                    _LOGGER.info(
+                        "Successfully connected to Kubernetes API using aiohttp"
+                    )
+                    return True
+                else:
+                    _LOGGER.error(
+                        "aiohttp connection failed with status: %s", response.status
+                    )
+                    return False
         except Exception as ex:
             _LOGGER.error("aiohttp connection test failed: %s", ex)
             return False
@@ -729,31 +729,30 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             port = user_input.get(CONF_PORT, DEFAULT_PORT)
             ssl_param = await self._ssl_param(user_input)
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{host}:{port}/api/v1/namespaces",
-                    headers=headers,
-                    ssl=ssl_param,
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        namespaces = [
-                            item["metadata"]["name"] for item in data.get("items", [])
-                        ]
-                        _LOGGER.info(
-                            "Successfully fetched %d namespaces from cluster",
-                            len(namespaces),
-                        )
-                        return sorted(namespaces)
-                    else:
-                        error_text = await response.text()
-                        _LOGGER.warning(
-                            "Failed to fetch namespaces: HTTP %d - %s",
-                            response.status,
-                            error_text[:200] if error_text else "No error details",
-                        )
-                        return []
+            async with async_get_clientsession(self.hass).get(
+                f"https://{host}:{port}/api/v1/namespaces",
+                headers=headers,
+                ssl=ssl_param,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    namespaces = [
+                        item["metadata"]["name"] for item in data.get("items", [])
+                    ]
+                    _LOGGER.info(
+                        "Successfully fetched %d namespaces from cluster",
+                        len(namespaces),
+                    )
+                    return sorted(namespaces)
+                else:
+                    error_text = await response.text()
+                    _LOGGER.warning(
+                        "Failed to fetch namespaces: HTTP %d - %s",
+                        response.status,
+                        error_text[:200] if error_text else "No error details",
+                    )
+                    return []
         except aiohttp.ClientError as ex:
             _LOGGER.warning("Network error while fetching namespaces: %s", ex)
             return []

@@ -38,7 +38,7 @@ def mock_config():
 @pytest.fixture
 def mock_client(mock_config):
     """Kubernetes client under test."""
-    return KubernetesClient(mock_config)
+    return KubernetesClient(mock_config, MagicMock())
 
 
 class TestNormalizeHost:
@@ -85,7 +85,7 @@ def test_kubernetes_client_initialization_brackets_ipv6_host():
         "verify_ssl": True,
         "monitor_all_namespaces": False,
     }
-    client = KubernetesClient(config)
+    client = KubernetesClient(config, MagicMock())
 
     assert client.host == "[aaaa:bbbb:cccc::1]"
     # The URL the reporter saw fail must now be well-formed.
@@ -97,7 +97,7 @@ def test_kubernetes_client_initialization_brackets_ipv6_host():
 
 def test_kubernetes_client_initialization(mock_config):
     """Test Kubernetes client initialization."""
-    client = KubernetesClient(mock_config)
+    client = KubernetesClient(mock_config, MagicMock())
 
     assert client.host == mock_config["host"]
     assert client.port == mock_config["port"]
@@ -110,14 +110,14 @@ def test_kubernetes_client_initialization_with_ca_cert(mock_config):
     """Test Kubernetes client initialization with CA certificate."""
     mock_config["ca_cert"] = "test-ca-cert"
 
-    client = KubernetesClient(mock_config)
+    client = KubernetesClient(mock_config, MagicMock())
 
     assert client.ca_cert == "test-ca-cert"
 
 
 def _make_client(config):
     """Build a KubernetesClient."""
-    return KubernetesClient(config)
+    return KubernetesClient(config, MagicMock())
 
 
 def _mock_response(status: int = 200, **awaitable_attrs: Any) -> MagicMock:
@@ -138,7 +138,7 @@ def _mock_response(status: int = 200, **awaitable_attrs: Any) -> MagicMock:
 
 
 def mock_aiohttp_session(**methods: Any) -> MagicMock:
-    """Build a mock aiohttp ``ClientSession`` (usable as an async context manager).
+    """Build a mock aiohttp ``ClientSession`` to inject into the client.
 
     Each keyword names an HTTP method (``get``/``patch``/``delete``/``post``);
     its value drives what ``session.<method>(...)`` does:
@@ -297,10 +297,7 @@ class TestSslParam:
         mock_session = mock_aiohttp_session(get=200)
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(client, "_session", mock_session),
             patch(
                 "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
                 return_value=sentinel_ctx,
@@ -319,10 +316,7 @@ class TestSslParam:
         mock_session = mock_aiohttp_session(patch=200)
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(client, "_session", mock_session),
             patch(
                 "custom_components.kubernetes.kubernetes_client.ssl.create_default_context",
                 return_value=sentinel_ctx,
@@ -362,10 +356,7 @@ async def test_get_pods_count_api_exception(mock_client):
     mock_session = mock_aiohttp_session(get=Exception("Connection failed"))
 
     with (
-        patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ),
+        patch.object(mock_client, "_session", mock_session),
         pytest.raises(KubernetesApiError, match="Cannot connect"),
     ):
         await mock_client.get_pods_count()
@@ -1597,7 +1588,7 @@ async def test_scale_workload_success(mock_client, method_name, args):
     """scale/start/stop deployment & statefulset succeed via a PATCH on /scale."""
     mock_session = mock_aiohttp_session(patch=200)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch.object(mock_client, "_session", mock_session):
         result = await getattr(mock_client, method_name)(*args)
 
     assert result is True
@@ -1811,7 +1802,7 @@ def _trigger_guard_client(mock_config, *, monitor_all: bool) -> KubernetesClient
     """Client monitoring "default" and "apps" for the trigger namespace guard."""
     mock_config["namespace"] = ["default", "apps"]
     mock_config["monitor_all_namespaces"] = monitor_all
-    return KubernetesClient(mock_config)
+    return KubernetesClient(mock_config, MagicMock())
 
 
 def _trigger_session() -> MagicMock:
@@ -1834,10 +1825,7 @@ async def test_trigger_cronjob_unmonitored_namespace_creates_no_job(mock_config)
     client = _trigger_guard_client(mock_config, monitor_all=False)
     session = _trigger_session()
 
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-        return_value=session,
-    ) as session_cls:
+    with patch.object(client, "_session", session):
         result = await client.trigger_cronjob("backup", "other")
 
     assert result["success"] is False
@@ -1848,8 +1836,7 @@ async def test_trigger_cronjob_unmonitored_namespace_creates_no_job(mock_config)
     )
     assert "monitor_all_namespaces" in result["error"]
     # No Job was created: the API was never contacted.
-    assert session_cls.call_count == 0
-    assert session.post.call_count == 0
+    assert not session.mock_calls
 
 
 async def test_trigger_cronjob_monitored_non_default_namespace(mock_config):
@@ -1857,10 +1844,7 @@ async def test_trigger_cronjob_monitored_non_default_namespace(mock_config):
     client = _trigger_guard_client(mock_config, monitor_all=False)
     session = _trigger_session()
 
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-        return_value=session,
-    ):
+    with patch.object(client, "_session", session):
         result = await client.trigger_cronjob("backup", "apps")
 
     assert result["success"] is True
@@ -1876,10 +1860,7 @@ async def test_trigger_cronjob_monitor_all_namespaces_lifts_guard(mock_config):
     client = _trigger_guard_client(mock_config, monitor_all=True)
     session = _trigger_session()
 
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-        return_value=session,
-    ):
+    with patch.object(client, "_session", session):
         result = await client.trigger_cronjob("backup", "other")
 
     assert result["success"] is True
@@ -1904,10 +1885,7 @@ async def test_scale_methods_return_false_on_api_error(mock_client, method, args
     """A rejected /scale PATCH makes every scale wrapper return False."""
     session = mock_aiohttp_session(patch=_mock_response(404, text="not found"))
 
-    with patch(
-        "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-        return_value=session,
-    ):
+    with patch.object(mock_client, "_session", session):
         result = await getattr(mock_client, method)(*args)
 
     assert result is False
@@ -2162,7 +2140,7 @@ class TestKubernetesClientCronJobOperations:
         # Update config to allow all namespaces
         mock_config["monitor_all_namespaces"] = True
 
-        client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config, MagicMock())
         client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": True,
@@ -2191,7 +2169,7 @@ class TestKubernetesClientCronJobOperations:
         # Update config to allow all namespaces
         mock_config["monitor_all_namespaces"] = True
 
-        client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config, MagicMock())
         client._patch_cronjob_aiohttp = AsyncMock(
             return_value={
                 "success": True,
@@ -2385,8 +2363,7 @@ async def test_get_server_version_returns_git_version_verbatim(
     )
 
     with (
-        patch("aiohttp.TCPConnector"),
-        patch("aiohttp.ClientSession", return_value=mock_session),
+        patch.object(mock_client, "_session", mock_session),
     ):
         assert await mock_client.get_server_version() == git_version
 
@@ -2409,8 +2386,7 @@ async def test_get_server_version_best_effort(mock_client, get):
     mock_session = mock_aiohttp_session(get=get)
 
     with (
-        patch("aiohttp.TCPConnector"),
-        patch("aiohttp.ClientSession", return_value=mock_session),
+        patch.object(mock_client, "_session", mock_session),
     ):
         assert await mock_client.get_server_version() is None
 
@@ -2440,8 +2416,7 @@ async def test_get_node_metrics_aiohttp_success(mock_client):
     )
 
     with (
-        patch("aiohttp.TCPConnector"),
-        patch("aiohttp.ClientSession", return_value=mock_session),
+        patch.object(mock_client, "_session", mock_session),
     ):
         result = await mock_client._get_node_metrics_aiohttp()
 
@@ -2459,8 +2434,7 @@ async def test_get_node_metrics_aiohttp_403(mock_client):
     mock_session = mock_aiohttp_session(get=403)
 
     with (
-        patch("aiohttp.TCPConnector"),
-        patch("aiohttp.ClientSession", return_value=mock_session),
+        patch.object(mock_client, "_session", mock_session),
     ):
         result = await mock_client._get_node_metrics_aiohttp()
 
@@ -2472,8 +2446,7 @@ async def test_get_node_metrics_aiohttp_exception(mock_client):
     mock_session = mock_aiohttp_session(get=Exception("Connection refused"))
 
     with (
-        patch("aiohttp.TCPConnector"),
-        patch("aiohttp.ClientSession", return_value=mock_session),
+        patch.object(mock_client, "_session", mock_session),
     ):
         result = await mock_client._get_node_metrics_aiohttp()
 
@@ -2483,7 +2456,7 @@ async def test_get_node_metrics_aiohttp_exception(mock_client):
 @pytest.fixture
 def extended_client(mock_config):
     """Create a Kubernetes client instance for extended tests."""
-    return KubernetesClient(mock_config)
+    return KubernetesClient(mock_config, MagicMock())
 
 
 class TestKubernetesClientExtended:
@@ -2518,7 +2491,7 @@ class TestKubernetesClientExtended:
     async def test_test_connection_aiohttp_failure(self, extended_client):
         """Test _test_connection_aiohttp failure scenarios."""
         # Test non-200 status
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(extended_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 401
             mock_get.return_value.__aenter__.return_value = mock_response
@@ -2526,8 +2499,8 @@ class TestKubernetesClientExtended:
             assert await extended_client._test_connection_aiohttp() is False
 
         # Test exception
-        with patch(
-            "aiohttp.ClientSession.get", side_effect=Exception("Connection error")
+        with patch.object(
+            extended_client._session, "get", side_effect=Exception("Connection error")
         ):
             assert await extended_client._test_connection_aiohttp() is False
 
@@ -2560,7 +2533,7 @@ class TestKubernetesClientExtended:
             ]
         }
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(extended_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json.return_value = mock_node_data
@@ -2580,7 +2553,7 @@ class TestKubernetesClientExtended:
         # Malformed data that causes parsing error
         mock_node_data = {"items": [{"metadata": {}}]}  # Missing status, spec, etc.
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(extended_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json.return_value = mock_node_data
@@ -2595,7 +2568,7 @@ class TestKubernetesClientExtended:
     async def test_get_nodes_aiohttp_failure(self, extended_client):
         """_get_nodes_aiohttp raises on non-200 and propagates transport errors."""
         # Test non-200 status
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(extended_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 500
             mock_get.return_value.__aenter__.return_value = mock_response
@@ -2605,7 +2578,9 @@ class TestKubernetesClientExtended:
 
         # Test exception
         with (
-            patch("aiohttp.ClientSession.get", side_effect=Exception("Network error")),
+            patch.object(
+                extended_client._session, "get", side_effect=Exception("Network error")
+            ),
             pytest.raises(Exception, match="Network error"),
         ):
             await extended_client._get_nodes_aiohttp()
@@ -2659,7 +2634,7 @@ class TestKubernetesClientGetPods:
             ]
         }
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value=mock_response_data)
@@ -2702,7 +2677,7 @@ class TestKubernetesClientGetPods:
         """Test get_pods with empty response."""
         mock_response_data = {"items": []}
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value=mock_response_data)
@@ -2714,7 +2689,7 @@ class TestKubernetesClientGetPods:
     @pytest.mark.asyncio
     async def test_get_pods_http_error(self, mock_client):
         """get_pods raises when the connection probe sees an HTTP error."""
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 500
             mock_get.return_value.__aenter__.return_value = mock_response
@@ -2726,8 +2701,9 @@ class TestKubernetesClientGetPods:
     async def test_get_pods_connection_error(self, mock_client):
         """get_pods raises when the connection probe cannot reach the API."""
         with (
-            patch(
-                "aiohttp.ClientSession.get",
+            patch.object(
+                mock_client._session,
+                "get",
                 side_effect=aiohttp.ClientError("Connection error"),
             ),
             pytest.raises(KubernetesApiError),
@@ -2741,7 +2717,7 @@ class TestKubernetesClientGetPods:
 
         mock_response_data = {"items": []}
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value=mock_response_data)
@@ -2838,10 +2814,7 @@ class TestFetchResourceCount:
             )
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             count = await mock_client._fetch_resource_count(
                 "apis/apps/v1", "deployments"
             )
@@ -2865,10 +2838,7 @@ class TestFetchResourceCount:
             )
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             count = await mock_client._fetch_resource_count(
                 "apis/apps/v1", "deployments"
             )
@@ -2883,10 +2853,7 @@ class TestFetchResourceCount:
         mock_session = mock_aiohttp_session(get=403)
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(
                 KubernetesApiError,
                 match="deployments count request failed for namespace default "
@@ -2903,10 +2870,7 @@ class TestFetchResourceCount:
         mock_session = mock_aiohttp_session(get=Exception("Network error"))
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(Exception, match="Network error"),
         ):
             await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
@@ -2921,10 +2885,7 @@ class TestFetchResourceCount:
             )
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             count = await mock_client._fetch_resource_count(
                 "api/v1", "nodes", cluster_scoped=True
             )
@@ -2953,10 +2914,7 @@ class TestFetchResourceCount:
             ]
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             count = await mock_client._fetch_resource_count(
                 "apis/apps/v1", "deployments"
             )
@@ -2986,10 +2944,7 @@ class TestFetchResourceList:
             get=_mock_response(200, json_data={"items": items_data})
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._fetch_resource_list(
                 "apis/apps/v1",
                 "deployments",
@@ -3019,10 +2974,7 @@ class TestFetchResourceList:
             get=_mock_response(200, json_data={"items": items_data})
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._fetch_resource_list(
                 "apis/apps/v1",
                 "deployments",
@@ -3039,10 +2991,7 @@ class TestFetchResourceList:
         mock_session = mock_aiohttp_session(get=403)
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(
                 KubernetesApiError,
                 match="deployments request failed for namespace default "
@@ -3063,10 +3012,7 @@ class TestFetchResourceList:
         mock_session = mock_aiohttp_session(get=Exception("Network error"))
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(Exception, match="Network error"),
         ):
             await mock_client._fetch_resource_list(
@@ -3097,10 +3043,7 @@ class TestFetchResourceList:
                 return {"parsed": True}
             return None
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._fetch_resource_list(
                 "apis/apps/v1", "deployments", parse_fn
             )
@@ -3128,10 +3071,7 @@ class TestFetchResourceList:
                 return None
             return {"parsed": True}
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._fetch_resource_list(
                 "apis/apps/v1", "deployments", parse_fn
             )
@@ -3169,10 +3109,7 @@ class TestTriggerCronjobAiohttp:
             post=_mock_response(201, json_data=job_result),
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
 
         assert result["success"] is True
@@ -3184,10 +3121,7 @@ class TestTriggerCronjobAiohttp:
         """Test _trigger_cronjob_aiohttp when GET cronjob returns non-200."""
         mock_session = mock_aiohttp_session(get=404)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._trigger_cronjob_aiohttp(
                 "missing-cron", "default"
             )
@@ -3203,10 +3137,7 @@ class TestTriggerCronjobAiohttp:
             get=_mock_response(200, json_data=cronjob_data)
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
 
         assert result["success"] is False
@@ -3225,10 +3156,7 @@ class TestTriggerCronjobAiohttp:
             post=409,  # Conflict
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
 
         assert result["success"] is False
@@ -3238,10 +3166,7 @@ class TestTriggerCronjobAiohttp:
         """Test _trigger_cronjob_aiohttp handles exceptions."""
         mock_session = mock_aiohttp_session(get=Exception("Network error"))
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
 
         assert result["success"] is False
@@ -3278,10 +3203,7 @@ class TestListResourceWithVersion:
 
         mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             items, rv = await mock_client.list_resource_with_version(
                 "https://host/api/v1/pods"
             )
@@ -3296,10 +3218,7 @@ class TestListResourceWithVersion:
 
         mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             items, rv = await mock_client.list_resource_with_version(
                 "https://host/api/v1/pods"
             )
@@ -3323,10 +3242,7 @@ class TestWatchStream:
 
         mock_session = _make_aiohttp_stream_mock(lines)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             collected = []
             async for event in mock_client.watch_stream(
                 "https://host/api/v1/pods", "0"
@@ -3341,10 +3257,7 @@ class TestWatchStream:
         """watch_stream should raise ResourceVersionExpired when the server returns 410."""
         mock_session = mock_aiohttp_session(get=410)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             with pytest.raises(ResourceVersionExpired):
                 async for _ in mock_client.watch_stream(
                     "https://host/api/v1/pods", "old-rv"
@@ -3373,10 +3286,7 @@ class TestWatchStream:
         }
         mock_session = _make_aiohttp_stream_mock([_json.dumps(error_event).encode()])
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             with pytest.raises(ResourceVersionExpired):
                 async for _ in mock_client.watch_stream(
                     "https://host/api/v1/events", "48555610"
@@ -3401,10 +3311,7 @@ class TestWatchStream:
         }
         mock_session = _make_aiohttp_stream_mock([_json.dumps(error_event).encode()])
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             with pytest.raises(KubernetesApiError, match="InternalError"):
                 async for _ in mock_client.watch_stream(
                     "https://host/api/v1/events", "1"
@@ -3423,10 +3330,7 @@ class TestWatchStream:
 
         collected = []
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(ResourceVersionExpired),
         ):
             async for event in mock_client.watch_stream(
@@ -3451,10 +3355,7 @@ class TestWatchStream:
         event = {"type": event_type, "object": {"metadata": {"resourceVersion": "9"}}}
         mock_session = _make_aiohttp_stream_mock([_json.dumps(event).encode()])
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             collected = [
                 e
                 async for e in mock_client.watch_stream("https://host/api/v1/pods", "1")
@@ -3471,10 +3372,7 @@ class TestWatchStream:
 
         mock_session = _make_aiohttp_stream_mock(lines)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             collected = []
             async for event in mock_client.watch_stream(
                 "https://host/api/v1/pods", "1"
@@ -4135,10 +4033,7 @@ class TestWatchStreamExtended:
         )
         mock_session = mock_aiohttp_session(get=mock_response)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             with pytest.raises(aiohttp.ClientResponseError):
                 async for _ in mock_client.watch_stream(
                     "https://host/api/v1/pods", "1"
@@ -4153,10 +4048,7 @@ class TestWatchStreamExtended:
 
         mock_session = _make_aiohttp_stream_mock(lines)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             with pytest.raises(_json.JSONDecodeError):
                 async for _ in mock_client.watch_stream(
                     "https://host/api/v1/pods", "0"
@@ -4175,10 +4067,7 @@ class TestWatchStreamExtended:
 
         mock_session = _make_aiohttp_stream_mock(lines)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             collected = []
             async for event in mock_client.watch_stream(
                 "https://host/api/v1/pods", "1"
@@ -4197,10 +4086,7 @@ class TestWatchStreamExtended:
 
         mock_session = _make_aiohttp_stream_mock(lines)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             collected = []
             async for ev in mock_client.watch_stream("https://host/api/v1/pods", "5"):
                 collected.append(ev)
@@ -4226,10 +4112,7 @@ class TestListResourceWithVersionExtended:
         )
         mock_session = mock_aiohttp_session(get=mock_response)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             with pytest.raises(aiohttp.ClientResponseError):
                 await mock_client.list_resource_with_version("https://host/api/v1/pods")
 
@@ -4239,10 +4122,7 @@ class TestListResourceWithVersionExtended:
             get=aiohttp.ClientError("Connection refused")
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             with pytest.raises(aiohttp.ClientError):
                 await mock_client.list_resource_with_version("https://host/api/v1/pods")
 
@@ -4252,10 +4132,7 @@ class TestListResourceWithVersionExtended:
 
         mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             items, rv = await mock_client.list_resource_with_version(
                 "https://host/api/v1/pods"
             )
@@ -4279,10 +4156,7 @@ class TestFetchResourceCountExtended:
         )
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(aiohttp.ClientSSLError),
         ):
             await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
@@ -4295,10 +4169,7 @@ class TestFetchResourceCountExtended:
         mock_session = mock_aiohttp_session(get=TimeoutError())
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(TimeoutError),
         ):
             await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
@@ -4327,10 +4198,7 @@ class TestFetchResourceCountExtended:
         )
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(Exception, match="Network error for broken namespace"),
         ):
             await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
@@ -4345,10 +4213,7 @@ class TestFetchResourceCountExtended:
         mock_session = mock_aiohttp_session(get=500)
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(
                 KubernetesApiError,
                 match="deployments count request failed with status 500",
@@ -4372,10 +4237,7 @@ class TestFetchResourceListExtended:
         )
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(aiohttp.ClientSSLError),
         ):
             await mock_client._fetch_resource_list(
@@ -4399,10 +4261,7 @@ class TestFetchResourceListExtended:
             get=_mock_response(200, json_data={"items": items_data})
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._fetch_resource_list(
                 "api/v1",
                 "nodes",
@@ -4432,10 +4291,7 @@ class TestFetchResourceListExtended:
         )
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(Exception, match="Namespace not accessible"),
         ):
             await mock_client._fetch_resource_list(
@@ -4452,10 +4308,7 @@ class TestFetchResourceListExtended:
         mock_session = mock_aiohttp_session(get=404)
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(KubernetesApiError, match="status 404"),
         ):
             await mock_client._fetch_resource_list(
@@ -4471,10 +4324,7 @@ class TestFetchResourceListExtended:
         mock_session = mock_aiohttp_session(get=500)
 
         with (
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
             pytest.raises(
                 KubernetesApiError, match="deployments request failed with status 500"
             ) as exc_info,
@@ -4497,7 +4347,7 @@ class TestScaleDeploymentExtended:
             patch=_mock_response(422, text="Unprocessable Entity")
         )
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.scale_deployment("test-deploy", 3, "default")
 
         assert result is False
@@ -4506,7 +4356,7 @@ class TestScaleDeploymentExtended:
         """scale_deployment returns False when aiohttp raises an exception."""
         mock_session = mock_aiohttp_session(patch=Exception("Connection timeout"))
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.scale_deployment("test-deploy", 3, "default")
 
         assert result is False
@@ -4515,7 +4365,7 @@ class TestScaleDeploymentExtended:
         """A 200 on the /scale PATCH makes scale_deployment return True."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.scale_deployment("test-deploy", 4, "default")
 
         assert result is True
@@ -4525,7 +4375,7 @@ class TestScaleDeploymentExtended:
         """_scale_workload_aiohttp PATCHes the /scale subresource of the given type."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             assert (
                 await mock_client._scale_workload_aiohttp(
                     "statefulsets", "db", 2, "prod"
@@ -4545,7 +4395,7 @@ class TestScaleStatefulsetExtended:
         """scale_statefulset returns False when aiohttp PATCH returns non-200."""
         mock_session = mock_aiohttp_session(patch=_mock_response(403, text="Forbidden"))
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.scale_statefulset("test-ss", 3, "default")
 
         assert result is False
@@ -4554,7 +4404,7 @@ class TestScaleStatefulsetExtended:
         """scale_statefulset returns False when aiohttp raises an exception."""
         mock_session = mock_aiohttp_session(patch=Exception("Network failure"))
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.scale_statefulset("test-ss", 2, "default")
 
         assert result is False
@@ -4938,7 +4788,7 @@ class TestGetPodsExtended:
             ]
         }
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json = AsyncMock(return_value=mock_response_data)
@@ -4962,7 +4812,7 @@ class TestGetPodsExtended:
         """_get_pods_aiohttp raises KubernetesApiError on a non-200 namespace."""
         mock_client.namespaces = ["default"]
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 503
             mock_get.return_value.__aenter__.return_value = mock_response
@@ -4975,7 +4825,7 @@ class TestGetPodsExtended:
 
     async def test_get_pods_all_namespaces_non_200_raises(self, mock_client):
         """_get_pods_all_namespaces_aiohttp raises KubernetesApiError on non-200."""
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 502
             mock_get.return_value.__aenter__.return_value = mock_response
@@ -5488,11 +5338,7 @@ class TestGetPodMetricsAiohttp:
         )
 
         with (
-            patch("aiohttp.TCPConnector"),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
         ):
             result = await mock_client._get_pod_metrics_aiohttp()
 
@@ -5512,11 +5358,7 @@ class TestGetPodMetricsAiohttp:
         mock_session = mock_aiohttp_session(get=403)
 
         with (
-            patch("aiohttp.TCPConnector"),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
         ):
             result = await mock_client._get_pod_metrics_aiohttp()
 
@@ -5527,11 +5369,7 @@ class TestGetPodMetricsAiohttp:
         mock_session = mock_aiohttp_session(get=500)
 
         with (
-            patch("aiohttp.TCPConnector"),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
         ):
             result = await mock_client._get_pod_metrics_aiohttp()
 
@@ -5542,11 +5380,7 @@ class TestGetPodMetricsAiohttp:
         mock_session = mock_aiohttp_session(get=Exception("Connection refused"))
 
         with (
-            patch("aiohttp.TCPConnector"),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
         ):
             result = await mock_client._get_pod_metrics_aiohttp()
 
@@ -5561,11 +5395,7 @@ class TestGetPodMetricsAiohttp:
         )
 
         with (
-            patch("aiohttp.TCPConnector"),
-            patch(
-                "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-                return_value=mock_session,
-            ),
+            patch.object(mock_client, "_session", mock_session),
         ):
             result = await mock_client._get_pod_metrics_aiohttp()
 
@@ -5602,10 +5432,7 @@ class TestGetPodMetricsAiohttp:
             ]
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._get_pod_metrics_aiohttp()
 
         assert result == {
@@ -5637,10 +5464,7 @@ class TestGetPodMetricsAiohttp:
             ]
         )
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._get_pod_metrics_aiohttp()
 
         assert result == {"production/pod2": {"cpu": 500.0, "memory": 256.0}}
@@ -5653,10 +5477,7 @@ class TestGetPodMetricsAiohttp:
 
         mock_session = mock_aiohttp_session(get=[403, 403])
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._get_pod_metrics_aiohttp()
 
         assert result == {}
@@ -5672,10 +5493,7 @@ class TestGetPodMetricsAiohttp:
 
         mock_session = mock_aiohttp_session(get=403)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._get_pod_metrics_aiohttp()
 
         assert result == {}
@@ -5685,10 +5503,7 @@ class TestGetPodMetricsAiohttp:
 
     async def test_session_failure_returns_empty(self, mock_client):
         """A failure outside the per-namespace requests still returns empty."""
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            side_effect=Exception("boom"),
-        ):
+        with patch.object(mock_client, "_get_ssl_param", side_effect=Exception("boom")):
             result = await mock_client._get_pod_metrics_aiohttp()
 
         assert result == {}
@@ -5701,10 +5516,7 @@ class TestSuspendCronjobAiohttp:
         """Test successful CronJob suspension via aiohttp."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.suspend_cronjob("test-cronjob", "default")
 
         assert result["success"] is True
@@ -5715,10 +5527,7 @@ class TestSuspendCronjobAiohttp:
         """Test suspend_cronjob (aiohttp path) with non-200 response."""
         mock_session = mock_aiohttp_session(patch=404)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.suspend_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
@@ -5729,10 +5538,7 @@ class TestSuspendCronjobAiohttp:
         """Test suspend_cronjob (aiohttp path) with exception."""
         mock_session = mock_aiohttp_session(patch=Exception("Connection refused"))
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.suspend_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
@@ -5747,10 +5553,7 @@ class TestResumeCronjobAiohttp:
         """Test successful CronJob resume via aiohttp."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.resume_cronjob("test-cronjob", "default")
 
         assert result["success"] is True
@@ -5761,10 +5564,7 @@ class TestResumeCronjobAiohttp:
         """Test resume_cronjob (aiohttp path) with non-200 response."""
         mock_session = mock_aiohttp_session(patch=403)
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.resume_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
@@ -5775,10 +5575,7 @@ class TestResumeCronjobAiohttp:
         """Test resume_cronjob (aiohttp path) with exception."""
         mock_session = mock_aiohttp_session(patch=Exception("Timeout"))
 
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.resume_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
@@ -5793,7 +5590,7 @@ class TestInitNamespaceParsing:
         """Test legacy string namespace format is handled."""
         mock_config["namespace"] = "my-namespace"
 
-        client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config, MagicMock())
 
         assert client.namespaces == ["my-namespace"]
         assert client.namespace == "my-namespace"
@@ -5802,7 +5599,7 @@ class TestInitNamespaceParsing:
         """Test comma-separated string namespace is treated as single namespace."""
         mock_config["namespace"] = "ns1,ns2"
 
-        client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config, MagicMock())
 
         # Legacy string format: treated as single namespace string
         assert client.namespaces == ["ns1,ns2"]
@@ -5811,7 +5608,7 @@ class TestInitNamespaceParsing:
         """Test empty list namespace defaults to ['default']."""
         mock_config["namespace"] = []
 
-        client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config, MagicMock())
 
         assert client.namespaces == ["default"]
         assert client.namespace == "default"
@@ -5820,7 +5617,7 @@ class TestInitNamespaceParsing:
         """Test list namespace is preserved as-is."""
         mock_config["namespace"] = ["ns1", "ns2", "ns3"]
 
-        client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config, MagicMock())
 
         assert client.namespaces == ["ns1", "ns2", "ns3"]
         assert client.namespace == "ns1"
@@ -5829,7 +5626,7 @@ class TestInitNamespaceParsing:
         """Test non-string, non-list namespace defaults to ['default']."""
         mock_config["namespace"] = 42
 
-        client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config, MagicMock())
 
         assert client.namespaces == ["default"]
 
@@ -5837,7 +5634,7 @@ class TestInitNamespaceParsing:
         """Test missing namespace key defaults to ['default']."""
         del mock_config["namespace"]
 
-        client = KubernetesClient(mock_config)
+        client = KubernetesClient(mock_config, MagicMock())
 
         assert client.namespaces == ["default"]
 
@@ -5963,7 +5760,7 @@ class TestGetNodesAiohttpNodeParseException:
             ]
         }
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(extended_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json.return_value = mock_node_data
@@ -6092,7 +5889,7 @@ class TestDeletePod:
         """delete_pod returns True when aiohttp DELETE returns 200."""
         mock_session = mock_aiohttp_session(delete=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.delete_pod("test-pod", "default")
 
         assert result is True
@@ -6101,7 +5898,7 @@ class TestDeletePod:
         """delete_pod returns True when aiohttp DELETE returns 202."""
         mock_session = mock_aiohttp_session(delete=202)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.delete_pod("test-pod", "default")
 
         assert result is True
@@ -6112,7 +5909,7 @@ class TestDeletePod:
             delete=_mock_response(500, text="Server Error")
         )
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.delete_pod("test-pod", "default")
 
         assert result is False
@@ -6121,7 +5918,7 @@ class TestDeletePod:
         """delete_pod uses client's default namespace when none specified."""
         mock_session = mock_aiohttp_session(delete=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.delete_pod("test-pod")
 
         assert result is True
@@ -6132,7 +5929,7 @@ class TestDeletePod:
             delete=aiohttp.ClientError("Connection refused")
         )
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.delete_pod("test-pod", "default")
 
         assert result is False
@@ -6143,25 +5940,18 @@ class TestDeleteJob:
 
     async def test_delete_job_aiohttp_success(self, mock_client):
         sess = mock_aiohttp_session(delete=200)
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=sess,
-        ):
+        with patch.object(mock_client, "_session", sess):
             assert await mock_client.delete_job("j1", "default") is True
         assert "propagationPolicy=Background" in sess.delete.call_args[0][0]
 
     async def test_delete_job_aiohttp_non_200_returns_false(self, mock_client):
         sess = mock_aiohttp_session(delete=_mock_response(404, text="not found"))
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=sess,
-        ):
+        with patch.object(mock_client, "_session", sess):
             assert await mock_client._delete_job_aiohttp("j1", "default") is False
 
     async def test_delete_job_aiohttp_exception_returns_false(self, mock_client):
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            side_effect=Exception("boom"),
+        with patch.object(
+            mock_client, "_session", mock_aiohttp_session(delete=Exception("boom"))
         ):
             assert await mock_client._delete_job_aiohttp("j1", "default") is False
 
@@ -6178,7 +5968,7 @@ class TestRolloutRestart:
         """rollout_restart_deployment returns True when aiohttp PATCH returns 200."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.rollout_restart_deployment("nginx", "default")
 
         assert result is True
@@ -6187,7 +5977,7 @@ class TestRolloutRestart:
         """rollout_restart_statefulset returns True when aiohttp PATCH returns 200."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.rollout_restart_statefulset(
                 "postgres", "default"
             )
@@ -6198,7 +5988,7 @@ class TestRolloutRestart:
         """rollout_restart_daemonset returns True when aiohttp PATCH returns 200."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.rollout_restart_daemonset(
                 "fluentd", "kube-system"
             )
@@ -6211,7 +6001,7 @@ class TestRolloutRestart:
             patch=aiohttp.ClientError("Connection refused")
         )
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.rollout_restart_statefulset(
                 "postgres", "default"
             )
@@ -6224,7 +6014,7 @@ class TestRolloutRestart:
             patch=_mock_response(500, text="Internal Server Error")
         )
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.rollout_restart_deployment("nginx", "default")
 
         assert result is False
@@ -6233,7 +6023,7 @@ class TestRolloutRestart:
         """rollout_restart PATCHes the restartedAt template annotation."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.rollout_restart_daemonset(
                 "fluentd", "kube-system"
             )
@@ -6251,7 +6041,7 @@ class TestRolloutRestart:
         """rollout_restart returns True when aiohttp PATCH returns 201."""
         mock_session = mock_aiohttp_session(patch=201)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.rollout_restart_deployment("nginx", "default")
 
         assert result is True
@@ -6260,7 +6050,7 @@ class TestRolloutRestart:
         """rollout_restart uses self.namespace when namespace is None."""
         mock_session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.rollout_restart_deployment("nginx")
 
         assert result is True
@@ -6769,10 +6559,7 @@ class TestNodeCordon:
         mock_session = mock_aiohttp_session(
             patch=_mock_response(200, text="error body")
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.cordon_node("node-1")
 
         assert result is True
@@ -6785,10 +6572,7 @@ class TestNodeCordon:
         mock_session = mock_aiohttp_session(
             patch=_mock_response(200, text="error body")
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.uncordon_node("node-1")
 
         assert result is True
@@ -6801,19 +6585,17 @@ class TestNodeCordon:
         mock_session = mock_aiohttp_session(
             patch=_mock_response(500, text="error body")
         )
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.cordon_node("node-1")
 
         assert result is False
 
     async def test_cordon_node_exception_returns_false(self, mock_client):
         """Test cordon_node returns False when the request raises."""
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            side_effect=aiohttp.ClientError("boom"),
+        with patch.object(
+            mock_client,
+            "_session",
+            mock_aiohttp_session(patch=aiohttp.ClientError("boom")),
         ):
             result = await mock_client.cordon_node("node-1")
 
@@ -6822,10 +6604,7 @@ class TestNodeCordon:
     async def test_uncordon_node_non_2xx_returns_false(self, mock_client):
         """Test uncordon_node returns False when the PATCH is rejected."""
         mock_session = mock_aiohttp_session(patch=_mock_response(403, text="forbidden"))
-        with patch(
-            "custom_components.kubernetes.kubernetes_client.aiohttp.ClientSession",
-            return_value=mock_session,
-        ):
+        with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.uncordon_node("node-1")
 
         assert result is False
@@ -6843,7 +6622,7 @@ class TestAuthFailureSignal:
         """A 401 from the probe sets auth_failed so the coordinator can react."""
         client = _make_client(mock_config)
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(client._session, "get") as mock_get:
             mock_get.return_value.__aenter__.side_effect = _probe_responses(401)
             assert await client._test_connection_aiohttp() is False
 
@@ -6858,7 +6637,7 @@ class TestAuthFailureSignal:
         client = _make_client(mock_config)
         client.auth_failed = True
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(client._session, "get") as mock_get:
             mock_get.return_value.__aenter__.side_effect = _probe_responses(200)
             assert await client._test_connection_aiohttp() is True
 
@@ -6868,7 +6647,7 @@ class TestAuthFailureSignal:
         """A non-401 failure (e.g. 500) is not an auth failure."""
         client = _make_client(mock_config)
 
-        with patch("aiohttp.ClientSession.get") as mock_get:
+        with patch.object(client._session, "get") as mock_get:
             mock_get.return_value.__aenter__.side_effect = _probe_responses(500)
             assert await client._test_connection_aiohttp() is False
 
@@ -6880,7 +6659,7 @@ class TestAuthFailureSignal:
         client = _make_client(mock_config)
 
         with (
-            patch("aiohttp.ClientSession.get") as mock_get,
+            patch.object(client._session, "get") as mock_get,
             patch(
                 "custom_components.kubernetes.kubernetes_client.open",
                 mock_open(read_data="projected-token"),
@@ -6900,7 +6679,7 @@ class TestAuthFailureSignal:
         client = _make_client(mock_config)
 
         with (
-            patch("aiohttp.ClientSession.get") as mock_get,
+            patch.object(client._session, "get") as mock_get,
             patch(
                 "custom_components.kubernetes.kubernetes_client.open",
                 mock_open(read_data="projected-token"),
@@ -6916,7 +6695,7 @@ class TestAuthFailureSignal:
         """A transport error tells us nothing about the token, so the flag stands."""
         client = _make_client(mock_config)
 
-        with patch("aiohttp.ClientSession.get", side_effect=aiohttp.ClientError("x")):
+        with patch.object(client._session, "get", side_effect=aiohttp.ClientError("x")):
             assert await client._test_connection_aiohttp() is False
 
         assert client.auth_failed is False
@@ -6976,7 +6755,7 @@ class TestGetPodLogs:
         """200 returns the decoded body; options map to query parameters."""
         session = mock_aiohttp_session(get=_mock_response(200, read=b"line1\nline2\n"))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             logs, truncated = await mock_client.get_pod_logs(
                 "web-1", "apps", container="sidecar", tail_lines=50, previous=True
             )
@@ -6995,7 +6774,7 @@ class TestGetPodLogs:
         """Without container/previous those parameters are not sent."""
         session = mock_aiohttp_session(get=_mock_response(200, read=b""))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             assert await mock_client.get_pod_logs("p", "default") == ("", False)
 
         params = session.get.call_args[1]["params"]
@@ -7009,7 +6788,7 @@ class TestGetPodLogs:
         body = b"first\n" + line * (POD_LOGS_LIMIT_BYTES // 100 + 10) + b"last\n"
         session = mock_aiohttp_session(get=_mock_response(200, read=body))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             logs, truncated = await mock_client.get_pod_logs("p", "default")
 
         assert truncated is True
@@ -7023,7 +6802,7 @@ class TestGetPodLogs:
         kept = b"k" * (POD_LOGS_LIMIT_BYTES - 1) + b"\n"
         session = mock_aiohttp_session(get=_mock_response(200, read=b"old\n" + kept))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             logs, truncated = await mock_client.get_pod_logs("p", "default")
 
         assert truncated is True
@@ -7034,7 +6813,7 @@ class TestGetPodLogs:
         body = b"a" * 10 + b"b" * POD_LOGS_LIMIT_BYTES
         session = mock_aiohttp_session(get=_mock_response(200, read=body))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             logs, truncated = await mock_client.get_pod_logs("p", "default")
 
         assert truncated is True
@@ -7044,7 +6823,7 @@ class TestGetPodLogs:
         """Names cannot escape their path segment and address another API."""
         session = mock_aiohttp_session(get=_mock_response(200, read=b""))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             await mock_client.get_pod_logs("../secrets/x?y#z", "a/b")
 
         url = session.get.call_args[0][0]
@@ -7058,7 +6837,7 @@ class TestGetPodLogs:
         session = mock_aiohttp_session(get=_mock_response(status, text="denied"))
 
         with (
-            patch("aiohttp.ClientSession", return_value=session),
+            patch.object(mock_client, "_session", session),
             pytest.raises(KubernetesApiError, match="denied") as exc_info,
         ):
             await mock_client.get_pod_logs("p", "default")
@@ -7148,7 +6927,7 @@ class TestGetPodDetail:
         """Init containers come first; states and last states are flattened."""
         session = mock_aiohttp_session(get=_mock_response(200, json_data=_pod_item()))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             detail = await mock_client.get_pod_detail("web-1", "apps")
 
         assert session.get.call_args[0][0].endswith(
@@ -7205,7 +6984,7 @@ class TestGetPodDetail:
         """A pod object with almost nothing in it still parses."""
         session = mock_aiohttp_session(get=_mock_response(200, json_data={}))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             detail = await mock_client.get_pod_detail("p", "default")
 
         assert detail["containers"] == []
@@ -7222,7 +7001,7 @@ class TestGetPodDetail:
         }
         session = mock_aiohttp_session(get=_mock_response(200, json_data=item))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             detail = await mock_client.get_pod_detail("a", "default")
 
         assert detail["containers"][0]["state"]["state"] == "running"
@@ -7233,7 +7012,7 @@ class TestGetPodDetail:
         session = mock_aiohttp_session(get=_mock_response(status, text="denied"))
 
         with (
-            patch("aiohttp.ClientSession", return_value=session),
+            patch.object(mock_client, "_session", session),
             pytest.raises(KubernetesApiError, match="denied") as exc_info,
         ):
             await mock_client.get_pod_detail("p", "default")
@@ -7248,12 +7027,12 @@ class TestGetPodDetail:
     ):
         """Names that must not reach a URL raise without opening a session."""
         with (
-            patch("aiohttp.ClientSession") as session_cls,
+            patch.object(mock_client, "_session") as session,
             pytest.raises(KubernetesApiError, match="Refusing"),
         ):
             await mock_client.get_pod_detail(name, namespace)
 
-        session_cls.assert_not_called()
+        assert not session.mock_calls
 
 
 class TestGetPodEvents:
@@ -7293,7 +7072,7 @@ class TestGetPodEvents:
             get=_mock_response(200, json_data={"items": items})
         )
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             events = await mock_client.get_pod_events("web-1", "apps")
 
         assert [e["reason"] for e in events] == [
@@ -7319,7 +7098,7 @@ class TestGetPodEvents:
         """The query targets this pod's core v1 events in its namespace."""
         session = mock_aiohttp_session(get=_mock_response(200, json_data={"items": []}))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             assert await mock_client.get_pod_events("web-1", "apps") == []
 
         assert session.get.call_args[0][0].endswith("/api/v1/namespaces/apps/events")
@@ -7331,7 +7110,7 @@ class TestGetPodEvents:
         """A body without ``items`` yields no events."""
         session = mock_aiohttp_session(get=_mock_response(200, json_data={}))
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             assert await mock_client.get_pod_events("p", "default") == []
 
     async def test_capped_at_fifty(self, mock_client):
@@ -7344,7 +7123,7 @@ class TestGetPodEvents:
             get=_mock_response(200, json_data={"items": items})
         )
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             events = await mock_client.get_pod_events("p", "default")
 
         assert len(events) == 50
@@ -7357,7 +7136,7 @@ class TestGetPodEvents:
         session = mock_aiohttp_session(get=_mock_response(status, text="denied"))
 
         with (
-            patch("aiohttp.ClientSession", return_value=session),
+            patch.object(mock_client, "_session", session),
             pytest.raises(KubernetesApiError, match="denied") as exc_info,
         ):
             await mock_client.get_pod_events("p", "default")
@@ -7372,12 +7151,12 @@ class TestGetPodEvents:
     ):
         """Names that must not reach a URL or selector raise without a request."""
         with (
-            patch("aiohttp.ClientSession") as session_cls,
+            patch.object(mock_client, "_session") as session,
             pytest.raises(KubernetesApiError, match="Refusing"),
         ):
             await mock_client.get_pod_events(name, namespace)
 
-        session_cls.assert_not_called()
+        assert not session.mock_calls
 
 
 class TestMutationUrlQuoting:
@@ -7387,7 +7166,7 @@ class TestMutationUrlQuoting:
         """A '/' in the pod name or namespace cannot add path segments."""
         session = mock_aiohttp_session(delete=200)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             await mock_client._delete_pod_aiohttp("a/b", "n/s")
 
         url = session.delete.call_args[0][0]
@@ -7397,7 +7176,7 @@ class TestMutationUrlQuoting:
         """A '/' in the job name or namespace cannot add path segments."""
         session = mock_aiohttp_session(delete=200)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             await mock_client._delete_job_aiohttp("a/b", "n/s")
 
         url = session.delete.call_args[0][0]
@@ -7409,7 +7188,7 @@ class TestMutationUrlQuoting:
         """A '/' in the CronJob name or namespace cannot add path segments."""
         session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             await mock_client._patch_cronjob_aiohttp(
                 "a/b", "n/s", {"spec": {"suspend": True}}, "suspend"
             )
@@ -7421,7 +7200,7 @@ class TestMutationUrlQuoting:
         """A '/' in the workload name or namespace cannot add path segments."""
         session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             await mock_client._scale_workload_aiohttp("deployments", "a/b", 1, "n/s")
 
         url = session.patch.call_args[0][0]
@@ -7431,7 +7210,7 @@ class TestMutationUrlQuoting:
         """A '/' in the workload name or namespace cannot add path segments."""
         session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             await mock_client._rollout_restart_aiohttp("deployments", "a/b", "n/s")
 
         url = session.patch.call_args[0][0]
@@ -7441,7 +7220,7 @@ class TestMutationUrlQuoting:
         """A '/' in the node name cannot add path segments."""
         session = mock_aiohttp_session(patch=200)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             await mock_client._set_node_schedulable_aiohttp("a/b", False)
 
         url = session.patch.call_args[0][0]
@@ -7458,7 +7237,7 @@ class TestMutationUrlQuoting:
         )
         session = mock_aiohttp_session(get=cronjob, post=201)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             await mock_client._trigger_cronjob_aiohttp("a/b", "n/s")
 
         assert session.get.call_args[0][0].endswith(
@@ -7520,8 +7299,8 @@ class TestMutationGuards:
     """Invalid names/namespaces never reach the API server."""
 
     @staticmethod
-    def _assert_no_requests(client, session_cls):
-        session_cls.assert_not_called()
+    def _assert_no_requests(client, session):
+        assert not session.mock_calls
 
     @pytest.mark.parametrize("bad", BAD_SEGMENTS)
     @pytest.mark.parametrize("position", ["name", "namespace", "default_namespace"])
@@ -7549,21 +7328,21 @@ class TestMutationGuards:
             (name, 1, namespace) if method == "scale_deployment" else (name, namespace)
         )
 
-        with patch("aiohttp.ClientSession") as session_cls:
+        with patch.object(mock_client, "_session") as session:
             result = await getattr(mock_client, method)(*args)
 
         assert result is False
-        self._assert_no_requests(mock_client, session_cls)
+        self._assert_no_requests(mock_client, session)
 
     @pytest.mark.parametrize("bad", BAD_SEGMENTS)
     @pytest.mark.parametrize("method", ["cordon_node", "uncordon_node"])
     async def test_node_methods_reject(self, mock_client, method, bad):
         """Node names are validated before any request."""
-        with patch("aiohttp.ClientSession") as session_cls:
+        with patch.object(mock_client, "_session") as session:
             result = await getattr(mock_client, method)(bad)
 
         assert result is False
-        self._assert_no_requests(mock_client, session_cls)
+        self._assert_no_requests(mock_client, session)
 
     @pytest.mark.parametrize("monitor_all", [False, True])
     @pytest.mark.parametrize("bad", BAD_SEGMENTS)
@@ -7585,12 +7364,12 @@ class TestMutationGuards:
             mock_client.namespace = bad
             namespace = None
 
-        with patch("aiohttp.ClientSession") as session_cls:
+        with patch.object(mock_client, "_session") as session:
             result = await getattr(mock_client, method)(name, namespace)
 
         assert result["success"] is False
         assert "error" in result
-        self._assert_no_requests(mock_client, session_cls)
+        self._assert_no_requests(mock_client, session)
 
 
 def _drain_pod(name="web-1", **fields: Any) -> dict[str, Any]:
@@ -7800,7 +7579,7 @@ class TestGetPodsOnNode:
             get=_mock_response(200, json_data={"items": [{"a": 1}]})
         )
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             assert await mock_client.get_pods_on_node("node-1") == [{"a": 1}]
 
         url = session.get.call_args[0][0]
@@ -7811,7 +7590,7 @@ class TestGetPodsOnNode:
         session = mock_aiohttp_session(get=403)
 
         with (
-            patch("aiohttp.ClientSession", return_value=session),
+            patch.object(mock_client, "_session", session),
             pytest.raises(KubernetesApiError) as exc_info,
         ):
             await mock_client.get_pods_on_node("node-1")
@@ -7822,12 +7601,12 @@ class TestGetPodsOnNode:
     async def test_invalid_node_name_raises_without_request(self, mock_client, bad):
         """The node name cannot inject into the path or the query."""
         with (
-            patch("aiohttp.ClientSession") as session_cls,
+            patch.object(mock_client, "_session") as session,
             pytest.raises(KubernetesApiError, match="invalid name"),
         ):
             await mock_client.get_pods_on_node(bad)
 
-        session_cls.assert_not_called()
+        assert not session.mock_calls
 
 
 class TestEvictPod:
@@ -7838,7 +7617,7 @@ class TestEvictPod:
         """Accepted evictions and already-deleted pods count as evicted."""
         session = mock_aiohttp_session(post=status)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             assert await mock_client.evict_pod("web-1", "apps") is True
 
         url = session.post.call_args[0][0]
@@ -7853,7 +7632,7 @@ class TestEvictPod:
         """429 means a PodDisruptionBudget blocks the eviction for now."""
         session = mock_aiohttp_session(post=429)
 
-        with patch("aiohttp.ClientSession", return_value=session):
+        with patch.object(mock_client, "_session", session):
             assert await mock_client.evict_pod("web-1", "apps") is False
 
     async def test_forbidden_raises_with_rbac_hint(self, mock_client):
@@ -7861,7 +7640,7 @@ class TestEvictPod:
         session = mock_aiohttp_session(post=_mock_response(403, text="forbidden"))
 
         with (
-            patch("aiohttp.ClientSession", return_value=session),
+            patch.object(mock_client, "_session", session),
             pytest.raises(KubernetesApiError, match="pods/eviction create") as exc,
         ):
             await mock_client.evict_pod("web-1", "apps")
@@ -7873,7 +7652,7 @@ class TestEvictPod:
         session = mock_aiohttp_session(post=_mock_response(500, text="boom"))
 
         with (
-            patch("aiohttp.ClientSession", return_value=session),
+            patch.object(mock_client, "_session", session),
             pytest.raises(KubernetesApiError, match="status 500: boom") as exc,
         ):
             await mock_client.evict_pod("web-1", "apps")
@@ -7888,9 +7667,9 @@ class TestEvictPod:
         """Invalid names/namespaces never reach aiohttp."""
         name, namespace = ("ok", bad) if position == "namespace" else (bad, "ok")
         with (
-            patch("aiohttp.ClientSession") as session_cls,
+            patch.object(mock_client, "_session") as session,
             pytest.raises(KubernetesApiError),
         ):
             await mock_client.evict_pod(name, namespace)
 
-        session_cls.assert_not_called()
+        assert not session.mock_calls
