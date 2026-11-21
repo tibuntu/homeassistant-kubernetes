@@ -100,6 +100,18 @@ async def test_all_entities_provided_after_reload(
         for domain in ("sensor", "switch", "number", "binary_sensor"):
             assert any(eid.startswith(f"{domain}.") for eid in before), domain
 
+        # The mocked node has metrics, so its four usage sensors exist
+        assert {
+            e.unique_id
+            for e in er.async_entries_for_config_entry(registry, entry.entry_id)
+            if e.unique_id.startswith(f"{entry.entry_id}_node_node-1_")
+            and e.unique_id.rsplit("node-1_", 1)[1]
+            in ("cpu", "memory", "cpu_percent", "memory_percent")
+        } == {
+            f"{entry.entry_id}_node_node-1_{m}"
+            for m in ("cpu", "memory", "cpu_percent", "memory_percent")
+        }
+
         assert await hass.config_entries.async_reload(entry.entry_id)
         await hass.async_block_till_done()
 

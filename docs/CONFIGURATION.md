@@ -194,11 +194,11 @@ The categories come in two tiers:
 | **Services** | Fetch skipped entirely; service data disappears from the panel |
 | **HorizontalPodAutoscalers** | Fetch skipped entirely; workloads are never reported as HPA-managed, so the HPA scale guard and the panel's HPA badge are off. Use this if you don't want to grant the `autoscaling` RBAC rule |
 | **HTTPRoutes** | Fetch skipped entirely; the HTTPRoutes section disappears from the panel's Network tab. Use this if you don't use the Gateway API and don't want to grant the `gateway.networking.k8s.io` RBAC rule |
-| **Node sensors** | Node status sensors, the 5 condition binary sensors (Ready + pressure) and the Nodes Under Pressure sensor are removed; the fetch continues so the cordon/uncordon switches keep working |
+| **Node sensors** | Node status sensors, the 4 usage sensors, the 5 condition binary sensors (Ready + pressure) and the Nodes Under Pressure sensor are removed; the fetch continues so the cordon/uncordon switches keep working |
 | **Deployment sensors** | Status and CPU/memory sensors and the replica number entities removed; scale switches keep working |
 | **StatefulSet sensors** | Same as Deployment sensors |
 | **CronJob sensors** | CronJob status sensors removed; suspend switches keep working |
-| **CPU/memory metrics** | The Kubernetes Metrics API is never called — removes all workload CPU/memory sensors and node usage data (the "metrics server unavailable" repair issue is suppressed too) |
+| **CPU/memory metrics** | The Kubernetes Metrics API is never called — removes all workload and node CPU/memory sensors and node usage data (the "metrics server unavailable" repair issue is suppressed too) |
 | **Aggregate count sensors** | The 9 per-cluster count sensors (Pods Count, Nodes Count, …) are removed and their count API calls skipped |
 
 Notes:

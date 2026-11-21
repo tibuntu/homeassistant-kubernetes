@@ -906,7 +906,18 @@ class TestKubernetesDataCoordinator:
             "test-entry-id_node_spot-a1b2_schedulable",
             "switch.spot_a1b2_schedulable",
         )
+        for metric in ("cpu", "memory", "cpu_percent", "memory_percent"):
+            _create_entity(
+                hass,
+                mock_config_entry,
+                f"test-entry-id_node_spot-a1b2_{metric}",
+                f"sensor.spot_a1b2_{metric}",
+            )
         ephemeral = {
+            *(
+                f"test-entry-id_node_spot-a1b2_{m}"
+                for m in ("cpu", "memory", "cpu_percent", "memory_percent")
+            ),
             "test-entry-id_pod_default_web-7d9f-abcde",
             "test-entry-id_job_default_backup-29920350",
             "test-entry-id_node_spot-a1b2",
@@ -927,6 +938,19 @@ class TestKubernetesDataCoordinator:
         await coordinator._cleanup_orphaned_entities(data)
 
         assert not ephemeral & _tombstone_ids(hass)
+
+    async def test_cleanup_keeps_expected_node_usage_tombstone(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """A tombstone of a still-expected node usage sensor is not purged."""
+        unique_id = "test-entry-id_node_n1_cpu_percent"
+        _create_entity(hass, mock_config_entry, unique_id, "sensor.n1_cpu_percent")
+        er.async_get(hass).async_remove("sensor.n1_cpu_percent")
+
+        _age_tombstones(hass)
+        await coordinator._cleanup_orphaned_entities({"nodes": {"n1": {"name": "n1"}}})
+
+        assert unique_id in _tombstone_ids(hass)
 
     async def test_cleanup_purges_pod_tombstone_backlog(
         self, hass: HomeAssistant, coordinator, mock_config_entry
@@ -5015,6 +5039,22 @@ class TestDisabledResources:
         assert "nodes" in resource_types
         assert "statefulsets" in resource_types
         assert "cronjobs" in resource_types
+
+    @pytest.mark.parametrize(
+        ("disabled", "expected_present"),
+        [([], True), (["metrics"], False), (["nodes"], False)],
+    )
+    async def test_node_usage_ids_gated_by_nodes_and_metrics(
+        self, hass: HomeAssistant, mock_client, disabled, expected_present
+    ):
+        """All four node usage ids are expected only when neither gate is off."""
+        coordinator = self._make_coordinator(hass, mock_client, disabled)
+        expected = coordinator._build_expected_unique_ids(
+            {"nodes": {"n1": {"name": "n1"}}}
+        )
+        eid = coordinator.config_entry.entry_id
+        for metric in ("cpu", "memory", "cpu_percent", "memory_percent"):
+            assert (f"{eid}_node_n1_{metric}" in expected) is expected_present
 
     async def test_expected_unique_ids_respect_disabled(
         self, hass: HomeAssistant, mock_client

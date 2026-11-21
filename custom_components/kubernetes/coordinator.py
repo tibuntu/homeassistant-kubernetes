@@ -695,6 +695,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             if "nodes" in disabled:
                 continue
             expected.add(f"{eid}_node_{node_name}")
+            if "metrics" not in disabled:
+                for metric in ("cpu", "memory", "cpu_percent", "memory_percent"):
+                    expected.add(f"{eid}_node_{node_name}_{metric}")
             for condition in (
                 "ready",
                 "memory_pressure",
@@ -781,7 +784,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # pattern matches exactly one entity kind and never a workload living
         # in a namespace called "pod", "job" or "node".
         patterns = {
-            "sensor": re.compile(rf"{eid}_(?:(?:pod|job)_[^_]+_[^_]+|node_[^_]+)"),
+            "sensor": re.compile(
+                rf"{eid}_(?:(?:pod|job)_[^_]+_[^_]+|node_[^_]+(?:_(?:cpu|memory)(?:_percent)?)?)"
+            ),
             "binary_sensor": re.compile(rf"{eid}_node_[^_]+_.+"),
             "switch": re.compile(rf"{eid}_node_[^_]+_schedulable"),
         }

@@ -30,6 +30,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesIngressesSensor,
     KubernetesJobSensor,
     KubernetesJobsSensor,
+    KubernetesNodeMetricSensor,
     KubernetesNodeSensor,
     KubernetesNodesSensor,
     KubernetesNodesUnderPressureSensor,
@@ -41,6 +42,7 @@ from custom_components.kubernetes.sensor import (
     KubernetesStatefulSetsSensor,
     KubernetesWorkloadMetricSensor,
     KubernetesWorkloadStatusSensor,
+    _discover_new_node_metric_sensors,
     _discover_new_workload_metric_sensors,
     _discover_new_workload_status_sensors,
     _discover_simple,
@@ -367,8 +369,8 @@ class TestSensorSetup:
         # Should add base sensors plus node sensors
         mock_add_entities.assert_called_once()
         sensors = mock_add_entities.call_args[0][0]
-        # 9 base sensors (Pods, Nodes, Deployments, StatefulSets, DaemonSets, CronJobs, Jobs, Ingresses, Services) + 5 alert sensors + number of node sensors from coordinator
-        expected_count = 9 + 5 + len(mock_coordinator.get_all_nodes_data())
+        # 9 base + 5 alert + (1 node sensor + 4 node usage sensors) per node
+        expected_count = 9 + 5 + 5 * len(mock_coordinator.get_all_nodes_data())
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
@@ -1011,7 +1013,7 @@ class TestDynamicNodeSensorDiscovery:
 
         # Check that 2 node sensors were created
         call_args = callback.call_args[0][0]  # Get the list of entities passed
-        assert len(call_args) == 2
+        assert len(call_args) == 2 + 2 * 4  # node sensors + 4 usage sensors each
         assert all(hasattr(sensor, "node_name") for sensor in call_args)
 
     async def test_discover_new_node_sensors_no_callback(
@@ -1101,7 +1103,8 @@ class TestDynamicNodeSensorDiscovery:
 
         # Check that only 1 node sensor was created (for node2)
         call_args = callback.call_args[0][0]  # Get the list of entities passed
-        assert len(call_args) == 1
+        # node2 sensor plus the 4 usage sensors of both nodes (none registered)
+        assert len(call_args) == 1 + 2 * 4
         assert call_args[0].node_name == "node2"
 
     async def test_discover_new_node_sensors_exception(
@@ -3804,8 +3807,8 @@ class TestAsyncSetupEntryWithResources:
         await async_setup_entry(hass, mock_config_entry, mock_add_entities)
 
         sensors = mock_add_entities.call_args[0][0]
-        # 9 aggregate + 5 alerts + 1 node + 2 pods + 1 daemonset + 2 status + 6 metrics + 1 cronjob + 1 job = 28
-        assert len(sensors) == 28
+        # 9 aggregate + 5 alerts + 1 node + 4 node usage + 2 pods + 1 daemonset + 2 status + 6 metrics + 1 cronjob + 1 job = 32
+        assert len(sensors) == 32
 
     async def test_stores_add_entities_callback(
         self, hass, mock_config_entry, rich_coordinator, mock_client, setup_rich_data
@@ -4820,3 +4823,137 @@ class TestKubernetesAlertSensor:
 
         sensors = mock_add_entities.call_args[0][0]
         assert not any(isinstance(s, KubernetesAlertSensor) for s in sensors)
+
+
+_NODE = {
+    "cpu_cores": 4,
+    "memory_capacity_gib": 16,
+    "cpu_usage_millicores": 1000,
+    "memory_usage_mib": 4096,
+}
+
+
+class TestKubernetesNodeMetricSensor:
+    """Test the four per-node usage sensors."""
+
+    def _sensor(self, entry, client, coordinator, metric, node=_NODE):
+        coordinator.data = {"nodes": {"n1": dict(node)}}
+        return KubernetesNodeMetricSensor(coordinator, client, entry, "n1", metric)
+
+    @pytest.mark.parametrize(
+        ("metric", "value", "unit", "device_class"),
+        [
+            ("cpu", 1000, "m", None),
+            ("memory", 4096, "MiB", SensorDeviceClass.DATA_SIZE),
+            ("cpu_percent", 25.0, "%", None),
+            ("memory_percent", 25.0, "%", None),
+        ],
+    )
+    def test_values_and_units(
+        self,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        entity_name,
+        metric,
+        value,
+        unit,
+        device_class,
+    ):
+        """Values, units and device classes; percent is relative to capacity."""
+        sensor = self._sensor(mock_config_entry, mock_client, mock_coordinator, metric)
+        assert sensor.native_value == value
+        assert sensor.native_unit_of_measurement == unit
+        assert sensor.device_class == device_class
+        assert sensor.unique_id == f"{mock_config_entry.entry_id}_node_n1_{metric}"
+        assert sensor.state_class == "measurement"
+        assert entity_name(sensor, "sensor").startswith("n1 ")
+
+    @pytest.mark.parametrize(
+        "metric", ["cpu", "memory", "cpu_percent", "memory_percent"]
+    )
+    def test_none_without_metrics(
+        self, mock_config_entry, mock_client, mock_coordinator, metric
+    ):
+        """A node without metric keys reports unknown."""
+        node = {"cpu_cores": 4, "memory_capacity_gib": 16}
+        sensor = self._sensor(
+            mock_config_entry, mock_client, mock_coordinator, metric, node
+        )
+        assert sensor.native_value is None
+
+    @pytest.mark.parametrize("metric", ["cpu_percent", "memory_percent"])
+    @pytest.mark.parametrize("capacity", [0, None])
+    def test_percent_none_with_zero_capacity(
+        self, mock_config_entry, mock_client, mock_coordinator, metric, capacity
+    ):
+        """Zero or missing capacity never divides."""
+        node = {**_NODE, "cpu_cores": capacity, "memory_capacity_gib": capacity}
+        sensor = self._sensor(
+            mock_config_entry, mock_client, mock_coordinator, metric, node
+        )
+        assert sensor.native_value is None
+
+    def test_none_without_data_or_node(
+        self, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """No coordinator data or an unknown node gives None."""
+        sensor = KubernetesNodeMetricSensor(
+            mock_coordinator, mock_client, mock_config_entry, "n1", "cpu"
+        )
+        mock_coordinator.data = None
+        assert sensor.native_value is None
+        mock_coordinator.data = {"nodes": {}}
+        assert sensor.native_value is None
+
+    def test_cluster_device(self, mock_config_entry, mock_client, mock_coordinator):
+        """The sensor hangs off the cluster device."""
+        sensor = self._sensor(mock_config_entry, mock_client, mock_coordinator, "cpu")
+        assert sensor.device_info is not None
+
+
+class TestDiscoverNodeMetricSensors:
+    """Discovery of node usage sensors."""
+
+    def _entry(self, hass, disabled):
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            entry_id="test_entry_id",
+            data={"cluster_name": "test-cluster"},
+            options={CONF_DISABLED_RESOURCES: disabled},
+        )
+        entry.add_to_hass(hass)
+        return entry
+
+    def test_four_per_new_node(self, hass, mock_client, mock_coordinator):
+        """Four sensors per node, skipping ids that already exist."""
+        mock_coordinator.data = {"nodes": {"n1": {}, "n2": {}}}
+        existing = {"test_entry_id_node_n1_cpu"}
+        found = _discover_new_node_metric_sensors(
+            mock_coordinator, mock_client, self._entry(hass, []), existing
+        )
+        ids = {s.unique_id for s in found}
+        assert len(found) == 7
+        assert "test_entry_id_node_n1_cpu" not in ids
+        assert "test_entry_id_node_n2_memory_percent" in ids
+
+    @pytest.mark.parametrize("disabled", [["nodes"], ["metrics"]])
+    def test_gated(self, hass, mock_client, mock_coordinator, disabled):
+        """Disabling nodes or metrics stops creation."""
+        mock_coordinator.data = {"nodes": {"n1": {}}}
+        assert (
+            _discover_new_node_metric_sensors(
+                mock_coordinator, mock_client, self._entry(hass, disabled), set()
+            )
+            == []
+        )
+
+    def test_no_data(self, hass, mock_client, mock_coordinator):
+        """Empty coordinator data yields nothing."""
+        mock_coordinator.data = None
+        assert (
+            _discover_new_node_metric_sensors(
+                mock_coordinator, mock_client, self._entry(hass, []), set()
+            )
+            == []
+        )

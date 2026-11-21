@@ -12,7 +12,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfInformation
+from homeassistant.const import PERCENTAGE, UnitOfInformation
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -118,6 +118,15 @@ async def async_setup_entry(
                     "Created node sensor for: %s (unique_id: %s)",
                     node_name,
                     node_sensor.unique_id,
+                )
+
+        if "nodes" not in disabled and "metrics" not in disabled:
+            for node_name in nodes_data:
+                sensors.extend(
+                    KubernetesNodeMetricSensor(
+                        coordinator, client, config_entry, node_name, metric
+                    )
+                    for metric in NODE_METRICS
                 )
 
         # Create individual sensors for each Kubernetes pod
@@ -409,6 +418,27 @@ def _discover_new_workload_metric_sensors(
     return new_entities
 
 
+def _discover_new_node_metric_sensors(
+    coordinator: KubernetesDataCoordinator,
+    client: Any,
+    config_entry: ConfigEntry,
+    existing_unique_ids: set[str],
+) -> list[KubernetesNodeMetricSensor]:
+    """Discover node usage sensors (four per node, gated by nodes and metrics)."""
+    disabled = disabled_resources(config_entry)
+    if "nodes" in disabled or "metrics" in disabled or not coordinator.data:
+        return []
+    new_entities = []
+    for node_name in coordinator.data.get("nodes", {}):
+        for metric in NODE_METRICS:
+            entity = KubernetesNodeMetricSensor(
+                coordinator, client, config_entry, node_name, metric
+            )
+            if entity.unique_id not in existing_unique_ids:
+                new_entities.append(entity)
+    return new_entities
+
+
 async def _async_discover_and_add_new_sensors(
     hass: HomeAssistant,
     config_entry: KubernetesConfigEntry,
@@ -450,6 +480,7 @@ async def _async_discover_and_add_new_sensors(
         args = (coordinator, client, config_entry, existing_unique_ids)
         new_entities: list[KubernetesBaseSensor] = [
             *_discover_simple(*args, _SIMPLE_DISCOVERY["node"]),
+            *_discover_new_node_metric_sensors(*args),
             *_discover_simple(*args, _SIMPLE_DISCOVERY["pod"]),
             *_discover_new_workload_status_sensors(*args),
             *_discover_simple(*args, _SIMPLE_DISCOVERY["daemonset"]),
@@ -794,6 +825,65 @@ class KubernetesNodeSensor(KubernetesBaseSensor):
         }
 
         return attributes
+
+
+# metric -> (unit, device class). Percentages are relative to capacity (the
+# panel's Nodes tab uses the same base), not allocatable like `kubectl top`.
+NODE_METRICS: dict[str, tuple[str, SensorDeviceClass | None]] = {
+    "cpu": ("m", None),
+    "memory": (UnitOfInformation.MEBIBYTES, SensorDeviceClass.DATA_SIZE),
+    "cpu_percent": (PERCENTAGE, None),
+    "memory_percent": (PERCENTAGE, None),
+}
+
+
+class KubernetesNodeMetricSensor(KubernetesBaseSensor):
+    """CPU or memory usage of a node, absolute or as percent of capacity."""
+
+    def __init__(
+        self,
+        coordinator: KubernetesDataCoordinator,
+        client: Any,
+        config_entry: ConfigEntry,
+        node_name: str,
+        metric: str,
+    ) -> None:
+        """Initialize the node metric sensor."""
+        super().__init__(coordinator, client, config_entry)
+        self.node_name = node_name
+        self._metric = metric
+        self._attr_translation_key = f"node_{metric}"
+        self._attr_translation_placeholders = {"name": node_name}
+        self._attr_native_unit_of_measurement, self._attr_device_class = NODE_METRICS[
+            metric
+        ]
+        self._attr_unique_id = f"{config_entry.entry_id}_node_{node_name}_{metric}"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return device information."""
+        return get_cluster_device_info(self.config_entry)
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the usage, or None without metrics or capacity."""
+        node = (self.coordinator.data or {}).get("nodes", {}).get(self.node_name)
+        if not node:
+            return None
+        is_cpu = self._metric.startswith("cpu")
+        usage = node.get("cpu_usage_millicores" if is_cpu else "memory_usage_mib")
+        if usage is None:
+            return None
+        if not self._metric.endswith("_percent"):
+            return round(usage, 2)
+        capacity = (
+            (node.get("cpu_cores") or 0) * 1000
+            if is_cpu
+            else (node.get("memory_capacity_gib") or 0) * 1024
+        )
+        if not capacity:
+            return None
+        return round(usage / capacity * 100, 1)
 
 
 class KubernetesPodSensor(KubernetesBaseSensor):

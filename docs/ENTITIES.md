@@ -39,6 +39,12 @@ The integration creates a separate sensor for each Kubernetes node in the cluste
 | Sensor | Description | Example Value | Unit |
 |--------|-------------|---------------|------|
 | **Node [node-name]** | Individual node status and information | `Ready` / `NotReady` / `Unknown` | - |
+| **[node-name] CPU Usage** | Current CPU usage from metrics-server | `850` | m |
+| **[node-name] Memory Usage** | Current memory usage from metrics-server | `4096` | MiB |
+| **[node-name] CPU Usage Percent** | CPU usage as a percentage of the node's CPU capacity | `21.3` | % |
+| **[node-name] Memory Usage Percent** | Memory usage as a percentage of the node's memory capacity | `25.0` | % |
+
+The four usage sensors need metrics-server; without it (or when the fetch fails) they show `unknown`. They are not created when **Node sensors** or **CPU/memory metrics** is disabled under **Configure → Disable data collection for**. Percentages are relative to node **capacity**, the same base as the sidebar panel's Nodes tab. `kubectl top node` divides by *allocatable* instead, so its percentages are slightly higher. With the Watch API on, usage values refresh at the 300 s poll interval, not with every node event.
 
 ### Individual DaemonSet Sensors
 
@@ -145,7 +151,7 @@ Each node sensor provides comprehensive information about the node:
 | **schedulable** | Whether the node can schedule new pods | `true` / `false` |
 | **creation_timestamp** | When the node was created | `2023-01-01T00:00:00Z` |
 
-> **Note:** Real-time CPU/memory usage from metrics-server is merged into the node's coordinator data (used by the node device's overview) but is not exposed as an attribute on this sensor.
+> **Note:** Real-time CPU/memory usage is exposed by the separate usage sensors listed under [Individual Node Sensors](#individual-node-sensors), not as attributes on this sensor.
 
 #### Pod Sensor Attributes
 
@@ -499,6 +505,7 @@ With device-based grouping, entities are automatically named using the following
 - **Cluster-level Sensors**: `sensor.[cluster_name]_[metric_type]` (e.g., `sensor.production_nodes_count`)
 - **Cluster-level Binary Sensors**: `binary_sensor.[cluster_name]_cluster_health` (e.g., `binary_sensor.production_cluster_health`)
 - **Node Sensors**: `sensor.[cluster_name]_[node_name]` (e.g., `sensor.production_worker_node_1`)
+- **Node Usage Sensors**: `sensor.[cluster_name]_[node_name]_[cpu|memory]_usage[_percent]` (e.g., `sensor.production_worker_node_1_memory_usage_percent`)
 - **Node Schedulable Switches**: `switch.[cluster_name]_[node_name]_schedulable` (e.g., `switch.production_worker_node_1_schedulable`)
 - **Namespace-level Pod Sensors**: `sensor.[cluster_name]_[namespace]_[pod_name]` (e.g., `sensor.production_default_my_app_pod`)
 - **Namespace-level Switches**: `switch.[cluster_name]_[namespace]_[resource_name]` (e.g., `switch.production_default_web_app`)

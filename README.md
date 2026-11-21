@@ -13,7 +13,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 
 - **Cluster Monitoring**: Monitor pods, nodes, deployments, statefulsets, daemonsets, cronjobs, ingresses, services, Gateway API HTTPRoutes, and HorizontalPodAutoscalers
 - **Real-Time Updates**: The Kubernetes Watch API streams resource changes into Home Assistant within seconds (enabled by default; falls back to interval polling automatically when watch is unavailable; a missing `watch` permission surfaces as a *Missing permissions* repair issue)
-- **Node Sensors**: Per-node sensors for status, IP addresses, memory/CPU resources, real-time usage metrics, and system information, plus per-node Ready and pressure binary sensors
+- **Node Sensors**: Per-node sensors for status, IP addresses, memory/CPU resources, real-time CPU/memory usage sensors (absolute and percent of capacity), and system information, plus per-node Ready and pressure binary sensors
 - **Cluster Alert Sensors**: *Degraded Workloads*, *Problem Pods*, *Restarting Pods*, *Nodes Under Pressure*, and *Failed Jobs* count what needs attention cluster-wide and list the offending resources in an attribute — one automation covers the whole cluster
 - **Multi-Namespace Support**: Monitor a single namespace or all namespaces
 - **Workload Control**: Scale, start, stop, and rolling-restart deployments, statefulsets, and daemonsets from Home Assistant; a per-workload replica `number` entity sets an exact replica count from a dashboard or automation. HPA-managed workloads are detected and flagged, and scaling them to a count the HPA would revert is rejected instead of silently undone
@@ -89,7 +89,7 @@ The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `n
 
 ## Known limitations
 
-- **CPU and memory need metrics-server.** Without it the workload CPU/memory sensors stay empty and a repair issue says so. With the Watch API on (the default), metrics refresh every 5 minutes, because the Metrics API cannot be watched.
+- **CPU and memory need metrics-server.** Without it the workload and node CPU/memory sensors stay empty and a repair issue says so. With the Watch API on (the default), metrics refresh every 5 minutes, because the Metrics API cannot be watched.
 - **Pod, Job and node customizations expire an hour after the resource is gone.** Their names are usually generated, so the entity-registry records of removed ones are purged to keep the registry from growing without bound. A StatefulSet pod or node that comes back later than that gets a fresh entity without its earlier entity_id, name or area.
 - **HPA-managed workloads cannot be scaled to a fixed count.** The HorizontalPodAutoscaler would revert it, so scaling to anything but 0 is rejected; change the HPA's min/max replicas instead. Turning the switch back on hands control back to the HPA. See [HPA-managed workloads](https://tibuntu.github.io/homeassistant-kubernetes/ENTITIES/#hpa-managed-workloads).
 - **Ingresses, HTTPRoutes, and Services have no per-resource entities** — only count sensors and the sidebar panel's Network tab (HTTPRoutes have no count sensor at all). There are no PersistentVolumeClaim / storage sensors.
