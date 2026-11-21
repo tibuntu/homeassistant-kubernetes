@@ -1,5 +1,5 @@
-import { html, css, nothing } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { html, css, nothing, PropertyValues } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
@@ -61,6 +61,8 @@ const SKIP_REASONS: Record<string, string> = {
 
 @customElement("k8s-nodes-table")
 export class K8sNodesTable extends K8sDataView<NodesResponse> {
+  /** Search text preset from an overview alert click. */
+  @property({ attribute: false }) public initialSearch?: string;
   @state() private _expandedNodes: Set<string> = new Set();
   @state() private _statusFilter: string = "all";
   @state() private _searchQuery: string = "";
@@ -77,6 +79,12 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
   @state() private _drainResult: DrainResult | null = null;
 
   protected loadErrorFallback = "Failed to load nodes data";
+
+  protected willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("initialSearch") && this.initialSearch) {
+      this._searchQuery = this.initialSearch;
+    }
+  }
 
   protected async fetchData(): Promise<void> {
     const result: NodesResponse = await this.hass.callWS({

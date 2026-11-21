@@ -1,5 +1,5 @@
 import { html, css, nothing, PropertyValues } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import {
@@ -24,7 +24,17 @@ interface PodData {
   owner_kind: string;
   owner_name: string;
   containers?: string[];
+  problem?: boolean;
+  problem_reason?: string | null;
 }
+
+/** Same definition as `alerts.problem_pods`, so counts match the sensor. */
+const isProblem = (p: PodData): boolean =>
+  !!p.problem || p.phase === "Failed" || p.phase === "Unknown";
+
+/** What `kubectl get pods` would show: the problem reason, else the phase. */
+const podStatus = (p: PodData): string =>
+  p.problem && p.problem_reason ? p.problem_reason : p.phase;
 
 interface PodIdentifier {
   entry_id: string;
@@ -75,6 +85,7 @@ const TOGGLEABLE_COLUMNS = [
 type ColumnKey = (typeof TOGGLEABLE_COLUMNS)[number]["key"];
 const ALL_COLUMN_KEYS: Set<ColumnKey> = new Set(TOGGLEABLE_COLUMNS.map((c) => c.key));
 const STORAGE_KEY = "k8s-pods-columns";
+const PROBLEMS_FILTER = "__problems";
 
 const WRAP_STORAGE_KEY = "k8s-pods-log-wrap";
 const LOGS_REFRESH_MS = 5000;
@@ -121,6 +132,8 @@ function saveColumnPrefs(cols: Set<ColumnKey>): void {
 
 @customElement("k8s-pods-table")
 export class K8sPodsTable extends K8sDataView<PodsResponse> {
+  /** Search text preset from an overview alert click. */
+  @property({ attribute: false }) public initialSearch?: string;
   @state() private _searchQuery: string = "";
   @state() private _phaseFilter: string = "all";
   @state() private _namespaceFilter: string = "all";
@@ -177,7 +190,9 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   private _getFilteredPods(pods: PodData[]): PodData[] {
     let filtered = pods;
 
-    if (this._phaseFilter !== "all") {
+    if (this._phaseFilter === PROBLEMS_FILTER) {
+      filtered = filtered.filter(isProblem);
+    } else if (this._phaseFilter !== "all") {
       filtered = filtered.filter((p) => p.phase === this._phaseFilter);
     }
 
@@ -206,6 +221,9 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       } else if (field === "age") {
         valA = a.creation_timestamp || "";
         valB = b.creation_timestamp || "";
+      } else if (field === "phase") {
+        valA = podStatus(a);
+        valB = podStatus(b);
       } else {
         valA = a[field] || "";
         valB = b[field] || "";
@@ -355,6 +373,9 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
 
   protected willUpdate(changedProps: PropertyValues): void {
     super.willUpdate(changedProps);
+    if (changedProps.has("initialSearch") && this.initialSearch) {
+      this._searchQuery = this.initialSearch;
+    }
     if (changedProps.has("_logsResult")) {
       // Follow the tail only if the view was at the bottom before this update.
       const pre = this.renderRoot?.querySelector<HTMLElement>(".logs-output");
@@ -700,6 +721,15 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
               </button>
             `,
           )}
+          <button
+            class="filter-chip"
+            ?active=${this._phaseFilter === PROBLEMS_FILTER}
+            @click=${() => {
+              this._phaseFilter = PROBLEMS_FILTER;
+            }}
+          >
+            Problems (${cluster.pods.filter(isProblem).length})
+          </button>
           ${this._renderColumnMenu()}
         </div>
 
@@ -753,7 +783,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
                             @keydown=${(e: KeyboardEvent) =>
                               this._handleSortKeydown(e, "phase")}
                           >
-                            Phase
+                            Status
                             ${
                               this._sortIcon("phase")
                                 ? html`<ha-icon
@@ -876,13 +906,16 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
 
   private _renderPodRow(cluster: ClusterPods, pod: PodData) {
     const entryId = cluster.entry_id;
-    const phaseClass = PHASE_CLASSES[pod.phase] || "badge-unknown";
+    const phaseClass =
+      pod.problem && pod.problem_reason
+        ? "badge-failed"
+        : PHASE_CLASSES[pod.phase] || "badge-unknown";
 
     return html`
       <tr>
         <td>${pod.namespace}</td>
         <td class="pod-name">${pod.name}</td>
-        <td><span class="badge ${phaseClass}">${pod.phase}</span></td>
+        <td><span class="badge ${phaseClass}">${podStatus(pod)}</span></td>
         ${this._colVisible("ready") ? html`<td>${pod.ready_containers}/${pod.total_containers}</td>` : nothing}
         ${this._colVisible("restarts") ? html`<td class=${pod.restart_count > 5 ? "restart-warn" : ""}>${pod.restart_count}</td>` : nothing}
         ${this._colVisible("node") ? html`<td>${pod.node_name}</td>` : nothing}
