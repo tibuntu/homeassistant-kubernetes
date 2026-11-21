@@ -9,7 +9,13 @@ import {
   dialogStyles,
   tableStyles,
 } from "../styles/shared";
-import { formatAge, errorMessage, isAdmin } from "../utils/format";
+import {
+  formatAge,
+  formatCpu,
+  formatMemory,
+  errorMessage,
+  isAdmin,
+} from "../utils/format";
 
 interface PodData {
   name: string;
@@ -26,6 +32,8 @@ interface PodData {
   containers?: string[];
   problem?: boolean;
   problem_reason?: string | null;
+  cpu_usage?: number;
+  memory_usage?: number;
 }
 
 /** Same definition as `alerts.problem_pods`, so counts match the sensor. */
@@ -60,6 +68,7 @@ interface ClusterPods {
   cluster_name: string;
   pods: PodData[];
   pod_logs_enabled?: boolean;
+  metrics_available?: boolean;
 }
 
 interface PodsResponse {
@@ -77,6 +86,8 @@ const PHASE_CLASSES: Record<string, string> = {
 const TOGGLEABLE_COLUMNS = [
   { key: "ready", label: "Ready" },
   { key: "restarts", label: "Restarts" },
+  { key: "cpu", label: "CPU" },
+  { key: "memory", label: "Memory" },
   { key: "node", label: "Node" },
   { key: "ip", label: "IP" },
   { key: "owner", label: "Owner" },
@@ -86,6 +97,8 @@ type ColumnKey = (typeof TOGGLEABLE_COLUMNS)[number]["key"];
 const ALL_COLUMN_KEYS: Set<ColumnKey> = new Set(TOGGLEABLE_COLUMNS.map((c) => c.key));
 const STORAGE_KEY = "k8s-pods-columns";
 const PROBLEMS_FILTER = "__problems";
+// Set once the CPU/Memory columns were added to a stored selection.
+const USAGE_MIGRATED_KEY = "k8s-pods-columns-usage";
 
 const WRAP_STORAGE_KEY = "k8s-pods-log-wrap";
 const LOGS_REFRESH_MS = 5000;
@@ -106,7 +119,8 @@ function saveWrapPref(wrap: boolean): void {
   }
 }
 
-type SortField = "namespace" | "name" | "phase" | "restarts" | "node_name" | "age";
+type SortField =
+  "namespace" | "name" | "phase" | "restarts" | "cpu" | "memory" | "node_name" | "age";
 
 function loadColumnPrefs(): Set<ColumnKey> {
   try {
@@ -114,7 +128,17 @@ function loadColumnPrefs(): Set<ColumnKey> {
     if (stored) {
       const parsed = JSON.parse(stored) as string[];
       const valid = parsed.filter((k) => ALL_COLUMN_KEYS.has(k as ColumnKey));
-      if (valid.length) return new Set(valid as ColumnKey[]);
+      if (valid.length) {
+        const cols = new Set(valid as ColumnKey[]);
+        // Stored selections list only visible columns, so a column added
+        // later would stay hidden: show CPU/Memory once, then respect the user.
+        if (!localStorage.getItem(USAGE_MIGRATED_KEY)) {
+          cols.add("cpu");
+          cols.add("memory");
+          saveColumnPrefs(cols); // persists the list and sets the marker
+        }
+        return cols;
+      }
     }
   } catch {
     // localStorage unavailable or corrupt — use defaults
@@ -125,6 +149,8 @@ function loadColumnPrefs(): Set<ColumnKey> {
 function saveColumnPrefs(cols: Set<ColumnKey>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...cols]));
+    // A saved selection already reflects the user's choice for CPU/Memory.
+    localStorage.setItem(USAGE_MIGRATED_KEY, "1");
   } catch {
     // localStorage unavailable — no-op
   }
@@ -218,6 +244,11 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       if (field === "restarts") {
         valA = a.restart_count;
         valB = b.restart_count;
+      } else if (field === "cpu" || field === "memory") {
+        // Pods without a value (or clusters without metrics) sort first.
+        const key = field === "cpu" ? "cpu_usage" : "memory_usage";
+        valA = a[key] ?? -1;
+        valB = b[key] ?? -1;
       } else if (field === "age") {
         valA = a.creation_timestamp || "";
         valB = b.creation_timestamp || "";
@@ -808,6 +839,34 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
                               : nothing
                           }
                           ${
+                            this._colVisible("cpu")
+                              ? html`<th
+                                  role="button"
+                                  tabindex="0"
+                                  @click=${() => this._handleSort("cpu")}
+                                  @keydown=${(e: KeyboardEvent) =>
+                                    this._handleSortKeydown(e, "cpu")}
+                                >
+                                  CPU
+                                  ${this._sortIcon("cpu") ? html`<ha-icon icon=${this._sortIcon("cpu")}></ha-icon>` : nothing}
+                                </th>`
+                              : nothing
+                          }
+                          ${
+                            this._colVisible("memory")
+                              ? html`<th
+                                  role="button"
+                                  tabindex="0"
+                                  @click=${() => this._handleSort("memory")}
+                                  @keydown=${(e: KeyboardEvent) =>
+                                    this._handleSortKeydown(e, "memory")}
+                                >
+                                  Memory
+                                  ${this._sortIcon("memory") ? html`<ha-icon icon=${this._sortIcon("memory")}></ha-icon>` : nothing}
+                                </th>`
+                              : nothing
+                          }
+                          ${
                             this._colVisible("node")
                               ? html`<th
                                   role="button"
@@ -904,6 +963,14 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     `;
   }
 
+  private _usage(
+    cluster: ClusterPods,
+    value: number | undefined,
+    fmt: (v: number) => string,
+  ): string {
+    return cluster.metrics_available && value !== undefined ? fmt(value) : "-";
+  }
+
   private _renderPodRow(cluster: ClusterPods, pod: PodData) {
     const entryId = cluster.entry_id;
     const phaseClass =
@@ -918,6 +985,8 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         <td><span class="badge ${phaseClass}">${podStatus(pod)}</span></td>
         ${this._colVisible("ready") ? html`<td>${pod.ready_containers}/${pod.total_containers}</td>` : nothing}
         ${this._colVisible("restarts") ? html`<td class=${pod.restart_count > 5 ? "restart-warn" : ""}>${pod.restart_count}</td>` : nothing}
+        ${this._colVisible("cpu") ? html`<td>${this._usage(cluster, pod.cpu_usage, formatCpu)}</td>` : nothing}
+        ${this._colVisible("memory") ? html`<td>${this._usage(cluster, pod.memory_usage, formatMemory)}</td>` : nothing}
         ${this._colVisible("node") ? html`<td>${pod.node_name}</td>` : nothing}
         ${this._colVisible("ip") ? html`<td class="mono">${pod.pod_ip}</td>` : nothing}
         ${this._colVisible("owner") ? html`<td>${pod.owner_kind !== "N/A" ? html`<span class="owner-info">${pod.owner_kind}/${pod.owner_name}</span>` : html`<span class="owner-info">-</span>`}</td>` : nothing}

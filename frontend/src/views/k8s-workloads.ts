@@ -3,7 +3,13 @@ import { customElement, property, state } from "lit/decorators.js";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
 import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
-import { formatAge, errorMessage, isAdmin } from "../utils/format";
+import {
+  formatAge,
+  formatCpu,
+  formatMemory,
+  errorMessage,
+  isAdmin,
+} from "../utils/format";
 
 /** Shape shared by Deployments and StatefulSets; they differ only in which
  * field reports ready replicas (see `REPLICA_KIND_META`). */
@@ -20,6 +26,8 @@ interface ReplicaWorkloadData {
   hpa_name?: string | null;
   hpa_min_replicas?: number | null;
   hpa_max_replicas?: number | null;
+  cpu_usage?: number;
+  memory_usage?: number;
 }
 
 interface DaemonSetData {
@@ -27,6 +35,8 @@ interface DaemonSetData {
   namespace: string;
   desired_number_scheduled: number;
   number_available: number;
+  cpu_usage?: number;
+  memory_usage?: number;
 }
 
 interface CronJobData {
@@ -67,6 +77,7 @@ interface ClusterWorkloads {
   daemonsets: DaemonSetData[];
   cronjobs: CronJobData[];
   jobs: JobData[];
+  metrics_available?: boolean;
 }
 
 interface WorkloadsResponse {
@@ -567,6 +578,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                 "deployment",
                 cluster.deployments,
                 cluster.entry_id,
+                cluster.metrics_available,
               )
             : nothing
         }
@@ -576,12 +588,17 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                 "statefulset",
                 cluster.statefulsets,
                 cluster.entry_id,
+                cluster.metrics_available,
               )
             : nothing
         }
         ${
           this._shouldShowCategory("daemonsets")
-            ? this._renderDaemonSets(cluster.daemonsets, cluster.entry_id)
+            ? this._renderDaemonSets(
+                cluster.daemonsets,
+                cluster.entry_id,
+                cluster.metrics_available,
+              )
             : nothing
         }
         ${
@@ -624,6 +641,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     kind: ReplicaKind,
     items: ReplicaWorkloadData[],
     entryId: string,
+    metrics?: boolean,
   ) {
     const meta = REPLICA_KIND_META[kind];
     const filtered = items.filter(
@@ -659,16 +677,29 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
         ${
           this._collapsedCategories.has(meta.category)
             ? nothing
-            : filtered.map((item) => this._renderReplicaCard(kind, item, entryId))
+            : filtered.map((item) =>
+                this._renderReplicaCard(kind, item, entryId, metrics),
+              )
         }
       </div>
     `;
+  }
+
+  private _renderUsage(
+    metrics: boolean | undefined,
+    w: { cpu_usage?: number; memory_usage?: number },
+  ) {
+    if (!metrics) return nothing;
+    return html`<span class="replica-info usage">
+      ${formatCpu(w.cpu_usage ?? 0)} · ${formatMemory(w.memory_usage ?? 0)}
+    </span>`;
   }
 
   private _renderReplicaCard(
     kind: ReplicaKind,
     item: ReplicaWorkloadData,
     entryId: string,
+    metrics?: boolean,
   ) {
     const meta = REPLICA_KIND_META[kind];
     const status = this._getReplicaStatus(item, kind);
@@ -704,6 +735,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                   ${ready}/${item.replicas} ready
                 </span>`
           }
+          ${this._renderUsage(metrics, item)}
           <span class="badge ${STATUS_META[status].badgeClass}">
             ${STATUS_META[status].label}
           </span>
@@ -796,7 +828,11 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     `;
   }
 
-  private _renderDaemonSets(daemonsets: DaemonSetData[], entryId: string) {
+  private _renderDaemonSets(
+    daemonsets: DaemonSetData[],
+    entryId: string,
+    metrics?: boolean,
+  ) {
     const filtered = daemonsets.filter(
       (ds) =>
         this._matchesNamespace(ds.namespace) &&
@@ -827,12 +863,12 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             ?data-collapsed=${this._collapsedCategories.has("daemonsets")}
           ></ha-icon>
         </div>
-        ${this._collapsedCategories.has("daemonsets") ? nothing : filtered.map((ds) => this._renderDaemonSetCard(ds, entryId))}
+        ${this._collapsedCategories.has("daemonsets") ? nothing : filtered.map((ds) => this._renderDaemonSetCard(ds, entryId, metrics))}
       </div>
     `;
   }
 
-  private _renderDaemonSetCard(ds: DaemonSetData, entryId: string) {
+  private _renderDaemonSetCard(ds: DaemonSetData, entryId: string, metrics?: boolean) {
     const status = this._getDaemonSetStatus(ds);
     const actionKey = `ds_${ds.namespace}_${ds.name}`;
     const busy = this._actionInProgress.has(actionKey);
@@ -847,6 +883,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           <span class="replica-info">
             ${ds.number_available ?? 0}/${ds.desired_number_scheduled} available
           </span>
+          ${this._renderUsage(metrics, ds)}
           <span class="badge ${STATUS_META[status].badgeClass}">
             ${STATUS_META[status].label}
           </span>

@@ -105,6 +105,7 @@ export const RESPONSES: Record<string, unknown> = {
         entry_id: "entry_1",
         cluster_name: "test-cluster",
         pod_logs_enabled: true,
+        metrics_available: true,
         pods: [
           {
             name: "web-7d9f8b-abc12",
@@ -119,6 +120,8 @@ export const RESPONSES: Record<string, unknown> = {
             owner_kind: "ReplicaSet",
             owner_name: "web-7d9f8b",
             containers: ["web"],
+            cpu_usage: 120,
+            memory_usage: 256,
           },
           {
             name: "db-0",
@@ -133,6 +136,8 @@ export const RESPONSES: Record<string, unknown> = {
             owner_kind: "StatefulSet",
             owner_name: "db",
             containers: ["db", "metrics-exporter"],
+            cpu_usage: 15,
+            memory_usage: 1024,
           },
           {
             name: "crash-5c8d7-xyz99",
@@ -149,6 +154,8 @@ export const RESPONSES: Record<string, unknown> = {
             owner_kind: "ReplicaSet",
             owner_name: "crash-5c8d7",
             containers: ["crash"],
+            cpu_usage: 50,
+            memory_usage: 512,
           },
         ],
       },
@@ -165,6 +172,7 @@ export const RESPONSES: Record<string, unknown> = {
       {
         entry_id: "entry_1",
         cluster_name: "test-cluster",
+        metrics_available: true,
         deployments: [
           {
             name: "web",
@@ -176,6 +184,8 @@ export const RESPONSES: Record<string, unknown> = {
             hpa_name: null,
             hpa_min_replicas: null,
             hpa_max_replicas: null,
+            cpu_usage: 340,
+            memory_usage: 512,
           },
           {
             name: "api",
@@ -211,6 +221,8 @@ export const RESPONSES: Record<string, unknown> = {
             namespace: "kube-system",
             desired_number_scheduled: 1,
             number_available: 1,
+            cpu_usage: 5,
+            memory_usage: 32,
           },
         ],
         cronjobs: [

@@ -69,3 +69,13 @@ export function errorMessage(err: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+/** Millicores as kubectl shows them, e.g. `120m`. */
+export function formatCpu(millicores: number): string {
+  return `${Math.round(millicores)}m`;
+}
+
+/** MiB as kubectl shows them, e.g. `256 Mi`. */
+export function formatMemory(mib: number): string {
+  return `${Math.round(mib)} Mi`;
+}
