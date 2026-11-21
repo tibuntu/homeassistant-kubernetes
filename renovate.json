@@ -127,7 +127,7 @@
       }
     },
     {
-      "description": "One Python version across CI, pre-commit and the HA requirements check",
+      "description": "One Python version across CI and pre-commit",
       "matchDepNames": ["python"],
       "groupName": "python",
       "semanticCommitScope": "deps"
@@ -146,16 +146,14 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Track the Python version in CI workflows, pre-commit and the HA requirements check",
+      "description": "Track the Python version in CI workflows and pre-commit",
       "managerFilePatterns": [
         "/\\.github/workflows/.*\\.ya?ml$/",
-        "/^\\.pre-commit-config\\.yaml$/",
-        "/^scripts/check-ha-requirements\\.sh$/"
+        "/^\\.pre-commit-config\\.yaml$/"
       ],
       "matchStrings": [
         "PYTHON_VERSION:\\s*[\"'](?<currentValue>[0-9.]+)[\"']",
-        "\\n  python: python(?<currentValue>3\\.[0-9]+)\\n",
-        "--python-version (?<currentValue>3\\.[0-9]+)"
+        "\\n  python: python(?<currentValue>3\\.[0-9]+)\\n"
       ],
       "depNameTemplate": "python",
       "datasourceTemplate": "docker"
