@@ -149,6 +149,7 @@
         "services": "Services (count + panel data)",
         "hpas": "HorizontalPodAutoscalers (HPA detection + scale guard)",
         "httproutes": "HTTPRoutes (Gateway API, Network tab)",
+        "certificates": "Certificates (cert-manager, Certificate Problems sensor + Network tab)",
         "metrics": "CPU/memory metrics (Metrics API)",
         "counts": "Aggregate count sensors"
       }
@@ -431,6 +432,9 @@
       },
       "failed_jobs": {
         "name": "Failed Jobs"
+      },
+      "certificate_problems": {
+        "name": "Certificate Problems"
       },
       "node": {
         "name": "{name}"

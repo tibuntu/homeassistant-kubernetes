@@ -20,7 +20,7 @@ The integration provides the following sensors to monitor your Kubernetes cluste
 
 ### Cluster Alert Sensors
 
-Five per-cluster sensors count resources that currently need attention, so a single automation can cover the whole cluster. They use the same rules as the sidebar panel's Overview alerts, so both always agree. The offending resources are listed in an attribute; that list is excluded from the recorder (history keeps the count only).
+Six per-cluster sensors count resources that currently need attention, so a single automation can cover the whole cluster. They use the same rules as the sidebar panel's Overview alerts, so both always agree. The offending resources are listed in an attribute; that list is excluded from the recorder (history keeps the count only).
 
 | Sensor | Counts | Attribute | Unit |
 |--------|--------|-----------|------|
@@ -29,8 +29,9 @@ Five per-cluster sensors count resources that currently need attention, so a sin
 | **Restarting Pods** | Pods in a restart loop that may look healthy right now: at least 3 restarts in total (summed across containers) and the latest container termination finished within the last 60 minutes. Catches pods that OOM or crash and come back `Running` before the next update, which *Problem Pods* misses | `pods`: list of `{name, namespace, restarts, last_terminated_reason, last_terminated_exit_code, last_terminated_at}` (the reason and exit code are from the first container with a previous termination) | pods |
 | **Nodes Under Pressure** | Nodes with Memory/Disk/PID Pressure or Network Unavailable | `nodes`: list of `{name, conditions}` | nodes |
 | **Failed Jobs** | Jobs whose terminal `Failed` condition (e.g. `BackoffLimitExceeded`, `DeadlineExceeded`) was set within the last 24 hours. A Job still retrying below its `backoffLimit` is not counted, and a failed CronJob run drops out as soon as a later run of the same CronJob succeeds. A failed Job that Kubernetes deletes earlier (`ttlSecondsAfterFinished`, `failedJobsHistoryLimit: 0`) drops out with it, so for "did the backup run?" also watch the CronJob's `last_successful_time` | `jobs`: list of `{name, namespace, cronjob, reason, message, failed_at}` (`cronjob` is the owning CronJob, `null` for a standalone Job) | jobs |
+| **Certificate Problems** | cert-manager Certificates that need attention: not Ready, or their renewal time (`status.renewalTime`) passed more than 24 hours ago (cert-manager failed to renew them), or already expired (`status.notAfter` in the past). Deliberately independent of the certificate lifetime, so it works for 90-day and 6-day certificates alike. Stays at 0 without cert-manager | `certificates`: list of `{name, namespace, reason, message, not_after, renewal_time}` — `reason` is `Expired`, the Ready condition's reason when not Ready (e.g. `DoesNotExist`, `NotReady` without one), or `RenewalOverdue` | certificates |
 
-Gating: *Problem Pods* and *Restarting Pods* are not created when **Pods** is disabled under **Configure → Disable data collection for**, *Nodes Under Pressure* when **Node sensors** is disabled, *Failed Jobs* when **Jobs** is disabled, and *Degraded Workloads* only when Deployment sensors, StatefulSet sensors **and** DaemonSets are all disabled.
+Gating: *Problem Pods* and *Restarting Pods* are not created when **Pods** is disabled under **Configure → Disable data collection for**, *Nodes Under Pressure* when **Node sensors** is disabled, *Failed Jobs* when **Jobs** is disabled, *Certificate Problems* when **Certificates** is disabled (it exists, at 0, on clusters without cert-manager — disable the category to hide it), and *Degraded Workloads* only when Deployment sensors, StatefulSet sensors **and** DaemonSets are all disabled.
 
 ### Individual Node Sensors
 
@@ -460,7 +461,7 @@ Cluster Device (e.g., "production-cluster")
 │   ├── Jobs Count (sensor)
 │   ├── Ingresses Count (sensor)
 │   ├── Services Count (sensor)
-│   ├── Degraded Workloads / Problem Pods / Restarting Pods / Nodes Under Pressure / Failed Jobs (sensors)
+│   ├── Degraded Workloads / Problem Pods / Restarting Pods / Nodes Under Pressure / Failed Jobs / Certificate Problems (sensors)
 │   ├── Cluster events (event — opt-in, only when enable_events is on)
 │   ├── Individual Node sensors (one per node)
 │   ├── Node condition binary sensors (5 per node: Ready, Memory/Disk/PID Pressure, Network Unavailable)
@@ -529,7 +530,7 @@ The integration automatically discovers and creates entities for:
 - Node condition binary sensors (5 per node: Ready, Memory Pressure, Disk Pressure, PID Pressure, Network Unavailable)
 - Node schedulable switches (one per node, for cordon / uncordon)
 - Cluster-wide metrics (pods, nodes, deployments, statefulsets, daemonsets, cronjobs, jobs, ingresses, services count)
-- Cluster alert sensors (degraded workloads, problem pods, restarting pods, nodes under pressure, failed jobs)
+- Cluster alert sensors (degraded workloads, problem pods, restarting pods, nodes under pressure, failed jobs, certificate problems)
 - Overall cluster health
 
 Entities are automatically added when new resources are created and removed when resources are deleted from the cluster.

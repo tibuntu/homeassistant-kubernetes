@@ -6,6 +6,7 @@ import pytest
 
 from custom_components.kubernetes.alerts import (
     build_alerts,
+    certificate_problems,
     degraded_workloads,
     failed_jobs,
     job_state,
@@ -96,7 +97,7 @@ def test_problem_pods_uses_parser_flag():
 
 
 def test_build_alerts_composes_helpers():
-    """build_alerts is exactly the five helpers under the panel's keys."""
+    """build_alerts is exactly the six helpers under the panel's keys."""
     data = {
         "nodes": {"n1": {"disk_pressure": True}},
         "daemonsets": {
@@ -115,6 +116,7 @@ def test_build_alerts_composes_helpers():
         "failed_pods": problem_pods(data),
         "restarting_pods": restarting_pods(data),
         "failed_jobs": failed_jobs(data),
+        "certificate_problems": certificate_problems(data),
     }
     assert build_alerts(data)["degraded_workloads"][0]["ready"] == 0
 
@@ -303,3 +305,63 @@ def _cond(type_, status="True"):
 def test_job_state(job, expected):
     """job_state covers every branch of the Job status derivation."""
     assert job_state(job) == expected
+
+
+def _cert(**extra):
+    return {
+        "name": "web-tls",
+        "namespace": "ns",
+        "ready": True,
+        "reason": "Ready",
+        "message": "up to date",
+        "not_after": "2027-01-01T00:00:00Z",
+        "renewal_time": "2026-12-01T00:00:00Z",
+        **extra,
+    }
+
+
+@pytest.mark.parametrize(
+    ("extra", "reason"),
+    [
+        # Ready and the renewal is still ahead
+        ({}, None),
+        # Renewal due less than 24 h ago: cert-manager may still be at it
+        ({"renewal_time": "2026-11-01T13:00:00Z"}, None),
+        # Renewal more than 24 h overdue
+        ({"renewal_time": "2026-11-01T11:00:00Z"}, "RenewalOverdue"),
+        # Not Ready, with and without a condition reason
+        ({"ready": False, "reason": "DoesNotExist"}, "DoesNotExist"),
+        ({"ready": False, "reason": None}, "NotReady"),
+        # Expired wins over everything else
+        ({"ready": False, "not_after": "2026-11-02T11:59:00Z"}, "Expired"),
+        # Missing, malformed or naive timestamps are ignored
+        ({"not_after": None, "renewal_time": None}, None),
+        ({"not_after": "garbage", "renewal_time": "2020-01-01T00:00:00"}, None),
+    ],
+)
+def test_certificate_problems(extra, reason):
+    """Not Ready, renewal overdue by more than 24 h, or expired."""
+    result = certificate_problems({"certificates": {"c": _cert(**extra)}}, _NOW)
+    if reason is None:
+        assert result == []
+    else:
+        cert = _cert(**extra)
+        assert result == [
+            {
+                "name": "web-tls",
+                "namespace": "ns",
+                "reason": reason,
+                "message": cert["message"],
+                "not_after": cert["not_after"],
+                "renewal_time": cert["renewal_time"],
+            }
+        ]
+
+
+def test_certificate_problems_defaults_to_current_time():
+    """Without ``now`` the current time is used; no bucket means no problems."""
+    expired = _cert(not_after="2000-01-01T00:00:00Z")
+    assert certificate_problems({"certificates": {"c": expired}})[0]["reason"] == (
+        "Expired"
+    )
+    assert certificate_problems({}) == []

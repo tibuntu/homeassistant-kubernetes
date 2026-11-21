@@ -116,7 +116,7 @@ def _watch_url_namespace(url: str) -> str | None:
 
 # Watched resources backed by an optional CRD: a 404 on their list/watch
 # means "API not installed", which is a normal state rather than a failure.
-_OPTIONAL_WATCH_RESOURCES = frozenset({"httproutes"})
+_OPTIONAL_WATCH_RESOURCES = frozenset({"httproutes", "certificates"})
 
 
 def _reconnect_delay(failure_streak: int) -> float:
@@ -160,7 +160,20 @@ _NAMESPACED_WATCH_RESOURCES: tuple[tuple[str, str, str, str], ...] = (
         "httproutes",
         "_parse_httproute_item",
     ),
+    (
+        "certificates",
+        "apis/cert-manager.io/v1",
+        "certificates",
+        "_parse_certificate_item",
+    ),
 )
+
+# Buckets backed by an optional CRD and fetched best-effort by
+# _fetch_optional: bucket -> (client method, resource label, API name).
+_OPTIONAL_FETCHES: dict[str, tuple[str, str, str]] = {
+    "httproutes": ("get_httproutes", "HTTPRoutes", "Gateway API"),
+    "certificates": ("get_certificates", "Certificates", "cert-manager"),
+}
 
 
 @dataclass
@@ -302,9 +315,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._forbidden_loops: dict[str, str] = {}
         # Set while the HPA list gets HTTP 403, so the warning logs once.
         self._hpas_forbidden = False
-        # HTTP status (403/404) of the current "no HTTPRoutes" episode, so it
-        # is logged once per episode rather than on every poll.
-        self._httproutes_status: int | None = None
+        # Per optional bucket (_OPTIONAL_FETCHES): HTTP status (403/404) of the
+        # current "none" episode, so it is logged once per episode rather than
+        # on every poll.
+        self._optional_status: dict[str, int | None] = {}
 
     async def _fetch_hpas(self) -> list[dict[str, Any]]:
         """Fetch HPAs, treating HTTP 403 as "no HPAs".
@@ -330,37 +344,44 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         self._hpas_forbidden = False
         return hpas
 
-    async def _fetch_httproutes(self) -> list[dict[str, Any]]:
-        """Fetch Gateway API HTTPRoutes; never fails the poll cycle.
+    async def _fetch_optional(self, bucket: str) -> list[dict[str, Any]]:
+        """Fetch an optional-CRD bucket (HTTPRoutes, Certificates) best-effort.
 
-        HTTPRoutes are a CRD many clusters do not install, and no entity is
-        derived from this bucket (Network tab only), so the fetch is
-        best-effort like the metrics fetches: a missing CRD (404) or RBAC rule
-        (403) means "none", logged once per episode, and any other failure
-        keeps the previous bucket (the client logs it, deduplicated).
+        Many clusters do not install these CRDs, and no entity is derived
+        from which items exist (the Certificate Problems sensor only counts
+        them and exists regardless), so a failure must never fail the poll
+        cycle: a missing CRD
+        (404) or RBAC rule (403) means "none", logged once per episode, and
+        any other failure keeps the previous bucket (the client logs it,
+        deduplicated).
         """
+        method, label, api = _OPTIONAL_FETCHES[bucket]
         try:
-            httproutes = await self.client.get_httproutes()
+            items: list[dict[str, Any]] = await getattr(self.client, method)()
         except Exception as ex:
             status = getattr(ex, "status", None)
             if status not in (403, 404):
-                return list((self.data or {}).get("httproutes", {}).values())
-            if status != self._httproutes_status:
-                self._httproutes_status = status
+                return list((self.data or {}).get(bucket, {}).values())
+            if status != self._optional_status.get(bucket):
+                self._optional_status[bucket] = status
                 if status == 404:
                     _LOGGER.info(
-                        "Gateway API is not installed on this cluster — the "
-                        "Network tab shows no HTTPRoutes"
+                        "%s is not installed on this cluster — no %s are shown",
+                        api,
+                        label,
                     )
                 else:
                     _LOGGER.warning(
-                        "Listing HTTPRoutes is forbidden — the Network tab "
-                        "shows no HTTPRoutes. Re-apply the RBAC (chart or "
-                        "manifests), or disable HTTPRoutes in the options"
+                        "Listing %s is forbidden — no %s are shown. Re-apply "
+                        "the RBAC (chart or manifests), or disable %s in the "
+                        "options",
+                        label,
+                        label,
+                        label,
                     )
             return []
-        self._httproutes_status = None
-        return httproutes
+        self._optional_status[bucket] = None
+        return items
 
     @property
     def _forbidden_resources(self) -> set[str]:
@@ -432,7 +453,14 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 )
                 hpas = [] if "hpas" in disabled else await self._fetch_hpas()
                 httproutes = (
-                    [] if "httproutes" in disabled else await self._fetch_httproutes()
+                    []
+                    if "httproutes" in disabled
+                    else await self._fetch_optional("httproutes")
+                )
+                certificates = (
+                    []
+                    if "certificates" in disabled
+                    else await self._fetch_optional("certificates")
                 )
 
                 _LOGGER.debug("Starting to fetch detailed node information")
@@ -523,6 +551,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     "hpas": {f"{h['namespace']}_{h['name']}": h for h in hpas},
                     "httproutes": {
                         f"{h['namespace']}_{h['name']}": h for h in httproutes
+                    },
+                    "certificates": {
+                        f"{c['namespace']}_{c['name']}": c for c in certificates
                     },
                     "nodes": {node["name"]: node for node in nodes},
                     "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
@@ -704,6 +735,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             expected.add(f"{eid}_nodes_under_pressure")
         if "jobs" not in disabled:
             expected.add(f"{eid}_failed_jobs")
+        if "certificates" not in disabled:
+            expected.add(f"{eid}_certificate_problems")
 
         # Node sensors + schedulable switches + node condition binary sensors.
         # The schedulable switch survives the "nodes" opt-out.

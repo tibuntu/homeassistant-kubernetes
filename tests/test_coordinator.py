@@ -71,6 +71,7 @@ def mock_client():
     client.get_services = AsyncMock(return_value=[])
     client.get_hpas = AsyncMock(return_value=[])
     client.get_httproutes = AsyncMock(return_value=[])
+    client.get_certificates = AsyncMock(return_value=[])
     client.get_deployments_count = AsyncMock(return_value=0)
     client.get_statefulsets_count = AsyncMock(return_value=0)
     client.get_daemonsets_count = AsyncMock(return_value=0)
@@ -3425,13 +3426,22 @@ class TestRunWatchLoopExtended:
             seconds=DEFAULT_FALLBACK_POLL_INTERVAL
         )
 
+    @pytest.mark.parametrize(
+        ("resource_type", "url"),
+        [
+            (
+                "httproutes",
+                "https://host/apis/gateway.networking.k8s.io/v1/httproutes",
+            ),
+            ("certificates", "https://host/apis/cert-manager.io/v1/certificates"),
+        ],
+    )
     async def test_run_watch_loop_404_retries_at_cap_without_any_issue(
-        self, coord, mock_client
+        self, coord, mock_client, resource_type, url
     ):
         """A 404 (optional CRD not installed) retries slowly, raises no
         repair issue and ends a forbidden episode of the same loop."""
-        url = "https://host/apis/gateway.networking.k8s.io/v1/httproutes"
-        coord._forbidden_loops[f"httproutes:{url}"] = "httproutes"
+        coord._forbidden_loops[f"{resource_type}:{url}"] = resource_type
         mock_client.list_resource_with_version.side_effect = (
             aiohttp.ClientResponseError(
                 request_info=MagicMock(), history=(), status=404, message="Not Found"
@@ -3444,9 +3454,7 @@ class TestRunWatchLoopExtended:
                 "custom_components.kubernetes.coordinator.ir.async_create_issue"
             ) as create,
         ):
-            await coord._run_watch_loop(
-                "httproutes", url, mock_client._parse_httproute_item
-            )
+            await coord._run_watch_loop(resource_type, url, MagicMock())
 
         wf.assert_called_once()
         assert wf.call_args.kwargs["timeout"] >= WATCH_MAX_RECONNECT_DELAY
@@ -3536,13 +3544,14 @@ class TestBuildWatchConfigs:
         assert "services" in resource_types
         assert "hpas" in resource_types
         assert "httproutes" in resource_types
+        assert "certificates" in resource_types
 
         # All URLs should be cluster-wide (no /namespaces/ in them)
         for url in urls:
             assert "/namespaces/" not in url
 
-        # 11 resource types total
-        assert len(configs) == 11
+        # 12 resource types total
+        assert len(configs) == 12
 
     async def test_per_namespace_configs_when_not_monitor_all(self, coord, mock_client):
         """When monitor_all_namespaces=False, should return per-namespace URLs."""
@@ -3552,8 +3561,8 @@ class TestBuildWatchConfigs:
 
         configs = coord._build_watch_configs(base_url)
 
-        # Nodes is always cluster-scoped (1 config) plus 10 resource types * 2 namespaces
-        assert len(configs) == 1 + 10 * 2
+        # Nodes is always cluster-scoped (1 config) plus 11 resource types * 2 namespaces
+        assert len(configs) == 1 + 11 * 2
 
         # The nodes URL should be cluster-wide
         nodes_configs = [(rt, url) for rt, url, _ in configs if rt == "nodes"]
@@ -3567,15 +3576,15 @@ class TestBuildWatchConfigs:
         assert any("/namespaces/kube-system/pods" in url for _, url in pod_configs)
 
     async def test_single_namespace_config(self, coord, mock_client):
-        """With one namespace and not monitoring all, should have 11 configs."""
+        """With one namespace and not monitoring all, should have 12 configs."""
         mock_client.monitor_all_namespaces = False
         mock_client.namespaces = ["production"]
         base_url = "https://test-cluster.example.com:6443"
 
         configs = coord._build_watch_configs(base_url)
 
-        # 1 nodes (cluster-wide) + 10 per-namespace resources * 1 namespace
-        assert len(configs) == 11
+        # 1 nodes (cluster-wide) + 11 per-namespace resources * 1 namespace
+        assert len(configs) == 12
 
         # Verify namespace appears in URLs for namespace-scoped resources
         ns_urls = [url for rt, url, _ in configs if rt != "nodes"]
@@ -3602,6 +3611,7 @@ class TestBuildWatchConfigs:
         assert parse_fn_map["services"] is mock_client._parse_service_item
         assert parse_fn_map["hpas"] is mock_client._parse_hpa_item
         assert parse_fn_map["httproutes"] is mock_client._parse_httproute_item
+        assert parse_fn_map["certificates"] is mock_client._parse_certificate_item
 
     async def test_watch_configs_include_ingresses_all_namespaces(
         self, coord, mock_client
@@ -3665,6 +3675,10 @@ class TestBuildWatchConfigs:
                 "httproutes",
                 "https://host:6443/apis/gateway.networking.k8s.io/v1/httproutes",
             ),
+            (
+                "certificates",
+                "https://host:6443/apis/cert-manager.io/v1/certificates",
+            ),
         }
         assert got == expected
         assert len(configs) == len(expected)
@@ -3718,6 +3732,10 @@ class TestBuildWatchConfigs:
                 (
                     "httproutes",
                     f"https://host:6443/apis/gateway.networking.k8s.io/v1/namespaces/{ns}/httproutes",
+                ),
+                (
+                    "certificates",
+                    f"https://host:6443/apis/cert-manager.io/v1/namespaces/{ns}/certificates",
                 ),
             }
         assert got == expected
@@ -3806,8 +3824,8 @@ class TestStartStopWatchTasksExtended:
         ):
             await coord.async_start_watch_tasks()
 
-        # 11 resource types for monitor_all_namespaces=True
-        assert len(coord._watch_tasks) == 11
+        # 12 resource types for monitor_all_namespaces=True
+        assert len(coord._watch_tasks) == 12
 
         for coro in created_coros:
             coro.close()
@@ -4861,6 +4879,7 @@ class TestDisabledResources:
                 "services",
                 "hpas",
                 "httproutes",
+                "certificates",
             ],
         )
         mock_client.get_daemonsets_count.return_value = 4
@@ -4877,6 +4896,8 @@ class TestDisabledResources:
         mock_client.get_services.assert_not_called()
         mock_client.get_hpas.assert_not_called()
         mock_client.get_httproutes.assert_not_called()
+        mock_client.get_certificates.assert_not_called()
+        assert data["certificates"] == {}
         assert data["pods"] == {}
         assert data["daemonsets"] == {}
         assert data["jobs"] == {}
@@ -5134,6 +5155,7 @@ class TestDisabledResources:
                 "services",
                 "hpas",
                 "httproutes",
+                "certificates",
                 "deployments",
                 "nodes",
             ],
@@ -5150,6 +5172,7 @@ class TestDisabledResources:
         assert "services" not in resource_types
         assert "hpas" not in resource_types
         assert "httproutes" not in resource_types
+        assert "certificates" not in resource_types
         # Sensors-off resources keep their watch (switches consume the data)
         assert "deployments" in resource_types
         assert "nodes" in resource_types
@@ -5249,6 +5272,7 @@ class TestDisabledResources:
             "restarting_pods",
             "nodes_under_pressure",
             "failed_jobs",
+            "certificate_problems",
         ):
             assert f"{eid}_{suffix}" in expected
 
@@ -5270,6 +5294,19 @@ class TestDisabledResources:
         assert f"{eid}_restarting_pods" not in expected
         assert f"{eid}_failed_jobs" not in expected
         assert f"{eid}_nodes_under_pressure" in expected
+        # Gated by its own category only, never by the fetch result
+        assert f"{eid}_certificate_problems" in expected
+
+    async def test_expected_unique_ids_certificate_problems_disabled(
+        self, hass: HomeAssistant, mock_client
+    ):
+        """Disabling Certificates drops the Certificate Problems sensor."""
+        coordinator = self._make_coordinator(hass, mock_client, ["certificates"])
+
+        expected = coordinator._build_expected_unique_ids({})
+
+        eid = coordinator.config_entry.entry_id
+        assert f"{eid}_certificate_problems" not in expected
 
 
 class TestFetchHpas:
@@ -5379,6 +5416,56 @@ class TestFetchHttproutes:
         data = await coordinator._async_update_data()
 
         assert data["httproutes"] == {"default_web": httproute}
+
+
+class TestFetchCertificates:
+    """cert-manager Certificates share the best-effort optional-CRD fetch."""
+
+    @pytest.mark.parametrize(
+        ("status", "message", "level"),
+        [
+            (403, "Listing Certificates is forbidden", "WARNING"),
+            (404, "cert-manager is not installed", "INFO"),
+        ],
+    )
+    async def test_forbidden_or_missing_crd(
+        self, coordinator, mock_client, caplog, status, message, level
+    ):
+        """403/404 yield an empty bucket and log once per episode, while the
+        Certificate Problems sensor stays expected."""
+        caplog.set_level("INFO")
+        mock_client.get_certificates.side_effect = KubernetesApiError("boom", status)
+
+        data = await coordinator._async_update_data()
+        await coordinator._async_update_data()
+
+        assert data["certificates"] == {}
+        expected = coordinator._build_expected_unique_ids(data)
+        assert f"{coordinator.config_entry.entry_id}_certificate_problems" in expected
+        records = [r for r in caplog.records if message in r.message]
+        assert [r.levelname for r in records] == [level]
+
+    async def test_success_populates_bucket(self, coordinator, mock_client):
+        """A successful list is keyed like every other namespaced bucket."""
+        cert = {"name": "web-tls", "namespace": "default"}
+        mock_client.get_certificates.return_value = [cert]
+
+        data = await coordinator._async_update_data()
+
+        assert data["certificates"] == {"default_web-tls": cert}
+
+    async def test_transient_error_keeps_bucket(self, coordinator, mock_client):
+        """Any other failure keeps the previous certificates."""
+        cert = {"name": "web-tls", "namespace": "default"}
+        mock_client.get_certificates.side_effect = [
+            [cert],
+            KubernetesApiError("boom", 503),
+        ]
+
+        coordinator.data = await coordinator._async_update_data()
+        data = await coordinator._async_update_data()
+
+        assert data["certificates"] == {"default_web-tls": cert}
 
 
 class TestGetHpaFor:

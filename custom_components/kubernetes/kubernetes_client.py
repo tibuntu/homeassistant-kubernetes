@@ -1309,6 +1309,38 @@ class KubernetesClient:
             _LOGGER.warning("Failed to parse HTTPRoute item: %s", ex)
             return None
 
+    def _parse_certificate_item(self, item: dict[str, Any]) -> dict[str, Any] | None:
+        """Parse a single raw cert-manager (cert-manager.io/v1) Certificate object.
+
+        The Secret named by ``secret_name`` is never read.
+        """
+        try:
+            metadata = item["metadata"]
+            spec = item.get("spec") or {}
+            status = item.get("status") or {}
+            ready: dict[str, Any] = next(
+                (c for c in status.get("conditions") or [] if c.get("type") == "Ready"),
+                {},
+            )
+            issuer = spec.get("issuerRef") or {}
+            return {
+                "name": metadata["name"],
+                "namespace": metadata["namespace"],
+                "not_after": status.get("notAfter"),
+                "renewal_time": status.get("renewalTime"),
+                "ready": ready.get("status") == "True",
+                "reason": ready.get("reason"),
+                "message": ready.get("message"),
+                "issuer_name": issuer.get("name", ""),
+                "issuer_kind": issuer.get("kind") or "Issuer",
+                "dns_names": spec.get("dnsNames") or [],
+                "secret_name": spec.get("secretName", ""),
+                "creation_timestamp": metadata.get("creationTimestamp", ""),
+            }
+        except Exception as ex:
+            _LOGGER.warning("Failed to parse Certificate item: %s", ex)
+            return None
+
     async def _fetch_resource_items(
         self,
         api_path: str,
@@ -2486,6 +2518,26 @@ class KubernetesClient:
             # would repeat every 5 minutes.
             if not (isinstance(ex, KubernetesApiError) and ex.status in (403, 404)):
                 self._log_error("get httproutes", ex)
+            raise
+
+    async def get_certificates(self) -> list[dict[str, Any]]:
+        """Get all cert-manager Certificates in the namespace(s)."""
+        try:
+            result = await self._fetch_resource_list(
+                "apis/cert-manager.io/v1",
+                "certificates",
+                self._parse_certificate_item,
+            )
+            if result:
+                self._log_success(
+                    "get certificates", f"retrieved {len(result)} certificates"
+                )
+            return result
+        except Exception as ex:
+            # A 403 (missing RBAC) or 404 (cert-manager not installed) is
+            # reported once per episode by the coordinator.
+            if not (isinstance(ex, KubernetesApiError) and ex.status in (403, 404)):
+                self._log_error("get certificates", ex)
             raise
 
     # CronJob methods

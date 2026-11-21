@@ -154,6 +154,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_ingresses_list)
     websocket_api.async_register_command(hass, websocket_services_list)
     websocket_api.async_register_command(hass, websocket_httproutes_list)
+    websocket_api.async_register_command(hass, websocket_certificates_list)
     websocket_api.async_register_command(hass, websocket_config_list)
     websocket_api.async_register_command(hass, websocket_delete_pod)
     websocket_api.async_register_command(hass, websocket_pods_describe)
@@ -270,6 +271,19 @@ async def websocket_httproutes_list(
     connection.send_result(msg["id"], result)
 
 
+@_require_panel_access
+@websocket_api.websocket_command({vol.Required("type"): "kubernetes/certificates/list"})
+@websocket_api.async_response
+async def websocket_certificates_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all cert-manager Certificates from all config entries."""
+    result = _list_data(hass, "certificates")
+    connection.send_result(msg["id"], result)
+
+
 def _get_cluster_overview_data(hass: HomeAssistant) -> dict[str, Any]:
     """Gather cluster overview data from all config entries."""
     clusters: list[dict[str, Any]] = []
@@ -358,6 +372,7 @@ def _empty_alerts() -> dict[str, list]:
         "failed_pods": [],
         "restarting_pods": [],
         "failed_jobs": [],
+        "certificate_problems": [],
     }
 
 
@@ -367,8 +382,8 @@ def _metrics_available(coordinator: Any) -> bool:
 
 
 def _list_data(hass: HomeAssistant, key: str) -> dict[str, Any]:
-    """Gather a single resource list (nodes/pods/ingresses/services/httproutes) from all
-    config entries, keyed the same as the coordinator's data bucket."""
+    """Gather one resource list (nodes/pods/ingresses/services/httproutes/
+    certificates) from all config entries, keyed like the coordinator bucket."""
     clusters: list[dict[str, Any]] = []
 
     for entry in get_loaded_entries(hass):
