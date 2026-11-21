@@ -10,14 +10,6 @@ The integration uses different log levels to provide appropriate information:
 - **INFO**: Important successful operations (like scaling deployments)
 - **ERROR**: Problems that need attention
 
-## Error Deduplication
-
-To reduce log noise, authentication errors (401) are deduplicated:
-
-- The first authentication error is logged as ERROR with full details
-- Subsequent authentication errors within 5 minutes are logged as DEBUG
-- This prevents log spam while still providing visibility into authentication issues
-
 ## Log Format
 
 All logs include structured context information:
@@ -31,7 +23,7 @@ All logs include structured context information:
 ### Authentication Failed (401)
 
 ```
-Authentication failed for get deployments (cluster=default, host=kubernetes.example.com:6443, namespace=default). Check API token and RBAC permissions.
+aiohttp connection test failed with status: 401
 ```
 
 **Solutions:**
@@ -135,7 +127,7 @@ DEBUG (MainThread) [custom_components.kubernetes.kubernetes_client] Successfully
 ### Authentication Error
 
 ```
-ERROR (MainThread) [custom_components.kubernetes.kubernetes_client] Authentication failed for get deployments (cluster=production, host=k8s.example.com:6443, namespace=default). Check API token and RBAC permissions.
+ERROR (MainThread) [custom_components.kubernetes.kubernetes_client] aiohttp connection test failed with status: 401
 ```
 
 ### Network Error

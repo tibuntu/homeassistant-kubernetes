@@ -72,8 +72,8 @@ rules:
 
   # Platinum
   async-dependency:
-    status: todo
-    comment: The kubernetes package is synchronous; it remains as a fallback behind the aiohttp calls.
+    status: done
+    comment: The client talks to the API server through aiohttp only; the synchronous kubernetes package is no longer a dependency.
   inject-websession:
     status: todo
     comment: The client opens its own aiohttp sessions.

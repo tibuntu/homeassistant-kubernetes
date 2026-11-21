@@ -28,12 +28,6 @@
       "schedule": ["on sunday"]
     },
     {
-      "matchPackageNames": ["kubernetes"],
-      "groupName": "kubernetes",
-      "semanticCommitType": "fix",
-      "semanticCommitScope": "deps"
-    },
-    {
       "matchManagers": ["pre-commit"],
       "groupName": "pre-commit hooks",
       "semanticCommitScope": "deps"

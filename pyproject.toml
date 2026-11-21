@@ -22,8 +22,11 @@ classifiers = [
     "Topic :: Home Automation",
 ]
 
+# Home Assistant ships aiohttp, so the manifest lists no requirements. It is
+# declared here unpinned so `pip install -e .` without Home Assistant (the
+# k8s-compat job) still gets it and never fights Home Assistant's pin.
 dependencies = [
-    "kubernetes==36.0.3",
+    "aiohttp",
 ]
 
 [project.optional-dependencies]
@@ -75,7 +78,6 @@ ignore = [
     "E501",    # line too long, handled by formatter
     "B008",    # do not perform function calls in argument defaults
     "SIM117",  # 27 hits across 6 files; merging nested `with` blocks (mocks/patches) is not a mechanical local fix
-    "PLW0603", # config_flow's lazy kubernetes-import cache intentionally rebinds module globals
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -83,7 +85,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["custom_components"]
-known-third-party = ["homeassistant", "kubernetes", "aiohttp"]
+known-third-party = ["homeassistant", "aiohttp"]
 combine-as-imports = true
 force-sort-within-sections = true
 
@@ -111,7 +113,6 @@ allow_redefinition = true
 
 [[tool.mypy.overrides]]
 module = [
-    "kubernetes.*",
     "homeassistant.*",
     "voluptuous.*",
 ]
@@ -138,7 +139,6 @@ asyncio_default_fixture_loop_scope = "function"
 pythonpath = ["."]
 markers = [
     "k8s_compat: Kubernetes API compatibility tests (require a real cluster)",
-    "kubernetes_unavailable: opt out of the config-flow kubernetes_available autouse fixture",
 ]
 filterwarnings = [
     # Warnings are errors (catches un-awaited coroutines via RuntimeWarning,

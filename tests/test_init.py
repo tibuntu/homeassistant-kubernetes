@@ -72,7 +72,6 @@ async def test_async_setup_entry_success(
 ):
     """Test successful async_setup_entry."""
     with (
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
         patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
         patch(
             "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -125,7 +124,6 @@ async def test_async_setup_entry_sets_cluster_device_version(
         await get_or_create_cluster_device(hass, entry)
 
     with (
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
         patch("custom_components.kubernetes.KubernetesClient"),
         patch(
             "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -173,7 +171,6 @@ async def test_async_setup_entry_threads_exclude_job_pods_into_client(
     hass.config_entries.async_update_entry(mock_config_entry, options=options)
 
     with (
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
         patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
         patch(
             "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -197,26 +194,6 @@ async def test_async_setup_entry_threads_exclude_job_pods_into_client(
         assert client_config[key] == value
 
 
-async def test_async_setup_entry_kubernetes_not_available(
-    hass: HomeAssistant, mock_config_entry: MockConfigEntry
-):
-    """Test async_setup_entry when kubernetes package is not available."""
-    import builtins
-
-    original_import = builtins.__import__
-
-    def mock_import(name, *args, **kwargs):
-        if name == "kubernetes.client":
-            raise ImportError("No module named 'kubernetes'")
-        return original_import(name, *args, **kwargs)
-
-    with patch.object(builtins, "__import__", side_effect=mock_import):
-        result = await async_setup_entry(hass, mock_config_entry)
-
-        assert result is False
-        assert not hasattr(mock_config_entry, "runtime_data")
-
-
 async def test_async_setup_entry_second_entry(
     hass: HomeAssistant, mock_config_entry: MockConfigEntry, add_loaded_entry
 ):
@@ -225,7 +202,6 @@ async def test_async_setup_entry_second_entry(
     existing_entry = add_loaded_entry("existing_entry")
 
     with (
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
         patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
         patch(
             "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -841,7 +817,6 @@ class TestAsyncSetupEntryWatchEnabled:
         )
 
         with (
-            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
             patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
             patch(
                 "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -877,7 +852,6 @@ class TestAsyncSetupEntryWatchEnabled:
         )
 
         with (
-            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
             patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
             patch(
                 "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -910,7 +884,6 @@ class TestAsyncSetupEntryWatchEnabled:
         """Test that watch tasks default to enabled (DEFAULT_ENABLE_WATCH=True)."""
         # mock_config_entry has options={}, so enable_watch defaults to True
         with (
-            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
             patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
             patch(
                 "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -946,7 +919,6 @@ class TestAsyncSetupEntryWatchEnabled:
         )
 
         with (
-            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
             patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
             patch(
                 "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -1120,7 +1092,6 @@ class TestAsyncSetupEntryUpdateListener:
         has an update listener, so setup must not add one.
         """
         with (
-            patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
             patch("custom_components.kubernetes.KubernetesClient") as mock_client_class,
             patch(
                 "custom_components.kubernetes.KubernetesDataCoordinator"

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import UTC, datetime
-import functools
 import ipaddress
 import json
 import logging
@@ -16,14 +15,6 @@ from typing import Any, NamedTuple
 from urllib.parse import quote
 
 import aiohttp
-
-# Use absolute import to avoid circular import with our custom component named 'kubernetes'
-try:
-    import kubernetes.client as k8s_client
-    from kubernetes.client.rest import ApiException
-
-except ImportError as e:
-    raise ImportError(f"kubernetes package not installed: {e}") from e
 
 from .const import (
     CONF_API_TOKEN,
@@ -350,9 +341,9 @@ class KubernetesClient:
         # _get_ssl_param). None until first use.
         self._ssl_context: ssl.SSLContext | bool | None = None
 
-        # Error deduplication tracking
+        # Time of the last 401 confirmed by the connection probe (diagnostics);
+        # 0.0 means none yet.
         self._last_auth_error_time = 0.0
-        self._auth_error_cooldown = 300.0  # 5 minutes between auth error logs
 
         # Set only by the connection probe (_test_connection_aiohttp) when the
         # API server confirms a 401. The coordinator turns this into
@@ -361,9 +352,6 @@ class KubernetesClient:
 
         # In-flight background token-file refresh (see api_token / _ensure_refresh_task).
         self._token_refresh_task: asyncio.Task[None] | None = None
-
-        # Initialize Kubernetes client
-        self._setup_kubernetes_client()
 
     def _read_token_file(self) -> str | None:
         """Synchronously read+strip the projected SA token file.
@@ -450,9 +438,8 @@ class KubernetesClient:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            # No loop running (e.g. urllib3's refresh_api_key_hook, which
-            # runs in the official client's executor thread) — blocking here
-            # is safe.
+            # No loop running (e.g. a plain synchronous caller) — blocking
+            # here is safe.
             self._store_token_if_present(self._read_token_file())
             return self._token_cache or self._static_api_token
 
@@ -476,10 +463,6 @@ class KubernetesClient:
         """Force the next api_token read to re-fetch the projected SA token."""
         self._token_cache_time = 0.0
 
-    def _refresh_api_key_hook(self, configuration: Any) -> None:
-        """Refresh the kubernetes Configuration's bearer token before each call."""
-        configuration.api_key["authorization"] = f"Bearer {self.api_token}"
-
     def _log_error(self, operation: str, error: Exception, context: str = "") -> None:
         """Log errors with structured context and actionable information."""
         cluster_info = f"cluster={self.cluster_name}, host={self.host}:{self.port}"
@@ -489,70 +472,7 @@ class KubernetesClient:
             else "all_namespaces"
         )
 
-        if isinstance(error, ApiException):
-            # Handle Kubernetes API exceptions
-            if error.status == 401:
-                # The projected SA token may have just rotated — drop any
-                # cached value so the next call re-reads from disk.
-                if self._use_in_cluster:
-                    self.invalidate_token_cache()
-                # Deduplicate authentication errors to reduce log noise
-                current_time = time.time()
-                if (
-                    current_time - self._last_auth_error_time
-                    > self._auth_error_cooldown
-                ):
-                    _LOGGER.error(
-                        "Authentication failed for %s (%s, %s). Check API token and RBAC permissions. "
-                        "This error will be suppressed for 5 minutes to reduce log noise. "
-                        "Error details: status=%s, reason='%s'",
-                        operation,
-                        cluster_info,
-                        namespace_info,
-                        error.status,
-                        error.reason,
-                    )
-                    self._last_auth_error_time = current_time
-                else:
-                    _LOGGER.debug(
-                        "Authentication failed for %s (%s, %s) - using fallback method",
-                        operation,
-                        cluster_info,
-                        namespace_info,
-                    )
-            elif error.status == 403:
-                _LOGGER.error(
-                    "Permission denied for %s (%s, %s). Check RBAC roles and namespace access.",
-                    operation,
-                    cluster_info,
-                    namespace_info,
-                )
-            elif error.status == 404:
-                _LOGGER.error(
-                    "Resource not found for %s (%s, %s). Check namespace and resource names.",
-                    operation,
-                    cluster_info,
-                    namespace_info,
-                )
-            elif error.status >= 500:
-                _LOGGER.error(
-                    "Kubernetes API server error during %s (%s, %s): %s (status: %s)",
-                    operation,
-                    cluster_info,
-                    namespace_info,
-                    error.reason,
-                    error.status,
-                )
-            else:
-                _LOGGER.error(
-                    "API error during %s (%s, %s): %s (status: %s)",
-                    operation,
-                    cluster_info,
-                    namespace_info,
-                    error.reason,
-                    error.status,
-                )
-        elif isinstance(error, aiohttp.ClientError):
+        if isinstance(error, aiohttp.ClientError):
             # Handle network/HTTP errors
             _LOGGER.error(
                 "Network error during %s (%s, %s): %s",
@@ -603,40 +523,6 @@ class KubernetesClient:
                 namespace_info,
             )
 
-    def _setup_kubernetes_client(self) -> None:
-        """Set up the Kubernetes client configuration."""
-        configuration = k8s_client.Configuration()
-        configuration.host = f"https://{self.host}:{self.port}"
-        # Use the static token here to avoid touching the projected SA file
-        # from the event loop during integration setup; the refresh hook
-        # below replaces this with the live token on subsequent calls (which
-        # run in urllib3's thread pool). The value already carries "Bearer";
-        # never also set api_key_prefix — kubernetes>=37 resolves the prefix
-        # via the 'authorization' alias and would send "Bearer Bearer <token>".
-        configuration.api_key = {"authorization": f"Bearer {self._static_api_token}"}
-        configuration.verify_ssl = self.verify_ssl
-        # When use_in_cluster=True the bearer token rotates underneath us; the
-        # hook re-reads via the api_token property before each request so the
-        # official client never holds a stale token.
-        if self._use_in_cluster:
-            configuration.refresh_api_key_hook = self._refresh_api_key_hook
-
-        if self.ca_cert:
-            configuration.ssl_ca_cert = self.ca_cert
-
-        # Create API clients
-        api_client = k8s_client.ApiClient(configuration)
-        self.core_v1 = k8s_client.CoreV1Api(api_client)
-        self.apps_v1 = k8s_client.AppsV1Api(api_client)
-        self.batch_v1 = k8s_client.BatchV1Api(api_client)  # Added BatchV1Api
-
-        _LOGGER.debug(
-            "Kubernetes client configured: host=%s, verify_ssl=%s, ca_cert=%s",
-            configuration.host,
-            self.verify_ssl,
-            "provided" if self.ca_cert else "none",
-        )
-
     async def _get_ssl_param(self) -> ssl.SSLContext | bool:
         """Cached ``build_ssl_param`` for this client's verify_ssl / ca_cert.
 
@@ -649,7 +535,6 @@ class KubernetesClient:
 
     async def _test_connection(self) -> bool:
         """Test the connection to Kubernetes."""
-        # Use aiohttp as primary since it works better with SSL configuration
         return await self._test_connection_aiohttp()
 
     async def _probe_api(self, session: aiohttp.ClientSession) -> int:
@@ -666,7 +551,7 @@ class KubernetesClient:
             return response.status
 
     async def _test_connection_aiohttp(self) -> bool:
-        """Test the connection using aiohttp as primary method.
+        """Probe the API server with aiohttp.
 
         This probe runs on every poll cycle (via get_pods/get_pods_count), which
         makes it the single place that decides whether the configured token is
@@ -693,6 +578,8 @@ class KubernetesClient:
                     self._store_token_if_present(token)
                     status = await self._probe_api(session)
                 self.auth_failed = status == 401
+                if self.auth_failed:
+                    self._last_auth_error_time = time.time()
                 if status == 200:
                     self._log_success("connection test", "using aiohttp")
                     return True
@@ -725,7 +612,6 @@ class KubernetesClient:
             if not await self._test_connection():
                 raise KubernetesApiError("Cannot connect to Kubernetes API")
 
-            # Use aiohttp as primary since it works better with SSL configuration
             if self.monitor_all_namespaces:
                 result = await self._get_pods_all_namespaces_aiohttp()
             else:
@@ -999,7 +885,6 @@ class KubernetesClient:
         """Get detailed information about all nodes in the cluster."""
         try:
             _LOGGER.debug("Starting get_nodes() call")
-            # Use aiohttp as primary since it works better with SSL configuration
             result = await self._get_nodes_aiohttp()
             _LOGGER.debug("get_nodes() successful: retrieved %d nodes", len(result))
             self._log_success("get nodes", f"retrieved {len(result)} nodes")
@@ -1547,8 +1432,6 @@ class KubernetesClient:
             deployment_name,
             replicas,
             namespace,
-            read_fn=self.apps_v1.read_namespaced_deployment,
-            replace_fn=self.apps_v1.replace_namespaced_deployment,
         )
 
     def _invalid_target(
@@ -1575,11 +1458,8 @@ class KubernetesClient:
         name: str,
         replicas: int,
         namespace: str | None,
-        *,
-        read_fn: Callable,
-        replace_fn: Callable,
     ) -> bool:
-        """Scale a replica workload: aiohttp PATCH first, official client fallback."""
+        """Scale a replica workload by patching its /scale subresource."""
         kind = resource_type.rstrip("s")
         if self._invalid_target(kind, name, namespace):
             return False
@@ -1589,21 +1469,6 @@ class KubernetesClient:
         if result:
             _LOGGER.info(
                 "Successfully scaled %s %s to %d replicas", kind, name, replicas
-            )
-            return result
-
-        _LOGGER.debug(
-            "aiohttp failed, trying official Kubernetes client for %s scaling", kind
-        )
-        result = await self._scale_workload_kubernetes(
-            kind, name, replicas, namespace, read_fn, replace_fn
-        )
-        if result:
-            _LOGGER.info(
-                "Successfully scaled %s %s to %d replicas using official client",
-                kind,
-                name,
-                replicas,
             )
         return result
 
@@ -1651,39 +1516,6 @@ class KubernetesClient:
         except Exception as ex:
             self._log_error(
                 f"aiohttp scale {kind} {name}", ex, f"target_replicas={replicas}"
-            )
-            return False
-
-    async def _scale_workload_kubernetes(
-        self,
-        kind: str,
-        name: str,
-        replicas: int,
-        namespace: str | None,
-        read_fn: Callable,
-        replace_fn: Callable,
-    ) -> bool:
-        """Scale a workload with the official client (read, set replicas, replace)."""
-        try:
-            target_namespace = namespace or self.namespace
-            loop = asyncio.get_running_loop()
-            workload = await loop.run_in_executor(None, read_fn, name, target_namespace)
-            workload.spec.replicas = replicas
-            await loop.run_in_executor(
-                None, replace_fn, name, target_namespace, workload
-            )
-            _LOGGER.info(
-                "Successfully scaled %s %s to %d replicas using official client",
-                kind,
-                name,
-                replicas,
-            )
-            return True
-        except Exception as ex:
-            self._log_error(
-                f"official client scale {kind} {name}",
-                ex,
-                f"target_replicas={replicas}",
             )
             return False
 
@@ -1739,8 +1571,6 @@ class KubernetesClient:
             statefulset_name,
             replicas,
             namespace,
-            read_fn=self.apps_v1.read_namespaced_stateful_set,
-            replace_fn=self.apps_v1.replace_namespaced_stateful_set,
         )
 
     async def stop_statefulset(
@@ -1764,18 +1594,6 @@ class KubernetesClient:
         if result:
             _LOGGER.info(
                 "Successfully deleted pod %s in namespace %s",
-                pod_name,
-                namespace or self.namespace,
-            )
-            return result
-
-        _LOGGER.debug(
-            "aiohttp failed, trying official Kubernetes client for pod deletion"
-        )
-        result = await self._delete_pod_kubernetes(pod_name, namespace)
-        if result:
-            _LOGGER.info(
-                "Successfully deleted pod %s in namespace %s using official client",
                 pod_name,
                 namespace or self.namespace,
             )
@@ -1811,24 +1629,6 @@ class KubernetesClient:
                         return False
         except Exception as ex:
             self._log_error(f"aiohttp delete pod {pod_name}", ex)
-            return False
-
-    async def _delete_pod_kubernetes(
-        self, pod_name: str, namespace: str | None = None
-    ) -> bool:
-        """Delete a pod using the official Kubernetes client."""
-        try:
-            target_namespace = namespace or self.namespace
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None,
-                self.core_v1.delete_namespaced_pod,
-                pod_name,
-                target_namespace,
-            )
-            return True
-        except Exception as ex:
-            self._log_error(f"official client delete pod {pod_name}", ex)
             return False
 
     async def get_pod_logs(
@@ -1961,17 +1761,6 @@ class KubernetesClient:
                 job_name,
                 namespace or self.namespace,
             )
-            return result
-        _LOGGER.debug(
-            "aiohttp failed, trying official Kubernetes client for job deletion"
-        )
-        result = await self._delete_job_kubernetes(job_name, namespace)
-        if result:
-            _LOGGER.info(
-                "Successfully deleted job %s in namespace %s using official client",
-                job_name,
-                namespace or self.namespace,
-            )
         return result
 
     async def _delete_job_aiohttp(
@@ -2008,27 +1797,6 @@ class KubernetesClient:
             self._log_error(f"aiohttp delete job {job_name}", ex)
             return False
 
-    async def _delete_job_kubernetes(
-        self, job_name: str, namespace: str | None = None
-    ) -> bool:
-        """Delete a job using the official Kubernetes client (Background cascade)."""
-        try:
-            target_namespace = namespace or self.namespace
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None,
-                functools.partial(
-                    self.batch_v1.delete_namespaced_job,
-                    job_name,
-                    target_namespace,
-                    propagation_policy="Background",
-                ),
-            )
-            return True
-        except Exception as ex:
-            self._log_error(f"official client delete job {job_name}", ex)
-            return False
-
     # Rollout restart methods
     async def rollout_restart_deployment(
         self, name: str, namespace: str | None = None
@@ -2038,7 +1806,6 @@ class KubernetesClient:
             resource_type="deployments",
             name=name,
             namespace=namespace,
-            patch_fn=self.apps_v1.patch_namespaced_deployment,
         )
 
     async def rollout_restart_statefulset(
@@ -2049,7 +1816,6 @@ class KubernetesClient:
             resource_type="statefulsets",
             name=name,
             namespace=namespace,
-            patch_fn=self.apps_v1.patch_namespaced_stateful_set,
         )
 
     async def rollout_restart_daemonset(
@@ -2060,7 +1826,6 @@ class KubernetesClient:
             resource_type="daemonsets",
             name=name,
             namespace=namespace,
-            patch_fn=self.apps_v1.patch_namespaced_daemon_set,
         )
 
     async def _rollout_restart(
@@ -2068,7 +1833,6 @@ class KubernetesClient:
         resource_type: str,
         name: str,
         namespace: str | None,
-        patch_fn: Callable,
     ) -> bool:
         """Perform a rollout restart by patching the restart annotation."""
         if self._invalid_target(resource_type.rstrip("s"), name, namespace):
@@ -2077,19 +1841,6 @@ class KubernetesClient:
         if result:
             _LOGGER.info(
                 "Successfully triggered rollout restart for %s %s in namespace %s",
-                resource_type.rstrip("s"),
-                name,
-                namespace or self.namespace,
-            )
-            return result
-
-        _LOGGER.debug(
-            "aiohttp failed, trying official Kubernetes client for rollout restart"
-        )
-        result = await self._rollout_restart_kubernetes(name, namespace, patch_fn)
-        if result:
-            _LOGGER.info(
-                "Successfully triggered rollout restart for %s %s in namespace %s using official client",
                 resource_type.rstrip("s"),
                 name,
                 namespace or self.namespace,
@@ -2143,38 +1894,6 @@ class KubernetesClient:
             self._log_error(f"aiohttp rollout restart {resource_type} {name}", ex)
             return False
 
-    async def _rollout_restart_kubernetes(
-        self,
-        name: str,
-        namespace: str | None,
-        patch_fn: Callable,
-    ) -> bool:
-        """Perform rollout restart using the official Kubernetes client."""
-        try:
-            target_namespace = namespace or self.namespace
-            loop = asyncio.get_running_loop()
-
-            restart_at = datetime.now(UTC).isoformat()
-            patch_body = {
-                "spec": {
-                    "template": {
-                        "metadata": {
-                            "annotations": {
-                                "kubectl.kubernetes.io/restartedAt": restart_at
-                            }
-                        }
-                    }
-                }
-            }
-
-            await loop.run_in_executor(
-                None, patch_fn, name, target_namespace, patch_body
-            )
-            return True
-        except Exception as ex:
-            self._log_error(f"official client rollout restart {name}", ex)
-            return False
-
     async def cordon_node(self, node_name: str) -> bool:
         """Cordon a node (mark it unschedulable)."""
         return await self._set_node_schedulable(node_name, schedulable=False)
@@ -2191,16 +1910,6 @@ class KubernetesClient:
         result = await self._set_node_schedulable_aiohttp(node_name, schedulable)
         if result:
             _LOGGER.debug("Successfully %sed node %s", action, node_name)
-            return result
-
-        _LOGGER.debug(
-            "aiohttp failed, trying official Kubernetes client to %s node", action
-        )
-        result = await self._set_node_schedulable_kubernetes(node_name, schedulable)
-        if result:
-            _LOGGER.debug(
-                "Successfully %sed node %s using official client", action, node_name
-            )
         return result
 
     async def _set_node_schedulable_aiohttp(
@@ -2238,22 +1947,6 @@ class KubernetesClient:
                         return False
         except Exception as ex:
             self._log_error(f"aiohttp {action} node {node_name}", ex)
-            return False
-
-    async def _set_node_schedulable_kubernetes(
-        self, node_name: str, schedulable: bool
-    ) -> bool:
-        """Set a node's schedulable state using the official Kubernetes client."""
-        action = "uncordon" if schedulable else "cordon"
-        try:
-            loop = asyncio.get_running_loop()
-            patch_body = {"spec": {"unschedulable": not schedulable}}
-            await loop.run_in_executor(
-                None, self.core_v1.patch_node, node_name, patch_body
-            )
-            return True
-        except Exception as ex:
-            self._log_error(f"official client {action} node {node_name}", ex)
             return False
 
     async def get_pods_on_node(self, node_name: str) -> list[dict[str, Any]]:

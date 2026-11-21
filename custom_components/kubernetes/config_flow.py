@@ -6,7 +6,6 @@ from collections.abc import Awaitable, Callable, Mapping
 import logging
 import os
 from pathlib import Path
-import sys
 from typing import Any
 
 import aiohttp
@@ -65,13 +64,9 @@ from .const import (
     IN_CLUSTER_CA_PATH,
     IN_CLUSTER_TOKEN_PATH,
 )
+from .kubernetes_client import build_ssl_param, normalize_host
 
 _LOGGER = logging.getLogger(__name__)
-
-# Global variables for lazy import
-KUBERNETES_AVAILABLE: bool | None = None
-client: Any | None = None
-ApiException: type = Exception
 
 # Path-flavoured wrappers around the canonical string constants in const.py.
 SERVICE_ACCOUNT_TOKEN_FILE = Path(IN_CLUSTER_TOKEN_PATH)
@@ -135,38 +130,6 @@ async def async_detect_in_cluster_config(
     return await hass.async_add_executor_job(_read_in_cluster_config_sync)
 
 
-def _ensure_kubernetes_imported() -> bool:
-    """Ensure kubernetes package is imported.
-
-    Config flows run on the single event-loop thread, so a plain cached
-    check is enough — no lock needed.
-    """
-    global KUBERNETES_AVAILABLE, client, ApiException
-
-    if KUBERNETES_AVAILABLE is not None:
-        return KUBERNETES_AVAILABLE
-
-    try:
-        import kubernetes.client as k8s_client
-        from kubernetes.client.rest import ApiException as K8sApiException
-
-        client = k8s_client
-        ApiException = K8sApiException
-        KUBERNETES_AVAILABLE = True
-        _LOGGER.info("Kubernetes package imported successfully")
-
-    except ImportError as e:
-        KUBERNETES_AVAILABLE = False
-        _LOGGER.error("Kubernetes package not available: %s", e)
-        _LOGGER.debug("Python path (first 5 entries): %s", sys.path[:5])
-
-    except Exception as e:
-        KUBERNETES_AVAILABLE = False
-        _LOGGER.error("Unexpected error importing kubernetes package: %s", e)
-
-    return KUBERNETES_AVAILABLE
-
-
 class TokenRequired(ValueError):
     """No API token was entered and none could be read from the pod."""
 
@@ -195,12 +158,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         """Handle the initial step."""
         errors = {}
 
-        # Check if kubernetes package is available
-        if not _ensure_kubernetes_imported():
-            errors["base"] = "kubernetes_not_installed"
-            _LOGGER.error("Kubernetes package is not installed")
-
-        if user_input is not None and KUBERNETES_AVAILABLE:
+        if user_input is not None:
             try:
                 # Validate the connection
                 await self._test_connection(user_input)
@@ -408,13 +366,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         """Handle reconfiguration of an existing entry."""
         errors = {}
 
-        if not _ensure_kubernetes_imported():
-            errors["base"] = "kubernetes_not_installed"
-            _LOGGER.error("Kubernetes package is not installed")
-
         entry = self._get_reconfigure_entry()
 
-        if user_input is not None and KUBERNETES_AVAILABLE:
+        if user_input is not None:
             try:
                 await self._test_connection(user_input)
 
@@ -684,12 +638,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
     async def _test_connection(self, user_input: dict[str, Any]) -> None:
         """Test the connection to Kubernetes."""
-        import asyncio
-
-        # Check if kubernetes package is available
-        if not _ensure_kubernetes_imported():
-            raise ValueError("Kubernetes package is not installed")
-
         # Validate required fields
         if not user_input[CONF_HOST]:
             raise ValueError("Host is required")
@@ -705,14 +653,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         if not user_input.get(CONF_API_TOKEN):
             raise TokenRequired("API token is required")
 
-        # Create a test configuration
-        if client is None:
-            raise ValueError("Kubernetes client not available")
-        configuration = client.Configuration()
-
         # Clean the host input - remove any protocol prefix
-        from .kubernetes_client import normalize_host
-
         host = user_input[CONF_HOST].strip()
         if host.startswith(("http://", "https://")):
             host = host.split("://", 1)[1]
@@ -728,74 +669,23 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         # Store the cleaned host value
         user_input[CONF_HOST] = host
 
-        configuration.host = f"https://{host}:{user_input.get(CONF_PORT, DEFAULT_PORT)}"
-        configuration.api_key = {
-            "authorization": f"Bearer {user_input[CONF_API_TOKEN]}"
-        }
-        configuration.verify_ssl = user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
-
-        if user_input.get(CONF_CA_CERT):
-            configuration.ssl_ca_cert = user_input[CONF_CA_CERT]
-
-        # Create API client
-        api_client = client.ApiClient(configuration)
-        core_v1 = client.CoreV1Api(api_client)
-
-        # Test the connection
-        loop = asyncio.get_running_loop()
-        try:
-            await loop.run_in_executor(None, core_v1.get_api_resources)
-            _LOGGER.info(
-                "Successfully connected to Kubernetes API at %s", configuration.host
-            )
-        except ApiException as ex:  # type: ignore[misc]
-            _LOGGER.error("API Exception during connection test: %s", ex)
-            _LOGGER.error("Status: %s", ex.status)
-            _LOGGER.error("Reason: %s", ex.reason)
-            if ex.body:
-                _LOGGER.error("Response body: %s", ex.body)
-
-            # Fallback to aiohttp if kubernetes client fails
-            _LOGGER.info("Trying fallback connection with aiohttp...")
-            if await self._test_connection_aiohttp(user_input):
-                _LOGGER.info(
-                    "Successfully connected to Kubernetes API using aiohttp fallback"
-                )
-                return
-            else:
-                raise ValueError(
-                    f"Failed to connect to Kubernetes API: {ex.reason}"
-                ) from ex
-        except Exception as ex:
-            _LOGGER.error("Failed to test connection: %s", ex)
-            # Fallback to aiohttp if kubernetes client fails
-            _LOGGER.info("Trying fallback connection with aiohttp...")
-            if await self._test_connection_aiohttp(user_input):
-                _LOGGER.info(
-                    "Successfully connected to Kubernetes API using aiohttp fallback"
-                )
-                return
-            else:
-                raise ValueError(f"Connection test failed: {ex!s}") from ex
+        if not await self._test_connection_aiohttp(user_input):
+            raise ValueError("Failed to connect to Kubernetes API")
 
     @staticmethod
     async def _ssl_param(user_input: dict[str, Any]) -> Any:
         """Build the aiohttp ``ssl=`` value from the flow's verify_ssl / ca_cert.
 
         Delegates to the runtime client's helper so setup validates with the
-        exact TLS settings the entry will run with. Imported lazily because
-        ``kubernetes_client`` imports the ``kubernetes`` package at module
-        level and the flow must survive that package being absent.
+        exact TLS settings the entry will run with.
         """
-        from .kubernetes_client import build_ssl_param
-
         return await build_ssl_param(
             user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
             user_input.get(CONF_CA_CERT),
         )
 
     async def _test_connection_aiohttp(self, user_input: dict[str, Any]) -> bool:
-        """Test the connection using aiohttp as fallback."""
+        """Probe the API server root with the entered token."""
         try:
             headers = {
                 "Authorization": f"Bearer {user_input[CONF_API_TOKEN]}",

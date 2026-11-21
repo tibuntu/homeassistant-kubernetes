@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import builtins
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
@@ -10,12 +9,7 @@ from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.kubernetes import (
-    DOMAIN,
-    ISSUE_KUBERNETES_PACKAGE_MISSING,
-    async_remove_entry,
-    async_setup_entry,
-)
+from custom_components.kubernetes import DOMAIN, async_setup_entry
 from custom_components.kubernetes.const import (
     CONF_DISABLED_RESOURCES,
     CONF_ENABLE_EVENTS,
@@ -63,36 +57,17 @@ def _make_coordinator(
 
 
 # ---------------------------------------------------------------------------
-# Package-missing issue (raised from __init__.py:async_setup_entry)
+# Package-missing issue (raised by releases that still used the kubernetes
+# package; async_setup_entry only deletes it now)
 # ---------------------------------------------------------------------------
 
-
-async def test_setup_entry_creates_issue_on_import_error(
-    hass: HomeAssistant, mock_entry: MockConfigEntry
-):
-    """ImportError on kubernetes.client surfaces as a repair issue."""
-    original_import = builtins.__import__
-
-    def _raise(name, *args, **kwargs):
-        if name == "kubernetes.client":
-            raise ImportError("No module named 'kubernetes'")
-        return original_import(name, *args, **kwargs)
-
-    with patch.object(builtins, "__import__", side_effect=_raise):
-        result = await async_setup_entry(hass, mock_entry)
-
-    assert result is False
-    issue = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
-    assert issue is not None
-    assert issue.severity == ir.IssueSeverity.ERROR
-    assert issue.is_fixable is False
-    assert issue.translation_key == ISSUE_KUBERNETES_PACKAGE_MISSING
+ISSUE_KUBERNETES_PACKAGE_MISSING = "kubernetes_package_missing"
 
 
 async def test_setup_entry_clears_issue_on_success(
     hass: HomeAssistant, mock_entry: MockConfigEntry
 ):
-    """A successful setup removes a stale package-missing issue."""
+    """Setup removes a package-missing issue stored by an older release."""
     ir.async_create_issue(
         hass,
         DOMAIN,
@@ -104,7 +79,6 @@ async def test_setup_entry_clears_issue_on_success(
     assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
 
     with (
-        patch("custom_components.kubernetes.kubernetes_client.k8s_client"),
         patch("custom_components.kubernetes.KubernetesClient"),
         patch(
             "custom_components.kubernetes.KubernetesDataCoordinator"
@@ -122,31 +96,6 @@ async def test_setup_entry_clears_issue_on_success(
         mock_coord_class.return_value = mock_coord
 
         await async_setup_entry(hass, mock_entry)
-
-    assert (
-        ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
-        is None
-    )
-
-
-async def test_async_remove_entry_clears_package_missing_issue(
-    hass: HomeAssistant, mock_entry: MockConfigEntry
-):
-    """Removing a (failed) entry clears the package-missing issue.
-
-    async_unload_entry is skipped when async_setup_entry returned False,
-    so async_remove_entry is the only path that can clean this up.
-    """
-    ir.async_create_issue(
-        hass,
-        DOMAIN,
-        ISSUE_KUBERNETES_PACKAGE_MISSING,
-        is_fixable=False,
-        severity=ir.IssueSeverity.ERROR,
-        translation_key=ISSUE_KUBERNETES_PACKAGE_MISSING,
-    )
-
-    await async_remove_entry(hass, mock_entry)
 
     assert (
         ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)

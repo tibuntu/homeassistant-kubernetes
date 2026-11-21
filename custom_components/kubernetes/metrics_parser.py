@@ -1,6 +1,6 @@
 """Pure parsers for Kubernetes CPU and memory quantity strings.
 
-Extracted from kubernetes_client.py so the conversion logic can be unit-tested
+Extracted from the API client module so the conversion logic can be unit-tested
 in isolation. These functions never raise: malformed, empty, or missing input
 returns 0.0. Every Kubernetes quantity suffix is accepted for both resources
 (n/u/m, k/M/G/T/P/E and Ki..Ei). (CPU "cores" output is rounded to a whole
