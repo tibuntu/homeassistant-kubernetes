@@ -74,6 +74,26 @@ class TestPods:
             await k8s_client.get_pod_logs(pod["name"], pod["namespace"], previous=True)
         assert exc_info.value.status == 400
 
+    async def test_get_pod_detail_and_events(self, k8s_client):
+        # The panel's pod dialog: live detail plus the pod's core v1 events.
+        pods = await k8s_client.get_pods()
+        pod = next(
+            p
+            for p in pods
+            if p["owner_name"].startswith("test-nginx-") and p["phase"] == "Running"
+        )
+        detail = await k8s_client.get_pod_detail(pod["name"], pod["namespace"])
+        assert detail["name"] == pod["name"]
+        assert detail["phase"] == "Running"
+        nginx = next(c for c in detail["containers"] if not c["init"])
+        assert nginx["image"]
+        assert nginx["state"]["state"] == "running"
+
+        events = await k8s_client.get_pod_events(pod["name"], pod["namespace"])
+        # Scheduled/Pulled/Created/Started are recorded for every pod start.
+        assert len(events) >= 1
+        assert {"type", "reason", "message", "count", "timestamp"} <= set(events[0])
+
     async def test_get_pods_count(self, k8s_client):
         count = await k8s_client.get_pods_count()
         assert isinstance(count, int)

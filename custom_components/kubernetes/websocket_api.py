@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+from collections.abc import Awaitable, Callable
 from functools import wraps
 import logging
 from typing import Any
@@ -155,6 +156,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_httproutes_list)
     websocket_api.async_register_command(hass, websocket_config_list)
     websocket_api.async_register_command(hass, websocket_delete_pod)
+    websocket_api.async_register_command(hass, websocket_pods_describe)
     websocket_api.async_register_command(hass, websocket_pod_logs)
     websocket_api.async_register_command(hass, websocket_delete_job)
     websocket_api.async_register_command(hass, websocket_suspend_cronjob)
@@ -477,6 +479,73 @@ async def websocket_delete_pod(
             "delete_failed",
             f"Failed to delete pod {pod_name} in namespace {namespace}",
         )
+
+
+async def _capture(awaitable: Awaitable[Any]) -> Any:
+    """Await ``awaitable``; return the exception instead of raising it."""
+    try:
+        return await awaitable
+    except Exception as ex:
+        return ex
+
+
+@_require_panel_access
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "kubernetes/pods/describe",
+        vol.Required("entry_id"): str,
+        vol.Required("pod_name"): _K8S_NAME,
+        vol.Required("namespace"): _K8S_NAMESPACE,
+    }
+)
+@websocket_api.async_response
+async def websocket_pods_describe(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return a pod's containers, conditions and events (``kubectl describe``).
+
+    Fetched live and passed through, never stored. An events failure degrades
+    to detail-only with an ``events_error`` code, since the minimal RBAC set
+    has no ``events`` rule.
+    """
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+
+    client = coordinator.client
+    pod, events = await asyncio.gather(
+        _capture(client.get_pod_detail(msg["pod_name"], msg["namespace"])),
+        _capture(client.get_pod_events(msg["pod_name"], msg["namespace"])),
+    )
+    if isinstance(pod, KubernetesApiError):
+        if pod.status == 403:
+            # Non-admins may call this command; the 403 Status text names the
+            # integration's ServiceAccount, so it stays out of the browser.
+            connection.send_error(
+                msg["id"], "forbidden", "Access to this pod is forbidden"
+            )
+        else:
+            connection.send_error(msg["id"], "describe_failed", str(pod))
+        return
+    if isinstance(pod, Exception):
+        # Transport errors can carry hosts/URLs; keep them in the log only.
+        _LOGGER.error("Failed to describe pod %s", msg["pod_name"], exc_info=pod)
+        connection.send_error(msg["id"], "describe_failed", "Failed to fetch pod")
+        return
+
+    result: dict[str, Any] = {"pod": pod, "events": [], "events_error": None}
+    if isinstance(events, Exception):
+        if isinstance(events, KubernetesApiError) and events.status == 403:
+            result["events_error"] = "forbidden"
+        else:
+            result["events_error"] = "events_failed"
+            _LOGGER.debug("Failed to fetch events of pod %s", msg["pod_name"])
+    else:
+        result["events"] = events
+    connection.send_result(msg["id"], result)
 
 
 @websocket_api.require_admin

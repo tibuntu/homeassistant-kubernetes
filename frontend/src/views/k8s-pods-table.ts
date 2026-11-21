@@ -55,6 +55,68 @@ interface LogsTarget extends PodIdentifier {
   containers: string[];
 }
 
+interface ContainerState {
+  state: "running" | "waiting" | "terminated" | null;
+  reason?: string | null;
+  message?: string | null;
+  exit_code?: number | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+interface ContainerDetail {
+  name: string;
+  image: string;
+  init: boolean;
+  ready: boolean;
+  restart_count: number;
+  state: ContainerState;
+  last_state: ContainerState;
+}
+
+interface PodDetail {
+  name: string;
+  namespace: string;
+  phase: string | null;
+  reason: string | null;
+  message: string | null;
+  node_name: string | null;
+  pod_ip: string | null;
+  qos_class: string | null;
+  creation_timestamp: string | null;
+  owner_kind: string | null;
+  owner_name: string | null;
+  containers: ContainerDetail[];
+  conditions: {
+    type: string;
+    status: string;
+    reason: string | null;
+    message: string | null;
+  }[];
+}
+
+interface PodEvent {
+  type: string | null;
+  reason: string | null;
+  message: string | null;
+  count: number;
+  timestamp: string | null;
+}
+
+interface DescribeResponse {
+  pod: PodDetail;
+  events: PodEvent[];
+  events_error: "forbidden" | "events_failed" | null;
+}
+
+interface DetailTarget extends PodIdentifier {
+  pod: PodData;
+  logsEnabled: boolean;
+}
+
+const stateLabel = (s: ContainerState): string =>
+  s.state ? (s.reason ? `${s.state}: ${s.reason}` : s.state) : "-";
+
 interface LogsResponse {
   logs: string;
   truncated: boolean;
@@ -207,6 +269,12 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   private _logsStick = true;
   // Drops responses of a request that a newer one has superseded.
   private _logsRequest = 0;
+  @state() private _detailTarget: DetailTarget | null = null;
+  @state() private _detail: DescribeResponse | null = null;
+  @state() private _detailLoading = false;
+  @state() private _detailError: string | null = null;
+  // Drops a response that arrives after the dialog was closed or reopened.
+  private _detailRequest = 0;
 
   protected loadErrorFallback = "Failed to load pods data";
 
@@ -337,7 +405,63 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     }
   }
 
-  private _openLogs(entryId: string, pod: PodData): void {
+  private async _openDetail(
+    entryId: string,
+    pod: PodData,
+    logsEnabled: boolean,
+  ): Promise<void> {
+    this._detailTarget = {
+      entry_id: entryId,
+      pod_name: pod.name,
+      namespace: pod.namespace,
+      pod,
+      logsEnabled,
+    };
+    this._detail = null;
+    this._detailError = null;
+    this._detailLoading = true;
+    const request = ++this._detailRequest;
+    try {
+      const result: DescribeResponse = await this.hass.callWS({
+        type: "kubernetes/pods/describe",
+        entry_id: entryId,
+        pod_name: pod.name,
+        namespace: pod.namespace,
+      });
+      if (request === this._detailRequest) this._detail = result;
+    } catch (err: unknown) {
+      if (request === this._detailRequest) {
+        this._detailError = errorMessage(err, "Failed to load pod details");
+      }
+    } finally {
+      if (request === this._detailRequest) this._detailLoading = false;
+    }
+  }
+
+  private _closeDetail(): void {
+    this._detailTarget = null;
+    this._detailRequest++;
+  }
+
+  // A restarted pod's current container is usually fresh, so start on the
+  // previous run of the container that restarted.
+  private _openLogsFromDetail(target: DetailTarget): void {
+    const restarted = this._detail?.pod.containers.find(
+      (c) => !c.init && c.restart_count > 0,
+    );
+    const previous = target.pod.restart_count > 0;
+    this._closeDetail();
+    this._openLogs(target.entry_id, target.pod, {
+      previous,
+      container: previous ? restarted?.name : undefined,
+    });
+  }
+
+  private _openLogs(
+    entryId: string,
+    pod: PodData,
+    opts: { previous?: boolean; container?: string } = {},
+  ): void {
     const containers = pod.containers ?? [];
     this._logsTarget = {
       entry_id: entryId,
@@ -345,8 +469,8 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       namespace: pod.namespace,
       containers,
     };
-    this._logsContainer = containers[0] ?? "";
-    this._logsPrevious = false;
+    this._logsContainer = opts.container ?? containers[0] ?? "";
+    this._logsPrevious = opts.previous ?? false;
     this._logsResult = null;
     this._logsStick = true;
     void this._fetchLogs(true);
@@ -552,6 +676,73 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         word-break: break-all;
       }
 
+      .pod-link {
+        cursor: pointer;
+      }
+
+      .pod-link:hover,
+      .pod-link:focus-visible {
+        color: var(--primary-color);
+        text-decoration: underline;
+        outline: none;
+      }
+
+      .confirm-dialog.detail-dialog {
+        max-width: 860px;
+        max-height: 85vh;
+        overflow-y: auto;
+      }
+
+      .detail-section {
+        margin-bottom: 16px;
+      }
+
+      .detail-section h4 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+
+      .detail-summary {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 4px 16px;
+        font-size: 13px;
+        margin: 0;
+      }
+
+      .detail-summary dt {
+        color: var(--secondary-text-color);
+      }
+
+      .detail-summary dd {
+        margin: 0;
+        word-break: break-all;
+      }
+
+      .detail-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .detail-table th,
+      .detail-table td {
+        text-align: left;
+        padding: 4px 8px;
+        vertical-align: top;
+        border-bottom: 1px solid var(--divider-color);
+      }
+
+      .detail-table .detail-message {
+        color: var(--secondary-text-color);
+        word-break: break-word;
+      }
+
+      .detail-table .event-warning {
+        color: var(--warning-color, #ff9800);
+        font-weight: 500;
+      }
+
       .owner-info {
         font-size: 12px;
         color: var(--secondary-text-color);
@@ -741,6 +932,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       }
       ${this._data!.clusters.map((c) => this._renderCluster(c))}
       ${this._deleteConfirm ? this._renderDeleteDialog() : nothing}
+      ${this._detailTarget ? this._renderDetailDialog() : nothing}
       ${this._logsTarget ? this._renderLogsDialog() : nothing}
     `;
   }
@@ -1031,7 +1223,22 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     return html`
       <tr>
         <td>${pod.namespace}</td>
-        <td class="pod-name">${pod.name}</td>
+        <td class="pod-name">
+          <span
+            class="pod-link"
+            role="button"
+            tabindex="0"
+            title="Show details and events"
+            @click=${() => this._openDetail(entryId, pod, !!cluster.pod_logs_enabled)}
+            @keydown=${(e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                void this._openDetail(entryId, pod, !!cluster.pod_logs_enabled);
+              }
+            }}
+            >${pod.name}</span
+          >
+        </td>
         <td><span class="badge ${phaseClass}">${podStatus(pod)}</span></td>
         ${this._colVisible("ready") ? html`<td>${pod.ready_containers}/${pod.total_containers}</td>` : nothing}
         ${this._colVisible("restarts") ? html`<td class=${pod.restart_count > 5 ? "restart-warn" : ""}>${pod.restart_count}</td>` : nothing}
@@ -1099,6 +1306,199 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
             >
               ${this._deleting ? "Deleting..." : "Delete"}
             </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderContainerRow(c: ContainerDetail) {
+    const message = c.state.message || c.last_state.message;
+    const last = c.last_state;
+    return html`
+      <tr class="container-row">
+        <td>
+          ${c.name}${c.init ? html` <span class="owner-info">(init)</span>` : nothing}
+        </td>
+        <td class="mono">${c.image}</td>
+        <td>${c.ready ? "yes" : "no"}</td>
+        <td>${c.restart_count}</td>
+        <td>
+          ${stateLabel(c.state)}
+          ${
+            c.state.state === "terminated" && c.state.exit_code != null
+              ? html` (exit ${c.state.exit_code})`
+              : nothing
+          }
+          ${message ? html`<div class="detail-message">${message}</div>` : nothing}
+        </td>
+        <td>
+          ${stateLabel(last)}
+          ${last.exit_code != null ? html` (exit ${last.exit_code})` : nothing}
+          ${
+            last.finished_at
+              ? html`<div class="detail-message">
+                  ${formatAge(last.finished_at)} ago
+                </div>`
+              : nothing
+          }
+        </td>
+      </tr>
+    `;
+  }
+
+  private _renderDetailEvents(detail: DescribeResponse) {
+    if (detail.events_error === "forbidden") {
+      return html`<div class="inline-error events-forbidden">
+        The integration's ServiceAccount needs <code>get</code> and <code>list</code> on
+        <code>events</code> — see the
+        <a href=${RBAC_DOCS_URL} target="_blank" rel="noreferrer">RBAC docs</a>.
+      </div>`;
+    }
+    if (detail.events_error) {
+      return html`<div class="inline-error events-failed">Failed to load events.</div>`;
+    }
+    if (!detail.events.length) {
+      return html`<div class="logs-note">No events recorded for this pod.</div>`;
+    }
+    return html`
+      <table class="detail-table events-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Reason</th>
+            <th>Age</th>
+            <th>Count</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${detail.events.map(
+            (e) => html`
+              <tr>
+                <td class=${e.type === "Warning" ? "event-warning" : ""}>
+                  ${e.type ?? "-"}
+                </td>
+                <td>${e.reason ?? "-"}</td>
+                <td>${e.timestamp ? formatAge(e.timestamp) : "-"}</td>
+                <td>${e.count}</td>
+                <td class="detail-message">${e.message ?? ""}</td>
+              </tr>
+            `,
+          )}
+        </tbody>
+      </table>
+    `;
+  }
+
+  private _renderDetailDialog() {
+    const target = this._detailTarget!;
+    const detail = this._detail;
+    const pod = detail?.pod;
+    const close = this._closeDetail;
+    return html`
+      <div
+        class="confirm-overlay"
+        tabindex="-1"
+        ${this._autofocusOverlay()}
+        @click=${close}
+        @keydown=${this._onOverlayKeydown(close)}
+      >
+        <div
+          class="confirm-dialog detail-dialog"
+          @click=${(e: Event) => e.stopPropagation()}
+        >
+          <h3>
+            Pod
+            <span class="confirm-ref">${target.namespace}/${target.pod_name}</span>
+          </h3>
+          ${
+            this._detailError
+              ? html`<div class="inline-error">${this._detailError}</div>`
+              : nothing
+          }
+          ${this._detailLoading ? html`<ha-spinner></ha-spinner>` : nothing}
+          ${
+            detail && pod
+              ? html`
+                  <div class="detail-section">
+                    <h4>Summary</h4>
+                    <dl class="detail-summary">
+                      <dt>Status</dt>
+                      <dd>
+                        ${podStatus(target.pod)}${pod.reason ? html` (${pod.reason})` : nothing}
+                      </dd>
+                      ${
+                        pod.message
+                          ? html`<dt>Message</dt>
+                              <dd>${pod.message}</dd>`
+                          : nothing
+                      }
+                      <dt>Node</dt>
+                      <dd>${pod.node_name ?? "-"}</dd>
+                      <dt>IP</dt>
+                      <dd>${pod.pod_ip ?? "-"}</dd>
+                      <dt>Owner</dt>
+                      <dd>
+                        ${pod.owner_kind ? `${pod.owner_kind}/${pod.owner_name}` : "-"}
+                      </dd>
+                      <dt>QoS</dt>
+                      <dd>${pod.qos_class ?? "-"}</dd>
+                      <dt>Age</dt>
+                      <dd>${formatAge(pod.creation_timestamp)}</dd>
+                      ${
+                        pod.conditions.length
+                          ? html`<dt>Conditions</dt>
+                              <dd>
+                                ${pod.conditions.map(
+                                  (c) =>
+                                    html`<div>
+                                      ${c.type}:
+                                      ${c.status}${c.reason ? html` (${c.reason})` : nothing}
+                                    </div>`,
+                                )}
+                              </dd>`
+                          : nothing
+                      }
+                    </dl>
+                  </div>
+                  <div class="detail-section">
+                    <h4>Containers</h4>
+                    <table class="detail-table containers-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Image</th>
+                          <th>Ready</th>
+                          <th>Restarts</th>
+                          <th>State</th>
+                          <th>Last state</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${pod.containers.map((c) => this._renderContainerRow(c))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="detail-section">
+                    <h4>Events</h4>
+                    ${this._renderDetailEvents(detail)}
+                  </div>
+                `
+              : nothing
+          }
+          <div class="confirm-actions">
+            ${
+              isAdmin(this.hass) && target.logsEnabled
+                ? html`<button
+                    class="detail-logs"
+                    @click=${() => this._openLogsFromDetail(target)}
+                  >
+                    Logs
+                  </button>`
+                : nothing
+            }
+            <button @click=${close}>Close</button>
           </div>
         </div>
       </div>

@@ -43,6 +43,8 @@ const services: ServiceCall[] = [];
 const fail = new Set(new URLSearchParams(location.search).getAll("fail"));
 const empty = new Set(new URLSearchParams(location.search).getAll("empty"));
 const noMetrics = new URLSearchParams(location.search).get("metrics") === "0";
+// Read at load: switching tabs drops the query string from the URL.
+const eventsError = new URLSearchParams(location.search).get("events_error");
 const subscribers: (() => void)[] = [];
 window.__k8s = { calls, services, fail, push: () => subscribers.forEach((cb) => cb()) };
 
@@ -70,7 +72,14 @@ const hass: HomeAssistant = {
     if (!(type in RESPONSES)) throw new Error(`harness: no fixture for ${type}`);
     const response = structuredClone(RESPONSES[type]) as {
       clusters?: { metrics_available?: boolean }[];
+      events?: unknown[];
+      events_error?: string | null;
     };
+    // `?events_error=forbidden` degrades pods/describe to detail-only.
+    if (type === "kubernetes/pods/describe" && eventsError) {
+      response.events = [];
+      response.events_error = eventsError;
+    }
     if (noMetrics) {
       response.clusters?.forEach((c) => {
         if (c.metrics_available !== undefined) c.metrics_available = false;

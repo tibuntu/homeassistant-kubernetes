@@ -1,5 +1,6 @@
 """Tests for the Kubernetes WebSocket API module."""
 
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntryState
@@ -2906,6 +2907,178 @@ class TestWebsocketPodLogs:
         pods = {c["entry_id"]: c["pods"] for c in msg["result"]["clusters"]}
         assert pods == {"entry_1": [{"name": "a"}], "entry_2": [{"name": "b"}]}
         cached_client.get_pods.assert_not_called()
+
+
+class TestWebsocketPodsDescribe:
+    """Drive kubernetes/pods/describe through HA's real WebSocket stack."""
+
+    _POD: ClassVar[dict] = {"name": "nginx-abc123", "containers": []}
+    _EVENTS: ClassVar[list] = [{"type": "Warning", "reason": "BackOff", "count": 3}]
+
+    @staticmethod
+    def _msg(msg_id: int, entry_id: str = "entry_1", **extra) -> dict:
+        return {
+            "id": msg_id,
+            "type": "kubernetes/pods/describe",
+            "entry_id": entry_id,
+            "pod_name": "nginx-abc123",
+            "namespace": "default",
+            **extra,
+        }
+
+    async def _send(self, hass, hass_ws_client, msg, token=None) -> dict:
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass, token) if token else await hass_ws_client(hass)
+        await ws.send_json(msg)
+        return await ws.receive_json()
+
+    def _client(self, *, pod_exc=None, events_exc=None) -> MagicMock:
+        client = MagicMock()
+        client.get_pod_detail = AsyncMock(return_value=self._POD, side_effect=pod_exc)
+        client.get_pod_events = AsyncMock(
+            return_value=self._EVENTS, side_effect=events_exc
+        )
+        return client
+
+    async def test_returns_pod_and_events(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """Both calls run and are returned together."""
+        client = self._client()
+        add_loaded_client_entry(client)
+
+        msg = await self._send(hass, hass_ws_client, self._msg(1))
+
+        assert msg["success"] is True
+        assert msg["result"] == {
+            "pod": self._POD,
+            "events": self._EVENTS,
+            "events_error": None,
+        }
+        client.get_pod_detail.assert_awaited_once_with("nginx-abc123", "default")
+        client.get_pod_events.assert_awaited_once_with("nginx-abc123", "default")
+
+    @pytest.mark.parametrize(
+        ("events_exc", "code"),
+        [
+            (KubernetesApiError("events denied", 403), "forbidden"),
+            (KubernetesApiError("events broke", 500), "events_failed"),
+            (KubernetesApiError("events broke"), "events_failed"),
+            (TimeoutError("https://10.0.0.1:6443 timed out"), "events_failed"),
+        ],
+    )
+    async def test_events_failure_degrades_to_detail_only(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        events_exc,
+        code,
+    ):
+        """An events failure keeps the container detail and sets events_error."""
+        add_loaded_client_entry(self._client(events_exc=events_exc))
+
+        msg = await self._send(hass, hass_ws_client, self._msg(1))
+
+        assert msg["success"] is True
+        assert msg["result"] == {"pod": self._POD, "events": [], "events_error": code}
+
+    @pytest.mark.parametrize(
+        ("status", "code"),
+        [(403, "forbidden"), (404, "describe_failed"), (None, "describe_failed")],
+    )
+    async def test_detail_api_error_maps_to_code(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        status,
+        code,
+    ):
+        """A detail API error is an error; Status text is forwarded except on 403."""
+        add_loaded_client_entry(
+            self._client(
+                pod_exc=KubernetesApiError("pod detail request failed", status)
+            )
+        )
+
+        msg = await self._send(hass, hass_ws_client, self._msg(1))
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == code
+        if status == 403:
+            assert msg["error"]["message"] == "Access to this pod is forbidden"
+        else:
+            assert "pod detail request failed" in msg["error"]["message"]
+
+    async def test_detail_transport_error(
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+    ):
+        """A transport error gets a fixed message, not the host/URL."""
+        add_loaded_client_entry(
+            self._client(pod_exc=TimeoutError("https://10.0.0.1:6443 timed out"))
+        )
+
+        msg = await self._send(hass, hass_ws_client, self._msg(1))
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "describe_failed"
+        assert msg["error"]["message"] == "Failed to fetch pod"
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("pod_name", ".."), ("pod_name", "pod\n"), ("namespace", "a/b")],
+    )
+    async def test_invalid_names_rejected(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        add_loaded_client_entry,
+        field,
+        value,
+    ):
+        """Invalid names never reach the client."""
+        client = self._client()
+        add_loaded_client_entry(client)
+
+        msg = await self._send(hass, hass_ws_client, {**self._msg(1), field: value})
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
+        client.get_pod_detail.assert_not_called()
+        client.get_pod_events.assert_not_called()
+
+    async def test_entry_not_found(self, hass: HomeAssistant, hass_ws_client):
+        """An entry that is not loaded is reported as not_found."""
+        msg = await self._send(
+            hass, hass_ws_client, self._msg(1, entry_id="nonexistent")
+        )
+
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "not_found"
+
+    @pytest.mark.parametrize(("admin_only", "success"), [(False, True), (True, False)])
+    async def test_non_admin_follows_panel_access(
+        self,
+        hass: HomeAssistant,
+        hass_ws_client,
+        hass_read_only_access_token,
+        add_loaded_client_entry,
+        admin_only,
+        success,
+    ):
+        """A read command: non-admins are served unless the panel is admin-only."""
+        add_loaded_client_entry(
+            self._client(), options={"panel_admin_only": admin_only}
+        )
+
+        msg = await self._send(
+            hass, hass_ws_client, self._msg(1), hass_read_only_access_token
+        )
+
+        assert msg["success"] is success
+        if not success:
+            assert msg["error"]["code"] == "unauthorized"
 
 
 class TestWebsocketDeleteJob:
