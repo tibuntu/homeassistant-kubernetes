@@ -91,6 +91,78 @@ test("pods column visibility survives a reload", async ({ page }) => {
   await expect(page.locator("th", { hasText: "Node" })).toHaveCount(0);
 });
 
+test("pods table shows usage and sorts by CPU and memory", async ({ page }) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  const firstName = () => page.locator("tbody tr .pod-name").first();
+
+  await expect(page.locator("tbody tr", { hasText: "web-7d9f8b-abc12" })).toContainText(
+    "120m",
+  );
+  await expect(page.locator("tbody tr", { hasText: "web-7d9f8b-abc12" })).toContainText(
+    "256 Mi",
+  );
+
+  await page.locator("th", { hasText: "CPU" }).click();
+  await expect(firstName()).toHaveText("db-0");
+  await page.locator("th", { hasText: "CPU" }).click();
+  await expect(firstName()).toHaveText("web-7d9f8b-abc12");
+
+  await page.locator("th", { hasText: "Memory" }).click();
+  await expect(firstName()).toHaveText("web-7d9f8b-abc12");
+  await page.locator("th", { hasText: "Memory" }).click();
+  await expect(firstName()).toHaveText("db-0");
+});
+
+test("a stored column selection gains the usage columns once", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("k8s-pods-columns")) {
+      localStorage.setItem("k8s-pods-columns", JSON.stringify(["ready", "node"]));
+    }
+  });
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  await expect(page.locator("th", { hasText: "CPU" })).toBeVisible();
+  await expect(page.locator("th", { hasText: "Restarts" })).toHaveCount(0);
+
+  // The migrated selection is stored: a plain reload keeps the columns.
+  await page.reload();
+  await openTab(page, "Pods");
+  await expect(page.locator("th", { hasText: "CPU" })).toBeVisible();
+
+  // The user can hide them again and the choice sticks across reloads.
+  await page.locator(".column-toggle-btn").click();
+  await page.locator(".column-option", { hasText: "CPU" }).locator("input").uncheck();
+  await page.reload();
+  await openTab(page, "Pods");
+  await expect(page.locator("th", { hasText: "CPU" })).toHaveCount(0);
+  await expect(page.locator("th", { hasText: "Memory" })).toBeVisible();
+});
+
+test("workload cards show usage", async ({ page }) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Workloads");
+  await expect(
+    page.locator(".workload-card", { hasText: "web" }).first(),
+  ).toContainText("340m · 512 Mi");
+  await expect(page.locator(".workload-card", { hasText: "log-agent" })).toContainText(
+    "5m · 32 Mi",
+  );
+});
+
+test("usage is hidden when the cluster has no metrics", async ({ page }) => {
+  await page.goto(`${HARNESS}?metrics=0`);
+  await openTab(page, "Workloads");
+  await expect(page.locator(".workload-card").first()).toBeVisible();
+  await expect(page.locator(".replica-info.usage")).toHaveCount(0);
+
+  await openTab(page, "Pods");
+  const row = page.locator("tbody tr", { hasText: "web-7d9f8b-abc12" });
+  await expect(row).not.toContainText("120m");
+  await expect(row).not.toContainText("256 Mi");
+  await expect(row.locator("td").nth(5)).toHaveText("-");
+});
+
 test("Escape closes the scale dialog without calling the service", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Workloads");

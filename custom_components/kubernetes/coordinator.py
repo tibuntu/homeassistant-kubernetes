@@ -393,10 +393,35 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     else await self.client.get_daemonsets()
                 )
 
-                # One pods + metrics fetch enriches every workload kind.
+                pods: list[dict[str, Any]] = []
+                if "pods" not in disabled:
+                    _LOGGER.debug("Starting to fetch detailed pod information")
+                    pods = await self.client.get_pods()
+                    _LOGGER.debug(
+                        "Successfully fetched %d pods with detailed information",
+                        len(pods),
+                    )
+
+                # One pods list and one pod-metrics fetch per poll feed both
+                # the per-pod usage and every workload kind's enrichment.
+                pod_metrics: dict[str, dict[str, float]] = {}
+                if include_metrics:
+                    pod_metrics = await self.client.get_pod_metrics()
+                    for pod in pods:
+                        usage = pod_metrics.get(f"{pod['namespace']}/{pod['name']}")
+                        if usage:
+                            pod["cpu_usage"] = usage["cpu"]
+                            pod["memory_usage"] = usage["memory"]
+
                 workloads = [*deployments, *statefulsets, *daemonsets]
                 if include_metrics and workloads:
-                    await self.client.enrich_workloads_with_metrics(workloads)
+                    # With pods collection off the bucket is empty, so the
+                    # client lists pods itself (pods=None).
+                    await self.client.enrich_workloads_with_metrics(
+                        workloads,
+                        pods=None if "pods" in disabled else pods,
+                        metrics=pod_metrics,
+                    )
 
                 jobs = [] if "jobs" in disabled else await self.client.get_jobs()
                 ingresses = (
@@ -416,15 +441,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     "Successfully fetched %d nodes with detailed information",
                     len(nodes),
                 )
-
-                pods: list[dict[str, Any]] = []
-                if "pods" not in disabled:
-                    _LOGGER.debug("Starting to fetch detailed pod information")
-                    pods = await self.client.get_pods()
-                    _LOGGER.debug(
-                        "Successfully fetched %d pods with detailed information",
-                        len(pods),
-                    )
 
                 # pods_count comes from the parsed list whenever pods were
                 # fetched: the raw count endpoint still includes Job-owned pods
@@ -512,6 +528,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     "pods": {f"{pod['namespace']}_{pod['name']}": pod for pod in pods},
                     "pods_count": pods_count,
                     "nodes_count": nodes_count,
+                    "pod_metrics_available": bool(pod_metrics),
                     "server_version": server_version,
                     "last_update": time.time(),
                 }

@@ -202,6 +202,9 @@ async def websocket_pods_list(
         result["clusters"], get_loaded_entries(hass), strict=True
     ):
         cluster["pod_logs_enabled"] = _pod_logs_enabled(entry)
+        cluster["metrics_available"] = _metrics_available(
+            entry.runtime_data.coordinator
+        )
         # With pod collection disabled the coordinator never fetches pods, so
         # list them live for the panel (Pods tab, logs, delete). Not stored.
         if "pods" in disabled_resources(entry):
@@ -356,6 +359,11 @@ def _empty_alerts() -> dict[str, list]:
     }
 
 
+def _metrics_available(coordinator: Any) -> bool:
+    """True when the last poll returned any pod metrics (metrics-server works)."""
+    return bool(coordinator.data and coordinator.data.get("pod_metrics_available"))
+
+
 def _list_data(hass: HomeAssistant, key: str) -> dict[str, Any]:
     """Gather a single resource list (nodes/pods/ingresses/services/httproutes) from all
     config entries, keyed the same as the coordinator's data bucket."""
@@ -419,6 +427,7 @@ def _get_workloads_list_data(hass: HomeAssistant) -> dict[str, Any]:
             {
                 "entry_id": entry_id,
                 "cluster_name": config.get(CONF_CLUSTER_NAME, DEFAULT_CLUSTER_NAME),
+                "metrics_available": _metrics_available(coordinator),
                 "deployments": deployments,
                 "statefulsets": statefulsets,
                 "daemonsets": daemonsets,
