@@ -471,6 +471,121 @@ test("pod logs failure shows an inline error in the dialog", async ({ page }) =>
   await expect(page.locator(".logs-output")).toHaveCount(0);
 });
 
+test("pod detail dialog shows containers and events, closes on Escape and overlay click", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  const link = page.locator(".pod-link", { hasText: "db-0" });
+  // Keyboard-accessible: Enter on the focused name opens it.
+  await link.focus();
+  await page.keyboard.press("Enter");
+
+  const dialog = page.locator(".detail-dialog");
+  await expect(dialog).toContainText("default/db-0");
+  await expect(dialog.locator(".containers-table")).toContainText("postgres:17");
+  await expect(dialog.locator(".containers-table")).toContainText(
+    "waiting: CrashLoopBackOff",
+  );
+  await expect(dialog.locator(".containers-table")).toContainText("OOMKilled");
+  await expect(dialog.locator(".containers-table")).toContainText("(exit 137)");
+  await expect(dialog.locator(".containers-table")).toContainText("wait-for-disk");
+  await expect(dialog.locator(".events-table")).toContainText("BackOff");
+  await expect(dialog.locator(".events-table")).toContainText("Scheduled");
+  expect(
+    await page.evaluate(() =>
+      window.__k8s.calls.filter((c) => c.type === "kubernetes/pods/describe"),
+    ),
+  ).toEqual([
+    {
+      type: "kubernetes/pods/describe",
+      entry_id: "entry_1",
+      pod_name: "db-0",
+      namespace: "default",
+    },
+  ]);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  await link.click();
+  await expect(dialog).toBeVisible();
+  // A click inside the dialog keeps it open; one on the overlay closes it.
+  await dialog.locator("h3").click();
+  await expect(dialog).toBeVisible();
+  await page.locator(".confirm-overlay").click({ position: { x: 5, y: 5 } });
+  await expect(dialog).toHaveCount(0);
+});
+
+test("pod detail renders detail-only with the RBAC hint when events are forbidden", async ({
+  page,
+}) => {
+  await page.goto(`${HARNESS}?events_error=forbidden`);
+  await openTab(page, "Pods");
+  await page.locator(".pod-link", { hasText: "db-0" }).click();
+
+  const dialog = page.locator(".detail-dialog");
+  await expect(dialog.locator(".containers-table")).toContainText("postgres:17");
+  await expect(dialog.locator(".events-forbidden")).toContainText("events");
+  await expect(dialog.locator(".events-forbidden a")).toHaveAttribute(
+    "href",
+    /RBAC\.md$/,
+  );
+  await expect(dialog.locator(".events-table")).toHaveCount(0);
+});
+
+test("pod detail failure shows an inline error", async ({ page }) => {
+  await page.goto(`${HARNESS}?fail=kubernetes/pods/describe`);
+  await openTab(page, "Pods");
+  await page.locator(".pod-link", { hasText: "db-0" }).click();
+
+  await expect(page.locator(".detail-dialog .inline-error")).toContainText(
+    "kubernetes/pods/describe failed",
+  );
+});
+
+test("pod detail Logs button opens the log dialog on the previous container of a restarted pod", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  await page.locator(".pod-link", { hasText: "db-0" }).click();
+  await page.locator(".detail-dialog .detail-logs").click();
+
+  await expect(page.locator(".detail-dialog")).toHaveCount(0);
+  await expect(page.locator(".logs-output")).toBeVisible();
+  await expect(page.locator(".logs-previous input")).toBeChecked();
+  const logCalls = await page.evaluate(() =>
+    window.__k8s.calls.filter((c) => c.type === "kubernetes/pods/logs"),
+  );
+  expect(logCalls.at(-1)).toMatchObject({
+    pod_name: "db-0",
+    container: "metrics-exporter",
+    previous: true,
+  });
+});
+
+test("pod detail is open to non-admins but hides the Logs button", async ({ page }) => {
+  await page.goto(`${HARNESS}?admin=0`);
+  await openTab(page, "Pods");
+  await page.locator(".pod-link", { hasText: "db-0" }).click();
+
+  await expect(page.locator(".detail-dialog .containers-table")).toBeVisible();
+  await expect(page.locator(".detail-dialog .detail-logs")).toHaveCount(0);
+});
+
+test("pod detail Logs on a pod without restarts starts on the current container", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  await page.locator(".pod-link", { hasText: "web-7d9f8b-abc12" }).click();
+  await page.locator(".detail-dialog .detail-logs").click();
+
+  await expect(page.locator(".logs-output")).toBeVisible();
+  await expect(page.locator(".logs-previous input")).not.toBeChecked();
+});
+
 test("drain dialog sends the options and shows the service response", async ({
   page,
 }) => {

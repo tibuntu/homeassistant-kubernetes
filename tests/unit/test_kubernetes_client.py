@@ -7407,6 +7407,320 @@ class TestGetPodLogs:
         assert exc_info.value.status == status
 
 
+def _pod_item() -> dict:
+    """A pod with an init container, a crash-looping app and a healthy sidecar."""
+    return {
+        "metadata": {
+            "name": "web-1",
+            "namespace": "apps",
+            "creationTimestamp": "2026-11-01T10:00:00Z",
+            "ownerReferences": [{"kind": "ReplicaSet", "name": "web-5d"}],
+        },
+        "spec": {
+            "nodeName": "node-a",
+            "initContainers": [{"name": "setup", "image": "busybox:1"}],
+            "containers": [
+                {"name": "app", "image": "app:2"},
+                {"name": "side", "image": "side:3"},
+                {"name": "unstarted", "image": "x:4"},
+            ],
+        },
+        "status": {
+            "phase": "Running",
+            "podIP": "10.0.0.5",
+            "qosClass": "Burstable",
+            "conditions": [
+                {
+                    "type": "Ready",
+                    "status": "False",
+                    "reason": "ContainersNotReady",
+                    "message": "containers with unready status: [app]",
+                }
+            ],
+            "initContainerStatuses": [
+                {
+                    "name": "setup",
+                    "ready": True,
+                    "restartCount": 0,
+                    "state": {
+                        "terminated": {
+                            "exitCode": 0,
+                            "reason": "Completed",
+                            "finishedAt": "2026-11-01T10:00:05Z",
+                        }
+                    },
+                }
+            ],
+            "containerStatuses": [
+                {
+                    "name": "app",
+                    "ready": False,
+                    "restartCount": 7,
+                    "state": {
+                        "waiting": {
+                            "reason": "CrashLoopBackOff",
+                            "message": "back-off 5m0s restarting failed container",
+                        }
+                    },
+                    "lastState": {
+                        "terminated": {
+                            "exitCode": 137,
+                            "reason": "OOMKilled",
+                            "finishedAt": "2026-11-01T11:00:00Z",
+                        }
+                    },
+                },
+                {
+                    "name": "side",
+                    "ready": True,
+                    "restartCount": 0,
+                    "state": {"running": {"startedAt": "2026-11-01T10:00:06Z"}},
+                    "lastState": {},
+                },
+            ],
+        },
+    }
+
+
+class TestGetPodDetail:
+    """get_pod_detail: live single-pod GET parsed per container."""
+
+    async def test_parses_containers_and_summary(self, mock_client):
+        """Init containers come first; states and last states are flattened."""
+        session = mock_aiohttp_session(get=_mock_response(200, json_data=_pod_item()))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            detail = await mock_client.get_pod_detail("web-1", "apps")
+
+        assert session.get.call_args[0][0].endswith(
+            "/api/v1/namespaces/apps/pods/web-1"
+        )
+        assert detail["name"] == "web-1"
+        assert detail["namespace"] == "apps"
+        assert detail["phase"] == "Running"
+        assert detail["node_name"] == "node-a"
+        assert detail["pod_ip"] == "10.0.0.5"
+        assert detail["qos_class"] == "Burstable"
+        assert detail["owner_kind"] == "ReplicaSet"
+        assert detail["owner_name"] == "web-5d"
+        assert [c["name"] for c in detail["containers"]] == [
+            "setup",
+            "app",
+            "side",
+            "unstarted",
+        ]
+        setup, app, side, unstarted = detail["containers"]
+        assert setup["init"] is True
+        assert setup["image"] == "busybox:1"
+        assert setup["state"]["state"] == "terminated"
+        assert setup["state"]["reason"] == "Completed"
+        assert setup["state"]["exit_code"] == 0
+        assert app["init"] is False
+        assert app["ready"] is False
+        assert app["restart_count"] == 7
+        assert app["state"]["state"] == "waiting"
+        assert app["state"]["reason"] == "CrashLoopBackOff"
+        assert app["state"]["message"].startswith("back-off")
+        assert app["last_state"]["state"] == "terminated"
+        assert app["last_state"]["reason"] == "OOMKilled"
+        assert app["last_state"]["exit_code"] == 137
+        assert app["last_state"]["finished_at"] == "2026-11-01T11:00:00Z"
+        assert side["ready"] is True
+        assert side["state"]["state"] == "running"
+        assert side["state"]["started_at"] == "2026-11-01T10:00:06Z"
+        assert side["last_state"] == {"state": None}
+        # No status yet (e.g. Pending): defaults rather than a KeyError.
+        assert unstarted["ready"] is False
+        assert unstarted["restart_count"] == 0
+        assert unstarted["state"] == {"state": None}
+        assert detail["conditions"] == [
+            {
+                "type": "Ready",
+                "status": "False",
+                "reason": "ContainersNotReady",
+                "message": "containers with unready status: [app]",
+            }
+        ]
+
+    async def test_minimal_pod(self, mock_client):
+        """A pod object with almost nothing in it still parses."""
+        session = mock_aiohttp_session(get=_mock_response(200, json_data={}))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            detail = await mock_client.get_pod_detail("p", "default")
+
+        assert detail["containers"] == []
+        assert detail["conditions"] == []
+        assert detail["owner_kind"] is None
+
+    async def test_state_with_null_body(self, mock_client):
+        """A ``running: {}`` / null state body does not crash the parser."""
+        item = {
+            "spec": {"containers": [{"name": "a", "image": "i"}]},
+            "status": {
+                "containerStatuses": [{"name": "a", "state": {"running": None}}]
+            },
+        }
+        session = mock_aiohttp_session(get=_mock_response(200, json_data=item))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            detail = await mock_client.get_pod_detail("a", "default")
+
+        assert detail["containers"][0]["state"]["state"] == "running"
+
+    @pytest.mark.parametrize("status", [403, 404, 500])
+    async def test_non_200_raises_with_status(self, mock_client, status):
+        """A non-200 raises KubernetesApiError carrying status and Status text."""
+        session = mock_aiohttp_session(get=_mock_response(status, text="denied"))
+
+        with (
+            patch("aiohttp.ClientSession", return_value=session),
+            pytest.raises(KubernetesApiError, match="denied") as exc_info,
+        ):
+            await mock_client.get_pod_detail("p", "default")
+
+        assert exc_info.value.status == status
+
+    @pytest.mark.parametrize(
+        ("name", "namespace"), [("..", "default"), ("p", "a/b"), ("P", "default")]
+    )
+    async def test_invalid_names_raise_before_any_request(
+        self, mock_client, name, namespace
+    ):
+        """Names that must not reach a URL raise without opening a session."""
+        with (
+            patch("aiohttp.ClientSession") as session_cls,
+            pytest.raises(KubernetesApiError, match="Refusing"),
+        ):
+            await mock_client.get_pod_detail(name, namespace)
+
+        session_cls.assert_not_called()
+
+
+class TestGetPodEvents:
+    """get_pod_events: field-selected core v1 events, newest first, capped."""
+
+    async def test_sorts_newest_first_with_timestamp_fallbacks(self, mock_client):
+        """lastTimestamp, then eventTime, then series.lastObservedTime."""
+        items = [
+            {
+                "type": "Normal",
+                "reason": "Scheduled",
+                "message": "assigned",
+                "lastTimestamp": "2026-11-01T10:00:00Z",
+                "count": 1,
+            },
+            {
+                "type": "Warning",
+                "reason": "BackOff",
+                "message": "back-off",
+                "eventTime": "2026-11-01T10:05:00Z",
+                "series": {"count": 4, "lastObservedTime": "2026-11-01T10:09:00Z"},
+            },
+            {
+                "type": "Warning",
+                "reason": "Unhealthy",
+                "message": "probe failed",
+                "series": {"count": 2, "lastObservedTime": "2026-11-01T10:07:00Z"},
+            },
+            {
+                "type": "Normal",
+                "reason": "Pulled",
+                "metadata": {"creationTimestamp": "2026-11-01T09:00:00Z"},
+            },
+            {"type": "Normal", "reason": "NoTime"},
+        ]
+        session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": items})
+        )
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            events = await mock_client.get_pod_events("web-1", "apps")
+
+        assert [e["reason"] for e in events] == [
+            "Unhealthy",
+            "BackOff",
+            "Scheduled",
+            "Pulled",
+            "NoTime",
+        ]
+        by_reason = {e["reason"]: e for e in events}
+        # eventTime wins over series.lastObservedTime when lastTimestamp is empty.
+        assert by_reason["BackOff"]["timestamp"] == "2026-11-01T10:05:00Z"
+        assert by_reason["BackOff"]["count"] == 4
+        assert by_reason["Unhealthy"]["timestamp"] == "2026-11-01T10:07:00Z"
+        assert by_reason["Unhealthy"]["count"] == 2
+        assert by_reason["Scheduled"]["count"] == 1
+        assert by_reason["Pulled"]["count"] == 1
+        assert by_reason["Pulled"]["timestamp"] == "2026-11-01T09:00:00Z"
+        assert by_reason["NoTime"]["timestamp"] is None
+        assert by_reason["Scheduled"]["message"] == "assigned"
+
+    async def test_url_and_field_selector(self, mock_client):
+        """The query targets this pod's core v1 events in its namespace."""
+        session = mock_aiohttp_session(get=_mock_response(200, json_data={"items": []}))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            assert await mock_client.get_pod_events("web-1", "apps") == []
+
+        assert session.get.call_args[0][0].endswith("/api/v1/namespaces/apps/events")
+        assert session.get.call_args[1]["params"] == {
+            "fieldSelector": "involvedObject.kind=Pod,involvedObject.name=web-1"
+        }
+
+    async def test_missing_items_key(self, mock_client):
+        """A body without ``items`` yields no events."""
+        session = mock_aiohttp_session(get=_mock_response(200, json_data={}))
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            assert await mock_client.get_pod_events("p", "default") == []
+
+    async def test_capped_at_fifty(self, mock_client):
+        """Only the 50 newest events are returned."""
+        items = [
+            {"reason": f"r{i}", "lastTimestamp": f"2026-11-01T10:{i:02d}:00Z"}
+            for i in range(60)
+        ]
+        session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": items})
+        )
+
+        with patch("aiohttp.ClientSession", return_value=session):
+            events = await mock_client.get_pod_events("p", "default")
+
+        assert len(events) == 50
+        assert events[0]["reason"] == "r59"
+        assert events[-1]["reason"] == "r10"
+
+    @pytest.mark.parametrize("status", [403, 500])
+    async def test_non_200_raises_with_status(self, mock_client, status):
+        """A non-200 raises KubernetesApiError carrying the status."""
+        session = mock_aiohttp_session(get=_mock_response(status, text="denied"))
+
+        with (
+            patch("aiohttp.ClientSession", return_value=session),
+            pytest.raises(KubernetesApiError, match="denied") as exc_info,
+        ):
+            await mock_client.get_pod_events("p", "default")
+
+        assert exc_info.value.status == status
+
+    @pytest.mark.parametrize(
+        ("name", "namespace"), [("..", "default"), ("p", "a/b"), ("p\n", "default")]
+    )
+    async def test_invalid_names_raise_before_any_request(
+        self, mock_client, name, namespace
+    ):
+        """Names that must not reach a URL or selector raise without a request."""
+        with (
+            patch("aiohttp.ClientSession") as session_cls,
+            pytest.raises(KubernetesApiError, match="Refusing"),
+        ):
+            await mock_client.get_pod_events(name, namespace)
+
+        session_cls.assert_not_called()
+
+
 class TestMutationUrlQuoting:
     """Names and namespaces are percent-encoded into the mutation URLs."""
 

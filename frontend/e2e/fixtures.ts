@@ -162,6 +162,80 @@ export const RESPONSES: Record<string, unknown> = {
     ],
   },
 
+  "kubernetes/pods/describe": {
+    pod: {
+      name: "db-0",
+      namespace: "default",
+      phase: "Running",
+      reason: null,
+      message: null,
+      node_name: "node-1",
+      pod_ip: "10.1.0.6",
+      qos_class: "Burstable",
+      creation_timestamp: "2026-01-01T00:00:00Z",
+      owner_kind: "StatefulSet",
+      owner_name: "db",
+      containers: [
+        {
+          name: "wait-for-disk",
+          image: "busybox:1.37",
+          init: true,
+          ready: true,
+          restart_count: 0,
+          state: { state: "terminated", reason: "Completed", exit_code: 0 },
+          last_state: { state: null },
+        },
+        {
+          name: "db",
+          image: "postgres:17",
+          init: false,
+          ready: true,
+          restart_count: 0,
+          state: { state: "running", started_at: "2026-01-01T00:00:10Z" },
+          last_state: { state: null },
+        },
+        {
+          name: "metrics-exporter",
+          image: "exporter:2",
+          init: false,
+          ready: false,
+          restart_count: 2,
+          state: {
+            state: "waiting",
+            reason: "CrashLoopBackOff",
+            message: "back-off 40s restarting failed container",
+          },
+          last_state: {
+            state: "terminated",
+            reason: "OOMKilled",
+            exit_code: 137,
+            finished_at: "2026-01-01T00:05:00Z",
+          },
+        },
+      ],
+      conditions: [
+        { type: "Ready", status: "False", reason: "ContainersNotReady", message: null },
+      ],
+    },
+    events: [
+      {
+        type: "Warning",
+        reason: "BackOff",
+        message: "Back-off restarting failed container metrics-exporter",
+        count: 12,
+        timestamp: "2026-01-01T00:06:00Z",
+      },
+      {
+        type: "Normal",
+        reason: "Scheduled",
+        message: "Successfully assigned default/db-0 to node-1",
+        count: 1,
+        timestamp: "2026-01-01T00:00:01Z",
+      },
+    ],
+    events_error: null,
+  },
+
   "kubernetes/pods/logs": {
     logs: `starting server\nlistening on :8080\n${"x".repeat(600)}\n`,
     truncated: false,

@@ -202,6 +202,102 @@ class KubernetesApiError(Exception):
         self.status = status
 
 
+POD_EVENTS_LIMIT = 50
+
+
+def _container_state(state: dict[str, Any] | None) -> dict[str, Any]:
+    """Flatten a containerStatus ``state`` / ``lastState`` object."""
+    for kind in ("running", "waiting", "terminated"):
+        if state and kind in state:
+            body = state[kind] or {}
+            return {
+                "state": kind,
+                "reason": body.get("reason"),
+                "message": body.get("message"),
+                "exit_code": body.get("exitCode"),
+                "started_at": body.get("startedAt"),
+                "finished_at": body.get("finishedAt"),
+            }
+    return {"state": None}
+
+
+def _parse_pod_detail(item: dict[str, Any]) -> dict[str, Any]:
+    """Parse a raw pod into summary, per-container states and conditions."""
+    meta = item.get("metadata") or {}
+    spec = item.get("spec") or {}
+    status = item.get("status") or {}
+    owner = (meta.get("ownerReferences") or [{}])[0]
+    containers: list[dict[str, Any]] = []
+    for init, spec_key, status_key in (
+        (True, "initContainers", "initContainerStatuses"),
+        (False, "containers", "containerStatuses"),
+    ):
+        statuses = {s.get("name"): s for s in status.get(status_key) or []}
+        for c in spec.get(spec_key) or []:
+            st = statuses.get(c.get("name"), {})
+            containers.append(
+                {
+                    "name": c.get("name"),
+                    "image": c.get("image"),
+                    "init": init,
+                    "ready": bool(st.get("ready")),
+                    "restart_count": st.get("restartCount", 0),
+                    "state": _container_state(st.get("state")),
+                    "last_state": _container_state(st.get("lastState")),
+                }
+            )
+    return {
+        "name": meta.get("name"),
+        "namespace": meta.get("namespace"),
+        "phase": status.get("phase"),
+        "reason": status.get("reason"),
+        "message": status.get("message"),
+        "node_name": spec.get("nodeName"),
+        "pod_ip": status.get("podIP"),
+        "qos_class": status.get("qosClass"),
+        "creation_timestamp": meta.get("creationTimestamp"),
+        "owner_kind": owner.get("kind"),
+        "owner_name": owner.get("name"),
+        "containers": containers,
+        "conditions": [
+            {
+                "type": c.get("type"),
+                "status": c.get("status"),
+                "reason": c.get("reason"),
+                "message": c.get("message"),
+            }
+            for c in status.get("conditions") or []
+        ],
+    }
+
+
+def _event_timestamp(event: dict[str, Any]) -> str | None:
+    """Newest timestamp of an event; newer producers leave lastTimestamp empty."""
+    return (
+        event.get("lastTimestamp")
+        or event.get("eventTime")
+        or (event.get("series") or {}).get("lastObservedTime")
+        or (event.get("metadata") or {}).get("creationTimestamp")
+    )
+
+
+def _parse_pod_events(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reduce raw events to the panel shape, newest first, capped."""
+    events = [
+        {
+            "type": e.get("type"),
+            "reason": e.get("reason"),
+            "message": e.get("message"),
+            "count": e.get("count") or (e.get("series") or {}).get("count") or 1,
+            "timestamp": _event_timestamp(e),
+        }
+        for e in items
+    ]
+    # RFC 3339 UTC timestamps sort lexicographically; None sorts last.
+    events.sort(key=lambda e: e["timestamp"] or "", reverse=True)
+    return events[:POD_EVENTS_LIMIT]
+
+
 class KubernetesClient:
     """Kubernetes client for Home Assistant integration."""
 
@@ -1789,6 +1885,70 @@ class KubernetesClient:
             # No newline at all (one huge line): keep the cap, starting mid-line.
             body = tail[newline + 1 :] if newline != -1 else tail[1:]
         return body.decode("utf-8", errors="replace"), truncated
+
+    async def _get_namespaced_json(
+        self,
+        path: str,
+        label: str,
+        *,
+        params: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """GET one API path on the cluster; raise KubernetesApiError on non-200."""
+        headers = {
+            "Authorization": f"Bearer {self.api_token}",
+            "Accept": "application/json",
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://{self.host}:{self.port}/{path}",
+                headers=headers,
+                params=params,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status != 200:
+                    raise KubernetesApiError(
+                        f"{label} request failed with status {response.status}: "
+                        f"{(await response.text())[:500]}",
+                        response.status,
+                    )
+                data: dict[str, Any] = await response.json()
+                return data
+
+    async def get_pod_detail(self, pod_name: str, namespace: str) -> dict[str, Any]:
+        """Fetch one pod live and parse it for the panel's detail dialog.
+
+        Init containers come first. Raises KubernetesApiError on any non-200 or
+        an invalid name/namespace. The result is passed through, never stored.
+        """
+        if msg := self._invalid_target("pod", pod_name, namespace):
+            raise KubernetesApiError(msg)
+        item = await self._get_namespaced_json(
+            f"api/v1/namespaces/{quote(namespace, safe='')}"
+            f"/pods/{quote(pod_name, safe='')}",
+            "pod detail",
+        )
+        return _parse_pod_detail(item)
+
+    async def get_pod_events(
+        self, pod_name: str, namespace: str
+    ) -> list[dict[str, Any]]:
+        """Fetch the core ``v1`` events of one pod, newest first, capped at 50.
+
+        Raises KubernetesApiError on any non-200 or an invalid name/namespace.
+        """
+        if msg := self._invalid_target("pod", pod_name, namespace):
+            raise KubernetesApiError(msg)
+        data = await self._get_namespaced_json(
+            f"api/v1/namespaces/{quote(namespace, safe='')}/events",
+            "pod events",
+            params={
+                "fieldSelector": (
+                    f"involvedObject.kind=Pod,involvedObject.name={pod_name}"
+                )
+            },
+        )
+        return _parse_pod_events(data.get("items") or [])
 
     async def delete_job(self, job_name: str, namespace: str | None = None) -> bool:
         """Delete a job by name (cascade-deletes its pods via Background propagation)."""
