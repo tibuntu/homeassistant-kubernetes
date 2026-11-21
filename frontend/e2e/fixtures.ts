@@ -133,7 +133,7 @@ export const RESPONSES: Record<string, unknown> = {
   },
 
   "kubernetes/pods/logs": {
-    logs: "starting server\nlistening on :8080\n",
+    logs: `starting server\nlistening on :8080\n${"x".repeat(600)}\n`,
     truncated: false,
   },
 

@@ -28,6 +28,8 @@ declare global {
       services: ServiceCall[];
       /** WebSocket types that reject. */
       fail: Set<string>;
+      /** When set, `kubernetes/pods/logs` answers with this text. */
+      logs?: string;
       /** Fire a `kubernetes/subscribe_updates` push to every subscriber. */
       push: () => void;
     };
@@ -58,6 +60,9 @@ const hass: HomeAssistant = {
     calls.push(msg);
     const type = String(msg.type);
     if (fail.has(type)) throw new Error(`harness: ${type} failed`);
+    if (type === "kubernetes/pods/logs" && window.__k8s.logs !== undefined) {
+      return { logs: window.__k8s.logs, truncated: false } as T;
+    }
     if (empty.has(type)) return { clusters: [] } as T;
     if (!(type in RESPONSES)) throw new Error(`harness: no fixture for ${type}`);
     return structuredClone(RESPONSES[type]) as T;

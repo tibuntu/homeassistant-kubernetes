@@ -76,6 +76,25 @@ type ColumnKey = (typeof TOGGLEABLE_COLUMNS)[number]["key"];
 const ALL_COLUMN_KEYS: Set<ColumnKey> = new Set(TOGGLEABLE_COLUMNS.map((c) => c.key));
 const STORAGE_KEY = "k8s-pods-columns";
 
+const WRAP_STORAGE_KEY = "k8s-pods-log-wrap";
+const LOGS_REFRESH_MS = 5000;
+
+function loadWrapPref(): boolean {
+  try {
+    return localStorage.getItem(WRAP_STORAGE_KEY) !== "0";
+  } catch {
+    return true; // localStorage unavailable — default on
+  }
+}
+
+function saveWrapPref(wrap: boolean): void {
+  try {
+    localStorage.setItem(WRAP_STORAGE_KEY, wrap ? "1" : "0");
+  } catch {
+    // localStorage unavailable — no-op
+  }
+}
+
 type SortField = "namespace" | "name" | "phase" | "restarts" | "node_name" | "age";
 
 function loadColumnPrefs(): Set<ColumnKey> {
@@ -120,6 +139,10 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   @state() private _logsLoading = false;
   @state() private _logsError: { message: string; forbidden: boolean } | null = null;
   @state() private _logsCopied = false;
+  @state() private _logsWrap = loadWrapPref();
+  @state() private _logsAuto = false;
+  private _logsTimer: ReturnType<typeof setInterval> | undefined;
+  private _logsStick = true;
   // Drops responses of a request that a newer one has superseded.
   private _logsRequest = 0;
 
@@ -137,6 +160,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     document.removeEventListener("click", this._boundCloseMenu);
+    this._setLogsAuto(false);
   }
 
   protected async fetchData(): Promise<void> {
@@ -252,21 +276,39 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     this._logsContainer = containers[0] ?? "";
     this._logsPrevious = false;
     this._logsResult = null;
-    void this._fetchLogs();
+    this._logsStick = true;
+    void this._fetchLogs(true);
   }
 
   private _closeLogs(): void {
     this._logsTarget = null;
     this._logsRequest++;
+    this._setLogsAuto(false);
   }
 
-  private async _fetchLogs(): Promise<void> {
+  private _stopLogsTimer(): void {
+    clearInterval(this._logsTimer);
+    this._logsTimer = undefined;
+  }
+
+  private _setLogsAuto(on: boolean): void {
+    this._logsAuto = on;
+    this._stopLogsTimer();
+    if (!on) return;
+    this._logsTimer = setInterval(() => {
+      if (!document.hidden && !this._logsLoading) void this._fetchLogs(false);
+    }, LOGS_REFRESH_MS);
+  }
+
+  // `manual` (default: button, option change, open) resets the "Copied" label;
+  // auto-refresh ticks pass false.
+  private async _fetchLogs(manual = true): Promise<void> {
     const target = this._logsTarget;
     if (!target) return;
     const request = ++this._logsRequest;
     this._logsLoading = true;
     this._logsError = null;
-    this._logsCopied = false;
+    if (manual) this._logsCopied = false;
     try {
       const result: LogsResponse = await this.hass.callWS({
         type: "kubernetes/pods/logs",
@@ -282,6 +324,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     } catch (err: unknown) {
       if (request !== this._logsRequest) return;
       this._logsResult = null;
+      this._setLogsAuto(false);
       this._logsError = {
         message: errorMessage(err, "Failed to fetch logs"),
         forbidden:
@@ -310,9 +353,18 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     }
   }
 
+  protected willUpdate(changedProps: PropertyValues): void {
+    super.willUpdate(changedProps);
+    if (changedProps.has("_logsResult")) {
+      // Follow the tail only if the view was at the bottom before this update.
+      const pre = this.renderRoot?.querySelector<HTMLElement>(".logs-output");
+      this._logsStick = !pre || pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;
+    }
+  }
+
   protected updated(changedProps: PropertyValues): void {
     super.updated(changedProps);
-    if (changedProps.has("_logsResult") && this._logsResult) {
+    if (changedProps.has("_logsResult") && this._logsResult && this._logsStick) {
       const pre = this.renderRoot.querySelector<HTMLElement>(".logs-output");
       if (pre) pre.scrollTop = pre.scrollHeight;
     }
@@ -457,7 +509,8 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         margin-bottom: 12px;
       }
 
-      .logs-previous {
+      .logs-previous,
+      .logs-opt {
         display: flex;
         align-items: center;
         gap: 6px;
@@ -477,6 +530,11 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         font-family: monospace;
         font-size: 12px;
         white-space: pre;
+      }
+
+      .logs-output.wrap {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
 
       .logs-note {
@@ -898,6 +956,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   private _renderLogsDialog() {
     const target = this._logsTarget!;
     const result = this._logsResult;
+    const logsClass = this._logsWrap ? "logs-output wrap" : "logs-output";
     return html`
       <div
         class="confirm-overlay"
@@ -955,9 +1014,33 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
                 @change=${(e: Event) =>
                   this._setLogsOption(() => {
                     this._logsPrevious = (e.target as HTMLInputElement).checked;
+                    if (this._logsPrevious) this._setLogsAuto(false);
                   })}
               />
               Previous container
+            </label>
+            <label class="logs-opt">
+              <input
+                type="checkbox"
+                class="logs-wrap-toggle"
+                .checked=${this._logsWrap}
+                @change=${(e: Event) => {
+                  this._logsWrap = (e.target as HTMLInputElement).checked;
+                  saveWrapPref(this._logsWrap);
+                }}
+              />
+              Wrap lines
+            </label>
+            <label class="logs-opt">
+              <input
+                type="checkbox"
+                class="logs-auto-toggle"
+                .checked=${this._logsAuto}
+                ?disabled=${this._logsPrevious}
+                @change=${(e: Event) =>
+                  this._setLogsAuto((e.target as HTMLInputElement).checked)}
+              />
+              Auto-refresh
             </label>
           </div>
           ${
@@ -989,11 +1072,11 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
             this._logsLoading && !result
               ? html`<ha-spinner></ha-spinner>`
               : result
-                ? html`<pre class="logs-output">${result.logs || "(no output)"}</pre>`
+                ? html`<pre class=${logsClass}>${result.logs || "(no output)"}</pre>`
                 : nothing
           }
           <div class="confirm-actions">
-            <button @click=${this._fetchLogs} ?disabled=${this._logsLoading}>
+            <button @click=${() => this._fetchLogs()} ?disabled=${this._logsLoading}>
               ${this._logsLoading ? "Loading..." : "Refresh"}
             </button>
             <button @click=${this._copyLogs} ?disabled=${!result}>
