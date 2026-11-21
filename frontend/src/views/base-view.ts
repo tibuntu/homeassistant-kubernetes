@@ -3,6 +3,7 @@ import { property, state } from "lit/decorators.js";
 import { ref } from "lit/directives/ref.js";
 import type { HomeAssistant } from "../types/homeassistant";
 import { errorMessage } from "../utils/format";
+import { replaceQuery } from "../utils/nav";
 
 /**
  * Base class for the panel's data views.
@@ -39,6 +40,44 @@ export abstract class K8sDataView<T> extends LitElement {
   private _updateDebounce?: ReturnType<typeof setTimeout>;
   private _reloadTimer?: ReturnType<typeof setTimeout>;
 
+  /** Panel URL prefix (`route.prefix`), set by the panel. */
+  @property({ attribute: false }) public prefix = "";
+  /** Path segment of the view's tab (`pods`); empty for views without filters. */
+  protected tab = "";
+
+  /** Set the filter state from `location.search`; the default is "no filters". */
+  protected readQuery(): void {}
+
+  /** Whether the URL currently shows this view's tab inside this panel. */
+  private _inTab(): boolean {
+    return (
+      this.tab !== "" &&
+      location.pathname.replace(/\/$/, "") === `${this.prefix}/${this.tab}`
+    );
+  }
+
+  /**
+   * Mirror filter state into the URL. A view that was just replaced by another
+   * tab may still run one last update; it must not write onto the new tab's URL
+   * or onto another HA page.
+   */
+  protected _syncQuery(params: Record<string, string>): void {
+    if (this.isConnected && this._inTab()) replaceQuery(params);
+  }
+
+  // Our own `replaceQuery` fires neither event, so these only see outside
+  // navigation: a notification link, a tab click on the current tab, back/forward.
+  private _onLocationChange = () => {
+    if (this._inTab()) this.readQuery();
+  };
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.readQuery();
+    window.addEventListener("location-changed", this._onLocationChange);
+    window.addEventListener("popstate", this._onLocationChange);
+  }
+
   /** Fetch from the backend and assign `this._data`. Throw to show the error card. */
   protected abstract fetchData(): Promise<void>;
 
@@ -61,6 +100,8 @@ export abstract class K8sDataView<T> extends LitElement {
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
+    window.removeEventListener("location-changed", this._onLocationChange);
+    window.removeEventListener("popstate", this._onLocationChange);
     this._stopPolling();
     document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
     void this._unsubUpdates?.().catch(() => {});
