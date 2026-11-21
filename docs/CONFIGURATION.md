@@ -166,7 +166,7 @@ Changing these options reloads the integration automatically.
 |--------|-------------|---------|
 | **Enable pod logs in the panel (experimental)** | Adds a **Logs** button to each row of the panel's Pods tab | `false` |
 
-The button opens a read-only snapshot of the pod's logs: pick the container (multi-container pods), the number of lines (100 / 500 / 2000), or the **Previous container** (the run before the last restart — usually where a crash is explained), then refresh or copy. There is no live streaming. A snapshot is capped at 256 KiB; when the cap is hit, the newest part is shown and the dialog says so.
+The button opens a read-only snapshot of the pod's logs: pick the container (multi-container pods), the number of lines (100 / 500 / 2000), or the **Previous container** (the run before the last restart — usually where a crash is explained), then refresh or copy. Long lines wrap by default (untick **Wrap lines** for horizontal scrolling; the choice is remembered in the browser). **Auto-refresh** (off whenever the dialog opens) re-fetches every 5 seconds while the dialog is open and the browser tab is visible, and stops on close, on an error, or when **Previous container** is ticked; the view only follows the newest line while it is scrolled to the bottom. There is no live streaming — each refresh is a new snapshot. A snapshot is capped at 256 KiB; when the cap is hit, the newest part is shown and the dialog says so.
 
 **Security:** logs routinely contain tokens, connection strings and personal data, which is why this is off by default. When it is on:
 
