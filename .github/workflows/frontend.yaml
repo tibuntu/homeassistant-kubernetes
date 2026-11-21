@@ -52,10 +52,10 @@ jobs:
       (github.event_name != 'pull_request' || github.head_ref != 'release-please--branches--main')
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Detect frontend changes
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: changes
         with:
           filters: |
@@ -66,7 +66,7 @@ jobs:
 
       - name: Set up Node.js
         if: steps.changes.outputs.frontend == 'true'
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "26"
           cache: npm
@@ -124,7 +124,7 @@ jobs:
 
       - name: Upload Playwright traces
         if: failure() && steps.changes.outputs.frontend == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: playwright-traces
           path: frontend/test-results/
