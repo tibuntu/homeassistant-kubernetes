@@ -62,7 +62,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           activate-environment: true
-          # setup-uv only restores on an exact key match, so every pyproject
+          # setup-uv only restores on an exact key match, so every uv.lock
           # bump would rebuild the source-only wheels; actions/cache below
           # falls back to the previous cache instead.
           enable-cache: false
@@ -73,12 +73,12 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/uv
-          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        run: uv pip install -e ".[dev]"
+        run: uv sync --locked --extra dev
 
       - name: Lint with Ruff
         run: |
@@ -116,7 +116,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           activate-environment: true
-          # setup-uv only restores on an exact key match, so every pyproject
+          # setup-uv only restores on an exact key match, so every uv.lock
           # bump would rebuild the source-only wheels; actions/cache below
           # falls back to the previous cache instead.
           enable-cache: false
@@ -127,12 +127,12 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ~/.cache/uv
-          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
 
       - name: Install dependencies
-        run: uv pip install -e ".[dev]"
+        run: uv sync --locked --extra dev
 
       - name: Test with pytest
         run: |

@@ -50,6 +50,13 @@ dev = [
     "zensical==0.1.2",
 ]
 
+# uv.lock covers the dev environment only, whose homeassistant pin needs a newer
+# Python than requires-python (kept low for users on older Home Assistant).
+# Raise this floor when a pytest-homeassistant-custom-component bump raises
+# Home Assistant's minimum Python, or `uv lock` cannot resolve.
+[tool.uv]
+environments = ["python_full_version >= '3.14.2'"]
+
 [tool.setuptools.packages.find]
 include = ["custom_components*"]
 
