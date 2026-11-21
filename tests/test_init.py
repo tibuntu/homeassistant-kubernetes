@@ -169,7 +169,7 @@ class TestAsyncCreateSession:
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
     ):
         """Home Assistant does not unload entries on shutdown; close then too."""
-        with patch.object(hass.bus, "async_listen_once") as listen_once:
+        with patch("homeassistant.core.EventBus.async_listen_once") as listen_once:
             session = _async_create_session(hass, mock_config_entry)
 
         event_type, close = listen_once.call_args.args
