@@ -23,6 +23,7 @@ interface AlertFailedPod {
   name: string;
   namespace: string;
   phase: string;
+  reason: string;
 }
 
 interface AlertRestartingPod {
@@ -100,6 +101,12 @@ const CARD_TARGETS: Record<string, NavigateDetail> = {
   services: { tab: "network", filter: "Services" },
 };
 
+const jobTarget = (job: AlertFailedJob): NavigateDetail => ({
+  tab: "workloads",
+  filter: "jobs",
+  search: job.name,
+});
+
 @customElement("k8s-overview")
 export class K8sOverview extends K8sDataView<OverviewResponse> {
   @state() private _expandedNamespaces: Set<string> = new Set();
@@ -119,8 +126,18 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
 
   private _navigate(key: string): void {
     const detail = CARD_TARGETS[key];
-    if (!detail) return;
+    if (detail) this._go(detail);
+  }
+
+  private _go(detail: NavigateDetail): void {
     this.dispatchEvent(new CustomEvent<NavigateDetail>("k8s-navigate", { detail }));
+  }
+
+  private _goOnKey(e: KeyboardEvent, detail: NavigateDetail): void {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      this._go(detail);
+    }
   }
 
   static styles = [
@@ -271,6 +288,15 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
         border-radius: 8px;
         font-size: 14px;
         --mdc-icon-size: 20px;
+      }
+
+      .alert-card[role="button"] {
+        cursor: pointer;
+      }
+
+      .alert-card[role="button"]:hover,
+      .alert-card[role="button"]:focus-visible {
+        outline: 1px solid var(--divider-color);
       }
 
       .alert-warning {
@@ -451,7 +477,9 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
               <div class="alerts-tooltip">
                 Alerts monitor your cluster for issues that may need attention: nodes
                 experiencing memory, disk, or PID pressure; workloads with fewer ready
-                replicas than desired; and pods in a failed state.
+                replicas than desired or a stalled rollout; pods in a failed or broken
+                state; pods stuck in a restart loop; and recently failed Jobs. Click an
+                alert to open the matching tab.
               </div>
             </span>
           </div>
@@ -551,7 +579,14 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
     return html`
       ${alerts.nodes_with_pressure.map(
         (node) => html`
-          <div class="alert-card alert-warning">
+          <div
+            class="alert-card alert-warning"
+            role="button"
+            tabindex="0"
+            @click=${() => this._go({ tab: "nodes", search: node.name })}
+            @keydown=${(e: KeyboardEvent) =>
+              this._goOnKey(e, { tab: "nodes", search: node.name })}
+          >
             <ha-icon icon="mdi:server-network-off"></ha-icon>
             <div>
               <div class="alert-title">Node: ${node.name}</div>
@@ -564,7 +599,14 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
       )}
       ${alerts.degraded_workloads.map(
         (wl) => html`
-          <div class="alert-card alert-warning">
+          <div
+            class="alert-card alert-warning"
+            role="button"
+            tabindex="0"
+            @click=${() => this._go({ tab: "workloads", search: wl.name })}
+            @keydown=${(e: KeyboardEvent) =>
+              this._goOnKey(e, { tab: "workloads", search: wl.name })}
+          >
             <ha-icon icon="mdi:alert"></ha-icon>
             <div>
               <div class="alert-title">${wl.type}: ${wl.namespace}/${wl.name}</div>
@@ -578,18 +620,32 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
       )}
       ${alerts.failed_pods.map(
         (pod) => html`
-          <div class="alert-card alert-error">
+          <div
+            class="alert-card alert-error"
+            role="button"
+            tabindex="0"
+            @click=${() => this._go({ tab: "pods", search: pod.name })}
+            @keydown=${(e: KeyboardEvent) =>
+              this._goOnKey(e, { tab: "pods", search: pod.name })}
+          >
             <ha-icon icon="mdi:alert-octagon"></ha-icon>
             <div>
               <div class="alert-title">Pod: ${pod.namespace}/${pod.name}</div>
-              <div class="alert-detail">Phase: ${pod.phase}</div>
+              <div class="alert-detail">Status: ${pod.reason}</div>
             </div>
           </div>
         `,
       )}
       ${alerts.restarting_pods.map(
         (pod) => html`
-          <div class="alert-card alert-warning">
+          <div
+            class="alert-card alert-warning"
+            role="button"
+            tabindex="0"
+            @click=${() => this._go({ tab: "pods", search: pod.name })}
+            @keydown=${(e: KeyboardEvent) =>
+              this._goOnKey(e, { tab: "pods", search: pod.name })}
+          >
             <ha-icon icon="mdi:restart-alert"></ha-icon>
             <div>
               <div class="alert-title">Pod: ${pod.namespace}/${pod.name}</div>
@@ -611,7 +667,13 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
       )}
       ${alerts.failed_jobs.map(
         (job) => html`
-          <div class="alert-card alert-error">
+          <div
+            class="alert-card alert-error"
+            role="button"
+            tabindex="0"
+            @click=${() => this._go(jobTarget(job))}
+            @keydown=${(e: KeyboardEvent) => this._goOnKey(e, jobTarget(job))}
+          >
             <ha-icon icon="mdi:briefcase-remove-outline"></ha-icon>
             <div>
               <div class="alert-title">Job: ${job.namespace}/${job.name}</div>

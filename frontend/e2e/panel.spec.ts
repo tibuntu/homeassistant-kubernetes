@@ -33,6 +33,49 @@ test("overview lists failed jobs with reason and owning CronJob", async ({ page 
   await expect(card).toContainText("Failed (BackoffLimitExceeded), CronJob backup");
 });
 
+test("pods tab shows the problem reason and the Problems chip filters to it", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  const badge = page.locator("tr", { hasText: "crash-5c8d7-xyz99" }).locator(".badge");
+  await expect(badge).toHaveText("CrashLoopBackOff");
+  await expect(badge).toHaveClass(/badge-failed/);
+  await expect(page.locator("tr", { hasText: "db-0" })).toBeVisible();
+
+  await page.locator(".filter-chip", { hasText: "Problems (1)" }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr")).toContainText("crash-5c8d7-xyz99");
+});
+
+test("overview pod alert shows the reason and opens the pods tab with a search", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  const card = page.locator(".alert-card", { hasText: "default/crash-5c8d7-xyz99" });
+  await expect(card).toContainText("CrashLoopBackOff");
+  await card.click();
+  await expect(page.locator(".tab[active]")).toHaveText(/Pods/);
+  await expect(page.locator(".search-input")).toHaveValue("crash-5c8d7-xyz99");
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+});
+
+test("overview alerts are keyboard operable and reach Workloads Jobs", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  const card = page.locator(".alert-card", { hasText: "default/backup-29000000" });
+  await card.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".tab[active]")).toHaveText(/Workloads/);
+  await expect(page.locator(".search-input")).toHaveValue("backup-29000000");
+  await expect(
+    page
+      .locator("select.filter-select")
+      .filter({ has: page.locator('option[value="jobs"]') }),
+  ).toHaveValue("jobs");
+});
+
 test("pods column visibility survives a reload", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Pods");
@@ -44,7 +87,7 @@ test("pods column visibility survives a reload", async ({ page }) => {
 
   await page.reload();
   await openTab(page, "Pods");
-  await expect(page.locator("th", { hasText: "Phase" })).toBeVisible();
+  await expect(page.locator("th", { hasText: "Status" })).toBeVisible();
   await expect(page.locator("th", { hasText: "Node" })).toHaveCount(0);
 });
 

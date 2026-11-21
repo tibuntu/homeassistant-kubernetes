@@ -36,7 +36,14 @@ export const RESPONSES: Record<string, unknown> = {
               reason: "ProgressDeadlineExceeded",
             },
           ],
-          failed_pods: [],
+          failed_pods: [
+            {
+              name: "crash-5c8d7-xyz99",
+              namespace: "default",
+              phase: "Running",
+              reason: "CrashLoopBackOff",
+            },
+          ],
           restarting_pods: [
             {
               name: "worker-abc",
@@ -126,6 +133,22 @@ export const RESPONSES: Record<string, unknown> = {
             owner_kind: "StatefulSet",
             owner_name: "db",
             containers: ["db", "metrics-exporter"],
+          },
+          {
+            name: "crash-5c8d7-xyz99",
+            namespace: "default",
+            phase: "Running",
+            problem: true,
+            problem_reason: "CrashLoopBackOff",
+            ready_containers: 0,
+            total_containers: 1,
+            restart_count: 7,
+            node_name: "node-1",
+            pod_ip: "10.1.0.7",
+            creation_timestamp: "2026-01-01T00:00:00Z",
+            owner_kind: "ReplicaSet",
+            owner_name: "crash-5c8d7",
+            containers: ["crash"],
           },
         ],
       },

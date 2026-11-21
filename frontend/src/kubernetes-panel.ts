@@ -22,11 +22,20 @@ const TABS = [
   { id: "settings", label: "Settings", icon: "mdi:cog" },
 ] as const satisfies { id: Tab; label: string; icon: string }[];
 
-/** Fired by the overview's count cards to jump to a tab with a filter preset. */
+/**
+ * Fired by the overview's count cards and alerts to jump to a tab with a
+ * preset. `filter` is the Workloads/Network type filter, `search` the target
+ * view's search text (Nodes, Pods, Workloads).
+ */
 export type NavigateDetail =
-  | { tab: "workloads"; filter?: WorkloadCategory }
-  | { tab: "network"; filter?: NetworkTypeFilter }
-  | { tab: Exclude<Tab, "workloads" | "network">; filter?: never };
+  | { tab: "workloads"; filter?: WorkloadCategory; search?: string }
+  | { tab: "network"; filter?: NetworkTypeFilter; search?: never }
+  | { tab: "nodes" | "pods"; filter?: never; search?: string }
+  | {
+      tab: Exclude<Tab, "workloads" | "network" | "nodes" | "pods">;
+      filter?: never;
+      search?: never;
+    };
 
 @customElement("kubernetes-panel")
 export class KubernetesPanel extends LitElement {
@@ -191,13 +200,20 @@ export class KubernetesPanel extends LitElement {
           }}
         ></k8s-overview>`;
       case "nodes":
-        return html`<k8s-nodes-table .hass=${this.hass}></k8s-nodes-table>`;
+        return html`<k8s-nodes-table
+          .hass=${this.hass}
+          .initialSearch=${nav.search}
+        ></k8s-nodes-table>`;
       case "pods":
-        return html`<k8s-pods-table .hass=${this.hass}></k8s-pods-table>`;
+        return html`<k8s-pods-table
+          .hass=${this.hass}
+          .initialSearch=${nav.search}
+        ></k8s-pods-table>`;
       case "workloads":
         return html`<k8s-workloads
           .hass=${this.hass}
           .initialFilter=${nav.filter}
+          .initialSearch=${nav.search}
         ></k8s-workloads>`;
       case "network":
         return html`<k8s-network

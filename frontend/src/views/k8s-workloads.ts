@@ -119,6 +119,8 @@ const REPLICA_KIND_META: Record<
 export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   /** Preset from an overview card click. */
   @property({ attribute: false }) public initialFilter?: WorkloadCategory;
+  /** Search text preset from an overview alert click. */
+  @property({ attribute: false }) public initialSearch?: string;
   @state() private _namespaceFilter: string = "all";
   @state() private _categoryFilter: WorkloadCategory = "all";
   @state() private _statusFilter: StatusFilter = "all";
@@ -148,6 +150,9 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   protected willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("initialFilter") && this.initialFilter) {
       this._categoryFilter = this.initialFilter;
+    }
+    if (changed.has("initialSearch") && this.initialSearch) {
+      this._searchQuery = this.initialSearch;
     }
   }
 
