@@ -292,8 +292,16 @@ def _parse_pod_events(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 class KubernetesClient:
     """Kubernetes client for Home Assistant integration."""
 
-    def __init__(self, config_data: dict[str, Any]) -> None:
-        """Initialize the Kubernetes client."""
+    def __init__(
+        self, config_data: dict[str, Any], session: aiohttp.ClientSession
+    ) -> None:
+        """Initialize the Kubernetes client.
+
+        Every request goes through ``session``, so connections are reused. The
+        caller owns it: the client never closes it. TLS (``ssl=``) and timeouts
+        are set per request, so the session's own defaults never apply.
+        """
+        self._session = session
         self.host = normalize_host(config_data[CONF_HOST])
         self.port = config_data.get(CONF_PORT, DEFAULT_PORT)
         # Static token is the fallback (always populated) and the source of
@@ -537,9 +545,9 @@ class KubernetesClient:
         """Test the connection to Kubernetes."""
         return await self._test_connection_aiohttp()
 
-    async def _probe_api(self, session: aiohttp.ClientSession) -> int:
+    async def _probe_api(self) -> int:
         """GET the API root with the current token and return the HTTP status."""
-        async with session.get(
+        async with self._session.get(
             f"https://{self.host}:{self.port}/api/v1/",
             headers={
                 "Authorization": f"Bearer {self.api_token}",
@@ -562,29 +570,28 @@ class KubernetesClient:
         """
         try:
             _LOGGER.debug("Testing connection with aiohttp...")
-            async with aiohttp.ClientSession() as session:
-                status = await self._probe_api(session)
-                if status == 401 and self._use_in_cluster:
-                    # A projected ServiceAccount token may have rotated between
-                    # the cached read and this request. Drop the cache and retry
-                    # once so routine rotation never triggers a reauth prompt.
-                    # Read directly here rather than via _ensure_refresh_task:
-                    # joining an already in-flight refresh could return a
-                    # token that finished reading before this invalidation,
-                    # i.e. still the pre-rotation value.
-                    self.invalidate_token_cache()
-                    loop = asyncio.get_running_loop()
-                    token = await loop.run_in_executor(None, self._read_token_file)
-                    self._store_token_if_present(token)
-                    status = await self._probe_api(session)
-                self.auth_failed = status == 401
-                if self.auth_failed:
-                    self._last_auth_error_time = time.time()
-                if status == 200:
-                    self._log_success("connection test", "using aiohttp")
-                    return True
-                _LOGGER.error("aiohttp connection test failed with status: %s", status)
-                return False
+            status = await self._probe_api()
+            if status == 401 and self._use_in_cluster:
+                # A projected ServiceAccount token may have rotated between
+                # the cached read and this request. Drop the cache and retry
+                # once so routine rotation never triggers a reauth prompt.
+                # Read directly here rather than via _ensure_refresh_task:
+                # joining an already in-flight refresh could return a
+                # token that finished reading before this invalidation,
+                # i.e. still the pre-rotation value.
+                self.invalidate_token_cache()
+                loop = asyncio.get_running_loop()
+                token = await loop.run_in_executor(None, self._read_token_file)
+                self._store_token_if_present(token)
+                status = await self._probe_api()
+            self.auth_failed = status == 401
+            if self.auth_failed:
+                self._last_auth_error_time = time.time()
+            if status == 200:
+                self._log_success("connection test", "using aiohttp")
+                return True
+            _LOGGER.error("aiohttp connection test failed with status: %s", status)
+            return False
         except Exception as ex:
             self._log_error("aiohttp connection test", ex)
             return False
@@ -633,21 +640,20 @@ class KubernetesClient:
             "Accept": "application/json",
         }
 
-        async with aiohttp.ClientSession() as session:
-            for namespace in self.namespaces:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods",
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status != 200:
-                        raise KubernetesApiError(
-                            f"pods request failed for namespace {namespace} "
-                            f"with status {response.status}"
-                        )
-                    data = await response.json()
-                    all_pods.extend(self._parse_pods_data(data.get("items", [])))
+        for namespace in self.namespaces:
+            async with self._session.get(
+                f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods",
+                headers=headers,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status != 200:
+                    raise KubernetesApiError(
+                        f"pods request failed for namespace {namespace} "
+                        f"with status {response.status}"
+                    )
+                data = await response.json()
+                all_pods.extend(self._parse_pods_data(data.get("items", [])))
         return all_pods
 
     async def _get_pods_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
@@ -658,19 +664,18 @@ class KubernetesClient:
                 "Accept": "application/json",
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/api/v1/pods",
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status != 200:
-                        raise KubernetesApiError(
-                            f"pods request failed with status {response.status}"
-                        )
-                    data = await response.json()
-                    return self._parse_pods_data(data.get("items", []))
+            async with self._session.get(
+                f"https://{self.host}:{self.port}/api/v1/pods",
+                headers=headers,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status != 200:
+                    raise KubernetesApiError(
+                        f"pods request failed with status {response.status}"
+                    )
+                data = await response.json()
+                return self._parse_pods_data(data.get("items", []))
         except Exception as ex:
             self._log_error("aiohttp get all pods", ex)
             raise
@@ -1333,27 +1338,24 @@ class KubernetesClient:
         timeout = aiohttp.ClientTimeout(total=10)
         items: list[dict[str, Any]] = []
 
-        async with aiohttp.ClientSession() as session:
-            for namespace, url in targets:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=timeout,
-                ) as response:
-                    if response.status != 200:
-                        scope = (
-                            f" for namespace {namespace}"
-                            if namespace is not None
-                            else ""
-                        )
-                        raise KubernetesApiError(
-                            f"{resource_name} {label} failed{scope} "
-                            f"with status {response.status}",
-                            response.status,
-                        )
-                    data = await response.json()
-                    items.extend(data.get("items", []))
+        for namespace, url in targets:
+            async with self._session.get(
+                url,
+                headers=headers,
+                ssl=await self._get_ssl_param(),
+                timeout=timeout,
+            ) as response:
+                if response.status != 200:
+                    scope = (
+                        f" for namespace {namespace}" if namespace is not None else ""
+                    )
+                    raise KubernetesApiError(
+                        f"{resource_name} {label} failed{scope} "
+                        f"with status {response.status}",
+                        response.status,
+                    )
+                data = await response.json()
+                items.extend(data.get("items", []))
         return items
 
     async def _fetch_resource_list(
@@ -1489,30 +1491,29 @@ class KubernetesClient:
                 "Content-Type": "application/strategic-merge-patch+json",
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.patch(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{quote(target_namespace, safe='')}/{resource_type}/{quote(name, safe='')}/scale",
-                    headers=headers,
-                    json={"spec": {"replicas": replicas}},
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status in [200, 201]:
-                        _LOGGER.info(
-                            "Successfully scaled %s %s to %d replicas using aiohttp",
-                            kind,
-                            name,
-                            replicas,
-                        )
-                        return True
-                    response_text = await response.text()
-                    _LOGGER.error(
-                        "aiohttp scale %s failed with status %s: %s",
+            async with self._session.patch(
+                f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{quote(target_namespace, safe='')}/{resource_type}/{quote(name, safe='')}/scale",
+                headers=headers,
+                json={"spec": {"replicas": replicas}},
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status in [200, 201]:
+                    _LOGGER.info(
+                        "Successfully scaled %s %s to %d replicas using aiohttp",
                         kind,
-                        response.status,
-                        response_text,
+                        name,
+                        replicas,
                     )
-                    return False
+                    return True
+                response_text = await response.text()
+                _LOGGER.error(
+                    "aiohttp scale %s failed with status %s: %s",
+                    kind,
+                    response.status,
+                    response_text,
+                )
+                return False
         except Exception as ex:
             self._log_error(
                 f"aiohttp scale {kind} {name}", ex, f"target_replicas={replicas}"
@@ -1610,23 +1611,22 @@ class KubernetesClient:
                 "Accept": "application/json",
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.delete(
-                    f"https://{self.host}:{self.port}/api/v1/namespaces/{quote(target_namespace, safe='')}/pods/{quote(pod_name, safe='')}",
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status in [200, 202]:
-                        return True
-                    else:
-                        response_text = await response.text()
-                        _LOGGER.error(
-                            "aiohttp delete pod failed with status %s: %s",
-                            response.status,
-                            response_text,
-                        )
-                        return False
+            async with self._session.delete(
+                f"https://{self.host}:{self.port}/api/v1/namespaces/{quote(target_namespace, safe='')}/pods/{quote(pod_name, safe='')}",
+                headers=headers,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status in [200, 202]:
+                    return True
+                else:
+                    response_text = await response.text()
+                    _LOGGER.error(
+                        "aiohttp delete pod failed with status %s: %s",
+                        response.status,
+                        response_text,
+                    )
+                    return False
         except Exception as ex:
             self._log_error(f"aiohttp delete pod {pod_name}", ex)
             return False
@@ -1660,22 +1660,21 @@ class KubernetesClient:
         if previous:
             params["previous"] = "true"
         headers = {"Authorization": f"Bearer {self.api_token}"}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"https://{self.host}:{self.port}/api/v1/namespaces/"
-                f"{quote(namespace, safe='')}/pods/{quote(pod_name, safe='')}/log",
-                headers=headers,
-                params=params,
-                ssl=await self._get_ssl_param(),
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as response:
-                if response.status != 200:
-                    raise KubernetesApiError(
-                        f"pod logs request failed with status {response.status}: "
-                        f"{(await response.text())[:500]}",
-                        response.status,
-                    )
-                body = await response.read()
+        async with self._session.get(
+            f"https://{self.host}:{self.port}/api/v1/namespaces/"
+            f"{quote(namespace, safe='')}/pods/{quote(pod_name, safe='')}/log",
+            headers=headers,
+            params=params,
+            ssl=await self._get_ssl_param(),
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as response:
+            if response.status != 200:
+                raise KubernetesApiError(
+                    f"pod logs request failed with status {response.status}: "
+                    f"{(await response.text())[:500]}",
+                    response.status,
+                )
+            body = await response.read()
         truncated = len(body) > POD_LOGS_LIMIT_BYTES
         if truncated:
             # Keep the newest bytes, starting at the first complete line. One
@@ -1698,22 +1697,21 @@ class KubernetesClient:
             "Authorization": f"Bearer {self.api_token}",
             "Accept": "application/json",
         }
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                f"https://{self.host}:{self.port}/{path}",
-                headers=headers,
-                params=params,
-                ssl=await self._get_ssl_param(),
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.status != 200:
-                    raise KubernetesApiError(
-                        f"{label} request failed with status {response.status}: "
-                        f"{(await response.text())[:500]}",
-                        response.status,
-                    )
-                data: dict[str, Any] = await response.json()
-                return data
+        async with self._session.get(
+            f"https://{self.host}:{self.port}/{path}",
+            headers=headers,
+            params=params,
+            ssl=await self._get_ssl_param(),
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as response:
+            if response.status != 200:
+                raise KubernetesApiError(
+                    f"{label} request failed with status {response.status}: "
+                    f"{(await response.text())[:500]}",
+                    response.status,
+                )
+            data: dict[str, Any] = await response.json()
+            return data
 
     async def get_pod_detail(self, pod_name: str, namespace: str) -> dict[str, Any]:
         """Fetch one pod live and parse it for the panel's detail dialog.
@@ -1777,22 +1775,21 @@ class KubernetesClient:
                 f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/"
                 f"{quote(target_namespace, safe='')}/jobs/{quote(job_name, safe='')}?propagationPolicy=Background"
             )
-            async with aiohttp.ClientSession() as session:
-                async with session.delete(
-                    url,
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status in [200, 202]:
-                        return True
-                    response_text = await response.text()
-                    _LOGGER.error(
-                        "aiohttp delete job failed with status %s: %s",
-                        response.status,
-                        response_text,
-                    )
-                    return False
+            async with self._session.delete(
+                url,
+                headers=headers,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status in [200, 202]:
+                    return True
+                response_text = await response.text()
+                _LOGGER.error(
+                    "aiohttp delete job failed with status %s: %s",
+                    response.status,
+                    response_text,
+                )
+                return False
         except Exception as ex:
             self._log_error(f"aiohttp delete job {job_name}", ex)
             return False
@@ -1872,24 +1869,23 @@ class KubernetesClient:
                 }
             }
 
-            async with aiohttp.ClientSession() as session:
-                async with session.patch(
-                    f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{quote(target_namespace, safe='')}/{resource_type}/{quote(name, safe='')}",
-                    headers=headers,
-                    json=patch_data,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status in [200, 201]:
-                        return True
-                    else:
-                        response_text = await response.text()
-                        _LOGGER.error(
-                            "aiohttp rollout restart failed with status %s: %s",
-                            response.status,
-                            response_text,
-                        )
-                        return False
+            async with self._session.patch(
+                f"https://{self.host}:{self.port}/apis/apps/v1/namespaces/{quote(target_namespace, safe='')}/{resource_type}/{quote(name, safe='')}",
+                headers=headers,
+                json=patch_data,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status in [200, 201]:
+                    return True
+                else:
+                    response_text = await response.text()
+                    _LOGGER.error(
+                        "aiohttp rollout restart failed with status %s: %s",
+                        response.status,
+                        response_text,
+                    )
+                    return False
         except Exception as ex:
             self._log_error(f"aiohttp rollout restart {resource_type} {name}", ex)
             return False
@@ -1926,25 +1922,24 @@ class KubernetesClient:
 
             patch_data = {"spec": {"unschedulable": not schedulable}}
 
-            async with aiohttp.ClientSession() as session:
-                async with session.patch(
-                    f"https://{self.host}:{self.port}/api/v1/nodes/{quote(node_name, safe='')}",
-                    headers=headers,
-                    json=patch_data,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status in [200, 201]:
-                        return True
-                    else:
-                        response_text = await response.text()
-                        _LOGGER.error(
-                            "aiohttp %s node failed with status %s: %s",
-                            action,
-                            response.status,
-                            response_text,
-                        )
-                        return False
+            async with self._session.patch(
+                f"https://{self.host}:{self.port}/api/v1/nodes/{quote(node_name, safe='')}",
+                headers=headers,
+                json=patch_data,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status in [200, 201]:
+                    return True
+                else:
+                    response_text = await response.text()
+                    _LOGGER.error(
+                        "aiohttp %s node failed with status %s: %s",
+                        action,
+                        response.status,
+                        response_text,
+                    )
+                    return False
         except Exception as ex:
             self._log_error(f"aiohttp {action} node {node_name}", ex)
             return False
@@ -1981,29 +1976,28 @@ class KubernetesClient:
             "Authorization": f"Bearer {self.api_token}",
             "Accept": "application/json",
         }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"https://{self.host}:{self.port}/api/v1/namespaces/"
-                f"{quote(namespace, safe='')}/pods/{quote(pod_name, safe='')}/eviction",
-                headers=headers,
-                json=body,
-                ssl=await self._get_ssl_param(),
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.status in (200, 201, 404):
-                    return True
-                if response.status == 429:
-                    return False
-                hint = (
-                    " (re-apply the integration's RBAC: pods/eviction create)"
-                    if response.status == 403
-                    else ""
-                )
-                raise KubernetesApiError(
-                    f"eviction failed with status {response.status}{hint}: "
-                    f"{(await response.text())[:500]}",
-                    response.status,
-                )
+        async with self._session.post(
+            f"https://{self.host}:{self.port}/api/v1/namespaces/"
+            f"{quote(namespace, safe='')}/pods/{quote(pod_name, safe='')}/eviction",
+            headers=headers,
+            json=body,
+            ssl=await self._get_ssl_param(),
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as response:
+            if response.status in (200, 201, 404):
+                return True
+            if response.status == 429:
+                return False
+            hint = (
+                " (re-apply the integration's RBAC: pods/eviction create)"
+                if response.status == 403
+                else ""
+            )
+            raise KubernetesApiError(
+                f"eviction failed with status {response.status}{hint}: "
+                f"{(await response.text())[:500]}",
+                response.status,
+            )
 
     async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
         """Get pod metrics (CPU and memory usage)."""
@@ -2029,14 +2023,13 @@ class KubernetesClient:
                     (ns, f"{base}/namespaces/{ns}/pods") for ns in self.namespaces
                 ]
 
-            async with aiohttp.ClientSession() as session:
-                results = await asyncio.gather(
-                    *(
-                        self._fetch_pod_metrics_items(session, url, headers, ssl_param)
-                        for _, url in targets
-                    ),
-                    return_exceptions=True,
-                )
+            results = await asyncio.gather(
+                *(
+                    self._fetch_pod_metrics_items(url, headers, ssl_param)
+                    for _, url in targets
+                ),
+                return_exceptions=True,
+            )
 
             metrics: dict[str, dict[str, float]] = {}
             forbidden: list[str] = []
@@ -2080,13 +2073,12 @@ class KubernetesClient:
 
     async def _fetch_pod_metrics_items(
         self,
-        session: aiohttp.ClientSession,
         url: str,
         headers: dict[str, str],
         ssl_param: ssl.SSLContext | bool,
     ) -> tuple[int, list[dict[str, Any]]]:
         """GET one metrics.k8s.io pods list; items are empty unless status is 200."""
-        async with session.get(
+        async with self._session.get(
             url,
             headers=headers,
             ssl=ssl_param,
@@ -2142,46 +2134,45 @@ class KubernetesClient:
             headers = {"Authorization": f"Bearer {self.api_token}"}
             url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/nodes"
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    url,
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        metrics: dict[str, dict[str, float]] = {}
-                        for item in data.get("items", []):
-                            name = item.get("metadata", {}).get("name")
-                            if not name:
-                                continue
-                            usage = item.get("usage", {})
-                            cpu_str = usage.get("cpu", "0")
-                            memory_str = usage.get("memory", "0")
+            async with self._session.get(
+                url,
+                headers=headers,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    metrics: dict[str, dict[str, float]] = {}
+                    for item in data.get("items", []):
+                        name = item.get("metadata", {}).get("name")
+                        if not name:
+                            continue
+                        usage = item.get("usage", {})
+                        cpu_str = usage.get("cpu", "0")
+                        memory_str = usage.get("memory", "0")
 
-                            metrics[name] = {
-                                "cpu": self._parse_cpu(cpu_str, "m"),
-                                "memory": self._parse_memory(memory_str, "MiB"),
-                            }
-                        _LOGGER.debug(
-                            "Successfully fetched metrics for %d nodes", len(metrics)
-                        )
-                        return metrics
-                    elif response.status == 403:
-                        _LOGGER.warning(
-                            "Failed to fetch node metrics: 403 Forbidden. "
-                            "The service account does not have permission to access the metrics API. "
-                            "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
-                            "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']"
-                        )
-                        return {}
-                    else:
-                        _LOGGER.warning(
-                            "Failed to fetch node metrics: %s. Metrics API might not be available.",
-                            response.status,
-                        )
-                        return {}
+                        metrics[name] = {
+                            "cpu": self._parse_cpu(cpu_str, "m"),
+                            "memory": self._parse_memory(memory_str, "MiB"),
+                        }
+                    _LOGGER.debug(
+                        "Successfully fetched metrics for %d nodes", len(metrics)
+                    )
+                    return metrics
+                elif response.status == 403:
+                    _LOGGER.warning(
+                        "Failed to fetch node metrics: 403 Forbidden. "
+                        "The service account does not have permission to access the metrics API. "
+                        "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
+                        "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']"
+                    )
+                    return {}
+                else:
+                    _LOGGER.warning(
+                        "Failed to fetch node metrics: %s. Metrics API might not be available.",
+                        response.status,
+                    )
+                    return {}
         except Exception as ex:
             _LOGGER.warning("Exception in _get_node_metrics_aiohttp: %s", ex)
             return {}
@@ -2367,20 +2358,17 @@ class KubernetesClient:
         user via ``system:public-info-viewer``, so no RBAC rule is needed.
         """
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"https://{self.host}:{self.port}/version",
-                    headers={"Authorization": f"Bearer {self.api_token}"},
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status != 200:
-                        _LOGGER.debug(
-                            "Failed to fetch server version: %s", response.status
-                        )
-                        return None
-                    version = (await response.json()).get("gitVersion")
-                    return version if isinstance(version, str) else None
+            async with self._session.get(
+                f"https://{self.host}:{self.port}/version",
+                headers={"Authorization": f"Bearer {self.api_token}"},
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status != 200:
+                    _LOGGER.debug("Failed to fetch server version: %s", response.status)
+                    return None
+                version = (await response.json()).get("gitVersion")
+                return version if isinstance(version, str) else None
         except Exception as ex:
             _LOGGER.debug("Exception fetching server version: %s", ex)
             return None
@@ -2541,34 +2529,33 @@ class KubernetesClient:
             }
             url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{quote(namespace, safe='')}/cronjobs/{quote(cronjob_name, safe='')}"
 
-            async with aiohttp.ClientSession() as session:
-                async with session.patch(
-                    url,
-                    headers=headers,
-                    json=patch_body,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status == 200:
-                        _LOGGER.info(
-                            "Successfully applied %s to CronJob '%s' in namespace '%s' via aiohttp",
-                            operation,
-                            cronjob_name,
-                            namespace,
-                        )
-                        return {
-                            "success": True,
-                            "cronjob_name": cronjob_name,
-                            "namespace": namespace,
-                        }
-                    error_msg = f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
-                    _LOGGER.error(error_msg)
+            async with self._session.patch(
+                url,
+                headers=headers,
+                json=patch_body,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status == 200:
+                    _LOGGER.info(
+                        "Successfully applied %s to CronJob '%s' in namespace '%s' via aiohttp",
+                        operation,
+                        cronjob_name,
+                        namespace,
+                    )
                     return {
-                        "success": False,
-                        "error": error_msg,
+                        "success": True,
                         "cronjob_name": cronjob_name,
                         "namespace": namespace,
                     }
+                error_msg = f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
+                _LOGGER.error(error_msg)
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "cronjob_name": cronjob_name,
+                    "namespace": namespace,
+                }
         except Exception as ex:
             error_msg = (
                 f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: {ex!s}"
@@ -2595,91 +2582,88 @@ class KubernetesClient:
             # Step 1: Get the CronJob to extract the job template
             cronjob_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{quote(namespace, safe='')}/cronjobs/{quote(cronjob_name, safe='')}"
 
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    cronjob_url,
-                    headers=headers,
-                    ssl=await self._get_ssl_param(),
-                    timeout=aiohttp.ClientTimeout(total=10),
-                ) as response:
-                    if response.status != 200:
-                        error_msg = f"Failed to get CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
-                        _LOGGER.error(error_msg)
-                        return {
-                            "success": False,
-                            "error": error_msg,
-                            "cronjob_name": cronjob_name,
-                            "namespace": namespace,
-                        }
-
-                    cronjob_data = await response.json()
-
-                    # Step 2: Create a job from the CronJob template
-                    job_name = f"{cronjob_name}-manual-{int(time.time())}"
-
-                    # Extract the job template from the CronJob
-                    job_template = cronjob_data.get("spec", {}).get("jobTemplate", {})
-                    if not job_template:
-                        error_msg = f"CronJob '{cronjob_name}' has no job template"
-                        _LOGGER.error(error_msg)
-                        return {
-                            "success": False,
-                            "error": error_msg,
-                            "cronjob_name": cronjob_name,
-                            "namespace": namespace,
-                        }
-
-                    # Create the job object
-                    job_data = {
-                        "apiVersion": "batch/v1",
-                        "kind": "Job",
-                        "metadata": {
-                            "name": job_name,
-                            "namespace": namespace,
-                            "labels": {
-                                "cronjob.kubernetes.io/manual": "true",
-                                "cronjob.kubernetes.io/name": cronjob_name,
-                            },
-                        },
-                        "spec": job_template.get("spec", {}),
+            async with self._session.get(
+                cronjob_url,
+                headers=headers,
+                ssl=await self._get_ssl_param(),
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                if response.status != 200:
+                    error_msg = f"Failed to get CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
+                    _LOGGER.error(error_msg)
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "cronjob_name": cronjob_name,
+                        "namespace": namespace,
                     }
 
-                    # Create the job
-                    jobs_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{quote(namespace, safe='')}/jobs"
+                cronjob_data = await response.json()
 
-                    async with session.post(
-                        jobs_url,
-                        headers=headers,
-                        json=job_data,
-                        ssl=await self._get_ssl_param(),
-                        timeout=aiohttp.ClientTimeout(total=10),
-                    ) as job_response:
-                        if job_response.status == 201:  # Created
-                            job_result = await job_response.json()
-                            _LOGGER.info(
-                                "Successfully triggered CronJob '%s' in namespace '%s' via aiohttp, created job '%s'",
-                                cronjob_name,
-                                namespace,
-                                job_name,
-                            )
-                            return {
-                                "success": True,
-                                "job_name": job_name,
-                                "namespace": namespace,
-                                "cronjob_name": cronjob_name,
-                                "job_uid": job_result.get("metadata", {}).get(
-                                    "uid", ""
-                                ),
-                            }
-                        else:
-                            error_msg = f"Failed to create job for CronJob '{cronjob_name}' via aiohttp: HTTP {job_response.status}"
-                            _LOGGER.error(error_msg)
-                            return {
-                                "success": False,
-                                "error": error_msg,
-                                "cronjob_name": cronjob_name,
-                                "namespace": namespace,
-                            }
+                # Step 2: Create a job from the CronJob template
+                job_name = f"{cronjob_name}-manual-{int(time.time())}"
+
+                # Extract the job template from the CronJob
+                job_template = cronjob_data.get("spec", {}).get("jobTemplate", {})
+                if not job_template:
+                    error_msg = f"CronJob '{cronjob_name}' has no job template"
+                    _LOGGER.error(error_msg)
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "cronjob_name": cronjob_name,
+                        "namespace": namespace,
+                    }
+
+                # Create the job object
+                job_data = {
+                    "apiVersion": "batch/v1",
+                    "kind": "Job",
+                    "metadata": {
+                        "name": job_name,
+                        "namespace": namespace,
+                        "labels": {
+                            "cronjob.kubernetes.io/manual": "true",
+                            "cronjob.kubernetes.io/name": cronjob_name,
+                        },
+                    },
+                    "spec": job_template.get("spec", {}),
+                }
+
+                # Create the job
+                jobs_url = f"https://{self.host}:{self.port}/apis/batch/v1/namespaces/{quote(namespace, safe='')}/jobs"
+
+                async with self._session.post(
+                    jobs_url,
+                    headers=headers,
+                    json=job_data,
+                    ssl=await self._get_ssl_param(),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as job_response:
+                    if job_response.status == 201:  # Created
+                        job_result = await job_response.json()
+                        _LOGGER.info(
+                            "Successfully triggered CronJob '%s' in namespace '%s' via aiohttp, created job '%s'",
+                            cronjob_name,
+                            namespace,
+                            job_name,
+                        )
+                        return {
+                            "success": True,
+                            "job_name": job_name,
+                            "namespace": namespace,
+                            "cronjob_name": cronjob_name,
+                            "job_uid": job_result.get("metadata", {}).get("uid", ""),
+                        }
+                    else:
+                        error_msg = f"Failed to create job for CronJob '{cronjob_name}' via aiohttp: HTTP {job_response.status}"
+                        _LOGGER.error(error_msg)
+                        return {
+                            "success": False,
+                            "error": error_msg,
+                            "cronjob_name": cronjob_name,
+                            "namespace": namespace,
+                        }
 
         except Exception as ex:
             error_msg = (
@@ -2879,19 +2863,18 @@ class KubernetesClient:
             "Authorization": f"Bearer {self.api_token}",
             "Accept": "application/json",
         }
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url,
-                headers=headers,
-                ssl=await self._get_ssl_param(),
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                resp.raise_for_status()
-                data = await resp.json()
-                resource_version = (
-                    data.get("metadata", {}).get("resourceVersion", "0") or "0"
-                )
-                return data.get("items", []), resource_version
+        async with self._session.get(
+            url,
+            headers=headers,
+            ssl=await self._get_ssl_param(),
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+            resource_version = (
+                data.get("metadata", {}).get("resourceVersion", "0") or "0"
+            )
+            return data.get("items", []), resource_version
 
     async def watch_stream(
         self, url: str, resource_version: str
@@ -2916,40 +2899,39 @@ class KubernetesClient:
             "Authorization": f"Bearer {self.api_token}",
             "Accept": "application/json",
         }
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url,
-                params=params,
-                headers=headers,
-                ssl=await self._get_ssl_param(),
-                timeout=aiohttp.ClientTimeout(
-                    total=None,
-                    connect=10,
-                    # Guard against stale TCP connections that never close.
-                    # The server's ?timeoutSeconds forces a clean close within
-                    # DEFAULT_WATCH_TIMEOUT_SECONDS; give a 30-second grace period.
-                    sock_read=DEFAULT_WATCH_TIMEOUT_SECONDS + 30,
-                ),
-            ) as resp:
-                if resp.status == 410:
-                    raise ResourceVersionExpired(
-                        f"Watch resource version {resource_version!r} expired (HTTP 410)"
-                    )
-                resp.raise_for_status()
-                async for raw_line in resp.content:
-                    line = raw_line.strip()
-                    if not line:
-                        continue
-                    event = json.loads(line)
-                    if event.get("type") == "ERROR":
-                        status = event.get("object") or {}
-                        if status.get("code") == 410:
-                            raise ResourceVersionExpired(
-                                f"Watch resource version {resource_version!r} "
-                                f"expired (ERROR event): {status.get('message')}"
-                            )
-                        raise KubernetesApiError(
-                            f"Watch ERROR event {status.get('reason')} "
-                            f"(code {status.get('code')}): {status.get('message')}"
+        async with self._session.get(
+            url,
+            params=params,
+            headers=headers,
+            ssl=await self._get_ssl_param(),
+            timeout=aiohttp.ClientTimeout(
+                total=None,
+                connect=10,
+                # Guard against stale TCP connections that never close.
+                # The server's ?timeoutSeconds forces a clean close within
+                # DEFAULT_WATCH_TIMEOUT_SECONDS; give a 30-second grace period.
+                sock_read=DEFAULT_WATCH_TIMEOUT_SECONDS + 30,
+            ),
+        ) as resp:
+            if resp.status == 410:
+                raise ResourceVersionExpired(
+                    f"Watch resource version {resource_version!r} expired (HTTP 410)"
+                )
+            resp.raise_for_status()
+            async for raw_line in resp.content:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                event = json.loads(line)
+                if event.get("type") == "ERROR":
+                    status = event.get("object") or {}
+                    if status.get("code") == 410:
+                        raise ResourceVersionExpired(
+                            f"Watch resource version {resource_version!r} "
+                            f"expired (ERROR event): {status.get('message')}"
                         )
-                    yield event
+                    raise KubernetesApiError(
+                        f"Watch ERROR event {status.get('reason')} "
+                        f"(code {status.get('code')}): {status.get('message')}"
+                    )
+                yield event

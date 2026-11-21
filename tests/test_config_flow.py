@@ -51,6 +51,9 @@ from custom_components.kubernetes.const import (
     EVENT_TYPES_WARNING,
 )
 
+# The flow's aiohttp calls go through Home Assistant's shared session.
+_SESSION = "custom_components.kubernetes.config_flow.async_get_clientsession"
+
 
 @contextmanager
 def patched_connection(result=None, side_effect=None):
@@ -656,11 +659,9 @@ async def test_test_connection_aiohttp_success(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._test_connection_aiohttp(
             {
                 CONF_HOST: "test-host",
@@ -682,11 +683,9 @@ async def test_test_connection_aiohttp_error_status(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._test_connection_aiohttp(
             {
                 CONF_HOST: "test-host",
@@ -703,11 +702,9 @@ async def test_test_connection_aiohttp_exception(hass: HomeAssistant):
     flow.hass = hass
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(side_effect=Exception("Network error"))
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._test_connection_aiohttp(
             {
                 CONF_HOST: "test-host",
@@ -738,11 +735,9 @@ async def test_fetch_namespaces_success(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -765,11 +760,9 @@ async def test_fetch_namespaces_error_status(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -788,13 +781,11 @@ async def test_fetch_namespaces_client_error(hass: HomeAssistant):
     flow.hass = hass
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(
         side_effect=aiohttp_mod.ClientConnectionError("Connection refused")
     )
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -811,11 +802,9 @@ async def test_fetch_namespaces_generic_exception(hass: HomeAssistant):
     flow.hass = hass
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(side_effect=Exception("Unexpected error"))
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -1723,11 +1712,9 @@ async def test_fetch_namespaces_empty_items(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -1758,11 +1745,9 @@ async def test_fetch_namespaces_malformed_json_missing_metadata(
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         # This should raise a KeyError which is caught by the generic except
         result = await flow._fetch_namespaces(
             {
@@ -1787,11 +1772,9 @@ async def test_fetch_namespaces_no_items_key(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -1809,11 +1792,9 @@ async def test_fetch_namespaces_timeout(hass: HomeAssistant):
     flow.hass = hass
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(side_effect=TimeoutError())
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -1836,11 +1817,9 @@ async def test_fetch_namespaces_non_200_with_empty_body(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -1865,11 +1844,9 @@ async def test_fetch_namespaces_uses_default_port(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -1892,13 +1869,11 @@ async def test_fetch_namespaces_client_timeout_error(hass: HomeAssistant):
     flow.hass = hass
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(
         side_effect=aiohttp_mod.ServerTimeoutError("Request timed out")
     )
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -1925,11 +1900,9 @@ async def test_test_connection_aiohttp_uses_default_port(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._test_connection_aiohttp(
             {
                 CONF_HOST: "test-host",
@@ -1951,13 +1924,11 @@ async def test_test_connection_aiohttp_client_error(hass: HomeAssistant):
     flow.hass = hass
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(
         side_effect=aiohttp_mod.ClientConnectionError("Connection refused")
     )
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._test_connection_aiohttp(
             {
                 CONF_HOST: "test-host",
@@ -2326,11 +2297,9 @@ async def test_test_connection_aiohttp_forbidden(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._test_connection_aiohttp(
             {
                 CONF_HOST: "test-host",
@@ -2353,11 +2322,9 @@ async def test_test_connection_aiohttp_500(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._test_connection_aiohttp(
             {
                 CONF_HOST: "test-host",
@@ -2375,11 +2342,9 @@ async def test_test_connection_aiohttp_timeout(hass: HomeAssistant):
     flow.hass = hass
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(side_effect=TimeoutError())
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._test_connection_aiohttp(
             {
                 CONF_HOST: "test-host",
@@ -2407,11 +2372,9 @@ async def test_fetch_namespaces_401_unauthorized(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         result = await flow._fetch_namespaces(
             {
                 CONF_HOST: "test-host",
@@ -2435,11 +2398,9 @@ async def test_fetch_namespaces_long_error_text_truncated(hass: HomeAssistant):
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
+    with patch(_SESSION, return_value=mock_session):
         # Should not raise, just return empty list
         result = await flow._fetch_namespaces(
             {
@@ -2603,7 +2564,7 @@ class TestReauthFlow:
 
 
 def _mock_session(status: int = 200, json_body: dict | None = None) -> MagicMock:
-    """Build an aiohttp.ClientSession mock whose GET returns ``status``."""
+    """Build a session mock whose GET returns ``status``."""
     mock_response = MagicMock()
     mock_response.status = status
     mock_response.json = AsyncMock(return_value=json_body or {"items": []})
@@ -2611,8 +2572,6 @@ def _mock_session(status: int = 200, json_body: dict | None = None) -> MagicMock
     mock_response.__aexit__ = AsyncMock(return_value=None)
 
     mock_session = MagicMock()
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=None)
     mock_session.get = MagicMock(return_value=mock_response)
     return mock_session
 
@@ -2635,7 +2594,7 @@ class TestFlowHonorsTls:
         mock_session = _mock_session()
 
         with (
-            patch("aiohttp.ClientSession", return_value=mock_session),
+            patch(_SESSION, return_value=mock_session),
             patch(
                 "custom_components.kubernetes.config_flow.build_ssl_param",
                 new_callable=AsyncMock,
@@ -2665,7 +2624,7 @@ class TestFlowHonorsTls:
         flow.hass = hass
         mock_session = _mock_session()
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(_SESSION, return_value=mock_session):
             await getattr(flow, method)(
                 {
                     CONF_HOST: "test-host",
@@ -2682,7 +2641,7 @@ class TestFlowHonorsTls:
         flow.hass = hass
         mock_session = _mock_session()
 
-        with patch("aiohttp.ClientSession", return_value=mock_session):
+        with patch(_SESSION, return_value=mock_session):
             result = await flow._test_connection_aiohttp(
                 {
                     CONF_HOST: "test-host",

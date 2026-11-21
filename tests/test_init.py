@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
-from homeassistant.const import Platform
+from homeassistant.const import EVENT_HOMEASSISTANT_CLOSE, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -14,6 +14,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.kubernetes import (
     DOMAIN,
     PLATFORMS,
+    _async_create_session,
     _async_migrate_unique_ids,
     _async_register_panel,
     _async_remove_panel,
@@ -113,6 +114,68 @@ async def test_async_setup_entry_success(
 
         # Verify platforms were forwarded
         mock_forward.assert_called_once_with(mock_config_entry, PLATFORMS)
+
+
+class TestAsyncCreateSession:
+    """The entry's own aiohttp session: uncapped, closed by the integration."""
+
+    async def test_setup_injects_the_entry_session(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """async_setup_entry hands the client the session it created."""
+        session = MagicMock()
+        with (
+            patch(
+                "custom_components.kubernetes._async_create_session",
+                return_value=session,
+            ) as mock_create,
+            patch("custom_components.kubernetes.KubernetesClient") as client_cls,
+            patch("custom_components.kubernetes.KubernetesDataCoordinator") as coord,
+            patch("custom_components.kubernetes._async_sync_panel"),
+            patch.object(
+                hass.config_entries,
+                "async_forward_entry_setups",
+                new_callable=AsyncMock,
+            ),
+        ):
+            coord.return_value.async_config_entry_first_refresh = AsyncMock()
+            coord.return_value.async_start_watch_tasks = AsyncMock()
+            await async_setup_entry(hass, mock_config_entry)
+
+        mock_create.assert_called_once_with(hass, mock_config_entry)
+        assert client_cls.call_args.args[1] is session
+
+    async def test_connector_has_no_connection_cap(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Watch loops each pin a connection, so the pool must not be capped."""
+        session = _async_create_session(hass, mock_config_entry)
+
+        assert session.connector.limit == 0
+        assert session.connector.limit_per_host == 0
+        await session.close()
+
+    async def test_closed_on_unload(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Unloading the entry (or a failed setup) closes the session."""
+        session = _async_create_session(hass, mock_config_entry)
+
+        await mock_config_entry._async_process_on_unload(hass)
+
+        assert session.closed
+
+    async def test_closed_on_home_assistant_close(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """Home Assistant does not unload entries on shutdown; close then too."""
+        with patch.object(hass.bus, "async_listen_once") as listen_once:
+            session = _async_create_session(hass, mock_config_entry)
+
+        event_type, close = listen_once.call_args.args
+        assert event_type == EVENT_HOMEASSISTANT_CLOSE
+        await close(MagicMock())
+        assert session.closed
 
 
 async def test_async_setup_entry_sets_cluster_device_version(

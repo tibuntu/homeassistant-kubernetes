@@ -285,14 +285,14 @@ async def test_user_step_use_in_cluster_default_false_outside(hass: HomeAssistan
 def _make_client(
     *, use_in_cluster: bool = True, static_token: str = "fallback-token"
 ) -> KubernetesClient:
-    """Build a real KubernetesClient."""
+    """Build a real KubernetesClient on a mock session."""
     config = {
         CONF_HOST: "10.0.0.1",
         CONF_PORT: 6443,
         CONF_API_TOKEN: static_token,
         CONF_USE_IN_CLUSTER: use_in_cluster,
     }
-    return KubernetesClient(config)
+    return KubernetesClient(config, MagicMock())
 
 
 def test_api_token_returns_static_when_use_in_cluster_disabled():
@@ -597,7 +597,7 @@ async def test_401_retry_rereads_token_even_if_refresh_task_already_completed():
         return cm
 
     with (
-        patch("aiohttp.ClientSession.get", side_effect=fake_get),
+        patch.object(client._session, "get", side_effect=fake_get),
         patch.object(client, "_ensure_refresh_task") as mock_ensure_refresh_task,
         patch(
             "custom_components.kubernetes.kubernetes_client.open",

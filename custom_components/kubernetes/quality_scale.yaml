@@ -75,8 +75,8 @@ rules:
     status: done
     comment: The client talks to the API server through aiohttp only; the synchronous kubernetes package is no longer a dependency.
   inject-websession:
-    status: todo
-    comment: The client opens its own aiohttp sessions.
+    status: done
+    comment: KubernetesClient takes its aiohttp session as a constructor argument and never closes it. The config flow uses Home Assistant's shared session. Each config entry creates one session with an uncapped connector, because Home Assistant's connector, which async_create_clientsession shares, allows 100 connections per host and every watch loop keeps one open. The entry closes that session on unload and on shutdown.
   strict-typing:
     status: todo
     comment: mypy runs without strict mode.
