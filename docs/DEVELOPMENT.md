@@ -134,11 +134,11 @@ Adding a new value? Add it to `chart/values.schema.json` too — Helm validates 
 
 The workflow pins the Helm version (`azure/setup-helm`) so the rendered output is byte-stable; use the same version locally if the drift check disagrees with you.
 
-The chart version is bumped by release-please alongside the integration version, and the release workflow pushes it to `oci://ghcr.io/tibuntu/charts` on every release.
+The chart is versioned and released on its own — see [Releasing the chart](#releasing-the-chart).
 
 ## Releases
 
-Releases are cut by [release-please](https://github.com/googleapis/release-please) from conventional-commit subjects on `main`: `fix:` bumps the patch version, `feat:` the minor version; `refactor:`, `test:`, `build:`, `docs:` and `chore:` do not trigger a release or appear in the changelog. When a release contains more than its `fix:` commits express — a large refactor, a behaviour change shipped under `fix:` — force the version with a `Release-As` footer:
+Integration releases are cut by [release-please](https://github.com/googleapis/release-please) from conventional-commit subjects on `main`: `fix:` bumps the patch version, `feat:` the minor version; `refactor:`, `test:`, `build:`, `docs:` and `chore:` do not trigger a release or appear in the changelog. A commit whose files all lie under `chart/`, `manifests/`, `docs/` or `.github/` is ignored (`exclude-paths` in `.release-please-config.json`), so a chart-only `fix:` or `feat:` does not release the integration. The Helm chart has its own version and release path, described [below](#releasing-the-chart). When a release contains more than its `fix:` commits express — a large refactor, a behaviour change shipped under `fix:` — force the version with a `Release-As` footer:
 
 ```bash
 git commit -m "chore: release 1.12.0" -m "Release-As: 1.12.0"
@@ -154,6 +154,17 @@ gh release upload vX.Y.Z kubernetes.zip --clobber
 ```
 
 For minor releases the generated changelog section is rewritten as end-user prose on the `release-please--branches--main` branch before the release PR is merged (intro paragraph, `### New features` / `### Fixes & improvements`, an `> **Upgrading**` note for behaviour changes), and the release PR body is replaced with the same text.
+
+### Releasing the chart
+
+The chart (`chart/`) is versioned independently of the integration and is released by merging, not by release-please:
+
+1. In the pull request that changes anything under `chart/`, bump `version` in `chart/Chart.yaml` by hand — patch for a fix, minor for a new value or rule, major when users must act — and add an entry to `chart/CHANGELOG.md`. `.github/workflows/helm.yaml` fails when `chart/` differs from the last `chart-v*` tag while the version is unchanged (a `chart/CHANGELOG.md`-only edit is exempt).
+2. Merge. On `main`, the `publish-chart` job in `.github/workflows/release.yaml` pushes the chart to `oci://ghcr.io/tibuntu/charts` and then creates the git tag `chart-v<version>`. If that tag already exists the job does nothing, so every other push to `main` is a no-op for the chart. If the push fails no tag is created, and the next push to `main` or a re-run of the job retries.
+
+`appVersion` is the oldest integration release the chart supports. Raise it only when a chart release stops working with older integration releases. A feature that needs a new RBAC rule changes both `custom_components/` and `chart/` in one pull request: the chart is published when that pull request merges, the integration with its next release — name the chart version it needs in the integration's release notes.
+
+The chart never gets a GitHub Release, only the tag. HACS lists this repository's releases as integration versions and installs the `kubernetes.zip` asset from them, so a chart release would be offered to users as an integration update that cannot be installed.
 
 ## Frontend Development
 
