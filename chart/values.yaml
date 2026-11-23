@@ -6,7 +6,8 @@
 # See docs/RBAC.md for the complete permission matrix.
 mode: full
 
-# Name of the ServiceAccount, ClusterRole and ClusterRoleBinding.
+# Name of the ServiceAccount, ClusterRole and ClusterRoleBinding. The
+# `<name>-write` ClusterRole and its RoleBindings (rbac.writeNamespaces) follow it.
 # The default matches the plain manifests in manifests/ and the names used
 # throughout the documentation — only change it if you know why.
 nameOverride: ""
@@ -25,6 +26,18 @@ tokenSecret:
 
 rbac:
   create: true
+  # Where mode=full may change things: scale and restart workloads, delete
+  # pods and Jobs, trigger and suspend CronJobs, evict pods (drain) and read
+  # pod logs. Reading stays cluster-wide whatever this says.
+  #   ["*"]          every namespace (default): one ClusterRole, cluster-wide.
+  #                  "*" must stand alone; mixing it with names is rejected.
+  #   [media, home]  only these: the rules are bound by one RoleBinding per
+  #                  namespace. The namespaces must exist before install.
+  #   []             nowhere.
+  # Node cordon/uncordon is cluster-scoped and not affected. mode=minimal has
+  # no write rules, so it accepts only ["*"] or [].
+  # See docs/RBAC.md#limiting-write-access-to-namespaces
+  writeNamespaces: ["*"]
   # Extra rules appended verbatim to the generated ClusterRole, e.g. to add
   # `events` access on top of `mode: minimal`:
   #   extraRules:

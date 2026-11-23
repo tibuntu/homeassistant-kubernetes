@@ -132,3 +132,40 @@ jobs:
           K8S_TOKEN: ${{ env.K8S_TOKEN }}
           K8S_SERVER: ${{ env.K8S_SERVER }}
         run: pytest tests/k8s_compat/ -m k8s_compat -v -o "addopts="
+
+      # The suite above proved the trimmed full role. Now prove the allowlist
+      # on a real API server: write verbs only in the listed namespace, read
+      # still cluster-wide. The release lives in `default`, so this also
+      # proves the RoleBinding subject points at the release namespace.
+      - name: Verify rbac.writeNamespaces scopes the write verbs
+        run: |
+          kubectl create namespace ha-write-test
+          helm upgrade ha-k8s chart --set 'rbac.writeNamespaces={ha-write-test}' --wait
+          sa=system:serviceaccount:default:homeassistant-kubernetes-integration
+          can() {
+            kubectl auth can-i "$@" --as="$sa" >/dev/null 2>&1 \
+              || { echo "::error::expected allowed: $*"; exit 1; }
+          }
+          # Exactly `no` counts as denied; a failing kubectl must not pass.
+          cannot() {
+            got=$(kubectl auth can-i "$@" --as="$sa" 2>/dev/null || true)
+            if [ "$got" != "no" ]; then
+              echo "::error::expected 'no' for: $* (got '$got')"; exit 1
+            fi
+          }
+          can patch deployments -n ha-write-test
+          can patch deployments --subresource=scale -n ha-write-test
+          can create jobs -n ha-write-test
+          can delete pods -n ha-write-test
+          can get pods --subresource=log -n ha-write-test
+          can create pods --subresource=eviction -n ha-write-test
+          cannot patch deployments -n default
+          cannot patch deployments --subresource=scale -n default
+          cannot create jobs -n kube-system
+          cannot delete pods -n kube-system
+          cannot get pods --subresource=log -n kube-system
+          cannot create pods --subresource=eviction -n kube-system
+          can list pods --all-namespaces
+          can list namespaces
+          can watch deployments --all-namespaces
+          can patch nodes

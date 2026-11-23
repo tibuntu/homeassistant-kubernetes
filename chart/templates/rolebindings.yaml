@@ -1,0 +1,33 @@
+{{/* Namespace-scoped control: rendered only when rbac.writeNamespaces names
+     namespaces. With "*" the rules live in the ClusterRole instead. */}}
+{{- if and .Values.rbac.create (eq .Values.mode "full") (not (has "*" .Values.rbac.writeNamespaces)) }}
+{{- with .Values.rbac.writeNamespaces }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "rbac.name" $ }}-write
+  labels:
+    {{- include "rbac.labels" $ | nindent 4 }}
+# Bound per namespace by the RoleBindings below, never cluster-wide.
+rules:
+  {{- include "rbac.writeRules" $ | nindent 2 }}
+{{- range . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "rbac.name" $ }}-write
+  namespace: {{ . | quote }}
+  labels:
+    {{- include "rbac.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "rbac.name" $ }}
+    namespace: {{ $.Release.Namespace | quote }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "rbac.name" $ }}-write
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,6 +1,9 @@
 {{ .Chart.Name }} installed with mode: {{ .Values.mode }}
 
 ServiceAccount: {{ .Release.Namespace }}/{{ include "rbac.name" . }}
+{{- if and .Values.rbac.create (eq .Values.mode "full") }}
+Write access: {{ if has "*" .Values.rbac.writeNamespaces }}all namespaces{{ else if .Values.rbac.writeNamespaces }}{{ join ", " .Values.rbac.writeNamespaces }}{{ else }}none{{ end }}
+{{- end }}
 {{ if .Values.tokenSecret.create }}
 Home Assistant running OUTSIDE the cluster — get the API token with:
 

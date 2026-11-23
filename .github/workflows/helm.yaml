@@ -40,21 +40,52 @@ jobs:
         with:
           version: v4.3.2
 
-      - name: Lint both permission modes
+      - name: Lint every permission variant
         run: |
           helm lint chart --set mode=full
           helm lint chart --set mode=minimal
+          helm lint chart --set 'rbac.writeNamespaces={media,home}'
+          helm lint chart --set-json 'rbac.writeNamespaces=[]'
 
-      # values.schema.json must reject a bad mode even when no ClusterRole is
+      # values.schema.json must reject these even when no ClusterRole is
       # rendered — a template-level check inside `if rbac.create` would not.
-      - name: Reject an invalid mode
+      # writeNamespaces=null is what `helm upgrade --reuse-values` from an
+      # older release looks like: it must fail, not change permissions.
+      - name: Reject invalid values
         run: |
-          for extra in "" "--set rbac.create=false"; do
-            if helm template chart --set mode=bogus $extra >/dev/null 2>&1; then
-              echo "::error::chart accepted an invalid mode value ($extra)"
+          for args in \
+            "--set mode=bogus" \
+            "--set mode=bogus --set rbac.create=false" \
+            "--set rbac.writeNamespaces=null" \
+            "--set rbac.writeNamespaces=null --set rbac.create=false" \
+            "--set mode=minimal --set rbac.writeNamespaces={media}" \
+            "--set rbac.writeNamespaces={*,media}" \
+            "--set rbac.writeNamespaces={Bad_Name}"; do
+            if helm template chart $args >/dev/null 2>&1; then
+              echo "::error::chart accepted invalid values: $args"
               exit 1
             fi
           done
+
+      # Namespace names that YAML would read as null/number must render as
+      # quoted strings (an unquoted `null` leaves the RoleBinding in the
+      # release namespace). An empty list never means "everywhere": it renders
+      # no namespaced write access at all.
+      - name: Pin quoted namespaces and the empty allowlist
+        run: |
+          out=$(helm template ha chart --namespace homeassistant \
+            --set-json 'rbac.writeNamespaces=["null","123"]')
+          for ns in null 123; do
+            if ! grep -q "^  namespace: \"$ns\"$" <<<"$out"; then
+              echo "::error::RoleBinding namespace $ns is not rendered as a quoted string"
+              exit 1
+            fi
+          done
+          out=$(helm template ha chart --set-json 'rbac.writeNamespaces=[]')
+          if grep -qE 'kind: RoleBinding|-write$|pods/log|- delete$' <<<"$out"; then
+            echo "::error::an empty rbac.writeNamespaces must render no namespaced write access"
+            exit 1
+          fi
 
       # git status --porcelain, not git diff: a new chart template renders a new,
       # *untracked* manifest, which git diff does not see at all.
