@@ -2,6 +2,19 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "homeassistant-kubernetes-rbac values",
   "type": "object",
+  "if": {
+    "properties": { "mode": { "const": "minimal" } },
+    "required": ["mode"]
+  },
+  "then": {
+    "properties": {
+      "rbac": {
+        "properties": {
+          "writeNamespaces": { "enum": [["*"], []] }
+        }
+      }
+    }
+  },
   "properties": {
     "mode": {
       "description": "Permission set: full (all features) or minimal (read-only).",
@@ -9,7 +22,7 @@
       "enum": ["full", "minimal"]
     },
     "nameOverride": {
-      "description": "Name of the ServiceAccount, ClusterRole and ClusterRoleBinding.",
+      "description": "Name of the ServiceAccount, ClusterRole and ClusterRoleBinding. The <name>-write ClusterRole and its RoleBindings (rbac.writeNamespaces) follow it.",
       "type": "string"
     },
     "serviceAccount": {
@@ -27,8 +40,20 @@
     },
     "rbac": {
       "type": "object",
+      "required": ["writeNamespaces"],
       "properties": {
         "create": { "type": "boolean" },
+        "writeNamespaces": {
+          "description": "Namespaces in which mode=full may change resources: [\"*\"] for all, a list of names, or [] for none. \"*\" must stand alone.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^(\\*|[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)$"
+          },
+          "if": { "contains": { "const": "*" } },
+          "then": { "maxItems": 1 }
+        },
         "extraRules": {
           "description": "Extra policy rules appended to the ClusterRole.",
           "type": "array",
