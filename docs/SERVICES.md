@@ -382,21 +382,21 @@ The services automatically detect the workload type from entity attributes:
 Services require the following Kubernetes RBAC permissions:
 
 **For Deployments and StatefulSets**:
-- `apps/deployments`: `get`, `list`, `patch` (for scaling and restart)
-- `apps/statefulsets`: `get`, `list`, `patch` (for scaling and restart)
+- `apps/deployments`, `apps/statefulsets`: `list`, `patch` (restart)
+- `apps/deployments/scale`, `apps/statefulsets/scale`: `patch` (scaling)
 
 **For DaemonSets (restart only)**:
-- `apps/daemonsets`: `get`, `list`, `patch`
+- `apps/daemonsets`: `list`, `patch`
 
 **For CronJobs**:
 - `batch/cronjobs`: `get`, `list`, `watch`, `patch` (suspend/resume via switch)
-- `batch/jobs`: `get`, `list`, `watch`, `create` (CronJob triggering via `start_workload`)
+- `batch/jobs`: `list`, `watch`, `create` (CronJob triggering via `start_workload`)
 
 **For Jobs (deletion)**:
-- `batch/jobs`: `get`, `list`, `delete` (`delete_job` service)
+- `batch/jobs`: `list`, `delete` (`delete_job` service)
 
 **For Nodes (cordon/uncordon)**:
-- `nodes`: `get`, `list`, `patch` (`cordon_node` / `uncordon_node` / `drain_node` services)
+- `nodes`: `list`, `patch` (`cordon_node` / `uncordon_node` / `drain_node` services)
 - `pods/eviction`: `create`, plus `list` on `pods` cluster-wide (`drain_node`)
 
 **General**:

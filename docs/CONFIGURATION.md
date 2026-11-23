@@ -157,14 +157,14 @@ The Kubernetes event `reason` becomes the HA `event_type`. A curated set of reas
 
 > **Note:** The cluster event watch loop is independent of the Watch API toggle — enabling one does not enable the other.
 
-**RBAC:** Reading Kubernetes events requires `get`, `list`, and `watch` verbs on the core `v1` `events` resource. The `full` permission set (`mode: full` / `manifests/full/`) already grants these. The `minimal` set does **not** include events — with the Helm chart, add them via `rbac.extraRules`:
+**RBAC:** Reading Kubernetes events requires `list` and `watch` verbs on the core `v1` `events` resource. The `full` permission set (`mode: full` / `manifests/full/`) already grants these. The `minimal` set does **not** include events — with the Helm chart, add them via `rbac.extraRules`:
 
 ```yaml
 rbac:
   extraRules:
     - apiGroups: [""]
       resources: ["events"]
-      verbs: ["get", "list", "watch"]
+      verbs: ["list", "watch"]
 ```
 
 With the plain manifests, add the same rule to `manifests/minimal/clusterrole.yaml` by hand. See the [RBAC guide](RBAC.md) for details.

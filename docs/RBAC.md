@@ -95,7 +95,6 @@ Enables all integration features:
 - Node drain via the `drain_node` service (`pods/eviction`)
 - Cluster Events platform (`events`)
 - Watch API (real-time updates via `?watch=true`, enabled by default)
-- Legacy API compatibility (Kubernetes < 1.16)
 
 ### `minimal` / `manifests/minimal/`
 
@@ -112,80 +111,69 @@ Read-only access to every resource the integration monitors. No write permission
 
 ## Complete Permission Matrix
 
+Every verb listed is one the integration requests, and `get` appears only where a single object is fetched. The roles match integration 1.18.0 and newer (the first release that talks to the API through aiohttp only), so pair the chart with the integration release of the same version.
+
 ### Core API Group (`""`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **pods** | `get`, `list`, `watch`, `delete` | ✅ | `get`, `list` only | Pod count and status sensors, pod deletion |
+| **pods** | `get`, `list`, `watch`, `delete` | ✅ | `get`, `list` only | Pod count and status sensors, pod deletion; `get` is the pod detail dialog |
 | **pods/eviction** | `create` | ✅ | ❌ | `drain_node` service — evicts pods through the Eviction API, so PodDisruptionBudgets are honoured |
 | **pods/log** | `get` | ✅ | ❌ | Pod log snapshots in the sidebar panel (opt-in, admin-only — logs can contain secrets; drop the rule if you never want them readable) |
-| **nodes** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Node sensors and binary sensors; `patch` enables cordon/uncordon |
-| **namespaces** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Namespace discovery |
-| **events** | `get`, `list`, `watch` | ✅ | ❌ | Cluster Events platform (`watch`) and the Events section of the panel's pod detail dialog (`list`). Without it (e.g. `minimal`) the dialog still shows the containers and a hint instead of events |
-| **services** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Services Count sensor + Network tab in the sidebar panel |
+| **nodes** | `list`, `watch`, `patch` | ✅ | `list` only | Node sensors and binary sensors; `patch` enables cordon/uncordon |
+| **namespaces** | `list` | ✅ | `list` only | Namespace discovery |
+| **events** | `list`, `watch` | ✅ | ❌ | Cluster Events platform (`watch`) and the Events section of the panel's pod detail dialog (`list`). Without it (e.g. `minimal`) the dialog still shows the containers and a hint instead of events |
+| **services** | `list`, `watch` | ✅ | `list` only | Services Count sensor + Network tab in the sidebar panel |
 
 ### Apps API Group (`apps`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **deployments** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | Deployment sensors + rollout restart |
-| **deployments/scale** | `get`, `patch`, `update` | ✅ | ❌ | Deployment switches, replica numbers |
-| **replicasets** | `get`, `list`, `watch` | ✅ | ❌ | Deployment status accuracy |
-| **statefulsets** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | StatefulSet sensors + rollout restart |
-| **statefulsets/scale** | `get`, `patch`, `update` | ✅ | ❌ | StatefulSet switches, replica numbers |
-| **statefulsets/status** | `get`, `patch`, `update` | ✅ | ❌ | Accurate StatefulSet state |
-| **daemonsets** | `get`, `list`, `watch`, `patch` | ✅ | `get`, `list` only | DaemonSet sensors + rollout restart |
+| **deployments** | `list`, `watch`, `patch` | ✅ | `list` only | Deployment sensors + rollout restart |
+| **deployments/scale** | `patch` | ✅ | ❌ | Deployment switches, replica numbers |
+| **statefulsets** | `list`, `watch`, `patch` | ✅ | `list` only | StatefulSet sensors + rollout restart |
+| **statefulsets/scale** | `patch` | ✅ | ❌ | StatefulSet switches, replica numbers |
+| **daemonsets** | `list`, `watch`, `patch` | ✅ | `list` only | DaemonSet sensors + rollout restart |
 
 ### Batch API Group (`batch`)
 
-> **Note:** In `full` mode a single ClusterRole rule grants the same verb set — `get`, `list`, `watch`, `patch`, `update`, `create`, `delete` — to `cronjobs`, `cronjobs/status`, and `jobs` together. The table below lists each resource separately with the feature it enables, but the underlying grant is one rule, not three.
-
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **cronjobs** | `get`, `list`, `watch`, `patch`, `update`, `create`, `delete` | ✅ | `get`, `list` only | CronJob sensors, suspend/resume switch, and triggering (`start_workload` creates a Job) |
-| **cronjobs/status** | `get`, `list`, `watch`, `patch`, `update`, `create`, `delete` | ✅ | ❌ | Same rule as `cronjobs`; keeps CronJob switch state accurate |
-| **jobs** | `get`, `list`, `watch`, `patch`, `update`, `create`, `delete` | ✅ | `get`, `list` only | Job sensors, CronJob triggering, and Job deletion (sidebar panel / `delete_job` service) |
+| **cronjobs** | `get`, `list`, `watch`, `patch` | ✅ | `list` only | CronJob sensors, suspend/resume switch, and triggering (`start_workload` creates a Job; `get` reads the job template when triggering) |
+| **jobs** | `list`, `watch`, `create`, `delete` | ✅ | `list` only | Job sensors, CronJob triggering, and Job deletion (sidebar panel / `delete_job` service) |
 
 ### Networking API Group (`networking.k8s.io`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **ingresses** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Ingresses count sensor + Network tab in the sidebar panel |
+| **ingresses** | `list`, `watch` | ✅ | `list` only | Ingresses count sensor + Network tab in the sidebar panel |
 
 ### Gateway API Group (`gateway.networking.k8s.io`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **httproutes** | `get`, `list`, `watch` | ✅ | `get`, `list` only | HTTPRoutes in the Network tab. Optional: on a cluster without the Gateway API CRDs the rule is harmless and the Network tab shows no HTTPRoutes section. Without the rule the *Missing permissions* repair issue names `httproutes`; re-apply the RBAC or disable **HTTPRoutes** under *Disable data collection for* |
+| **httproutes** | `list`, `watch` | ✅ | `list` only | HTTPRoutes in the Network tab. Optional: on a cluster without the Gateway API CRDs the rule is harmless and the Network tab shows no HTTPRoutes section. Without the rule the *Missing permissions* repair issue names `httproutes`; re-apply the RBAC or disable **HTTPRoutes** under *Disable data collection for* |
 
 ### cert-manager API Group (`cert-manager.io`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **certificates** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Certificate Problems sensor and the Certificates section of the Network tab. Optional: on a cluster without cert-manager the rule is harmless, the section does not appear and the sensor stays at 0. Without the rule the *Missing permissions* repair issue names `certificates` (the API server answers 403 even when cert-manager is not installed); re-apply the RBAC or disable **Certificates** under *Disable data collection for*. No access to Secrets is needed |
+| **certificates** | `list`, `watch` | ✅ | `list` only | Certificate Problems sensor and the Certificates section of the Network tab. Optional: on a cluster without cert-manager the rule is harmless, the section does not appear and the sensor stays at 0. Without the rule the *Missing permissions* repair issue names `certificates` (the API server answers 403 even when cert-manager is not installed); re-apply the RBAC or disable **Certificates** under *Disable data collection for*. No access to Secrets is needed |
 
 ### Autoscaling API Group (`autoscaling`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **horizontalpodautoscalers** | `get`, `list`, `watch` | ✅ | `get`, `list` only | Detects HPA-managed Deployments/StatefulSets: `hpa_*` attributes, the panel's HPA badge, and the guard that rejects scaling them to a non-zero count. Optional: without it, HPA detection is simply off |
+| **horizontalpodautoscalers** | `list`, `watch` | ✅ | `list` only | Detects HPA-managed Deployments/StatefulSets: `hpa_*` attributes, the panel's HPA badge, and the guard that rejects scaling them to a non-zero count. Optional: without it, HPA detection is simply off |
 
 ### Metrics API Group (`metrics.k8s.io`)
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **nodes** | `get`, `list` | ✅ | ✅ | Real-time node CPU and memory usage in the sidebar panel |
-| **pods** | `get`, `list` | ✅ | ✅ | Workload CPU and memory usage sensors |
+| **nodes** | `list` | ✅ | ✅ | Real-time node CPU and memory usage in the sidebar panel |
+| **pods** | `list` | ✅ | ✅ | Workload CPU and memory usage sensors |
 
 > **Note:** Requires [metrics-server](https://github.com/kubernetes-sigs/metrics-server) to be installed in your cluster. If unavailable, the integration gracefully falls back to showing capacity only.
-
-### Extensions API Group (`extensions`)
-
-| Resource | Verbs | Full | Minimal | Purpose |
-|----------|-------|:----:|:-------:|---------|
-| **deployments** | `get`, `list`, `watch` | ✅ | ❌ | Legacy API (K8s < 1.16) |
-| **deployments/scale** | `get`, `patch`, `update` | ✅ | ❌ | Legacy scaling (K8s < 1.16) |
-| **replicasets** | `get`, `list`, `watch` | ✅ | ❌ | Legacy API (K8s < 1.16) |
 
 ### Non-resource endpoints
 
@@ -294,10 +282,10 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["nodes"]
-  verbs: ["get", "list", "watch", "patch"]
+  verbs: ["list", "watch", "patch"]
 - apiGroups: [""]
   resources: ["namespaces"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["list"]
 ---
 # Namespace-scoped role (repeat per monitored namespace)
 apiVersion: rbac.authorization.k8s.io/v1
@@ -314,31 +302,31 @@ rules:
   verbs: ["get"]
 - apiGroups: [""]
   resources: ["events", "services"]
-  verbs: ["get", "list", "watch"]
-- apiGroups: ["apps"]
-  resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["list", "watch"]
 - apiGroups: ["apps"]
   resources: ["deployments", "statefulsets", "daemonsets"]
-  verbs: ["patch"]
+  verbs: ["list", "watch", "patch"]
 - apiGroups: ["apps"]
-  resources: ["deployments/scale", "statefulsets/scale", "statefulsets/status"]
-  verbs: ["get", "patch", "update"]
+  resources: ["deployments/scale", "statefulsets/scale"]
+  verbs: ["patch"]
 - apiGroups: ["batch"]
-  resources: ["cronjobs", "cronjobs/status", "jobs"]
-  verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
+  resources: ["cronjobs"]
+  verbs: ["get", "list", "watch", "patch"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["list", "watch", "create", "delete"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["list", "watch"]
 - apiGroups: ["gateway.networking.k8s.io"]
   resources: ["httproutes"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["list", "watch"]
 - apiGroups: ["cert-manager.io"]
   resources: ["certificates"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["list", "watch"]
 - apiGroups: ["autoscaling"]
   resources: ["horizontalpodautoscalers"]
-  verbs: ["get", "list", "watch"]
+  verbs: ["list", "watch"]
 ```
 
 ## Troubleshooting RBAC Issues

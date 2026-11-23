@@ -5,94 +5,85 @@ metadata:
   labels:
     app.kubernetes.io/name: homeassistant-kubernetes-integration
     app.kubernetes.io/component: rbac
-# Full permissions for all integration features:
-#   - Sensors and binary sensors (monitoring)
-#   - Switches (deployment/statefulset scaling, cronjob suspension,
-#     node cordon/uncordon)
-#   - Workload rollout restart (deployments, statefulsets, daemonsets)
-#   - Pod and Job deletion from the sidebar panel
-#   - Node drain (drain_node service, pods/eviction)
-#   - Pod log snapshots in the sidebar panel (pods/log)
-#   - Cluster Events platform (events)
-#   - Experimental Watch API (real-time updates via ?watch=true)
-#   - Legacy API compatibility (Kubernetes < 1.16)
+# Permissions for every integration feature. Each rule maps to a request the
+# integration sends; docs/RBAC.md names the feature behind every verb.
 # For a read-only setup use manifests/minimal/ (Helm: mode=minimal) instead.
 rules:
-  # Core resources — monitoring + watch + pod deletion
-  # nodes: patch is what cordon/uncordon needs (spec.unschedulable)
-  - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "list", "watch", "patch"]
-  - apiGroups: [""]
-    resources: ["namespaces", "events", "services"]
-    verbs: ["get", "list", "watch"]
+  # --- Monitoring: read + Watch API, always cluster-wide ---
+  # pods: `get` is the pod detail dialog in the sidebar panel
   - apiGroups: [""]
     resources: ["pods"]
-    verbs: ["get", "list", "watch", "delete"]
-  # Pod log snapshots in the sidebar panel (opt-in "enable_pod_logs" option).
-  # Logs can contain secrets; drop this rule if you never want them readable.
+    verbs: ["get", "list", "watch"]
+  # events: Cluster Events platform + events in the pod detail dialog
   - apiGroups: [""]
-    resources: ["pods/log"]
-    verbs: ["get"]
+    resources: ["nodes", "services", "events"]
+    verbs: ["list", "watch"]
+  # namespaces: namespace selection in the config flow
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["list", "watch"]
+  # cronjobs: `get` reads the job template when a CronJob is triggered
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["list", "watch"]
+  # Gateway API HTTPRoutes and cert-manager Certificates are optional; the
+  # rules are harmless when the CRDs are not installed. Secrets are never read.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["list", "watch"]
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["list", "watch"]
+  # HPA detection (scale guard + HPA badge)
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["list", "watch"]
+  # Metrics API — CPU and memory usage (requires metrics-server)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["list"]
+
+  # --- Node control: cordon/uncordon (nodes have no namespace) ---
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["patch"]
+
+  # --- Control of namespaced resources ---
+  # Pod deletion from the sidebar panel
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
   # drain_node service — evict pods through the Eviction API (honours PDBs)
   - apiGroups: [""]
     resources: ["pods/eviction"]
     verbs: ["create"]
-
-  # Apps resources — monitoring + watch
-  - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
-    verbs: ["get", "list", "watch"]
-
-  # Apps resources — rollout restart
+  # Pod log snapshots in the sidebar panel (opt-in "enable_pod_logs" option).
+  # Logs can contain secrets.
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # Rollout restart
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets", "daemonsets"]
     verbs: ["patch"]
-
-  # Apps resources — scaling control
+  # Scaling (switches, replica numbers)
   - apiGroups: ["apps"]
-    resources:
-      - deployments/scale
-      - statefulsets/scale
-      - statefulsets/status
-    verbs: ["get", "patch", "update"]
-
-  # Batch resources — monitoring + watch + cronjob triggering + job deletion
+    resources: ["deployments/scale", "statefulsets/scale"]
+    verbs: ["patch"]
+  # CronJob suspend/resume
   - apiGroups: ["batch"]
-    resources: ["cronjobs", "cronjobs/status", "jobs"]
-    verbs: ["get", "list", "watch", "patch", "update", "create", "delete"]
-
-  # Networking resources — monitoring + watch (Ingress URLs in the panel)
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["ingresses"]
-    verbs: ["get", "list", "watch"]
-
-  # Gateway API — HTTPRoutes in the Network tab (monitoring only; harmless
-  # when the CRDs are not installed)
-  - apiGroups: ["gateway.networking.k8s.io"]
-    resources: ["httproutes"]
-    verbs: ["get", "list", "watch"]
-
-  # cert-manager — Certificate expiry/renewal problems (monitoring only;
-  # harmless when cert-manager is not installed). Secrets are never read.
-  - apiGroups: ["cert-manager.io"]
-    resources: ["certificates"]
-    verbs: ["get", "list", "watch"]
-
-  # Autoscaling — detect HPA-managed workloads (scale guard + HPA badge)
-  - apiGroups: ["autoscaling"]
-    resources: ["horizontalpodautoscalers"]
-    verbs: ["get", "list", "watch"]
-
-  # Metrics API — real-time CPU and memory usage (requires metrics-server)
-  - apiGroups: ["metrics.k8s.io"]
-    resources: ["nodes", "pods"]
-    verbs: ["get", "list"]
-
-  # Legacy API compatibility (Kubernetes < 1.16)
-  - apiGroups: ["extensions"]
-    resources: ["deployments", "replicasets"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["extensions"]
-    resources: ["deployments/scale"]
-    verbs: ["get", "patch", "update"]
+    resources: ["cronjobs"]
+    verbs: ["patch"]
+  # CronJob triggering (creates a Job) and Job deletion
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "delete"]
