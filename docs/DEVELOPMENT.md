@@ -118,7 +118,7 @@ homeassistant-kubernetes/
 
 When a new feature needs a new verb or resource:
 
-1. Add the rule to `chart/templates/clusterrole.yaml` — inside the `mode: full` branch, the `minimal` branch, or both.
+1. Add the rule to `chart/templates/clusterrole.yaml` — inside the `mode: full` branch, the `minimal` branch, or both. A `full` rule that changes a namespaced resource goes into `rbac.writeRules` in `chart/templates/_helpers.tpl` instead, so it follows `rbac.writeNamespaces`.
 2. Re-render the plain manifests:
 
    ```bash
@@ -130,7 +130,7 @@ When a new feature needs a new verb or resource:
 
 Adding a new value? Add it to `chart/values.schema.json` too — Helm validates values against that schema on every `install`/`upgrade`/`lint`/`template`, which is why `mode` is an `enum` there rather than a template-level `fail` (a `fail` inside `if rbac.create` would be skipped when `rbac.create=false`).
 
-`.github/workflows/helm.yaml` lints both modes and fails if `manifests/` does not match a fresh render — the same drift guard used for the committed frontend bundle. It compares with `git status --porcelain` rather than `git diff`, so a new template rendering a new (untracked) manifest is caught too. Never edit files under `manifests/` directly; the next render will overwrite them.
+`.github/workflows/helm.yaml` lints every variant (both modes, with and without `rbac.writeNamespaces`), asserts the schema rejections (invalid `mode`, a missing `writeNamespaces`, `minimal` with named namespaces, `"*"` mixed with names, an invalid namespace name), pins that namespace names such as `null` and `123` render as quoted strings and that `rbac.writeNamespaces=[]` renders no RoleBinding or write rule, and fails if `manifests/` does not match a fresh render — the same drift guard used for the committed frontend bundle. It compares with `git status --porcelain` rather than `git diff`, so a new template rendering a new (untracked) manifest is caught too. Never edit files under `manifests/` directly; the next render will overwrite them.
 
 The workflow pins the Helm version (`azure/setup-helm`) so the rendered output is byte-stable; use the same version locally if the drift check disagrees with you.
 

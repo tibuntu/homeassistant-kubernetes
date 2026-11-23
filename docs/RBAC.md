@@ -55,14 +55,15 @@ The chart renders the same objects with the same names, so this is an in-place a
 | Value | Default | Purpose |
 |-------|---------|---------|
 | `mode` | `full` | Permission set: `full` or `minimal`. Anything else fails the render. |
-| `nameOverride` | `""` | Name of the ServiceAccount, ClusterRole and ClusterRoleBinding. Defaults to `homeassistant-kubernetes-integration`. |
+| `nameOverride` | `""` | Name of the ServiceAccount, ClusterRole and ClusterRoleBinding, and the prefix of the `<name>-write` ClusterRole and RoleBindings. Defaults to `homeassistant-kubernetes-integration`. |
 | `serviceAccount.create` | `true` | Set to `false` to bind the ClusterRole to a ServiceAccount you already manage. |
 | `serviceAccount.annotations` | `{}` | Extra annotations on the ServiceAccount. |
 | `tokenSecret.create` | `true` | Long-lived token Secret. Set to `false` when Home Assistant runs **inside** the cluster and uses the projected (auto-rotating) token. |
 | `rbac.create` | `true` | Set to `false` to render only the ServiceAccount and token Secret. |
+| `rbac.writeNamespaces` | `["*"]` | Namespaces where `full` may change things. `["*"]` is cluster-wide, names scope the write rules to those namespaces, `[]` grants none. See [Limiting write access to namespaces](#limiting-write-access-to-namespaces). |
 | `rbac.extraRules` | `[]` | Extra rules appended verbatim to the ClusterRole — e.g. adding `events` on top of `mode: minimal`. |
 
-The release namespace (`--namespace`) determines the namespace of the ServiceAccount, the token Secret, and the ClusterRoleBinding subject.
+The release namespace (`--namespace`) determines the namespace of the ServiceAccount, the token Secret, and the subject of the ClusterRoleBinding and of the RoleBindings.
 
 ### Option B: Plain manifests
 
@@ -109,7 +110,78 @@ Read-only access to every resource the integration monitors. No write permission
 - No Watch API support (`watch` verb not granted) — each stream gets HTTP 403 on connect and retries once a minute, a **Missing permissions** repair issue names the affected resource(s), and once every stream is forbidden the integration polls at the regular interval instead; disable the Watch API under **Configure** to silence the repair issue
 - Sensors and binary sensors only
 
+## Limiting write access to namespaces
+
+By default `full` can change things in every namespace. `rbac.writeNamespaces` restricts the namespaced control rules to the namespaces you list:
+
+```bash
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --set 'rbac.writeNamespaces={media,home}'
+```
+
+Or in a values file:
+
+```yaml
+rbac:
+  writeNamespaces: [media, home]
+```
+
+The value takes three forms:
+
+- `["*"]` (default): every namespace, one cluster-wide ClusterRole. This is the behaviour before the value existed. `"*"` must stand alone: a list that mixes it with namespace names, such as `["*", "media"]`, is rejected.
+- Namespace names: control is limited to those namespaces.
+- `[]`: no namespaced control. `full` is then monitoring, the Watch API, events and node cordon/uncordon. On the command line pass it as `--set-json 'rbac.writeNamespaces=[]'`; `--set 'rbac.writeNamespaces={}'` is rejected by the schema (Helm turns it into a list with one empty string).
+
+The key is required: a missing or `null` value is rejected by the chart schema, as is `mode: minimal` with named namespaces (it has no write rules to scope).
+
+With names, the cluster-wide ClusterRole keeps every read rule plus `patch` on `nodes` (cordon/uncordon is cluster-scoped). The rules below move into a second ClusterRole, `homeassistant-kubernetes-integration-write`, which one RoleBinding of the same name binds in each listed namespace:
+
+| Resource | Verb | Feature |
+|----------|------|---------|
+| `pods` | `delete` | Pod deletion |
+| `pods/eviction` | `create` | `drain_node` |
+| `pods/log` | `get` | Panel pod log viewer |
+| `deployments`, `statefulsets`, `daemonsets` | `patch` | Rollout restart |
+| `deployments/scale`, `statefulsets/scale` | `patch` | Scaling |
+| `cronjobs` | `patch` | CronJob suspend/resume |
+| `jobs` | `create`, `delete` | CronJob trigger, Job deletion |
+
+The integration itself is unchanged. Outside the listed namespaces the API server answers HTTP 403. The services, the replica number entity, the CronJob switch and the panel report the error. The Deployment and StatefulSet on/off switch only logs it and returns to its previous state without raising one. Entities still exist because reading stays cluster-wide. Pod logs are readable only in the listed namespaces.
+
+`drain_node` evicts pods only in the listed namespaces, so it fails on a node that runs other non-DaemonSet pods. The service cordons every node of the call before the first eviction, so a drain that fails on pods in unlisted namespaces leaves the node cordoned; uncordon it yourself. To grant eviction cluster-wide again, add the rule yourself:
+
+```yaml
+rbac:
+  writeNamespaces: ["media"]
+  extraRules:
+    - apiGroups: [""]
+      resources: ["pods/eviction"]
+      verbs: ["create"]
+```
+
+Inside a listed namespace the token can still run code as any ServiceAccount of that namespace: rollout restart needs `patch` on the workload and CronJob trigger needs `create` on Jobs. List only namespaces where that is acceptable.
+
+Two limits to this containment:
+
+- It holds only if the listed namespaces enforce Pod Security at the `baseline` or `restricted` level. Without it, `patch` on a workload or `create` on Jobs can start a privileged or hostPath pod and take over the node.
+- `patch` on `nodes` stays cluster-wide and is more than cordon: it also allows changing node labels and taints, and a `NoExecute` taint evicts pods in every namespace.
+
+The listed namespaces must exist before the install. There are no plain manifests for this; with `kubectl`, render them from the chart:
+
+```bash
+helm template ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --set 'rbac.writeNamespaces={media,home}' | kubectl apply -f -
+```
+
+`kubectl apply` does not prune. After removing a namespace from the list, delete the RoleBinding `homeassistant-kubernetes-integration-write` in that namespace yourself, or the write access stays.
+
+A later `helm upgrade` that passes any `--set` or `-f` without `--reset-then-reuse-values` resets every value you do not repeat to the chart default. The default for `rbac.writeNamespaces` is `["*"]`, so the allowlist is silently replaced by cluster-wide write. Keep the list in a values file that you pass on every upgrade, or always upgrade with `--reset-then-reuse-values`, and check the `Write access:` line Helm prints after the upgrade.
+
+Upgrading with `--reuse-values` from a chart older than this value fails with `missing property 'writeNamespaces'`; use `--reset-then-reuse-values`.
+
 ## Complete Permission Matrix
+
+When `rbac.writeNamespaces` is set to namespace names, the write verbs in the `full` column for namespaced resources apply only in those namespaces (see [Limiting write access to namespaces](#limiting-write-access-to-namespaces)).
 
 Every verb listed is one the integration requests, and `get` appears only where a single object is fetched. The roles match integration 1.18.0 and newer (the first release that talks to the API through aiohttp only), so pair the chart with the integration release of the same version.
 
@@ -188,7 +260,7 @@ Every verb listed is one the integration requests, and `get` appears only where 
 ### Principle of Least Privilege
 
 1. **Start Minimal**: Begin with `mode: minimal` (`manifests/minimal/`) and move to `full` only when you need switches or the Watch API
-2. **Namespace Scoping**: For multi-tenant clusters see the namespace-scoped example below
+2. **Namespace Scoping**: For multi-tenant clusters limit write access with [`rbac.writeNamespaces`](#limiting-write-access-to-namespaces), or see the namespace-scoped example below
 3. **Regular Audits**: Review permissions periodically
 4. **Monitor Usage**: Track which permissions are actually used
 
@@ -196,7 +268,8 @@ Every verb listed is one the integration requests, and `get` appears only where 
 
 | Permission Set | Risk Level | Capabilities |
 |----------------|------------|--------------|
-| **full** | Medium | Complete monitoring + control + Watch API |
+| **full**, all namespaces | High | Complete monitoring + control + Watch API; can run a pod under any ServiceAccount in the cluster, which is equivalent to cluster-admin |
+| **full** with `rbac.writeNamespaces` set to namespace names | Medium | The same, limited to the listed namespaces, provided they enforce Pod Security (`baseline` or `restricted`); `patch` on `nodes` stays cluster-wide |
 | **minimal** | Low | Read-only sensors and binary sensors only |
 
 ### Token Security
@@ -267,6 +340,8 @@ curl -sS \
 
 ## Namespace-Scoped Example
 
+To limit only write access, use the chart value [`rbac.writeNamespaces`](#limiting-write-access-to-namespaces); it is the supported way. The hand-written variant below is for when reads should be scoped as well.
+
 If you want to restrict access to specific namespaces instead of cluster-wide, use a `Role` + `RoleBinding` per namespace and a minimal `ClusterRole` for cluster-scoped resources (nodes, namespaces):
 
 ```yaml
@@ -331,7 +406,7 @@ rules:
 
 ## Troubleshooting RBAC Issues
 
-> The fixes below say "Apply `manifests/full/`". With the Helm chart the equivalent is `helm upgrade ... --set mode=full`.
+> The fixes below say "Apply `manifests/full/`". With the Helm chart the equivalent is `helm upgrade ... --reset-then-reuse-values --set mode=full`.
 
 ### Common Permission Errors
 
@@ -348,13 +423,15 @@ kubectl auth can-i list pods --as=system:serviceaccount:homeassistant:homeassist
 
 ```bash
 # Verify scaling permissions
-kubectl auth can-i patch deployments/scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i patch deployments --subresource=scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration -n your-namespace
 
 # Verify node cordon/uncordon permissions (node schedulable switches)
 kubectl auth can-i patch nodes --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Fix: Apply manifests/full/ — the minimal set does not grant write permissions
 ```
+
+If the check passes in some namespaces and fails in others, `rbac.writeNamespaces` is limiting write access: add the namespace to the list (see [Limiting write access to namespaces](#limiting-write-access-to-namespaces)). (Use `deployments --subresource=scale`: `deployments/scale` checks a Deployment named "scale".)
 
 #### 3. "Real-time updates not working" / Watch API failing
 
@@ -396,10 +473,12 @@ kubectl auth can-i list cronjobs --as=system:serviceaccount:homeassistant:homeas
 
 ```bash
 # Verify job creation permissions (needed for CronJob triggering)
-kubectl auth can-i create jobs --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i create jobs --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration -n your-namespace
 
-# Fix: Apply manifests/full/ — the minimal set only grants get and list on jobs
+# Fix: Apply manifests/full/ — the minimal set only grants list on jobs
 ```
+
+If the check fails only in some namespaces, `rbac.writeNamespaces` is limiting write access: add the namespace to the list.
 
 #### 7. "Forbidden: User cannot delete pods"
 
@@ -407,10 +486,12 @@ Pod deletion requires **both** Home Assistant admin role and Kubernetes RBAC per
 
 ```bash
 # Verify pod deletion permissions
-kubectl auth can-i delete pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i delete pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration -n your-namespace
 
 # Fix: Apply manifests/full/ — the minimal set does not grant delete permissions
 ```
+
+If the check fails only in some namespaces, `rbac.writeNamespaces` is limiting write access: add the namespace to the list.
 
 #### 8. Pod log dialog: "pod logs request failed with status 403"
 
@@ -418,10 +499,12 @@ The log viewer needs `get` on `pods/log`. Unlike a missing watch rule, this rais
 
 ```bash
 # Verify pod log permissions
-kubectl auth can-i get pods/log --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i get pods --subresource=log --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration -n your-namespace
 
-# Fix: re-apply manifests/full/ (or helm upgrade) — the minimal set does not grant pods/log
+# Fix: re-apply manifests/full/ (or helm upgrade --reset-then-reuse-values) — the minimal set does not grant pods/log
 ```
+
+If the check fails only in some namespaces, `rbac.writeNamespaces` is limiting write access: logs are readable only in the listed namespaces.
 
 #### 9. `drain_node`: "eviction failed with status 403"
 
@@ -429,10 +512,12 @@ Draining needs `create` on `pods/eviction`, which was added to the full role tog
 
 ```bash
 # Verify eviction permissions
-kubectl auth can-i create pods/eviction --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i create pods --subresource=eviction --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration -n your-namespace
 
 # Fix: re-apply manifests/full/ (or helm upgrade --reset-then-reuse-values)
 ```
+
+If the check fails only in some namespaces, `rbac.writeNamespaces` is limiting write access: the pod's namespace is not in the list (see [Limiting write access to namespaces](#limiting-write-access-to-namespaces)).
 
 ### Diagnostic Commands
 
@@ -441,7 +526,7 @@ kubectl auth can-i create pods/eviction --as=system:serviceaccount:homeassistant
 kubectl auth can-i --list --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Test specific resource access in a namespace
-kubectl auth can-i get deployments --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration -n your-namespace
+kubectl auth can-i list deployments --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration -n your-namespace
 
 # View effective permissions
 kubectl describe clusterrolebinding homeassistant-kubernetes-integration

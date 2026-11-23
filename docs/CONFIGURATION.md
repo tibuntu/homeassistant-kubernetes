@@ -184,7 +184,7 @@ The button opens a read-only snapshot of the pod's logs: pick the container (mul
 - only Home Assistant **administrators** can fetch logs — the panel shows the button only to them, the WebSocket command rejects everyone else, and it refuses for every user while the option is off;
 - logs are fetched on demand and passed straight to the browser — they are never stored in the integration's data, never exposed as an entity or attribute, and not part of diagnostics.
 
-**RBAC:** needs `get` on `pods/log`, which `mode: full` / `manifests/full/` grants. The `minimal` set does not — add it via `rbac.extraRules` if you want logs there too, or remove the rule from your `full` ClusterRole if logs must never be readable. A missing rule shows up as an error in the log dialog, not as a repair issue.
+**RBAC:** needs `get` on `pods/log`, which `mode: full` / `manifests/full/` grants. The `minimal` set does not — add it via `rbac.extraRules` if you want logs there too, or remove the rule from your `full` ClusterRole if logs must never be readable. With `rbac.writeNamespaces` set to namespace names, logs are readable only in the listed namespaces. A missing rule shows up as an error in the log dialog, not as a repair issue.
 
 ### Data Collection Opt-Out
 

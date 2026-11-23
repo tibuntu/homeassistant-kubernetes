@@ -289,7 +289,7 @@ Drain cordons a node and evicts its pods through the Eviction API (also availabl
 }
 ```
 
-**Note**: Requires `create` on `pods/eviction` (included in `manifests/full/` — re-apply the RBAC if you installed it before this service existed) and lists pods across all namespaces, so it does not work with namespace-scoped roles.
+**Note**: Requires `create` on `pods/eviction` (included in `manifests/full/` — re-apply the RBAC if you installed it before this service existed) and lists pods across all namespaces, so it does not work with namespace-scoped roles. With `rbac.writeNamespaces` set to namespace names the chart grants `pods/eviction` only in the listed namespaces, so the drain evicts only there and fails on a node that runs other non-DaemonSet pods; see [Limiting write access to namespaces](RBAC.md#limiting-write-access-to-namespaces) for a rule that grants eviction cluster-wide again.
 
 **Example** — drain a node for maintenance, wait until nothing is blocked, then hand over to the reboot:
 
