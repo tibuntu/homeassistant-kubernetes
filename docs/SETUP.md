@@ -207,7 +207,7 @@ type: kubernetes.io/service-account-token
 - **No cluster-wide metrics**: Cannot see total nodes count or cluster health
 - **No cross-namespace monitoring**: Cannot monitor multiple namespaces simultaneously
 - **Limited visibility**: Reduced overall cluster insight
-- **Still need namespace permissions**: To list namespaces, you'll need at least cluster-level `get` and `list` on `namespaces`
+- **Still need namespace permissions**: To list namespaces, you'll need at least cluster-level `list` on `namespaces`
 
 ### Hybrid Approach: Namespace-Scoped with Minimal Cluster Permissions
 
@@ -240,8 +240,8 @@ Then combine with namespace-specific roles for actual workload control.
 
 ### Permission Scope
 
-- `full` mode follows least privilege for its feature set, not a read-only model: it grants `delete` on `pods` and `jobs` (pod/Job deletion from the panel and the `delete_job` service), `create` on `jobs`/`cronjobs` (CronJob triggering), and `patch` on workloads (`deployments`, `statefulsets`, `daemonsets`) and `nodes` (rollout restart, scaling, cordon/uncordon), `create` on `pods/eviction` (the `drain_node` service), plus `get` on `pods/log` (the opt-in panel log viewer — logs can contain secrets, so drop that rule if they must never be readable)
-- `minimal` mode is fully read-only: `get` and `list` only, no `watch`, `patch`, `create`, or `delete`
+- `full` mode follows least privilege for its feature set, not a read-only model: it grants `delete` on `pods` and `jobs` (pod/Job deletion from the panel and the `delete_job` service), `create` on `jobs` (CronJob triggering), and `patch` on workloads (`deployments`, `statefulsets`, `daemonsets`) and `nodes` (rollout restart, scaling, cordon/uncordon), `create` on `pods/eviction` (the `drain_node` service), plus `get` on `pods/log` (the opt-in panel log viewer — logs can contain secrets, so drop that rule if they must never be readable)
+- `minimal` mode is fully read-only: `list` only (plus `get` on `pods`), no `watch`, `patch`, `create`, or `delete`
 - Start with `minimal` if you only need sensors and binary sensors, and move to `full` only when you need switches, rollout restart, deletion, or the Watch API
 
 ### Network Security

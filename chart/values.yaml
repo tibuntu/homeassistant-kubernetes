@@ -30,5 +30,5 @@ rbac:
   #   extraRules:
   #     - apiGroups: [""]
   #       resources: ["events"]
-  #       verbs: ["get", "list", "watch"]
+  #       verbs: ["list", "watch"]
   extraRules: []

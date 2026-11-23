@@ -145,17 +145,16 @@ CronJob functionality requires specific Kubernetes RBAC permissions:
 
 **Required Permissions**:
 - `batch/cronjobs`: `get`, `list`, `watch`, `patch`
-- `batch/jobs`: `get`, `list`, `watch`, `create`
-- `batch/cronjobs/status`: `get`, `patch`, `update`
+- `batch/jobs`: `list`, `watch`, `create`
 
 **Example RBAC Rule**:
 ```yaml
 - apiGroups: ["batch"]
-  resources: ["cronjobs", "jobs"]
-  verbs: ["get", "list", "watch", "patch", "create"]
+  resources: ["cronjobs"]
+  verbs: ["get", "list", "watch", "patch"]
 - apiGroups: ["batch"]
-  resources: ["cronjobs/status"]
-  verbs: ["get", "patch", "update"]
+  resources: ["jobs"]
+  verbs: ["list", "watch", "create"]
 ```
 
 For complete RBAC setup instructions, see the [RBAC Reference Guide](RBAC.md).
@@ -313,7 +312,7 @@ If you were using the legacy CronJob services (`suspend_cronjob`, `resume_cronjo
 
 ### CronJob Not Appearing
 
-1. **Check Permissions**: Ensure the service account has `get` and `list` permissions for `cronjobs`
+1. **Check Permissions**: Ensure the service account has `list` permission for `cronjobs`
 2. **Verify Namespace**: Check if the CronJob is in the monitored namespace
 3. **Check Integration Logs**: Look for errors in the Home Assistant logs
 

@@ -86,13 +86,22 @@ The service account needs these permissions:
 ```yaml
 # Read permissions
 - apiGroups: [""]
-  resources: ["pods", "nodes", "namespaces", "services"]
+  resources: ["nodes", "services"]
+  verbs: ["list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["list"]
 
-# Deployment permissions (including scaling)
+# Deployment permissions (restart and scaling)
 - apiGroups: ["apps"]
-  resources: ["deployments", "deployments/scale"]
-  verbs: ["get", "list", "watch", "patch", "update"]
+  resources: ["deployments"]
+  verbs: ["list", "watch", "patch"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale"]
+  verbs: ["patch"]
 ```
 
 ## Missing Permissions Repair Issue
@@ -103,7 +112,7 @@ Home Assistant shows a repair issue titled **Missing permissions for `<resources
 
 ### Solution
 
-The ServiceAccount's ClusterRole lacks `get`, `list`, or `watch` on the named resource — typically after upgrading to a release that monitors a new resource type. Re-apply the bundled RBAC (`helm upgrade` with the chart, or `kubectl apply -f manifests/full/`), or add the rule to your custom manifest. For `hpas`, `httproutes` and `certificates` you can instead opt out under **Configure → Disable data collection for → HorizontalPodAutoscalers** / **HTTPRoutes** / **Certificates** if you don't want to grant the `autoscaling` / `gateway.networking.k8s.io` / `cert-manager.io` rule; that also silences the repair issue. Each affected watch retries once a minute, and the issue clears on its own once every watch delivers an event or stays open (after a list 403, on the next successful list); reload the integration (**Settings → Devices & Services → Kubernetes → ⋮ → Reload**) if you don't want to wait.
+The ServiceAccount's ClusterRole lacks `list` or `watch` on the named resource — typically after upgrading to a release that monitors a new resource type. Re-apply the bundled RBAC (`helm upgrade` with the chart, or `kubectl apply -f manifests/full/`), or add the rule to your custom manifest. For `hpas`, `httproutes` and `certificates` you can instead opt out under **Configure → Disable data collection for → HorizontalPodAutoscalers** / **HTTPRoutes** / **Certificates** if you don't want to grant the `autoscaling` / `gateway.networking.k8s.io` / `cert-manager.io` rule; that also silences the repair issue. Each affected watch retries once a minute, and the issue clears on its own once every watch delivers an event or stays open (after a list 403, on the next successful list); reload the integration (**Settings → Devices & Services → Kubernetes → ⋮ → Reload**) if you don't want to wait.
 
 If the issue appears right after restarting the API server (for example a k3s restart) although the RBAC is complete, it's transient: the authorizer denies requests until it has loaded its rules. It clears within a few minutes without any action — once the retried watch delivers its first event or bookmark. See the [RBAC Reference](RBAC.md) for the full permission matrix.
 
