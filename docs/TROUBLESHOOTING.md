@@ -132,7 +132,7 @@ The **Logs** dialog in the panel's Pods tab shows an error instead of logs.
 
 ### Solution
 
-- **Status 403** — the ServiceAccount lacks `get` on `pods/log`. Re-apply the bundled RBAC (`helm upgrade`, or `kubectl apply -f manifests/full/`); the `minimal` set does not grant it. This never raises a repair issue, so the dialog is the only place it shows up. See the [RBAC Reference](RBAC.md#8-pod-log-dialog-pod-logs-request-failed-with-status-403).
+- **Status 403** — the ServiceAccount lacks `get` on `pods/log`. Re-apply the bundled RBAC (`helm upgrade`, or `kubectl apply -f manifests/full/`); the `minimal` set does not grant it. With `rbac.writeNamespaces` set to namespace names, a 403 for a pod outside the listed namespaces is expected: logs are readable only in the listed namespaces. This never raises a repair issue, so the dialog is the only place it shows up. See the [RBAC Reference](RBAC.md#8-pod-log-dialog-pod-logs-request-failed-with-status-403).
 - **Status 400 with "Previous container"** — the container has not restarted yet, so there is no previous run to show. Untick the option.
 - **"Pod logs are disabled"** — turn on **Configure → Enable pod logs in the panel (experimental)**.
 - **No Logs button at all** — the option is off for that cluster, or you are not a Home Assistant administrator (the panel hides it, and the server refuses non-admins anyway).

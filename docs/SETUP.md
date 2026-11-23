@@ -82,7 +82,7 @@ helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-r
   --namespace homeassistant --create-namespace
 ```
 
-Add `--set mode=minimal` for read-only sensors only. If you previously applied the plain manifests, add `--take-ownership` so Helm adopts the existing objects instead of failing on ownership metadata — see [Already applied the plain manifests?](RBAC.md#already-applied-the-plain-manifests) Later, after updating the integration:
+Add `--set mode=minimal` for read-only sensors only. To let the integration change things only in some namespaces, add `--set 'rbac.writeNamespaces={ns1,ns2}'` — see [Limiting write access to namespaces](RBAC.md#limiting-write-access-to-namespaces). If you previously applied the plain manifests, add `--take-ownership` so Helm adopts the existing objects instead of failing on ownership metadata — see [Already applied the plain manifests?](RBAC.md#already-applied-the-plain-manifests) Later, after updating the integration:
 
 ```bash
 helm upgrade ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
@@ -155,7 +155,7 @@ For the complete matrix — every API group, resource, and verb, with the featur
 
 ## Namespace-Specific Setup
 
-If you prefer to limit permissions to specific namespaces for enhanced security:
+If only write access should be limited, use the chart value `rbac.writeNamespaces` instead — see [Limiting write access to namespaces](RBAC.md#limiting-write-access-to-namespaces). If you prefer to limit permissions to specific namespaces for enhanced security:
 
 ### 1. Create Service Account in Target Namespace
 
@@ -211,24 +211,14 @@ type: kubernetes.io/service-account-token
 
 ### Hybrid Approach: Namespace-Scoped with Minimal Cluster Permissions
 
-For a balanced approach, use namespace-scoped roles with minimal cluster permissions:
+For a balanced approach, keep the cluster-wide read rules and limit control to the namespaces you list with `rbac.writeNamespaces`:
 
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: homeassistant-kubernetes-integration-minimal
-rules:
-# Minimal cluster-wide permissions for basic functionality
-- apiGroups: [""]
-  resources: ["nodes", "namespaces"]
-  verbs: ["get", "list"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs"]
-  verbs: ["get", "list"]
+```bash
+helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
+  --namespace homeassistant --set 'rbac.writeNamespaces={media,home}'
 ```
 
-Then combine with namespace-specific roles for actual workload control.
+See [Limiting write access to namespaces](RBAC.md#limiting-write-access-to-namespaces) for what stays cluster-wide and what follows the list.
 
 ## Security Considerations
 
@@ -240,7 +230,8 @@ Then combine with namespace-specific roles for actual workload control.
 
 ### Permission Scope
 
-- `full` mode follows least privilege for its feature set, not a read-only model: it grants `delete` on `pods` and `jobs` (pod/Job deletion from the panel and the `delete_job` service), `create` on `jobs` (CronJob triggering), and `patch` on workloads (`deployments`, `statefulsets`, `daemonsets`) and `nodes` (rollout restart, scaling, cordon/uncordon), `create` on `pods/eviction` (the `drain_node` service), plus `get` on `pods/log` (the opt-in panel log viewer — logs can contain secrets, so drop that rule if they must never be readable)
+- `full` mode follows least privilege for its feature set, not a read-only model: it grants `delete` on `pods` and `jobs` (pod/Job deletion from the panel and the `delete_job` service), `create` on `jobs` (CronJob triggering), and `patch` on workloads (`deployments`, `statefulsets`, `daemonsets`; rollout restart), on the `deployments/scale` and `statefulsets/scale` subresources (scaling), on `cronjobs` (suspend/resume) and on `nodes` (cordon/uncordon), `create` on `pods/eviction` (the `drain_node` service), plus `get` on `pods/log` (the opt-in panel log viewer — logs can contain secrets, so drop that rule if they must never be readable)
+- With `rbac.writeNamespaces` set to namespace names, everything in the previous bullet except `patch` on `nodes` is granted only in those namespaces; outside them the API server answers 403. See [Limiting write access to namespaces](RBAC.md#limiting-write-access-to-namespaces)
 - `minimal` mode is fully read-only: `list` only (plus `get` on `pods`), no `watch`, `patch`, `create`, or `delete`
 - Start with `minimal` if you only need sensors and binary sensors, and move to `full` only when you need switches, rollout restart, deletion, or the Watch API
 
@@ -287,16 +278,16 @@ Test your setup with these commands:
 
 ```bash
 # Test basic connectivity
-kubectl auth can-i get nodes --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i list nodes --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Test deployment access
-kubectl auth can-i get deployments --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i list deployments --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Test scaling permissions
-kubectl auth can-i patch deployments/scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i patch deployments --subresource=scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Test statefulset scaling
-kubectl auth can-i patch statefulsets/scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
+kubectl auth can-i patch statefulsets --subresource=scale --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
 
 # Test watch permissions (important for real-time updates)
 kubectl auth can-i watch pods --as=system:serviceaccount:homeassistant:homeassistant-kubernetes-integration
