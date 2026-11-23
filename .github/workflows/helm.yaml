@@ -32,7 +32,33 @@ jobs:
     name: Lint chart & verify manifests
     runs-on: ubuntu-latest
     steps:
+      # Full history and tags: the version-bump check below needs the last
+      # chart-v* tag.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # The chart is released by merging: release.yaml publishes the version in
+      # chart/Chart.yaml once and tags it chart-v<version>. A change under
+      # chart/ that keeps an already published version would never ship.
+      - name: Require a version bump when the chart changes
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" != "false" ]; then
+            echo "::error::shallow clone: the chart-v* tags are not available"
+            exit 1
+          fi
+          if [ -z "$(git tag --list 'chart-v*')" ]; then
+            echo "No chart-v* tag yet: nothing has been published under this scheme."
+            exit 0
+          fi
+          last=$(git describe --tags --match 'chart-v*' --abbrev=0)
+          version=$(grep -m1 '^version:' chart/Chart.yaml | awk '{print $2}')
+          if [ "chart-v$version" = "$last" ] &&
+            ! git diff --quiet "$last" HEAD -- chart ':(exclude)chart/CHANGELOG.md'; then
+            echo "::error::chart/ changed since $last but chart/Chart.yaml still says $version. Bump the version and add a chart/CHANGELOG.md entry."
+            git diff --stat "$last" HEAD -- chart
+            exit 1
+          fi
 
       # Pinned so the manifest drift check compares like with like — the
       # committed manifests/ were rendered with this Helm version.

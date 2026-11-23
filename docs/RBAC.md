@@ -21,7 +21,7 @@ helm install ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-r
   --set mode=minimal
 ```
 
-Pin a version with `--version <chart version>`; the chart version tracks the integration version. To upgrade after updating the integration:
+Pin a version with `--version <chart version>`. The chart has its own version, independent of the integration's: its `appVersion` names the oldest integration release it supports, and [`chart/CHANGELOG.md`](https://github.com/tibuntu/homeassistant-kubernetes/blob/main/chart/CHANGELOG.md) lists what changed in each chart version. When an integration release needs a newer chart, its release notes say so. To upgrade:
 
 ```bash
 helm upgrade ha-k8s-rbac oci://ghcr.io/tibuntu/charts/homeassistant-kubernetes-rbac \
@@ -183,7 +183,7 @@ Upgrading with `--reuse-values` from a chart older than this value fails with `m
 
 When `rbac.writeNamespaces` is set to namespace names, the write verbs in the `full` column for namespaced resources apply only in those namespaces (see [Limiting write access to namespaces](#limiting-write-access-to-namespaces)).
 
-Every verb listed is one the integration requests, and `get` appears only where a single object is fetched. The roles match integration 1.18.0 and newer (the first release that talks to the API through aiohttp only), so pair the chart with the integration release of the same version.
+Every verb listed is one the integration requests, and `get` appears only where a single object is fetched. The roles match integration 1.18.0 and newer (the first release that talks to the API through aiohttp only); the chart's `appVersion` names that minimum.
 
 ### Core API Group (`""`)
 

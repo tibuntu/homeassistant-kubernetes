@@ -3,6 +3,7 @@
     ".": {
       "release-type": "python",
       "include-component-in-tag": false,
+      "exclude-paths": ["chart", "manifests", "docs", ".github"],
       "changelog-path": "CHANGELOG.md",
       "changelog-sections": [
         {
@@ -61,10 +62,6 @@
           "type": "json",
           "path": "frontend/package-lock.json",
           "jsonpath": "$.packages[''].version"
-        },
-        {
-          "type": "generic",
-          "path": "chart/Chart.yaml"
         }
       ]
     }
