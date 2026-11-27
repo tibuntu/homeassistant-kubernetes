@@ -1687,44 +1687,8 @@ class TestDiscoverAndAddNewEntities:
 class TestCronJobOperations:
     """Tests for CronJob suspend/resume operations, state updates, and coordinator updates."""
 
-    # -- Fixtures local to this class --
-    # `mock_config_entry` is identical to conftest's shape, so this class
-    # inherits it instead of redefining it.
-
-    @pytest.fixture
-    def mock_coordinator(self):
-        """Mock coordinator with cronjob data."""
-        coordinator = MagicMock()
-        coordinator.last_update_success = True
-        coordinator.data = {
-            "cronjobs": {
-                "default_test-cronjob": {
-                    "name": "test-cronjob",
-                    "namespace": "default",
-                    "schedule": "0 2 * * *",
-                    "suspend": False,
-                    "active_jobs_count": 0,
-                    "last_schedule_time": None,
-                    "next_schedule_time": None,
-                }
-            }
-        }
-        return coordinator
-
-    @pytest.fixture
-    def mock_client(self):
-        """Mock Kubernetes client."""
-        client = MagicMock()
-        client.suspend_cronjob = AsyncMock(return_value={"success": True})
-        client.resume_cronjob = AsyncMock(return_value={"success": True})
-        return client
-
-    @pytest.fixture
-    def cronjob_switch(self, mock_config_entry, mock_coordinator):
-        """Create a CronJob switch instance."""
-        return KubernetesCronJobSwitch(
-            mock_coordinator, mock_config_entry, "test-cronjob", "default"
-        )
+    # Uses the module-level mock_coordinator / mock_client / cronjob_switch
+    # fixtures and conftest's mock_config_entry.
 
     def _setup_hass(self, switch, mock_config_entry, mock_client):
         """Wire up the entry's runtime data so that client lookup works."""

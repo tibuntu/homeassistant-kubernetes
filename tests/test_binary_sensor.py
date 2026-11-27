@@ -25,12 +25,7 @@ from custom_components.kubernetes.coordinator import KubernetesEntryData
 
 @pytest.fixture
 def mock_client():
-    """Create a minimal mock client for binary sensor tests.
-
-    Shadows the conftest mock_client intentionally — binary sensor tests only
-    need ``is_cluster_healthy``, so a minimal fixture avoids coupling to the
-    broader conftest mock that carries deployment/statefulset helpers.
-    """
+    """Mock client: binary sensor tests only need ``is_cluster_healthy``."""
     client = MagicMock()
     client.is_cluster_healthy = AsyncMock(return_value=True)
     return client
@@ -40,9 +35,8 @@ def mock_client():
 def mock_coordinator():
     """Create a minimal mock coordinator for binary sensor tests.
 
-    Shadows the conftest mock_coordinator intentionally — binary sensor tests
-    only need node data and basic coordinator attributes, not the full
-    deployment/statefulset/daemonset data provided by the conftest version.
+    Shadows the conftest mock_coordinator: these tests start from an empty
+    ``nodes`` bucket rather than conftest's two canned nodes.
     """
     coordinator = MagicMock()
     coordinator.data = {"nodes": {}}

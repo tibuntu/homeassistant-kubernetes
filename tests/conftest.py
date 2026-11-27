@@ -115,8 +115,6 @@ def mock_hass():
     hass.async_add_executor_job = AsyncMock()
     hass.async_create_task = AsyncMock()
     hass.async_run_job = AsyncMock()
-    hass.config_entries.async_forward_entry_setups = AsyncMock()
-    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     hass.state = MagicMock()
     hass.http = MagicMock()
     hass.http.async_register_static_paths = AsyncMock()
@@ -214,26 +212,6 @@ def make_coordinator():
         return coordinator
 
     return _make
-
-
-@pytest.fixture
-def mock_client():
-    """Mock Kubernetes client for sensor tests."""
-    client = MagicMock()
-    client.get_pods_count = AsyncMock(return_value=5)
-    client.get_nodes_count = AsyncMock(return_value=3)
-    client.get_deployments_count = AsyncMock(return_value=2)
-    client.get_statefulsets_count = AsyncMock(return_value=1)
-    client.get_daemonsets_count = AsyncMock(return_value=1)
-    client.get_ingresses = AsyncMock(return_value=[])
-    client.get_ingresses_count = AsyncMock(return_value=0)
-    client.get_services = AsyncMock(return_value=[])
-    client.get_hpas = AsyncMock(return_value=[])
-    client.get_httproutes = AsyncMock(return_value=[])
-    client.get_certificates = AsyncMock(return_value=[])
-    client.get_services_count = AsyncMock(return_value=0)
-    client.is_cluster_healthy = AsyncMock(return_value=True)
-    return client
 
 
 @pytest.fixture
