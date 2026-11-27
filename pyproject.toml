@@ -85,8 +85,7 @@ select = [
 ]
 ignore = [
     "E501",    # line too long, handled by formatter
-    "B008",    # do not perform function calls in argument defaults
-    "SIM117",  # 27 hits across 6 files; merging nested `with` blocks (mocks/patches) is not a mechanical local fix
+    "SIM117",  # 9 hits in 3 test files; merging nested `with` blocks (mocks/patches) is not a mechanical local fix
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -161,25 +160,6 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["custom_components/kubernetes"]
-omit = [
-    "tests/*",
-    "*/site-packages/*",
-    "*/__pycache__/*",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\(Protocol\\):",
-    "@(abc\\.)?abstractmethod",
-]
 
 [tool.bandit]
 exclude_dirs = ["tests", "build", "dist"]
