@@ -36,6 +36,7 @@ from .const import (
     DEFAULT_WATCH_TIMEOUT_SECONDS,
     IN_CLUSTER_TOKEN_PATH,
     POD_LOGS_LIMIT_BYTES,
+    WATCH_READ_BUFSIZE,
     WORKLOAD_TYPE_JOB,
 )
 from .metrics_parser import parse_cpu_quantity, parse_memory_quantity
@@ -2956,6 +2957,9 @@ class KubernetesClient:
             params=params,
             headers=headers,
             ssl=await self._get_ssl_param(),
+            # One event is one line; without this a large object ends the
+            # stream with LineTooLong on every change of that object.
+            read_bufsize=WATCH_READ_BUFSIZE,
             timeout=aiohttp.ClientTimeout(
                 total=None,
                 connect=10,

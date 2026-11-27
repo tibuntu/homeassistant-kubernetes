@@ -62,6 +62,11 @@ WATCH_MAX_RECONNECT_DELAY = 60  # cap on the jittered backoff (seconds)
 WATCH_RECONNECT_JITTER = 1.0  # max random jitter added to each backoff (seconds)
 WATCH_MAX_FAILURE_STREAK = 5  # consecutive failures before raising a repair issue
 WATCH_EARLY_CLOSE_SECONDS = 5  # empty stream closing faster than this = failure
+# Read buffer of a watch stream. aiohttp refuses a line longer than twice this
+# (LineTooLong), and a watch event is one line holding a whole object, which
+# may reach about 1.5 MiB. The default (64-256 KiB by aiohttp version) is too
+# small for that.
+WATCH_READ_BUFSIZE = 2**21
 
 # Job/CronJob pods are ephemeral by design: every scheduled run creates a new
 # pod name, so each run leaves a permanent entry in Home Assistant's entity
