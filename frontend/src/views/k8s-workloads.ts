@@ -10,6 +10,7 @@ import {
   formatMemory,
   errorMessage,
   isAdmin,
+  toggleInSet,
 } from "../utils/format";
 
 /** Shape shared by Deployments and StatefulSets; they differ only in which
@@ -85,7 +86,7 @@ interface WorkloadsResponse {
   clusters: ClusterWorkloads[];
 }
 
-export type WorkloadCategory =
+type WorkloadCategory =
   "all" | "deployments" | "statefulsets" | "daemonsets" | "cronjobs" | "jobs";
 type WorkloadStatus = "healthy" | "degraded" | "stopped";
 type StatusFilter = "all" | WorkloadStatus;
@@ -228,13 +229,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   }
 
   private _toggleCategory(category: string): void {
-    const updated = new Set(this._collapsedCategories);
-    if (updated.has(category)) {
-      updated.delete(category);
-    } else {
-      updated.add(category);
-    }
-    this._collapsedCategories = updated;
+    this._collapsedCategories = toggleInSet(this._collapsedCategories, category);
   }
 
   private _handleCategoryKeydown(e: KeyboardEvent, category: string): void {
@@ -394,13 +389,6 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
         color: var(--secondary-text-color);
       }
 
-      .workload-status {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-shrink: 0;
-      }
-
       .replica-info {
         font-size: 13px;
         color: var(--secondary-text-color);
@@ -514,7 +502,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           gap: 8px;
         }
 
-        .replica-info,
+        /* .scalable stays: it is the only way to open the scale dialog. */
+        .replica-info:not(.scalable),
         .schedule-info {
           display: none;
         }

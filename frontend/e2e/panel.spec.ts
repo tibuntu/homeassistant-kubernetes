@@ -311,6 +311,25 @@ test("error card retry refetches after a failed load", async ({ page }) => {
   await expect(page.locator('.count-card[title="Show Pods"]')).toBeVisible();
 });
 
+test("a failed refresh keeps the loaded view instead of the error card", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await expect(page.locator('.count-card[title="Show Pods"]')).toBeVisible();
+  const before = await page.evaluate(() => window.__k8s.calls.length);
+
+  await page.evaluate(() => {
+    window.__k8s.fail.add("kubernetes/cluster/overview");
+    window.__k8s.push();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__k8s.calls.length))
+    .toBe(before + 1);
+
+  await expect(page.locator(".error-card")).toHaveCount(0);
+  await expect(page.locator('.count-card[title="Show Pods"]')).toBeVisible();
+});
+
 test("coordinator push triggers one debounced refetch", async ({ page }) => {
   await page.goto(HARNESS);
   await expect(page.locator(".count-card").first()).toBeVisible();
@@ -555,6 +574,10 @@ test("pod detail Logs button opens the log dialog on the previous container of a
   await expect(page.locator(".detail-dialog")).toHaveCount(0);
   await expect(page.locator(".logs-output")).toBeVisible();
   await expect(page.locator(".logs-previous input")).toBeChecked();
+  // The select must show the container the logs were fetched for.
+  await expect(page.locator(".logs-dialog select.filter-select")).toHaveValue(
+    "metrics-exporter",
+  );
   const logCalls = await page.evaluate(() =>
     window.__k8s.calls.filter((c) => c.type === "kubernetes/pods/logs"),
   );

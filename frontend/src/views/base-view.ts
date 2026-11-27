@@ -174,7 +174,8 @@ export abstract class K8sDataView<T> extends LitElement {
 
   /** Guarded load: one request at a time, spinner only before the first data. */
   protected async _loadData(): Promise<void> {
-    if (this._loadingInFlight) return;
+    // A reload scheduled after an awaited action can fire once the tab is gone.
+    if (!this.isConnected || this._loadingInFlight) return;
     this._loadingInFlight = true;
     if (!this.hasData()) {
       this._loading = true;
@@ -255,7 +256,10 @@ export abstract class K8sDataView<T> extends LitElement {
       `;
     }
 
-    if (this._error) {
+    // A failed refresh keeps the loaded view (and any open dialog): the error
+    // card would otherwise replace both until the next poll succeeds.
+    // ponytail: no "data is stale" hint; add one if silent staleness confuses.
+    if (this._error && !this.hasData()) {
       return html`
         <ha-card>
           <div class="error-card">

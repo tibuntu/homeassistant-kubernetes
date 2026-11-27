@@ -10,7 +10,7 @@ import "./views/k8s-workloads";
 import "./views/k8s-settings";
 import { navigate } from "./utils/nav";
 
-export type Tab = "overview" | "nodes" | "workloads" | "pods" | "network" | "settings";
+type Tab = "overview" | "nodes" | "workloads" | "pods" | "network" | "settings";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: "mdi:view-dashboard" },

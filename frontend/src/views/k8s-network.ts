@@ -164,7 +164,7 @@ const NETWORK_TYPES = [
 ] as const;
 // "Services" shows every service type and hides the ingress/HTTPRoute/
 // Certificate sections.
-export type NetworkTypeFilter = "all" | "Services" | (typeof NETWORK_TYPES)[number];
+type NetworkTypeFilter = "all" | "Services" | (typeof NETWORK_TYPES)[number];
 
 @customElement("k8s-network")
 export class K8sNetwork extends K8sDataView<IngressesResponse> {
@@ -465,7 +465,10 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
       </div>`;
     }
 
+    // Full-page error only before any data arrived; a failed refresh keeps
+    // the loaded sections (each shows its own inline error).
     if (
+      !this.hasData() &&
       this._ingressError &&
       this._servicesError &&
       this._httprouteError &&
