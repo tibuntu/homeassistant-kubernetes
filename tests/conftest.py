@@ -21,6 +21,17 @@ except ImportError:  # pragma: no cover - k8s_compat job installs no Home Assist
     DOMAIN = "kubernetes"
 
 
+@pytest.fixture
+def custom_integrations_enabled() -> bool:
+    """Keep pytest-homeassistant's `hass` from scanning `custom_components`.
+
+    The plugin enables custom integrations by default, and HA's scan of the
+    `custom_components` package path crashes on the editable install's path
+    hook in CI. `test_reload.py` seeds the integration into the loader itself.
+    """
+    return False
+
+
 @pytest.fixture(autouse=True)
 def fail_on_ha_deprecations(caplog):
     """Fail tests that trigger Home Assistant deprecation warnings."""
