@@ -31,8 +31,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    # Testing (pytest-homeassistant-custom-component pins homeassistant, pytest, pytest-asyncio, pytest-cov)
-    "pytest-homeassistant-custom-component==0.13.375",
+    # Testing (pytest-homeassistant pins homeassistant, pytest and pytest-asyncio,
+    # but not pytest-cov)
+    "pytest-homeassistant==2026.11.3",
+    "pytest-cov==7.1.0",
 
     # Linting and formatting
     "ruff==0.17.5",
@@ -52,7 +54,7 @@ dev = [
 
 # uv.lock covers the dev environment only, whose homeassistant pin needs a newer
 # Python than requires-python (kept low for users on older Home Assistant).
-# Raise this floor when a pytest-homeassistant-custom-component bump raises
+# Raise this floor when a pytest-homeassistant bump raises
 # Home Assistant's minimum Python, or `uv lock` cannot resolve.
 [tool.uv]
 environments = ["python_full_version >= '3.14.2'"]
