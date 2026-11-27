@@ -80,7 +80,6 @@ def mock_client():
         return_value={"success": True, "job_name": "test-job-123"}
     )
     client.suspend_cronjob = AsyncMock(return_value={"success": True})
-    client.resume_cronjob = AsyncMock(return_value={"success": True})
     client.rollout_restart_deployment = AsyncMock(return_value=True)
     client.rollout_restart_statefulset = AsyncMock(return_value=True)
     client.rollout_restart_daemonset = AsyncMock(return_value=True)
@@ -1914,6 +1913,31 @@ class TestDeleteJobService:
         )
 
         mock_client.delete_job.assert_called_once_with("unknown-job", "default")
+
+    @pytest.mark.parametrize(
+        ("stored", "expected"),
+        [(["apps", "db"], "apps"), ([], "default")],
+    )
+    async def test_namespace_fallback_with_namespace_list(
+        self, hass: HomeAssistant, mock_client, add_loaded_entry, stored, expected
+    ):
+        """The config flow stores a list; the fallback is its first namespace."""
+        coordinator = MagicMock()
+        coordinator.client = mock_client
+        coordinator.data = {"jobs": {}}
+        add_loaded_entry(
+            "entry-list", config={"namespace": stored}, coordinator=coordinator
+        )
+
+        await async_setup_services(hass)
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_DELETE_JOB,
+            {ATTR_JOB_NAME: "unknown-job"},
+            blocking=True,
+        )
+
+        mock_client.delete_job.assert_called_once_with("unknown-job", expected)
 
     async def test_entry_id_selects_correct_entry(
         self, hass: HomeAssistant, mock_client, add_loaded_entry
