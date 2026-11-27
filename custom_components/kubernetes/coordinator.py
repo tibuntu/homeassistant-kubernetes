@@ -475,26 +475,24 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 # that _parse_pods_data drops, and the watch path derives the
                 # count from len(data["pods"]) — mixing the two sources makes
                 # the count sensor oscillate between polls and watch events.
+                # Nodes are always fetched, so their count needs no second
+                # request for the same list.
                 pods_count = len(pods)
-                if "counts" not in disabled:
-                    nodes_count = await self.client.get_nodes_count()
-                    if "pods" in disabled:
+                nodes_count = len(nodes)
+                if "pods" in disabled:
+                    if "counts" not in disabled:
                         pods_count = await self.client.get_pods_count()
-                else:
-                    nodes_count = len(nodes)
-                    if "pods" in disabled:
+                    else:
                         # get_pods/get_pods_count carry the client's connection
                         # probe — the single source of the reauth signal. Neither
                         # ran this cycle, so probe explicitly to keep a
                         # persistent 401 triggering reauthentication.
                         await self.client.is_cluster_healthy()
 
-                # The client's connection probe (run by the pod calls or the
-                # explicit call above) confirmed a 401, so the stored token is
-                # no longer valid. Bail out before the cleanup below: every
-                # fetch returned empty, and continuing would prune the user's
-                # entities and namespace devices as if the cluster had been
-                # emptied.
+                # Only the explicit is_cluster_healthy() above gets here with a
+                # confirmed 401 (it returns bool; the pod calls raise instead).
+                # The stored token is no longer valid, so bail out before the
+                # orphan cleanup below runs on this cycle's data.
                 # Compared with `is True` because coordinator tests pass a
                 # MagicMock client, whose attributes are always truthy.
                 if self.client.auth_failed is True:
@@ -565,8 +563,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 }
 
                 # Count sensors normally derive from len(bucket); for fully-off
-                # resources the bucket is empty, so fetch the cheap count
-                # endpoints instead while counts stay enabled. The sensors
+                # resources the bucket is empty, so ask the client's count
+                # methods instead while counts stay enabled. The sensors
                 # prefer these keys when present.
                 if "counts" not in disabled:
                     if "daemonsets" in disabled:
