@@ -321,8 +321,9 @@ async def test_async_unload_entry_success(
         assert result is True
         mock_coordinator.async_stop_watch_tasks.assert_awaited_once()
         mock_coordinator.async_clear_repair_issues.assert_called_once()
-        # Domain data should be fully cleaned up when last entry is removed
-        assert DOMAIN not in hass.data
+        # The panel flags outlive the last entry: an entry that is still
+        # setting up writes to the same dict.
+        assert hass.data[DOMAIN] == {"panel_registered": False}
 
 
 async def test_async_unload_entry_removes_panel(

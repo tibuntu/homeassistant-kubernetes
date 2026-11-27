@@ -350,11 +350,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) 
     coordinator.async_clear_repair_issues()
 
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        # Clean up when the last config entry is removed. Services stay
-        # registered for the lifetime of HA (Bronze "action-setup").
-        remaining = _loaded_entries_except(hass, entry.entry_id)
-        await _async_sync_panel(hass, remaining)
-        if not remaining:
-            hass.data.pop(DOMAIN, None)
+        # Services stay registered for the lifetime of HA (Bronze
+        # "action-setup"). hass.data[DOMAIN] stays as well: another entry may
+        # be mid-setup (not "loaded" yet) and is about to write its panel
+        # flags there; removing the dict under it fails that setup.
+        await _async_sync_panel(hass, _loaded_entries_except(hass, entry.entry_id))
 
     return unload_ok
