@@ -11,8 +11,6 @@ on:
       - "scripts/render-manifests.sh"
       - ".github/workflows/helm.yaml"
   pull_request:
-    branches-ignore:
-      - release-please--branches--main
     paths:
       - "chart/**"
       - "manifests/**"

@@ -6,8 +6,6 @@ on:
     branches:
       - main
   pull_request:
-    branches-ignore:
-      - release-please--branches--main
   workflow_dispatch:
 
 permissions:
@@ -96,10 +94,6 @@ jobs:
         if: steps.changes.outputs.frontend == 'true'
         run: npm run build
         working-directory: frontend
-
-      - name: Verify bundle exists
-        if: steps.changes.outputs.frontend == 'true'
-        run: test -f custom_components/kubernetes/frontend/kubernetes-panel.js
 
       - name: Verify committed bundle is up to date
         if: steps.changes.outputs.frontend == 'true'

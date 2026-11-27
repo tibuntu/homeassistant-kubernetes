@@ -3,11 +3,11 @@ name: Kubernetes Compatibility
 
 on:
   pull_request:
-    branches-ignore:
-      - release-please--branches--main
     paths:
       - "custom_components/kubernetes/**"
       - "tests/k8s_compat/**"
+      # pytest loads it for the compat suite, which runs without Home Assistant
+      - "tests/conftest.py"
       - "chart/**"
       - "pyproject.toml"
       - ".github/workflows/k8s-compat.yaml"
@@ -128,9 +128,6 @@ jobs:
         run: pip install -e . pytest pytest-asyncio
 
       - name: Run compatibility tests
-        env:
-          K8S_TOKEN: ${{ env.K8S_TOKEN }}
-          K8S_SERVER: ${{ env.K8S_SERVER }}
         run: pytest tests/k8s_compat/ -m k8s_compat -v -o "addopts="
 
       # The suite above proved the trimmed full role. Now prove the allowlist
