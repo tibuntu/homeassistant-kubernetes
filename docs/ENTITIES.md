@@ -39,7 +39,7 @@ The integration creates a separate sensor for each Kubernetes node in the cluste
 
 | Sensor | Description | Example Value | Unit |
 |--------|-------------|---------------|------|
-| **Node [node-name]** | Individual node status and information | `Ready` / `NotReady` / `Unknown` | - |
+| **[node-name]** | Individual node status and information | `Ready` / `NotReady` / `Unknown` | - |
 | **[node-name] CPU Usage** | Current CPU usage from metrics-server | `850` | m |
 | **[node-name] Memory Usage** | Current memory usage from metrics-server | `4096` | MiB |
 | **[node-name] CPU Usage Percent** | CPU usage as a percentage of the node's CPU capacity | `21.3` | % |
@@ -84,7 +84,7 @@ The integration creates a readiness status sensor for each deployment and statef
 | **[workload-name]** | Readiness status of the workload | `Ready` / `Rollout Stalled` / `Degraded` / `Not Ready` / `Scaled Down` / `Unknown` |
 
 Status values:
-- `Rollout Stalled` — Deployments only: Kubernetes marked the rollout `Progressing=False` with reason `ProgressDeadlineExceeded` (no progress within `progressDeadlineSeconds`, 600 s by default). Takes priority over the readiness states below, because the old pods usually stay ready while the new ones fail. StatefulSets do not report this condition; a broken StatefulSet update already shows as `Degraded`.
+- `Rollout Stalled` — Deployments only: Kubernetes marked the rollout `Progressing=False` with reason `ProgressDeadlineExceeded` (no progress within `progressDeadlineSeconds`, 600 s by default). Takes priority over `Ready`, `Degraded` and `Not Ready` (a Deployment scaled to 0 still reads `Scaled Down`), because the old pods usually stay ready while the new ones fail. StatefulSets do not report this condition; a broken StatefulSet update already shows as `Degraded`.
 - `Ready` — all desired replicas are ready (`ready_replicas >= replicas > 0`). The ready count can briefly exceed the desired count during a surge rollout or right after a scale-down; that still counts as `Ready`
 - `Degraded` — some but not all replicas are ready (`0 < ready_replicas < replicas`)
 - `Not Ready` — no replicas are ready (`ready_replicas == 0` and `replicas > 0`)
@@ -112,7 +112,7 @@ These sensors expose numeric values with `SensorStateClass.MEASUREMENT`, making 
 # Scale up a deployment when CPU usage exceeds 800 millicores
 trigger:
   - platform: numeric_state
-    entity_id: sensor.my_app_cpu_usage
+    entity_id: sensor.production_default_my_app_cpu_usage
     above: 800
 action:
   - service: kubernetes.scale_workload
@@ -132,7 +132,7 @@ The integration creates a separate sensor for each Kubernetes pod in the monitor
 
 | Sensor | Description | Example Value | Unit |
 |--------|-------------|---------------|------|
-| **Pod [pod-name]** | Individual pod phase and information | `Running` / `Pending` / `Failed` / `Succeeded` / `Unknown` | - |
+| **[pod-name]** | Individual pod phase and information | `Running` / `Pending` / `Failed` / `Succeeded` / `Unknown` | - |
 
 #### Node Sensor Attributes
 
@@ -170,14 +170,14 @@ Each pod sensor provides comprehensive information about the pod:
 | **creation_timestamp** | When the pod was created | `2023-01-01T00:00:00Z` |
 | **owner_kind** | Type of resource that owns this pod | `ReplicaSet` |
 | **owner_name** | Name of the resource that owns this pod | `my-app-7d4b8c9f6b` |
-| **container_waiting_reason** | Reason the first container found in a waiting state is waiting (present only when waiting) | `CrashLoopBackOff` / `ImagePullBackOff` / `ContainerCreating` |
-| **container_terminated_reason** | Reason the first container found terminated in the current run (present only when terminated) | `OOMKilled` / `Error` |
+| **container_waiting_reason** | Reason the first container found in a waiting state is waiting (`null` unless a container is waiting) | `CrashLoopBackOff` / `ImagePullBackOff` / `ContainerCreating` |
+| **container_terminated_reason** | Reason the first container found terminated in the current run (`null` unless a container is terminated) | `OOMKilled` / `Error` |
 | **container_terminated_exit_code** | Exit code of the current container termination | `137` |
 | **last_terminated_reason** | Reason the first container found terminated in its **previous** run — catches an OOMKilled that has already restarted | `OOMKilled` |
 | **last_terminated_exit_code** | Exit code of the previous container termination | `137` |
-| **pending_reason** | Reason the pod is stuck in Pending (present only when Pending) | `Unschedulable` |
+| **pending_reason** | Reason the pod is stuck in Pending (`null` otherwise) | `Unschedulable` |
 | **problem** | `true` when the pod is currently in a broken state (non-benign waiting reason or non-zero exit code in any container, including init containers; phase Failed, or Unschedulable Pending); `false` otherwise — recovered OOMKills and transient `ContainerCreating` do **not** set this | `true` / `false` |
-| **problem_reason** | Human-readable explanation of why `problem` is `true`; absent when `problem` is `false` | `CrashLoopBackOff` / `OOMKilled` / `Unschedulable` / `Init:CrashLoopBackOff` (init containers are prefixed with `Init:`) |
+| **problem_reason** | Human-readable explanation of why `problem` is `true`; `null` when `problem` is `false` | `CrashLoopBackOff` / `OOMKilled` / `Unschedulable` / `Init:CrashLoopBackOff` (init containers are prefixed with `Init:`) |
 
 > **Note on `problem`/`problem_reason`**: These derived attributes are designed for automations and alerts. A pod that OOMKilled but has since restarted successfully will have `last_terminated_reason: OOMKilled` yet `problem: false` — the flag only fires when the pod is *currently* broken, not for historical events.
 

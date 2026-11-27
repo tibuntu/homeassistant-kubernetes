@@ -269,7 +269,7 @@ automation:
       to: "off"
     condition:
       condition: template
-      value_template: "{{ states('sensor.backup_job_active_jobs') == '0' }}"
+      value_template: "{{ state_attr('switch.production_default_backup', 'active_jobs_count') == 0 }}"
     action:
       service: notify.mobile_app
       data:
@@ -320,8 +320,7 @@ If you were using the legacy CronJob services (`suspend_cronjob`, `resume_cronjo
 
 1. **Check CronJob Exists**: Verify the CronJob name and namespace are correct
 2. **Verify Permissions**: Ensure the service account has `create` permission for `jobs`
-3. **Check CronJob Status**: Ensure the CronJob is not suspended
-4. **Review Logs**: Check both Home Assistant and Kubernetes logs for errors
+3. **Review Logs**: Check both Home Assistant and Kubernetes logs for errors
 
 ### No Active Jobs
 
@@ -353,6 +352,7 @@ The integration provides CronJob data in the following format:
     "schedule": "0 2 * * *",
     "suspend": False,
     "last_schedule_time": "2023-01-01T02:00:00Z",
+    "last_successful_time": "2023-01-01T02:03:10Z",
     "next_schedule_time": "2023-01-02T02:00:00Z",
     "active_jobs_count": 1,
     "successful_jobs_history_limit": 3,
@@ -365,27 +365,4 @@ The integration provides CronJob data in the following format:
 
 ### Service Response
 
-When triggering a CronJob using `kubernetes.start_workload`, the service returns:
-
-```python
-{
-    "success": True,
-    "job_name": "backup-job-manual-1234567890",
-    "namespace": "default",
-    "cronjob_name": "backup-job",
-    "job_uid": "job-uid-123",
-}
-```
-
-Or on failure:
-
-```python
-{
-    "success": False,
-    "error": "CronJob not found",
-    "cronjob_name": "backup-job",
-    "namespace": "default",
-}
-```
-
-> **Note**: The service response is logged to the Home Assistant logs. The service itself doesn't return a value that can be captured in automations, but you can check the logs for the job name that was created.
+`kubernetes.start_workload` returns nothing that an automation could capture. On success the name of the created Job (`<cronjob>-manual-<unix time>`, e.g. `backup-job-manual-1234567890`) is logged at INFO level; on failure the call raises an error that names the CronJob.

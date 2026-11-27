@@ -31,7 +31,7 @@ body:
     attributes:
       label: Integration version
       description: Settings → Devices & Services → Kubernetes, or `manifest.json`
-      placeholder: "1.8.0"
+      placeholder: "1.18.0"
     validations:
       required: true
   - type: input
@@ -54,7 +54,7 @@ body:
     id: k8s-version
     attributes:
       label: Kubernetes version / distribution
-      placeholder: "v1.33 (k3s)"
+      placeholder: "v1.36 (k3s)"
     validations:
       required: true
   - type: dropdown

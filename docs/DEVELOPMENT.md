@@ -4,7 +4,7 @@ This document provides detailed instructions for developing and contributing to 
 
 ## Prerequisites
 
-- Python 3.13 or higher
+- Python 3.14.2 or higher for the dev environment (the integration itself runs on 3.13+)
 - Home Assistant 2026.4 or higher
 - A Kubernetes cluster for testing (minikube, kind, or cloud-based)
 - Git
@@ -62,10 +62,17 @@ homeassistant-kubernetes/
 │       ├── binary_sensor.py         # Binary sensor platform
 │       ├── switch.py                # Switch platform (workload control)
 │       ├── number.py                # Number platform (replica count)
-│       ├── services.py              # HA services (scale, start, stop)
+│       ├── event.py                 # Event platform (Cluster Events, opt-in)
+│       ├── alerts.py                # Alert rules shared by the alert sensors and the panel
+│       ├── services.py              # HA services (scale, start, stop, restart, delete Job, cordon, uncordon, drain)
+│       ├── services.yaml            # Service descriptions for the HA UI
 │       ├── device.py                # Device registry management
 │       ├── kubernetes_client.py     # Kubernetes API client
+│       ├── metrics_parser.py        # CPU/memory quantity parsing
 │       ├── websocket_api.py         # WebSocket API for the sidebar panel
+│       ├── diagnostics.py           # Diagnostics download
+│       ├── system_health.py         # System Health info
+│       ├── quality_scale.yaml       # Status of every HA quality-scale rule
 │       ├── icons.json               # Entity icons (icon translations)
 │       ├── frontend/
 │       │   └── kubernetes-panel.js  # Built panel JS bundle (committed)
@@ -77,6 +84,7 @@ homeassistant-kubernetes/
 │   ├── vite.config.ts
 │   ├── eslint.config.js
 │   ├── .prettierrc
+│   ├── e2e/                         # Playwright panel tests (harness, fixtures, specs)
 │   └── src/
 │       ├── kubernetes-panel.ts      # Root panel element with tab navigation
 │       ├── views/
@@ -90,18 +98,24 @@ homeassistant-kubernetes/
 │       ├── styles/
 │       │   ├── shared.ts            # Loading/error/empty state + filter styles
 │       │   └── actions.ts           # Round action-button + action-error banner styles
+│       ├── types/
+│       │   └── homeassistant.ts     # The slice of the `hass` object the panel uses
 │       └── utils/
 │           ├── load-ha-elements.ts  # HA element lazy loader
+│           ├── nav.ts               # URL navigation and query-parameter helpers
 │           └── format.ts            # Pure formatting helpers (age, relative time, errors)
 ├── chart/                            # Helm chart for the ServiceAccount + RBAC
 │   ├── Chart.yaml
+│   ├── CHANGELOG.md
 │   ├── values.yaml
+│   ├── values.schema.json
 │   └── templates/
 ├── manifests/                        # Generated from chart/ — do not edit by hand
 │   ├── full/
 │   └── minimal/
 ├── scripts/
-│   └── render-manifests.sh           # chart/ → manifests/
+│   ├── render-manifests.sh           # chart/ → manifests/
+│   └── update-k8s-support-range.sh   # Renovate hook: supported-version range in the docs
 ├── tests/
 │   ├── conftest.py
 │   ├── test_init.py
@@ -144,6 +158,8 @@ Integration releases are cut by [release-please](https://github.com/googleapis/r
 git commit -m "chore: release 1.12.0" -m "Release-As: 1.12.0"
 ```
 
+The release PR bumps the version in `pyproject.toml`, `manifest.json`, the two frontend package files and `uv.lock` (`extra-files` in `.release-please-config.json`). `uv.lock` records the project's own version, and CI installs with `uv sync --locked`, so a version bump that misses the lock file fails every later PR.
+
 The commit must not be empty: pull requests are rebase-merged, and a rebase silently drops empty commits, so the footer never reaches `main` (this happened with #404). Attach the footer to a small real change instead — a documentation note, for example.
 
 Every release carries a `kubernetes.zip` asset, built from `custom_components/kubernetes/` by the `release-asset` job in `.github/workflows/release.yaml`. `hacs.json` sets `zip_release`, so HACS installs from that asset and shows its download count. If the job fails, attach it by hand:
@@ -168,7 +184,7 @@ The chart never gets a GitHub Release, only the tag. HACS lists this repository'
 
 ## Frontend Development
 
-The sidebar panel is built with [Lit](https://lit.dev/) 3 (TypeScript) and bundled with [Vite](https://vite.dev/) (rolldown) into a single ES module. The bundle is minified via `build.rolldownOptions.output.minify` (`compress` + `mangle` + `codegen.removeWhitespace`) — property/class names used by Lit's tagged template literals and the custom-element contract are not mangled, so this is safe. The committed `custom_components/kubernetes/frontend/kubernetes-panel.js` (~116 KB) is diffed byte-for-byte against a fresh build in CI (see below), so always rebuild after editing `.ts` source.
+The sidebar panel is built with [Lit](https://lit.dev/) 3 (TypeScript) and bundled with [Vite](https://vite.dev/) (rolldown) into a single ES module. The bundle is minified via `build.rolldownOptions.output.minify` (`compress` + `mangle` + `codegen.removeWhitespace`) — property/class names used by Lit's tagged template literals and the custom-element contract are not mangled, so this is safe. The committed `custom_components/kubernetes/frontend/kubernetes-panel.js` (~160 kB) is diffed byte-for-byte against a fresh build in CI (see below), so always rebuild after editing `.ts` source.
 
 ### Setup
 
@@ -302,7 +318,7 @@ kubectl apply -f serviceaccount.yaml
 Get the token:
 
 ```bash
-kubectl get secret $(kubectl get serviceaccount homeassistant-test -o jsonpath='{.secrets[0].name}') -o jsonpath='{.data.token}' | base64 --decode
+kubectl create token homeassistant-test --duration=24h
 ```
 
 ## Code Quality

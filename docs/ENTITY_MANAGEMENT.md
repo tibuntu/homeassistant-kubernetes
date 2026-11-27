@@ -75,7 +75,7 @@ The integration automatically detects new deployments, statefulsets, pods, nodes
 2. **Entity Creation**:
    - New switch entities are automatically created for deployments and statefulsets
    - New sensor entities are created for nodes, pods, daemonsets, cronjobs, and jobs (pods owned by a Job or CronJob are skipped by default — see [Job and CronJob Pods](CONFIGURATION.md#job-and-cronjob-pods))
-   - New binary sensor entities are created for node conditions (MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable)
+   - New binary sensor entities are created for node conditions (Ready, MemoryPressure, DiskPressure, PIDPressure, NetworkUnavailable)
    - Entities are added with proper unique IDs and configuration
    - No restart required - entities appear immediately after the next poll
 
@@ -97,7 +97,7 @@ To adjust the interval:
 
 1. Go to **Settings → Devices & Services**
 2. Find your Kubernetes integration
-3. Click **Configure**
+3. Open the three-dot menu (**⋮**) and select **Reconfigure**
 4. Adjust the **Switch Update Interval** value
 
 ### Considerations
@@ -110,9 +110,10 @@ To adjust the interval:
 
 The automatic management currently supports:
 
-- **Switch Entities**: For deployments, statefulsets, and cronjobs
-- **Sensor Entities**: For pods, nodes, and cluster-wide metrics
-- **Binary Sensor Entities**: For cluster health monitoring
+- **Switch Entities**: For deployments, statefulsets, cronjobs, and nodes (schedulable)
+- **Number Entities**: Replica count for deployments and statefulsets
+- **Sensor Entities**: For pods, nodes (status and usage), workload status and CPU/memory, daemonsets, cronjobs, jobs, cluster-wide counts, and alerts
+- **Binary Sensor Entities**: For cluster health and node conditions
 
 ## Device Management
 
@@ -170,8 +171,3 @@ The automatic entity management adds minimal overhead to the existing polling pr
 2. **Appropriate Polling**: Set polling intervals based on your cluster's change frequency
 3. **RBAC Review**: Ensure service account permissions are sufficient for resource discovery
 4. **Backup Entity Registry**: Consider backing up your entity registry before major cluster changes
-
-## Version History
-
-- **v1.1.0**: Added automatic entity cleanup and dynamic discovery
-- **v1.0.0**: Initial release with manual entity management

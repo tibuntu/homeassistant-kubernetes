@@ -541,7 +541,7 @@ automation:
     condition:
       - condition: template
         value_template: >
-          {% set last = state_attr('sensor.production_backup', 'last_successful_time') %}
+          {% set last = state_attr('sensor.production_default_backup', 'last_successful_time') %}
           {{ last is none or now() - as_datetime(last) > timedelta(hours=26) }}
     action:
       - service: notify.mobile_app
@@ -570,12 +570,12 @@ automation:
           title: "Kubernetes: problem pods"
           message: "{{ states('sensor.production_problem_pods') }} pod(s) are not healthy."
           data:
-            clickAction: "/kubernetes_panel/pods?phase=problems&namespace=default"
-            url: "/kubernetes_panel/pods?phase=problems&namespace=default"  # iOS
+            clickAction: "/kubernetes/pods?phase=problems&namespace=default"
+            url: "/kubernetes/pods?phase=problems&namespace=default"  # iOS
             actions:
               - action: URI
                 title: "Open failed jobs"
-                uri: "/kubernetes_panel/workloads?category=jobs&status=degraded"
+                uri: "/kubernetes/workloads?category=jobs&status=degraded"
 ```
 
 See [URL scheme](CONFIGURATION.md#dashboard-panel) for the tabs and query parameters.

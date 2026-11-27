@@ -368,7 +368,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 - All scaling operations are asynchronous
 - Services return immediately after initiating the scaling operation
 - Use the entity states to monitor the actual scaling progress
-- Configure `scale_verification_timeout` to adjust how long to wait for operations
+- `scale_verification_timeout` only affects how long the on/off switches verify a scale, not service calls
 
 ### Workload Type Detection
 
