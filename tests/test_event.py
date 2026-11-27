@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from homeassistant.core import HomeAssistant
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.kubernetes.const import (
     CONF_ENABLE_EVENTS,

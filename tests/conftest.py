@@ -12,7 +12,7 @@ import pytest
 # dependencies, so keep every HA-backed import optional.
 try:
     from homeassistant.config_entries import ConfigEntryState
-    from pytest_homeassistant_custom_component.common import MockConfigEntry
+    from pytest_homeassistant.common import MockConfigEntry
 
     from custom_components.kubernetes.const import DOMAIN
     from custom_components.kubernetes.coordinator import KubernetesEntryData

@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.kubernetes.alerts import build_alerts
 from custom_components.kubernetes.const import DOMAIN
