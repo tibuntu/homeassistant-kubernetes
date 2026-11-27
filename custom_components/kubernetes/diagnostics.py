@@ -30,6 +30,11 @@ _COUNT_KEYS = (
     "jobs",
     "pods",
     "nodes",
+    "ingresses",
+    "services",
+    "hpas",
+    "httproutes",
+    "certificates",
 )
 
 
@@ -43,8 +48,8 @@ def _coordinator_diagnostics(coordinator: Any) -> dict[str, Any]:
         bucket = data.get(key)
         counts[key] = len(bucket) if isinstance(bucket, dict) else None
 
-    # Scalar fields fetched separately by the coordinator. Mismatch with
-    # len(pods)/len(nodes) above signals stale or partial data.
+    # The values the count sensors report. pods_count differs from len(pods)
+    # only while pod collection is disabled (empty bucket, counted separately).
     counts["pods_count"] = data.get("pods_count")
     counts["nodes_count"] = data.get("nodes_count")
 
@@ -92,7 +97,7 @@ async def async_get_config_entry_diagnostics(
         "options": async_redact_data(entry.options, TO_REDACT),
     }
 
-    # Setup may have failed (cluster unreachable, missing dependency, etc.). HA
+    # Setup may have failed (cluster unreachable, rejected token, etc.). HA
     # still offers the diagnostics download in that state — return what we can.
     if entry.state is not ConfigEntryState.LOADED:
         return {"entry": {**entry_section, "state": "not_loaded"}}

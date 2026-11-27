@@ -13,7 +13,7 @@ from homeassistant.components.frontend import (
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import EVENT_HOMEASSISTANT_CLOSE, Platform
 from homeassistant.core import Event, HomeAssistant
-from homeassistant.helpers import config_validation as cv, issue_registry as ir
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 from .config_flow import KubernetesConfigFlow
@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_ENABLE_PANEL,
     DEFAULT_ENABLE_WATCH,
     DEFAULT_EXCLUDE_JOB_PODS,
+    DOMAIN,
     PANEL_FILENAME,
     PANEL_ICON,
     PANEL_TITLE,
@@ -51,8 +52,6 @@ PLATFORMS: list[Platform] = [
     Platform.EVENT,
 ]
 
-DOMAIN = "kubernetes"
-
 _LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -71,11 +70,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
     # and "panel_require_admin" flags; per-entry state lives on
     # entry.runtime_data.
     hass.data.setdefault(DOMAIN, {})
-
-    # ponytail: releases before the integration dropped the `kubernetes`
-    # package raised this issue when it was missing; nothing else clears an
-    # issue stored before the upgrade. Remove this line in a later release.
-    ir.async_delete_issue(hass, DOMAIN, "kubernetes_package_missing")
 
     # Create Kubernetes client
     # Options are user-editable after setup; the client only ever sees

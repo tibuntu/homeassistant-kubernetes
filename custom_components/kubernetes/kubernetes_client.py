@@ -335,7 +335,7 @@ class KubernetesClient:
             )
         else:
             self.namespaces = [DEFAULT_NAMESPACE]
-        # Keep namespace for backward compatibility in error messages
+        # Default target namespace of every mutation that is given none
         self.namespace = self.namespaces[0] if self.namespaces else DEFAULT_NAMESPACE
         self.monitor_all_namespaces = config_data.get(
             CONF_MONITOR_ALL_NAMESPACES, DEFAULT_MONITOR_ALL_NAMESPACES
@@ -461,22 +461,15 @@ class KubernetesClient:
         self._ensure_refresh_task()
         return self._token_cache or self._static_api_token
 
-    @api_token.setter
-    def api_token(self, value: str) -> None:
-        """Update the static (fallback) token and drop any in-cluster cache."""
-        self._static_api_token = value
-        self._token_cache = ""  # nosec B105
-        self._token_cache_time = 0.0
-
     def invalidate_token_cache(self) -> None:
         """Force the next api_token read to re-fetch the projected SA token."""
         self._token_cache_time = 0.0
 
-    def _log_error(self, operation: str, error: Exception, context: str = "") -> None:
+    def _log_error(self, operation: str, error: Exception) -> None:
         """Log errors with structured context and actionable information."""
         cluster_info = f"cluster={self.cluster_name}, host={self.host}:{self.port}"
         namespace_info = (
-            f"namespace={self.namespace}"
+            f"namespaces={','.join(self.namespaces)}"
             if not self.monitor_all_namespaces
             else "all_namespaces"
         )
@@ -890,13 +883,10 @@ class KubernetesClient:
     async def get_nodes(self) -> list[dict[str, Any]]:
         """Get detailed information about all nodes in the cluster."""
         try:
-            _LOGGER.debug("Starting get_nodes() call")
             result = await self._get_nodes_aiohttp()
-            _LOGGER.debug("get_nodes() successful: retrieved %d nodes", len(result))
             self._log_success("get nodes", f"retrieved {len(result)} nodes")
             return result
         except Exception as ex:
-            _LOGGER.exception("get_nodes() failed with exception: %s", ex)
             self._log_error("get nodes", ex)
             raise
 
@@ -1548,9 +1538,7 @@ class KubernetesClient:
                 )
                 return False
         except Exception as ex:
-            self._log_error(
-                f"aiohttp scale {kind} {name}", ex, f"target_replicas={replicas}"
-            )
+            self._log_error(f"aiohttp scale {kind} {name} to {replicas}", ex)
             return False
 
     async def stop_deployment(

@@ -850,11 +850,12 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return entity specific state attributes."""
         node_data = self.coordinator.get_node_data(self.node_name) or {}
+        schedulable = self.is_on
         return {
             "node_name": self.node_name,
             "status": node_data.get("status", "Unknown"),
-            "schedulable": self.is_on,
-            "cordoned": not self.is_on,
+            "schedulable": schedulable,
+            "cordoned": not schedulable,
             "last_cordon_time": self._last_cordon_time,
             "last_uncordon_time": self._last_uncordon_time,
         }

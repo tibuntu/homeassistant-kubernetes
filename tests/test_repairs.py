@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
-from custom_components.kubernetes import DOMAIN, async_setup_entry
+from custom_components.kubernetes import DOMAIN
 from custom_components.kubernetes.const import (
     CONF_DISABLED_RESOURCES,
     CONF_ENABLE_EVENTS,
@@ -54,53 +54,6 @@ def _make_coordinator(
     hass: HomeAssistant, entry: MockConfigEntry
 ) -> KubernetesDataCoordinator:
     return KubernetesDataCoordinator(hass, entry, _make_client())
-
-
-# ---------------------------------------------------------------------------
-# Package-missing issue (raised by releases that still used the kubernetes
-# package; async_setup_entry only deletes it now)
-# ---------------------------------------------------------------------------
-
-ISSUE_KUBERNETES_PACKAGE_MISSING = "kubernetes_package_missing"
-
-
-async def test_setup_entry_clears_issue_on_success(
-    hass: HomeAssistant, mock_entry: MockConfigEntry
-):
-    """Setup removes a package-missing issue stored by an older release."""
-    ir.async_create_issue(
-        hass,
-        DOMAIN,
-        ISSUE_KUBERNETES_PACKAGE_MISSING,
-        is_fixable=False,
-        severity=ir.IssueSeverity.ERROR,
-        translation_key=ISSUE_KUBERNETES_PACKAGE_MISSING,
-    )
-    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
-
-    with (
-        patch("custom_components.kubernetes.KubernetesClient"),
-        patch(
-            "custom_components.kubernetes.KubernetesDataCoordinator"
-        ) as mock_coord_class,
-        patch("custom_components.kubernetes._async_sync_panel"),
-        patch.object(
-            hass.config_entries,
-            "async_forward_entry_setups",
-            new_callable=AsyncMock,
-        ),
-    ):
-        mock_coord = MagicMock()
-        mock_coord.async_config_entry_first_refresh = AsyncMock()
-        mock_coord.async_start_watch_tasks = AsyncMock()
-        mock_coord_class.return_value = mock_coord
-
-        await async_setup_entry(hass, mock_entry)
-
-    assert (
-        ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_KUBERNETES_PACKAGE_MISSING)
-        is None
-    )
 
 
 # ---------------------------------------------------------------------------

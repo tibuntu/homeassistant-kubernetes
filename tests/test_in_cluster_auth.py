@@ -409,19 +409,6 @@ def test_invalidate_token_cache_forces_reread(monkeypatch):
     assert token == "rotated"
 
 
-def test_api_token_setter_updates_static_and_clears_cache():
-    """The setter rewrites the static fallback and drops any cached SA token."""
-    client = _make_client(use_in_cluster=True, static_token="initial")
-    client._token_cache = "cached-from-file"
-    client._token_cache_time = 1_000_000.0
-
-    client.api_token = "rotated-static"
-
-    assert client._static_api_token == "rotated-static"
-    assert client._token_cache == ""
-    assert client._token_cache_time == 0.0
-
-
 def test_api_token_returns_fallback_when_file_yields_empty(monkeypatch):
     """A whitespace-only token file is treated as a read failure (use static fallback)."""
     client = _make_client(use_in_cluster=True, static_token="static-fallback")
