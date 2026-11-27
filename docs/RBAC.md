@@ -242,7 +242,7 @@ Every verb listed is one the integration requests, and `get` appears only where 
 
 | Resource | Verbs | Full | Minimal | Purpose |
 |----------|-------|:----:|:-------:|---------|
-| **nodes** | `list` | ✅ | ✅ | Real-time node CPU and memory usage in the sidebar panel |
+| **nodes** | `list` | ✅ | ✅ | Node CPU and memory usage sensors and the sidebar panel's Nodes tab |
 | **pods** | `list` | ✅ | ✅ | Workload CPU and memory usage sensors |
 
 > **Note:** Requires [metrics-server](https://github.com/kubernetes-sigs/metrics-server) to be installed in your cluster. If unavailable, the integration gracefully falls back to showing capacity only.

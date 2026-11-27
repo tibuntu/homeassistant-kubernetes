@@ -10,8 +10,7 @@ You see errors like:
 
 ```
 Failed to stop deployment longhorn-ui
-Failed to get deployments: (401)
-Reason: Unauthorized
+aiohttp connection test failed with status: 401
 ```
 
 ### Solution
@@ -32,8 +31,6 @@ kubectl auth can-i --list \
 If a verb is missing, install or upgrade the RBAC (see the next step). The full permission matrix is in the [RBAC Reference Guide](RBAC.md#complete-permission-matrix).
 
 #### Step 2: Install or Upgrade the RBAC
-
-If you prefer to set up RBAC manually:
 
 1. Install the RBAC — with Helm:
 
@@ -164,7 +161,7 @@ Cannot connect to Kubernetes API server. While the API is unreachable (network o
 
 ## Deployment Scaling Issues
 
-### Problem: "managed by HPA … adjust the HPA's min/max replicas instead"
+### Problem: "managed by a HorizontalPodAutoscaler; adjust the HPA's min/max replicas instead"
 
 A HorizontalPodAutoscaler targets the workload and would reset any replica count other than 0 within seconds, so `scale_workload` and the replica number reject it up front. Change the HPA instead (`kubectl edit hpa NAME -n NAMESPACE`), or scale to 0 / turn the switch off, which the HPA leaves alone. See [HPA-managed workloads](ENTITIES.md#hpa-managed-workloads).
 
@@ -208,7 +205,7 @@ Integration shows incorrect data or no data.
 
 3. **Check Port Configuration**
    - Default Kubernetes API port is 6443
-   - For k3s, it might be 6443 or 6443
+   - k3s also uses 6443; other distributions may differ
    - Verify with `kubectl config view`
 
 ## Debugging

@@ -13,8 +13,9 @@ Welcome to the documentation for the Kubernetes Home Assistant Integration. This
 
 ### Reference Documentation
 
-- [Entities Documentation](ENTITIES.md) - Sensors, binary sensors, and switches reference
+- [Entities Documentation](ENTITIES.md) - Sensors, binary sensors, switches, number and event entities reference
 - [Services Documentation](SERVICES.md) - Available services for programmatic control
+- [CronJobs](CRONJOBS.md) - CronJob switches, triggering and suspension
 
 ### Advanced Topics
 
@@ -25,7 +26,7 @@ Welcome to the documentation for the Kubernetes Home Assistant Integration. This
 
 ## Overview
 
-This integration provides sensors, binary sensors, switches, and services to monitor and control your Kubernetes cluster directly from Home Assistant. For the full feature list, see the [README features section](https://github.com/tibuntu/homeassistant-kubernetes#readme).
+This integration provides sensors, binary sensors, switches, number and event entities, a sidebar panel, and services to monitor and control your Kubernetes cluster directly from Home Assistant. For the full feature list, see the [README features section](https://github.com/tibuntu/homeassistant-kubernetes#readme).
 
 ## Getting Started
 

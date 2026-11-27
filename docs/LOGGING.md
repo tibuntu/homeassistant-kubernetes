@@ -8,6 +8,7 @@ The integration uses different log levels to provide appropriate information:
 
 - **DEBUG**: Successful operations and detailed information
 - **INFO**: Important successful operations (like scaling deployments)
+- **WARNING**: Degraded but working (metrics unavailable, a resource the ServiceAccount may not read, an object that could not be parsed)
 - **ERROR**: Problems that need attention
 
 ## Log Format
@@ -15,7 +16,7 @@ The integration uses different log levels to provide appropriate information:
 All logs include structured context information:
 
 ```
-[operation] (cluster=name, host=host:port, namespace=namespace): details
+[operation] (cluster=name, host=host:port, namespaces=ns1,ns2): details
 ```
 
 ## Common Error Messages and Solutions
@@ -37,7 +38,7 @@ A 401 that persists across a poll cycle also raises a **"Reauthentication needed
 ### Permission Denied (403)
 
 ```
-Permission denied for get deployments (cluster=default, host=kubernetes.example.com:6443, namespace=default). Check RBAC roles and namespace access.
+Unexpected error during get deployments (cluster=default, host=kubernetes.example.com:6443, namespaces=default): deployments request failed for namespace default with status 403
 ```
 
 **Solutions:**
@@ -49,7 +50,7 @@ Permission denied for get deployments (cluster=default, host=kubernetes.example.
 ### Resource Not Found (404)
 
 ```
-Resource not found for get deployments (cluster=default, host=kubernetes.example.com:6443, namespace=default). Check namespace and resource names.
+Unexpected error during get deployments (cluster=default, host=kubernetes.example.com:6443, namespaces=default): deployments request failed for namespace default with status 404
 ```
 
 **Solutions:**
@@ -61,7 +62,7 @@ Resource not found for get deployments (cluster=default, host=kubernetes.example
 ### Network Errors
 
 ```
-Network error during get deployments (cluster=default, host=kubernetes.example.com:6443, namespace=default): [error details]
+Network error during get deployments (cluster=default, host=kubernetes.example.com:6443, namespaces=default): [error details]
 ```
 
 **Solutions:**
@@ -73,7 +74,7 @@ Network error during get deployments (cluster=default, host=kubernetes.example.c
 ### Timeout Errors
 
 ```
-Timeout during get deployments (cluster=default, host=kubernetes.example.com:6443, namespace=default). Check network connectivity and API server response time.
+Timeout during get deployments (cluster=default, host=kubernetes.example.com:6443, namespaces=default). Check network connectivity and API server response time.
 ```
 
 **Solutions:**
@@ -133,5 +134,5 @@ ERROR (MainThread) [custom_components.kubernetes.kubernetes_client] aiohttp conn
 ### Network Error
 
 ```
-ERROR (MainThread) [custom_components.kubernetes.kubernetes_client] Network error during get nodes count (cluster=production, host=k8s.example.com:6443, namespace=default): Cannot connect to host k8s.example.com:6443 ssl:default [Connection refused]
+ERROR (MainThread) [custom_components.kubernetes.kubernetes_client] Network error during get nodes (cluster=production, host=k8s.example.com:6443, namespaces=default): Cannot connect to host k8s.example.com:6443 ssl:default [Connection refused]
 ```
