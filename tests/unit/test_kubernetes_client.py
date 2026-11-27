@@ -8,7 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 import aiohttp
 import pytest
 
-from custom_components.kubernetes.const import POD_LOGS_LIMIT_BYTES
+from custom_components.kubernetes.const import (
+    POD_LOGS_LIMIT_BYTES,
+    WATCH_READ_BUFSIZE,
+)
 from custom_components.kubernetes.kubernetes_client import (
     KubernetesApiError,
     KubernetesClient,
@@ -3389,6 +3392,19 @@ class TestWatchStream:
         assert len(collected) == 2
         assert collected[0]["type"] == "ADDED"
         assert collected[1]["type"] == "MODIFIED"
+
+    async def test_watch_stream_requests_a_large_read_buffer(self, mock_client):
+        """One event is one line; aiohttp's default buffer rejects big objects."""
+        mock_session = _make_aiohttp_stream_mock([])
+
+        with patch.object(mock_client, "_session", mock_session):
+            async for _ in mock_client.watch_stream("https://host/api/v1/pods", "0"):
+                pass
+
+        kwargs = mock_session.get.call_args.kwargs
+        assert kwargs["read_bufsize"] == WATCH_READ_BUFSIZE
+        # Twice the buffer is aiohttp's line limit; objects reach ~1.5 MiB.
+        assert WATCH_READ_BUFSIZE * 2 >= 3 * 2**20
 
     async def test_watch_stream_raises_on_410(self, mock_client):
         """watch_stream should raise ResourceVersionExpired when the server returns 410."""
