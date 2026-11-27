@@ -94,7 +94,6 @@ async def get_or_create_namespace_device(
         name=f"{cluster_name}: {namespace}",
         manufacturer="Kubernetes",
         model="Namespace",
-        sw_version=None,
         via_device_id=cluster_device.id,
     )
 
@@ -163,8 +162,17 @@ def get_all_namespaces(coordinator_data: dict[str, Any] | None) -> set[str]:
     if not coordinator_data:
         return namespaces
 
-    # Resource types to check for namespaces
-    resource_types = ["pods", "deployments", "statefulsets", "cronjobs", "daemonsets"]
+    # Every resource type whose entities sit on a namespace device. A type
+    # missing here gets its device (and with it its entities) removed on every
+    # poll when it is the only one in a namespace.
+    resource_types = [
+        "pods",
+        "deployments",
+        "statefulsets",
+        "cronjobs",
+        "daemonsets",
+        "jobs",
+    ]
 
     for resource_type in resource_types:
         if resource_type in coordinator_data:

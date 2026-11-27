@@ -124,9 +124,14 @@ class TestGetAllNamespaces:
             "daemonsets": {
                 "daemonset1": {"namespace": "default", "name": "daemonset1"},
             },
+            # A namespace holding nothing but a Job: its sensor sits on the
+            # namespace device, which must not be cleaned up as orphaned.
+            "jobs": {
+                "batch_job1": {"namespace": "batch", "name": "job1"},
+            },
         }
         namespaces = get_all_namespaces(data)
-        assert namespaces == {"default", "production", "kube-system"}
+        assert namespaces == {"default", "production", "kube-system", "batch"}
 
     def test_get_all_namespaces_skips_empty_and_missing_namespace(self):
         """Resources without a namespace must not yield a "cluster: " device."""
