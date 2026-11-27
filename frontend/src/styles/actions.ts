@@ -3,7 +3,7 @@ import { css } from "lit";
 /**
  * Shared styles for the small round action buttons (start/stop/restart/…)
  * and the dismissible error banner shown after a failed action.
- * Used by the Workloads and Nodes views.
+ * Workloads and Nodes use both; Pods only the error banner.
  */
 export const actionStyles = css`
   .action-btn {

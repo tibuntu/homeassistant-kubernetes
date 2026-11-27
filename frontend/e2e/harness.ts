@@ -9,7 +9,8 @@
  * panel as a non-admin user. The panel's `route` follows the page path.
  * `?empty=<ws type>` (repeatable) answers those list calls with no clusters.
  * `?metrics=0` reports `metrics_available: false` on every cluster (no
- * metrics-server).
+ * metrics-server). `?events_error=<code>` makes `kubernetes/pods/describe`
+ * report that `events_error` with no events.
  */
 import { KubernetesPanel } from "../src/kubernetes-panel";
 import type { HomeAssistant } from "../src/types/homeassistant";

@@ -1,5 +1,5 @@
 import { html, css, nothing } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { customElement, state } from "lit/decorators.js";
 import { K8sDataView } from "./base-view";
 import { stateStyles, badgeStyles } from "../styles/shared";
 import { formatRelative, toggleInSet, CONDITION_LABELS } from "../utils/format";
@@ -128,8 +128,6 @@ const CERTIFICATE_REASONS: Record<string, string> = {
 
 @customElement("k8s-overview")
 export class K8sOverview extends K8sDataView<OverviewResponse> {
-  /** Panel URL prefix (`route.prefix`); targets are appended to it. */
-  @property({ attribute: false }) public prefix = "";
   @state() private _expandedNamespaces: Set<string> = new Set();
 
   protected loadErrorFallback = "Failed to load cluster data";
@@ -500,8 +498,9 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
                 Alerts monitor your cluster for issues that may need attention: nodes
                 experiencing memory, disk, or PID pressure; workloads with fewer ready
                 replicas than desired or a stalled rollout; pods in a failed or broken
-                state; pods stuck in a restart loop; and recently failed Jobs. Click an
-                alert to open the matching tab.
+                state; pods stuck in a restart loop; recently failed Jobs; and
+                certificates that are not ready, overdue for renewal or expired. Click
+                an alert to open the matching tab.
               </div>
             </span>
           </div>

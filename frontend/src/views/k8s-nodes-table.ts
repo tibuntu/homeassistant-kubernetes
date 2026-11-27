@@ -60,6 +60,13 @@ const SKIP_REASONS: Record<string, string> = {
   home_assistant: "Home Assistant itself",
 };
 
+const DRAIN_DEFAULTS = {
+  ignore_daemonsets: true,
+  delete_emptydir_data: false,
+  force: false,
+  timeout: 120,
+};
+
 const NODE_STATUS_FILTERS = ["all", "ready", "not-ready"] as const;
 
 @customElement("k8s-nodes-table")
@@ -76,12 +83,7 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
   @state() private _actionInProgress: Set<string> = new Set();
   @state() private _actionError: string | null = null;
   @state() private _drainTarget: { entry_id: string; node: string } | null = null;
-  @state() private _drainOptions = {
-    ignore_daemonsets: true,
-    delete_emptydir_data: false,
-    force: false,
-    timeout: 120,
-  };
+  @state() private _drainOptions = { ...DRAIN_DEFAULTS };
   @state() private _draining = false;
   @state() private _drainResult: DrainResult | null = null;
 
@@ -170,6 +172,8 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
 
   private _requestDrain(entryId: string, node: NodeData): void {
     this._drainTarget = { entry_id: entryId, node: node.name };
+    // Destructive options must not carry over from the previous node.
+    this._drainOptions = { ...DRAIN_DEFAULTS };
     this._drainResult = null;
   }
 
@@ -666,6 +670,8 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
           tabindex="0"
           @click=${() => this._toggleNode(nodeKey)}
           @keydown=${(e: KeyboardEvent) => {
+            // Keys on the nested cordon/drain buttons bubble up here.
+            if (e.target !== e.currentTarget) return;
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               this._toggleNode(nodeKey);

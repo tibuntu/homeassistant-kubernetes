@@ -16,6 +16,7 @@ import {
   formatMemory,
   errorMessage,
   isAdmin,
+  toggleInSet,
 } from "../utils/format";
 
 interface PodData {
@@ -638,13 +639,16 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         color: var(--secondary-text-color);
         font-weight: 500;
         border-bottom: 2px solid var(--divider-color);
-        cursor: pointer;
         user-select: none;
         white-space: nowrap;
         --mdc-icon-size: 14px;
       }
 
-      .pods-table th:hover {
+      .pods-table th[role="button"] {
+        cursor: pointer;
+      }
+
+      .pods-table th[role="button"]:hover {
         color: var(--primary-color);
       }
 
@@ -756,7 +760,6 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       .col-actions {
         width: 40px;
         min-width: 40px;
-        cursor: default;
       }
 
       .delete-btn {
@@ -1158,14 +1161,8 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   }
 
   private _toggleColumn(key: ColumnKey): void {
-    const updated = new Set(this._visibleColumns);
-    if (updated.has(key)) {
-      updated.delete(key);
-    } else {
-      updated.add(key);
-    }
-    this._visibleColumns = updated;
-    saveColumnPrefs(updated);
+    this._visibleColumns = toggleInSet(this._visibleColumns, key);
+    saveColumnPrefs(this._visibleColumns);
   }
 
   private _renderColumnMenu() {
@@ -1539,7 +1536,13 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
                         })}
                     >
                       ${target.containers.map(
-                        (c) => html`<option value=${c}>${c}</option>`,
+                        (c) =>
+                          html`<option
+                            value=${c}
+                            ?selected=${c === this._logsContainer}
+                          >
+                            ${c}
+                          </option>`,
                       )}
                     </select>
                   `
