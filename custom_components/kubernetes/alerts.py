@@ -262,13 +262,16 @@ def job_state(job: dict[str, Any]) -> str:
         return "Complete"
     if "Failed" in true_conditions:
         return "Failed"
-    # Fallback for job data without conditions
+    # Pods still running: not done, whatever the counters say. A work-queue
+    # Job (no ``completions``, parsed as 1) has its first success long before
+    # its other pods finish.
+    if job.get("active", 0) > 0:
+        return "Running"
+    # Counter fallback for job data without a terminal condition
     if job.get("succeeded", 0) >= job.get("completions", 1):
         return "Complete"
     if "Suspended" in true_conditions:
         return "Suspended"
-    if job.get("active", 0) > 0:
-        return "Running"
     if job.get("failed", 0) > 0:
         return "Retrying"
     return "Pending"
