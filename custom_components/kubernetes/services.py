@@ -37,7 +37,9 @@ from .const import (
     ATTR_WORKLOAD_NAME,
     ATTR_WORKLOAD_NAMES,
     ATTR_WORKLOAD_TYPE,
+    CONF_NAMESPACE,
     DEFAULT_DRAIN_TIMEOUT,
+    DEFAULT_NAMESPACE,
     DOMAIN,
     DRAIN_RETRY_INTERVAL,
     IN_CLUSTER_NAMESPACE_PATH,
@@ -60,6 +62,18 @@ from .kubernetes_client import OwnPod, drain_skip_reason
 
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.debug("Kubernetes services module loaded")
+
+
+def _default_namespace(config_data: Any) -> str:
+    """Namespace for a target that names none: the entry's first one.
+
+    The stored value is a list (empty when all namespaces are monitored);
+    entries from early releases still hold a plain string.
+    """
+    namespace = config_data.get(CONF_NAMESPACE)
+    if isinstance(namespace, list):
+        namespace = namespace[0] if namespace else None
+    return namespace or DEFAULT_NAMESPACE
 
 
 def _get_workload_info_from_entity(
@@ -822,7 +836,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             managed = [
                 f"{ns}/{name} (HPA {hpa['name']})"
                 for name, raw_ns, wtype in workloads
-                if (ns := raw_ns or config_data.get("namespace", "default"))
+                if (ns := raw_ns or _default_namespace(config_data))
                 and (hpa := get_hpa_for(coordinator.data, wtype, ns, name))
             ]
             if managed:
@@ -839,7 +853,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         failures: list[str] = []
 
         for workload_name, raw_namespace, workload_type in workloads:
-            namespace = raw_namespace or config_data.get("namespace", "default")
+            namespace = raw_namespace or _default_namespace(config_data)
             label = f"{workload_type} {namespace}/{workload_name}"
 
             if await _attempt(
@@ -884,7 +898,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         failures: list[str] = []
 
         for workload_name, raw_namespace, workload_type in workloads:
-            namespace = raw_namespace or config_data.get("namespace", "default")
+            namespace = raw_namespace or _default_namespace(config_data)
             label = f"{workload_type} {namespace}/{workload_name}"
 
             if workload_type == WORKLOAD_TYPE_CRONJOB:
@@ -944,7 +958,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         failures: list[str] = []
 
         for workload_name, raw_namespace, workload_type in workloads:
-            namespace = raw_namespace or config_data.get("namespace", "default")
+            namespace = raw_namespace or _default_namespace(config_data)
             label = f"{workload_type} {namespace}/{workload_name}"
 
             if await _attempt(
@@ -988,7 +1002,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         failures: list[str] = []
 
         for workload_name, raw_namespace, workload_type in workloads:
-            namespace = raw_namespace or config_data.get("namespace", "default")
+            namespace = raw_namespace or _default_namespace(config_data)
             label = f"{workload_type} {namespace}/{workload_name}"
 
             if await _attempt(
@@ -1031,7 +1045,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 namespace = (
                     job_data.get("namespace")
                     if job_data
-                    else config_data.get("namespace", "default")
+                    else _default_namespace(config_data)
                 )
             label = f"job {namespace}/{job_name}"
             if await _attempt(client.delete_job(job_name, namespace), label, failures):
