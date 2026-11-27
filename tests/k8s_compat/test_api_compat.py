@@ -237,7 +237,7 @@ class TestHTTPRoutes:
 class TestCertificates:
     async def test_get_certificates_without_cert_manager_raises_404(self, k8s_client):
         # kind ships no cert-manager. The coordinator relies on a 404 (with
-        # the chart's rule applied) to drop the Certificate Problems sensor.
+        # the chart's rule applied) to leave the certificates bucket empty.
         api_error = sys.modules[type(k8s_client).__module__].KubernetesApiError
         with pytest.raises(api_error) as exc_info:
             await k8s_client.get_certificates()
@@ -298,8 +298,6 @@ class TestWatch:
         etcd simply replays history and this test times out). Mocked unit
         tests cannot prove the real response shape; this test does.
         """
-        import sys
-
         expired = sys.modules[type(k8s_client).__module__].ResourceVersionExpired
         url = f"https://{k8s_client.host}:{k8s_client.port}/api/v1/events"
 

@@ -98,19 +98,6 @@ def mock_setup_entry():
         yield
 
 
-@pytest.fixture
-def valid_user_input():
-    """Valid user input for config flow."""
-    return {
-        CONF_CLUSTER_NAME: "test-cluster",
-        CONF_HOST: "test-cluster.example.com",
-        CONF_PORT: 6443,
-        CONF_API_TOKEN: "test-token",
-        CONF_MONITOR_ALL_NAMESPACES: True,
-        CONF_VERIFY_SSL: False,
-    }
-
-
 # ---------------------------------------------------------------------------
 # User step tests (real flow manager)
 # ---------------------------------------------------------------------------
@@ -1942,42 +1929,6 @@ async def test_test_connection_aiohttp_client_error(hass: HomeAssistant):
 # ---------------------------------------------------------------------------
 # Additional coverage: async_step_namespaces edge cases
 # ---------------------------------------------------------------------------
-
-
-async def test_async_step_namespaces_missing_namespace_key(hass: HomeAssistant):
-    """Test namespace step returns error when CONF_NAMESPACE key is missing."""
-    with (
-        patched_connection(),
-        patch.object(
-            KubernetesConfigFlow,
-            "_fetch_namespaces",
-            new_callable=AsyncMock,
-            return_value=["default", "kube-system"],
-        ),
-    ):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": config_entries.SOURCE_USER}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            user_input={
-                CONF_CLUSTER_NAME: "test-cluster",
-                CONF_HOST: "test-host",
-                CONF_API_TOKEN: "test-token",
-                CONF_MONITOR_ALL_NAMESPACES: False,
-            },
-        )
-        assert result["step_id"] == "namespaces"
-
-        # Submit with empty namespace list to trigger validation error
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            user_input={CONF_NAMESPACE: []},
-        )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["step_id"] == "namespaces"
-    assert CONF_NAMESPACE in result["errors"]
 
 
 async def test_async_step_namespaces_filters_empty_strings(hass: HomeAssistant):

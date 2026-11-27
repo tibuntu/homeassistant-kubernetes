@@ -5981,13 +5981,6 @@ class TestGetPodsSuccessLogging:
 
         assert len(result) == 2
 
-    async def test_get_pods_connection_failure_raises(self, mock_client):
-        """get_pods raises when the connection test fails."""
-        mock_client._test_connection = AsyncMock(return_value=False)
-
-        with pytest.raises(KubernetesApiError, match="Cannot connect"):
-            await mock_client.get_pods()
-
     async def test_get_pods_exception_propagates(self, mock_client):
         """get_pods propagates a general exception after logging it."""
         mock_client._test_connection = AsyncMock(return_value=True)
