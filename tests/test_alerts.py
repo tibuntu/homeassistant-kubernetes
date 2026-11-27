@@ -280,6 +280,8 @@ def _cond(type_, status="True"):
         ({"conditions": [_cond("Complete", "False")]}, "Pending"),
         ({"conditions": [_cond("Failed", "False")], "failed": 1}, "Retrying"),
         ({"succeeded": 3, "completions": 3}, "Complete"),
+        # work-queue Job: first pod succeeded, the others are still running
+        ({"succeeded": 1, "completions": 1, "active": 2}, "Running"),
         ({"conditions": [_cond("Suspended")]}, "Suspended"),
         ({"active": 2}, "Running"),
         ({"failed": 1}, "Retrying"),
@@ -295,6 +297,7 @@ def _cond(type_, status="True"):
         "complete-status-false-ignored",
         "failed-status-false-ignored",
         "counter-fallback",
+        "counter-fallback-waits-for-active-pods",
         "suspended",
         "running",
         "retrying",
