@@ -72,10 +72,7 @@ def mock_client():
     client.get_hpas = AsyncMock(return_value=[])
     client.get_httproutes = AsyncMock(return_value=[])
     client.get_certificates = AsyncMock(return_value=[])
-    client.get_deployments_count = AsyncMock(return_value=0)
-    client.get_statefulsets_count = AsyncMock(return_value=0)
     client.get_daemonsets_count = AsyncMock(return_value=0)
-    client.get_cronjobs_count = AsyncMock(return_value=0)
     client.get_jobs_count = AsyncMock(return_value=0)
     client.get_ingresses_count = AsyncMock(return_value=0)
     client.get_services_count = AsyncMock(return_value=0)
@@ -85,7 +82,6 @@ def mock_client():
     client.get_nodes = AsyncMock(return_value=[])
     client.get_node_metrics = AsyncMock(return_value={})
     client.get_server_version = AsyncMock(return_value="v1.36.2")
-    client._test_connection = AsyncMock(return_value=True)
     client.enrich_workloads_with_metrics = AsyncMock()
     client.get_pod_metrics = AsyncMock(return_value={})
     return client
@@ -213,10 +209,7 @@ class TestKubernetesDataCoordinator:
         ]
         mock_client.get_nodes.return_value = mock_nodes
 
-        mock_client.get_deployments_count.return_value = 1
-        mock_client.get_statefulsets_count.return_value = 1
         mock_client.get_daemonsets_count.return_value = 1
-        mock_client.get_cronjobs_count.return_value = 1
 
         # Mock device registry to avoid side effects from device creation
         mock_device_registry = MagicMock()
@@ -291,7 +284,9 @@ class TestKubernetesDataCoordinator:
         assert result["nodes"]["worker-node-1"]["memory_capacity_gb"] == 16.0
 
         assert result["pods_count"] == 0
-        assert result["nodes_count"] == 0
+        # Derived from the node list, never from a second request.
+        assert result["nodes_count"] == 1
+        mock_client.get_nodes_count.assert_not_called()
 
     async def test_async_update_data_merges_node_metrics(
         self, hass: HomeAssistant, coordinator, mock_client
@@ -391,10 +386,7 @@ class TestKubernetesDataCoordinator:
         mock_client.get_deployments.return_value = []
         mock_client.get_statefulsets.return_value = []
         mock_client.get_cronjobs.return_value = []
-        mock_client.get_deployments_count.return_value = 0
-        mock_client.get_statefulsets_count.return_value = 0
         mock_client.get_daemonsets_count.return_value = 0
-        mock_client.get_cronjobs_count.return_value = 0
 
         mock_device_registry = MagicMock()
         mock_device_registry.async_get_device = MagicMock(return_value=None)
@@ -4979,7 +4971,7 @@ class TestDisabledResources:
         data = await coordinator._async_update_data()
 
         mock_client.get_pods_count.assert_not_called()
-        mock_client.get_nodes_count.assert_called_once()
+        mock_client.get_nodes_count.assert_not_called()
         assert data["pods_count"] == 2
 
     async def test_metrics_disabled_skips_metrics_api(
