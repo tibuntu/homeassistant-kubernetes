@@ -93,16 +93,6 @@ repos:
 default_language_version:
   python: python3.15
 
-# Exclude patterns
-exclude: |
-  (?x)^(
-    \.git/.*|
-    \.pytest_cache/.*|
-    __pycache__/.*|
-    \.mypy_cache/.*|
-    site/.*
-  )$
-
 # Fail fast - stop on first failure
 fail_fast: false
 

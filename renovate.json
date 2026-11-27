@@ -99,7 +99,7 @@
       }
     },
     {
-      "matchDepNames": ["pytest-homeassistant", "homeassistant", "pytest", "pytest-asyncio", "pytest-cov"],
+      "matchDepNames": ["pytest-homeassistant", "pytest-cov"],
       "groupName": "homeassistant",
       "semanticCommitScope": "deps"
     },
