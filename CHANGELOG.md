@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.18.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.18.0...v1.18.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* fetch the node list once per poll instead of twice ([637a980](https://github.com/tibuntu/homeassistant-kubernetes/commit/637a9809204bdf68aa9b1bd84130fe7a67ee1714))
+* keep Job sensors in Job-only namespaces from being re-created every poll ([29b55e6](https://github.com/tibuntu/homeassistant-kubernetes/commit/29b55e689919f3c2e993143c10a71e065b9c16a1))
+* keep the panel flags when the last entry unloads ([e1853d0](https://github.com/tibuntu/homeassistant-kubernetes/commit/e1853d0555f47944e2f93ee28746094f4d2d4c65))
+* keep watch streams alive for large objects ([f3fcb71](https://github.com/tibuntu/homeassistant-kubernetes/commit/f3fcb71efb83203b6449a848939cf2c8e487851d))
+* name the right RBAC verbs and resources in option and repair texts ([5edd330](https://github.com/tibuntu/homeassistant-kubernetes/commit/5edd3306a0f7b08ea6566f1e4cedfc5154b1b421))
+* **panel:** keyboard access to node actions, stale drain options and four more panel bugs ([b46dedc](https://github.com/tibuntu/homeassistant-kubernetes/commit/b46dedc8913857bc29775114755197e4fac3973f))
+* report a Job with running pods as Running, not Complete ([31ebd2d](https://github.com/tibuntu/homeassistant-kubernetes/commit/31ebd2da9198ec16c18b63c00fe22ae9604ec937))
+* resolve the delete_job namespace fallback when namespaces are selected ([323dc7e](https://github.com/tibuntu/homeassistant-kubernetes/commit/323dc7e8ecf232eed5825020ea7d392094103c69))
+
 ## [1.18.0](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.17.0...v1.18.0) (2026-11-21)
 
 A feature release built around one question: **why is this pod broken?** The panel now shows a pod's real status, its containers and its events, plus CPU and memory usage per pod. Nodes get **CPU and memory usage sensors**, **cert-manager certificates** are monitored, and the panel remembers its tab and filters in the URL. The integration also no longer installs the `kubernetes` Python package. Certificates need one new permission, see *Upgrading*.
