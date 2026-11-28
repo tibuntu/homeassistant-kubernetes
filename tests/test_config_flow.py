@@ -442,29 +442,6 @@ async def test_async_step_namespaces_string_namespace_conversion(
     assert "production" in result["data"][CONF_NAMESPACE]
 
 
-async def test_async_step_namespaces_non_list_namespace(hass: HomeAssistant):
-    """Test namespace step converts non-list/non-string namespace to default.
-
-    The real flow manager validates input against the schema, so a non-list
-    value can only arrive from non-UI callers. Test the conversion logic
-    via direct method call.
-    """
-    flow = KubernetesConfigFlow()
-    flow.hass = hass
-    flow.context = {"source": config_entries.SOURCE_USER}
-    flow._connection_data = {
-        CONF_CLUSTER_NAME: "test-cluster",
-        CONF_HOST: "test-host",
-        CONF_PORT: 6443,
-        CONF_API_TOKEN: "test-token",
-    }
-
-    result = await flow.async_step_namespaces({CONF_NAMESPACE: 12345})
-
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_NAMESPACE] == ["default"]
-
-
 async def test_async_step_namespaces_no_namespaces_fetched(hass: HomeAssistant):
     """Test namespace step shows error when no namespaces fetched."""
     with (
@@ -474,34 +451,6 @@ async def test_async_step_namespaces_no_namespaces_fetched(hass: HomeAssistant):
             "_fetch_namespaces",
             new_callable=AsyncMock,
             return_value=[],
-        ),
-    ):
-        result = await hass.config_entries.flow.async_init(
-            DOMAIN, context={"source": config_entries.SOURCE_USER}
-        )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            user_input={
-                CONF_CLUSTER_NAME: "test-cluster",
-                CONF_HOST: "test-host",
-                CONF_API_TOKEN: "test-token",
-                CONF_MONITOR_ALL_NAMESPACES: False,
-            },
-        )
-
-    assert result["type"] is FlowResultType.FORM
-    assert result["errors"].get("base") == "cannot_fetch_namespaces"
-
-
-async def test_async_step_namespaces_fetch_exception(hass: HomeAssistant):
-    """Test namespace step handles fetch exception."""
-    with (
-        patched_connection(),
-        patch.object(
-            KubernetesConfigFlow,
-            "_fetch_namespaces",
-            new_callable=AsyncMock,
-            side_effect=Exception("Network error"),
         ),
     ):
         result = await hass.config_entries.flow.async_init(
@@ -1607,68 +1556,6 @@ class TestReconfigureNamespacesFlow:
 
         assert result["type"] is FlowResultType.FORM
         assert result["errors"].get("base") == "cannot_fetch_namespaces"
-
-    async def test_reconfigure_namespaces_fetch_exception(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
-    ):
-        """Test error when namespace fetch raises an exception."""
-        with (
-            patched_connection(),
-            patch.object(
-                KubernetesConfigFlow,
-                "_fetch_namespaces",
-                new_callable=AsyncMock,
-                side_effect=Exception("connection reset"),
-            ),
-        ):
-            result = await hass.config_entries.flow.async_init(
-                DOMAIN,
-                context={
-                    "source": config_entries.SOURCE_RECONFIGURE,
-                    "entry_id": mock_config_entry.entry_id,
-                },
-            )
-            result = await hass.config_entries.flow.async_configure(
-                result["flow_id"],
-                user_input={
-                    CONF_HOST: "host.example.com",
-                    CONF_PORT: 6443,
-                    CONF_API_TOKEN: "test-token",
-                    CONF_MONITOR_ALL_NAMESPACES: False,
-                },
-            )
-
-        assert result["type"] is FlowResultType.FORM
-        assert result["errors"].get("base") == "cannot_fetch_namespaces"
-
-    async def test_reconfigure_namespaces_non_list_default(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
-    ):
-        """Test non-list/non-string namespace input defaults to ['default'].
-
-        The real flow manager validates input against the schema, so a non-list
-        value can only arrive from non-UI callers. Test the conversion logic
-        via direct method call.
-        """
-        flow = KubernetesConfigFlow()
-        flow.hass = hass
-        flow._connection_data = {
-            CONF_CLUSTER_NAME: "test-cluster",
-            CONF_HOST: "host.example.com",
-            CONF_PORT: 6443,
-            CONF_API_TOKEN: "test-token",
-        }
-        flow.handler = DOMAIN
-        flow.context = {
-            "source": config_entries.SOURCE_RECONFIGURE,
-            "entry_id": mock_config_entry.entry_id,
-        }
-
-        result = await flow.async_step_reconfigure_namespaces({CONF_NAMESPACE: 12345})
-
-        assert result["type"] is FlowResultType.ABORT
-        assert result["reason"] == "reconfigure_successful"
-        assert mock_config_entry.data[CONF_NAMESPACE] == ["default"]
 
 
 # ---------------------------------------------------------------------------

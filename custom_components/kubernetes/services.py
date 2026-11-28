@@ -84,39 +84,32 @@ def _get_workload_info_from_entity(
     Returns:
         Tuple of (namespace, workload_name, workload_type)
     """
-    try:
-        # If it's already an entity ID, use it directly
-        if entity_id_or_name.startswith("switch."):
-            entity_id = entity_id_or_name
-        else:
-            # Try to find the entity by name
-            entity_id = f"switch.{entity_id_or_name}"
+    # If it's already an entity ID, use it directly
+    if entity_id_or_name.startswith("switch."):
+        entity_id = entity_id_or_name
+    else:
+        # Try to find the entity by name
+        entity_id = f"switch.{entity_id_or_name}"
 
-        entity = hass.states.get(entity_id)
-        if entity and entity.attributes:
-            namespace = entity.attributes.get("namespace")
-            workload_type = entity.attributes.get(ATTR_WORKLOAD_TYPE)
-            deployment_name = entity.attributes.get("deployment_name")
-            statefulset_name = entity.attributes.get("statefulset_name")
-            cronjob_name = entity.attributes.get("cronjob_name")
-            workload_name = deployment_name or statefulset_name or cronjob_name
+    entity = hass.states.get(entity_id)
+    if entity and entity.attributes:
+        namespace = entity.attributes.get("namespace")
+        workload_type = entity.attributes.get(ATTR_WORKLOAD_TYPE)
+        deployment_name = entity.attributes.get("deployment_name")
+        statefulset_name = entity.attributes.get("statefulset_name")
+        cronjob_name = entity.attributes.get("cronjob_name")
+        workload_name = deployment_name or statefulset_name or cronjob_name
 
-            _LOGGER.debug(
-                "Found namespace %s, workload_name %s, workload_type %s for entity %s",
-                namespace,
-                workload_name,
-                workload_type,
-                entity_id,
-            )
-            return namespace, workload_name, workload_type
-        else:
-            _LOGGER.debug("Entity %s not found or has no attributes", entity_id)
-            return None, None, None
-    except Exception as e:
         _LOGGER.debug(
-            "Error getting workload info for entity %s: %s", entity_id_or_name, e
+            "Found namespace %s, workload_name %s, workload_type %s for entity %s",
+            namespace,
+            workload_name,
+            workload_type,
+            entity_id,
         )
-        return None, None, None
+        return namespace, workload_name, workload_type
+    _LOGGER.debug("Entity %s not found or has no attributes", entity_id)
+    return None, None, None
 
 
 def _entity_entry_id(hass: HomeAssistant, entity_id: str) -> str | None:
@@ -771,7 +764,6 @@ def _get_workload_entry_data(
     """
     candidates = set(owners)
     if explicit_entry_id := call_data.get("entry_id"):
-        _get_entry_data(hass, call_data)  # raises entry_not_loaded if unknown
         candidates.add(explicit_entry_id)
 
     if len(candidates) > 1:

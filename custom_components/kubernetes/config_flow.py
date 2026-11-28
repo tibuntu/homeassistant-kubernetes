@@ -567,8 +567,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                         for ns in config_data[CONF_NAMESPACE].split(",")
                         if ns.strip()
                     ]
-                elif not isinstance(config_data[CONF_NAMESPACE], list):
-                    config_data[CONF_NAMESPACE] = [DEFAULT_NAMESPACE]
 
                 # Filter out empty strings
                 config_data[CONF_NAMESPACE] = [
@@ -581,31 +579,23 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         namespace_options: list[Any] = []
         schema: dict[Any, Any]
 
-        try:
-            _LOGGER.info(
-                "Fetching namespaces from cluster at %s:%s...",
-                self._connection_data.get(CONF_HOST),
-                self._connection_data.get(CONF_PORT, DEFAULT_PORT),
-            )
-            fetched_namespaces = await self._fetch_namespaces(self._connection_data)
+        _LOGGER.info(
+            "Fetching namespaces from cluster at %s:%s...",
+            self._connection_data.get(CONF_HOST),
+            self._connection_data.get(CONF_PORT, DEFAULT_PORT),
+        )
+        fetched_namespaces = await self._fetch_namespaces(self._connection_data)
 
-            if fetched_namespaces:
-                _LOGGER.info(
-                    "Successfully fetched %d namespaces from cluster",
-                    len(fetched_namespaces),
-                )
-                namespace_options = [
-                    SelectOptionDict(value=ns, label=ns) for ns in fetched_namespaces
-                ]
-                default_selected = select_default(default_selected, fetched_namespaces)
-            else:
-                _LOGGER.warning(
-                    "No namespaces were fetched from cluster. "
-                    "This might indicate a connection or permissions issue."
-                )
-                errors["base"] = "cannot_fetch_namespaces"
-        except Exception:
-            _LOGGER.exception("Exception while fetching namespaces")
+        if fetched_namespaces:
+            namespace_options = [
+                SelectOptionDict(value=ns, label=ns) for ns in fetched_namespaces
+            ]
+            default_selected = select_default(default_selected, fetched_namespaces)
+        else:
+            _LOGGER.warning(
+                "No namespaces were fetched from cluster. "
+                "This might indicate a connection or permissions issue."
+            )
             errors["base"] = "cannot_fetch_namespaces"
 
         # If we couldn't fetch namespaces, show error but still allow manual entry
