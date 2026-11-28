@@ -604,6 +604,41 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   }
 
   private _renderCluster(cluster: ClusterWorkloads) {
+    const sections = [
+      this._shouldShowCategory("deployments")
+        ? this._renderReplicaCategory(
+            "deployment",
+            cluster.deployments,
+            cluster.entry_id,
+            cluster.metrics_available,
+          )
+        : nothing,
+      this._shouldShowCategory("statefulsets")
+        ? this._renderReplicaCategory(
+            "statefulset",
+            cluster.statefulsets,
+            cluster.entry_id,
+            cluster.metrics_available,
+          )
+        : nothing,
+      this._shouldShowCategory("daemonsets")
+        ? this._renderDaemonSets(
+            cluster.daemonsets,
+            cluster.entry_id,
+            cluster.metrics_available,
+          )
+        : nothing,
+      this._shouldShowCategory("cronjobs")
+        ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id)
+        : nothing,
+      this._shouldShowCategory("jobs")
+        ? this._renderJobs(cluster.entry_id, cluster.jobs)
+        : nothing,
+    ];
+    // With one category selected its renderer says so itself.
+    const noMatch =
+      this._categoryFilter === "all" && sections.every((s) => s === nothing);
+
     return html`
       <div class="cluster-section">
         ${
@@ -611,41 +646,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
             : nothing
         }
-        ${
-          this._shouldShowCategory("deployments")
-            ? this._renderReplicaCategory(
-                "deployment",
-                cluster.deployments,
-                cluster.entry_id,
-                cluster.metrics_available,
-              )
-            : nothing
-        }
-        ${
-          this._shouldShowCategory("statefulsets")
-            ? this._renderReplicaCategory(
-                "statefulset",
-                cluster.statefulsets,
-                cluster.entry_id,
-                cluster.metrics_available,
-              )
-            : nothing
-        }
-        ${
-          this._shouldShowCategory("daemonsets")
-            ? this._renderDaemonSets(
-                cluster.daemonsets,
-                cluster.entry_id,
-                cluster.metrics_available,
-              )
-            : nothing
-        }
-        ${
-          this._shouldShowCategory("cronjobs")
-            ? this._renderCronJobs(cluster.cronjobs, cluster.entry_id)
-            : nothing
-        }
-        ${this._shouldShowCategory("jobs") ? this._renderJobs(cluster.entry_id, cluster.jobs) : nothing}
+        ${sections}
+        ${noMatch ? html`<div class="empty">No workloads match your filters.</div>` : nothing}
       </div>
     `;
   }

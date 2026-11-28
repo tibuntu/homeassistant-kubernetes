@@ -2532,14 +2532,11 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             </button>
           `)}
       </div>
-    `}_renderCluster(e){return S`
+    `}_renderCluster(e){let t=[this._shouldShowCategory(`deployments`)?this._renderReplicaCategory(`deployment`,e.deployments,e.entry_id,e.metrics_available):w,this._shouldShowCategory(`statefulsets`)?this._renderReplicaCategory(`statefulset`,e.statefulsets,e.entry_id,e.metrics_available):w,this._shouldShowCategory(`daemonsets`)?this._renderDaemonSets(e.daemonsets,e.entry_id,e.metrics_available):w,this._shouldShowCategory(`cronjobs`)?this._renderCronJobs(e.cronjobs,e.entry_id):w,this._shouldShowCategory(`jobs`)?this._renderJobs(e.entry_id,e.jobs):w],n=this._categoryFilter===`all`&&t.every(e=>e===w);return S`
       <div class="cluster-section">
         ${this._data.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
-        ${this._shouldShowCategory(`deployments`)?this._renderReplicaCategory(`deployment`,e.deployments,e.entry_id,e.metrics_available):w}
-        ${this._shouldShowCategory(`statefulsets`)?this._renderReplicaCategory(`statefulset`,e.statefulsets,e.entry_id,e.metrics_available):w}
-        ${this._shouldShowCategory(`daemonsets`)?this._renderDaemonSets(e.daemonsets,e.entry_id,e.metrics_available):w}
-        ${this._shouldShowCategory(`cronjobs`)?this._renderCronJobs(e.cronjobs,e.entry_id):w}
-        ${this._shouldShowCategory(`jobs`)?this._renderJobs(e.entry_id,e.jobs):w}
+        ${t}
+        ${n?S`<div class="empty">No workloads match your filters.</div>`:w}
       </div>
     `}_shouldShowCategory(e){return this._categoryFilter===`all`||this._categoryFilter===e}_getReplicaStatus(e,t){return e.replicas===0?`stopped`:e.rollout_stalled||(e[Vt[t].readyField]||0)<e.replicas?`degraded`:`healthy`}_getDaemonSetStatus(e){return e.desired_number_scheduled===0?`stopped`:(e.number_available||0)<e.desired_number_scheduled?`degraded`:`healthy`}_matchesStatusFilter(e){return this._statusFilter===`all`||this._statusFilter===e}_renderReplicaCategory(e,t,n,r){let i=Vt[e],a=t.filter(t=>this._matchesNamespace(t.namespace)&&this._matchesSearch(t.name)&&this._matchesStatusFilter(this._getReplicaStatus(t,e)));return a.length===0&&this._categoryFilter!==`all`?S`<div class="empty">No ${i.emptyLabel} match your filters.</div>`:a.length===0?w:S`
       <div class="category-section">

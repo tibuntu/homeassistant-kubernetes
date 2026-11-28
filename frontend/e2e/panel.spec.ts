@@ -1097,3 +1097,9 @@ test("overview namespace table includes ingresses and services", async ({ page }
   const row = table.locator("tbody tr", { hasText: "kube-system" });
   await expect(row.locator("td").nth(col)).toHaveText("1");
 });
+
+test("workloads say when no workload matches", async ({ page }) => {
+  await page.goto(`${HARNESS}/workloads`);
+  await page.locator(".search-input").fill("zzz");
+  await expect(page.getByText("No workloads match your filters.")).toBeVisible();
+});
