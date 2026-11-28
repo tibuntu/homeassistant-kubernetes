@@ -513,6 +513,9 @@
     "no_valid_workloads": {
       "message": "No valid workloads found for {service}. Requested: {requested}. Ensure workload_name/workload_names reference existing switch entities (e.g. switch.xxx) that expose namespace and workload_type attributes, or raw workload names that exist in a loaded cluster."
     },
+    "unresolved_workloads": {
+      "message": "Could not resolve {targets}; nothing was changed."
+    },
     "unsupported_workload_type": {
       "message": "Cannot {operation} {workloads}: only {supported} are supported."
     },

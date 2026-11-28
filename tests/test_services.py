@@ -665,6 +665,24 @@ class TestServiceSelectorConfiguration:
                         f"{service_name}.{field_name} target entity selector has wrong integration"
                     )
 
+    def test_workload_names_uses_multiple_entity_picker(self):
+        """workload_names offers only switches: an entity picker, no target selector."""
+        services_yaml_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "custom_components",
+            "kubernetes",
+            "services.yaml",
+        )
+        with open(services_yaml_path) as f:
+            services_config = yaml.safe_load(f)
+
+        for service_name, service_config in services_config.items():
+            field = service_config.get("fields", {}).get("workload_names")
+            if field is None:
+                continue
+            assert "target" not in field["selector"], service_name
+            assert field["selector"]["entity"]["multiple"] is True, service_name
+
 
 class TestNormalizeEntityIdList:
     """Test the _normalize_entity_id_list helper."""
@@ -2810,10 +2828,10 @@ class TestMultiEntryRouting:
 
         assert result == []
 
-    async def test_failed_target_does_not_contribute_owner(
+    async def test_unresolved_target_rejects_whole_call(
         self, hass: HomeAssistant, two_entries
     ):
-        """A target that yields no workload (no attributes) adds no owner."""
+        """A target that yields no workload fails the call before any change."""
         entry_a, entry_b = two_entries
         broken = er.async_get(hass).async_get_or_create(
             "switch",
@@ -2826,15 +2844,54 @@ class TestMultiEntryRouting:
         good = self._register(hass, entry_b, "web", deployment_name="web")
         await async_setup_services(hass)
 
-        await hass.services.async_call(
-            DOMAIN,
-            SERVICE_SCALE_WORKLOAD,
-            {ATTR_WORKLOAD_NAMES: [broken.entity_id, good], ATTR_REPLICAS: 2},
-            blocking=True,
-        )
+        with pytest.raises(ServiceValidationError) as exc_info:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {ATTR_WORKLOAD_NAMES: [good, broken.entity_id]},
+                blocking=True,
+            )
 
-        entry_b.runtime_data.client.scale_deployment.assert_awaited_once()
-        entry_a.runtime_data.client.scale_deployment.assert_not_called()
+        assert exc_info.value.translation_key == "unresolved_workloads"
+        assert exc_info.value.translation_placeholders == {"targets": broken.entity_id}
+        entry_a.runtime_data.client.stop_deployment.assert_not_called()
+        entry_b.runtime_data.client.stop_deployment.assert_not_called()
+
+    async def test_unresolved_raw_name_rejects_whole_call(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """An unknown raw name next to a resolvable target rejects the call."""
+        _entry_a, entry_b = two_entries
+        good = self._register(hass, entry_b, "web", deployment_name="web")
+        await async_setup_services(hass)
+
+        with pytest.raises(ServiceValidationError) as exc_info:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {ATTR_WORKLOAD_NAMES: [good, "typo"]},
+                blocking=True,
+            )
+
+        assert exc_info.value.translation_key == "unresolved_workloads"
+        assert exc_info.value.translation_placeholders == {"targets": "typo"}
+        entry_b.runtime_data.client.stop_deployment.assert_not_called()
+
+    async def test_nothing_resolved_keeps_no_valid_workloads(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """When no target resolves, the no_valid_workloads error stays."""
+        await async_setup_services(hass)
+
+        with pytest.raises(ServiceValidationError) as exc_info:
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_STOP_WORKLOAD,
+                {ATTR_WORKLOAD_NAMES: ["typo"]},
+                blocking=True,
+            )
+
+        assert exc_info.value.translation_key == "no_valid_workloads"
 
     async def test_raw_name_with_entry_id_ignores_foreign_switch(
         self, hass: HomeAssistant, two_entries
