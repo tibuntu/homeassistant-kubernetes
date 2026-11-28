@@ -15,10 +15,10 @@ scale_workload:
       description: A list of workload names to scale (use workload_name for single).
       required: false
       selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
+        entity:
+          multiple: true
+          domain: switch
+          integration: kubernetes
     replicas:
       name: Replicas
       description: The number of replicas to scale to (0 or more).
@@ -66,10 +66,10 @@ start_workload:
       description: A list of workload names to start (use workload_name for single).
       required: false
       selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
+        entity:
+          multiple: true
+          domain: switch
+          integration: kubernetes
     replicas:
       name: Replicas
       description: The number of replicas to scale to for Deployments/StatefulSets (1 or more, defaults to 1). Ignored for CronJobs.
@@ -118,10 +118,10 @@ stop_workload:
       description: A list of workload names to stop (use workload_name for single).
       required: false
       selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
+        entity:
+          multiple: true
+          domain: switch
+          integration: kubernetes
     namespace:
       name: Namespace
       description: The namespace containing the workload(s) (optional, defaults to configured namespace).
@@ -161,10 +161,10 @@ restart_workload:
       description: A list of workload names to restart (use workload_name for single).
       required: false
       selector:
-        target:
-          entity:
-            domain: switch
-            integration: kubernetes
+        entity:
+          multiple: true
+          domain: switch
+          integration: kubernetes
     namespace:
       name: Namespace
       description: The namespace containing the workload(s) (optional, defaults to configured namespace).

@@ -346,6 +346,7 @@ def _extract_workloads_with_owners(
     """
     workloads: list[tuple[str, str | None, str]] = []
     owners: set[str] = set()
+    unresolved: list[str] = []
 
     # An unknown explicit entry_id is reported as such, whatever the targets.
     if call_data.get("entry_id"):
@@ -363,6 +364,7 @@ def _extract_workloads_with_owners(
             if owner := _entity_entry_id(hass, entity_id):
                 owners.add(owner)
         else:
+            unresolved.append(entity_id)
             _LOGGER.warning(
                 "Failed to extract workload info from entity %s: namespace=%s, workload_name=%s, workload_type=%s",
                 entity_id,
@@ -391,6 +393,8 @@ def _extract_workloads_with_owners(
             if resolved:
                 workloads.append(resolved)
                 owners.update(found_owners)
+            else:
+                unresolved.append(name)
 
     # Raw (non switch.*) names from workload_names
     for raw_name in _collect_raw_workload_names(call_data):
@@ -404,6 +408,17 @@ def _extract_workloads_with_owners(
         if resolved:
             workloads.append(resolved)
             owners.update(found_owners)
+        else:
+            unresolved.append(raw_name)
+
+    # A partly unresolvable call is rejected before anything is changed; when
+    # nothing resolved, the handlers raise no_valid_workloads instead.
+    if workloads and unresolved:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="unresolved_workloads",
+            translation_placeholders={"targets": ", ".join(unresolved)},
+        )
 
     # Use provided namespace if available
     provided_namespace = call_data.get(ATTR_NAMESPACE)
