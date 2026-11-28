@@ -934,6 +934,34 @@ class TestKubernetesDataCoordinator:
 
         assert not ephemeral & _tombstone_ids(hass)
 
+    async def test_cleanup_without_purge_keeps_tombstones(
+        self, hass: HomeAssistant, coordinator, mock_config_entry
+    ):
+        """Watch-triggered cleanup (purge_tombstones=False) leaves tombstones alone."""
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_pod_default_web-7d9f-abcde",
+            "sensor.web_7d9f_abcde",
+        )
+        _create_entity(
+            hass,
+            mock_config_entry,
+            "test-entry-id_job_default_backup-29920350",
+            "sensor.backup_29920350",
+        )
+        data = {"pods": {}, "jobs": {}}
+
+        await coordinator._cleanup_orphaned_entities(data, purge_tombstones=False)
+
+        registry = er.async_get(hass)
+        assert registry.async_get("sensor.web_7d9f_abcde") is None
+        _age_tombstones(hass)
+        await coordinator._cleanup_orphaned_entities(data, purge_tombstones=False)
+
+        # Aged past the grace period, yet not purged because the purge is skipped.
+        assert "test-entry-id_pod_default_web-7d9f-abcde" in _tombstone_ids(hass)
+
     async def test_cleanup_keeps_expected_node_usage_tombstone(
         self, hass: HomeAssistant, coordinator, mock_config_entry
     ):
@@ -1635,6 +1663,34 @@ class TestWatchSupport:
         assert "default_nginx" not in coordinator_watch_enabled.data["pods"]
         assert coordinator_watch_enabled.data["pods_count"] == 0
         coordinator_watch_enabled.async_update_listeners.assert_called_once()
+
+    async def test_apply_watch_event_deleted_schedules_cleanup_without_purge(
+        self, hass: HomeAssistant, coordinator_watch_enabled, mock_client
+    ):
+        """A DELETED event schedules orphan cleanup that skips tombstone purging."""
+        coordinator_watch_enabled.data = {
+            "pods": {"default_nginx": {"name": "nginx", "namespace": "default"}},
+            "pods_count": 1,
+        }
+        coordinator_watch_enabled.async_update_listeners = MagicMock()
+        cleanup = AsyncMock()
+        coordinator_watch_enabled._cleanup_orphaned_entities = cleanup
+
+        obj = {
+            "metadata": {
+                "name": "nginx",
+                "namespace": "default",
+                "resourceVersion": "3",
+            }
+        }
+        coordinator_watch_enabled._apply_watch_event(
+            "pods", "DELETED", obj, mock_client._parse_pod_item
+        )
+        await hass.async_block_till_done()
+
+        cleanup.assert_called_once_with(
+            coordinator_watch_enabled.data, purge_tombstones=False
+        )
 
     async def test_apply_watch_event_nodes_count_synced(
         self, coordinator_watch_enabled, mock_client
@@ -2340,7 +2396,9 @@ class TestRelistPruning:
 
         assert set(coord.data["pods"]) == {"default_keep"}
         assert coord.data["pods_count"] == 1
-        coord._cleanup_orphaned_entities.assert_awaited_once_with(coord.data)
+        coord._cleanup_orphaned_entities.assert_awaited_once_with(
+            coord.data, purge_tombstones=False
+        )
 
     async def test_nodes_relist_prunes_removed_node(self, hass, coord):
         """A relist of nodes drops removed nodes and fixes nodes_count."""
