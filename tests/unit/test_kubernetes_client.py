@@ -7464,6 +7464,24 @@ class TestExcludeJobPods:
 class TestGetPodLogs:
     """get_pod_logs: aiohttp-only log snapshot with a size cap."""
 
+    async def test_get_pod_logs_rejects_an_invalid_name(self, mock_client):
+        """An invalid name raises before any request (on main it was sent)."""
+        with (
+            patch.object(mock_client, "_session") as session,
+            pytest.raises(KubernetesApiError, match="invalid name"),
+        ):
+            await mock_client.get_pod_logs("..", "default")
+
+        assert not session.mock_calls
+
+    async def test_invalid_target_message_does_not_say_modify(self, mock_client):
+        """The error is also raised by read paths, so it must not say "modify"."""
+        with pytest.raises(KubernetesApiError) as exc_info:
+            await mock_client.get_pod_detail("..", "default")
+
+        assert "invalid name" in str(exc_info.value)
+        assert "modify" not in str(exc_info.value)
+
     async def test_returns_logs_and_passes_params(self, mock_client):
         """200 returns the decoded body; options map to query parameters."""
         session = mock_aiohttp_session(get=_mock_response(200, read=b"line1\nline2\n"))
@@ -7531,18 +7549,6 @@ class TestGetPodLogs:
 
         assert truncated is True
         assert logs == "b" * POD_LOGS_LIMIT_BYTES
-
-    async def test_path_segments_are_quoted(self, mock_client):
-        """Names cannot escape their path segment and address another API."""
-        session = mock_aiohttp_session(get=_mock_response(200, read=b""))
-
-        with patch.object(mock_client, "_session", session):
-            await mock_client.get_pod_logs("../secrets/x?y#z", "a/b")
-
-        url = session.get.call_args[0][0]
-        assert url.endswith(
-            "/api/v1/namespaces/a%2Fb/pods/..%2Fsecrets%2Fx%3Fy%23z/log"
-        )
 
     @pytest.mark.parametrize("status", [400, 403, 404])
     async def test_non_200_raises_with_status(self, mock_client, status):
@@ -7741,7 +7747,7 @@ class TestGetPodDetail:
         """Names that must not reach a URL raise without opening a session."""
         with (
             patch.object(mock_client, "_session") as session,
-            pytest.raises(KubernetesApiError, match="Refusing"),
+            pytest.raises(KubernetesApiError, match="Rejected"),
         ):
             await mock_client.get_pod_detail(name, namespace)
 
@@ -7865,7 +7871,7 @@ class TestGetPodEvents:
         """Names that must not reach a URL or selector raise without a request."""
         with (
             patch.object(mock_client, "_session") as session,
-            pytest.raises(KubernetesApiError, match="Refusing"),
+            pytest.raises(KubernetesApiError, match="Rejected"),
         ):
             await mock_client.get_pod_events(name, namespace)
 
