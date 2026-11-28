@@ -207,6 +207,7 @@ def make_coordinator():
         coordinator = MagicMock()
         coordinator.data = data
         coordinator.last_update_success = last_update_success
+        coordinator.async_request_refresh = AsyncMock()
         for key, value in attrs.items():
             setattr(coordinator, key, value)
         return coordinator

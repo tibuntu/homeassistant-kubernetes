@@ -895,6 +895,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             WORKLOAD_TYPE_STATEFULSET: client.scale_statefulset,
         }
         failures: list[str] = []
+        any_success = False
 
         for workload_name, raw_namespace, workload_type in workloads:
             namespace = raw_namespace or _default_namespace(config_data)
@@ -905,8 +906,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 label,
                 failures,
             ):
+                any_success = True
                 _LOGGER.info("Successfully scaled %s to %d replicas", label, replicas)
 
+        if any_success:
+            await coordinator.async_request_refresh()
         _raise_failures(failures, "scale")
 
         if len(workloads) > 1:
@@ -940,6 +944,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             WORKLOAD_TYPE_STATEFULSET: client.start_statefulset,
         }
         failures: list[str] = []
+        any_success = False
 
         for workload_name, raw_namespace, workload_type in workloads:
             namespace = raw_namespace or _default_namespace(config_data)
@@ -951,6 +956,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     client.trigger_cronjob(workload_name, namespace), label, failures
                 )
                 if result:
+                    any_success = True
                     _LOGGER.info(
                         "Successfully triggered %s, created job %s",
                         label,
@@ -961,6 +967,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 label,
                 failures,
             ):
+                any_success = True
                 _LOGGER.info(
                     "Successfully started %s with %d replicas", label, replicas
                 )
@@ -973,6 +980,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                         hpa["name"],
                     )
 
+        if any_success:
+            await coordinator.async_request_refresh()
         _raise_failures(failures, "start")
 
         if len(workloads) > 1:
@@ -994,12 +1003,14 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         entry_data = _get_workload_entry_data(hass, call.data, owners, "stop_workload")
         config_data = entry_data.config
-        client = entry_data.coordinator.client
+        coordinator = entry_data.coordinator
+        client = coordinator.client
         stop_methods = {
             WORKLOAD_TYPE_DEPLOYMENT: client.stop_deployment,
             WORKLOAD_TYPE_STATEFULSET: client.stop_statefulset,
         }
         failures: list[str] = []
+        any_success = False
 
         for workload_name, raw_namespace, workload_type in workloads:
             namespace = raw_namespace or _default_namespace(config_data)
@@ -1008,8 +1019,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             if await _attempt(
                 stop_methods[workload_type](workload_name, namespace), label, failures
             ):
+                any_success = True
                 _LOGGER.info("Successfully stopped %s", label)
 
+        if any_success:
+            await coordinator.async_request_refresh()
         _raise_failures(failures, "stop")
 
         if len(workloads) > 1:
@@ -1036,7 +1050,8 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             hass, call.data, owners, "restart_workload"
         )
         config_data = entry_data.config
-        client = entry_data.coordinator.client
+        coordinator = entry_data.coordinator
+        client = coordinator.client
 
         restart_methods = {
             WORKLOAD_TYPE_DEPLOYMENT: client.rollout_restart_deployment,
@@ -1044,6 +1059,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             WORKLOAD_TYPE_DAEMONSET: client.rollout_restart_daemonset,
         }
         failures: list[str] = []
+        any_success = False
 
         for workload_name, raw_namespace, workload_type in workloads:
             namespace = raw_namespace or _default_namespace(config_data)
@@ -1054,8 +1070,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 label,
                 failures,
             ):
+                any_success = True
                 _LOGGER.info("Successfully restarted %s", label)
 
+        if any_success:
+            await coordinator.async_request_refresh()
         _raise_failures(failures, "restart")
 
         if len(workloads) > 1:
@@ -1074,6 +1093,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
         config_data = entry_data.config
         provided_ns = call.data.get(ATTR_NAMESPACE)
         failures: list[str] = []
+        any_success = False
         for job_name in job_names:
             namespace = provided_ns
             if not namespace:
@@ -1093,8 +1113,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 )
             label = f"job {namespace}/{job_name}"
             if await _attempt(client.delete_job(job_name, namespace), label, failures):
+                any_success = True
                 _LOGGER.info("Successfully deleted %s", label)
 
+        if any_success:
+            await coordinator.async_request_refresh()
         _raise_failures(failures, "delete")
 
     async def _set_nodes_schedulable(call: ServiceCall, schedulable: bool) -> None:

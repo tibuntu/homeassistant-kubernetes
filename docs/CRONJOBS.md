@@ -56,7 +56,7 @@ Triggers one or more CronJobs immediately (creates a job from the CronJob templa
 
 **Parameters**:
 - `workload_name` (string or entity ID, optional): Single CronJob name or entity ID (e.g., `switch.production_default_backup`)
-- `workload_names` (list or target selector, optional): Multiple CronJob names or entity IDs
+- `workload_names` (list of switch entities, optional): Multiple CronJob names or entity IDs
 - `namespace` (string, optional): Target namespace (defaults to configured namespace)
 - `replicas` (integer, optional): Ignored for CronJobs
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
