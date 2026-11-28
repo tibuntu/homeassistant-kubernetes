@@ -1,7 +1,7 @@
 """Tests for the Kubernetes number platform (replica count)."""
 
 import re
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
@@ -132,6 +132,25 @@ class TestNumberSetup:
         assert [e.unique_id for e in add_entities.call_args[0][0]] == [
             "test_entry_id_default_api_deployment_replicas"
         ]
+
+    async def test_listener_skips_unchanged_keys(
+        self, hass: HomeAssistant, mock_config_entry, coordinator
+    ):
+        """An update that changes no resource key schedules no discovery task."""
+        _attach(mock_config_entry, coordinator)
+        await async_setup_entry(hass, mock_config_entry, MagicMock())
+        listener = coordinator.async_add_listener.call_args[0][0]
+
+        with (
+            patch("custom_components.kubernetes.number._async_add_new_entities"),
+            patch.object(hass, "async_create_task") as create_task,
+        ):
+            listener()
+            create_task.assert_not_called()
+            coordinator.data["deployments"]["default_api"] = {"name": "api"}
+            listener()
+            listener()
+            assert create_task.call_count == 1
 
     async def test_registered_entities_are_provided_again(
         self, hass: HomeAssistant, mock_config_entry, coordinator

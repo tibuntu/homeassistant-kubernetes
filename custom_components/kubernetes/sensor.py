@@ -37,6 +37,7 @@ from .coordinator import (
     KubernetesConfigEntry,
     KubernetesDataCoordinator,
     disabled_resources,
+    discovery_keys,
 )
 from .device import get_cluster_device_info, get_namespace_device_info
 
@@ -275,9 +276,17 @@ async def async_setup_entry(
         entry_data.sensor_add_entities = async_add_entities
 
         # Set up listener for adding new entities dynamically
+        # Setup created the entities for the keys present now.
+        known_keys = discovery_keys(coordinator.data)
+
         @callback
         def _async_add_new_entities() -> None:
             """Add new entities when new resources are discovered."""
+            nonlocal known_keys
+            keys = discovery_keys(coordinator.data)
+            if keys == known_keys:
+                return
+            known_keys = keys
             hass.async_create_task(
                 _async_discover_and_add_new_sensors(
                     hass, config_entry, coordinator, client
@@ -285,7 +294,9 @@ async def async_setup_entry(
             )
 
         # Register the callback with the coordinator
-        coordinator.async_add_listener(_async_add_new_entities)
+        config_entry.async_on_unload(
+            coordinator.async_add_listener(_async_add_new_entities)
+        )
 
         _LOGGER.debug(
             "Successfully set up %d Kubernetes sensors (including %d node sensors, %d pod sensors, %d daemonset sensors, %d status sensors, %d metric sensors, %d cronjob sensors, %d job sensors)",

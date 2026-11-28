@@ -21,6 +21,7 @@ from .coordinator import (
     KubernetesConfigEntry,
     KubernetesDataCoordinator,
     disabled_resources,
+    discovery_keys,
     get_hpa_for,
     hpa_attributes,
 )
@@ -53,8 +54,15 @@ async def async_setup_entry(
     # get_* methods raise and would fail the whole platform setup.
     await _async_add_new_entities(hass, config_entry, coordinator)
 
+    known_keys = discovery_keys(coordinator.data)
+
     @callback
     def _on_coordinator_update() -> None:
+        nonlocal known_keys
+        keys = discovery_keys(coordinator.data)
+        if keys == known_keys:
+            return
+        known_keys = keys
         hass.async_create_task(_async_add_new_entities(hass, config_entry, coordinator))
 
     config_entry.async_on_unload(coordinator.async_add_listener(_on_coordinator_update))

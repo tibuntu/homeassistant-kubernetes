@@ -418,6 +418,31 @@ class TestSensorSetup:
         # Verify coordinator listener was added
         mock_coordinator.async_add_listener.assert_called_once()
 
+    async def test_listener_runs_discovery_only_on_new_keys(
+        self, hass, mock_config_entry, mock_coordinator, setup_domain_data
+    ):
+        """Unchanged resource keys create no task; a new pod creates one."""
+        from custom_components.kubernetes.sensor import async_setup_entry
+
+        mock_coordinator.async_add_listener = MagicMock(return_value=MagicMock())
+        await async_setup_entry(hass, mock_config_entry, AsyncMock())
+        listener = mock_coordinator.async_add_listener.call_args[0][0]
+
+        with (
+            patch(
+                "custom_components.kubernetes.sensor._async_discover_and_add_new_sensors",
+                new=MagicMock(return_value=None),
+            ),
+            patch.object(hass, "async_create_task") as create_task,
+        ):
+            listener()
+            listener()
+            create_task.assert_not_called()
+            mock_coordinator.data = {"pods": {"default_new-pod": {"name": "new-pod"}}}
+            listener()
+            listener()
+            assert create_task.call_count == 1
+
     def test_sensor_handle_coordinator_update(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
