@@ -1091,7 +1091,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             if (this._statusFilter === "healthy") return j.state === "Complete";
             if (this._statusFilter === "degraded")
               return j.state === "Failed" || (j.failed > 0 && j.state !== "Complete");
-            if (this._statusFilter === "stopped") return j.active === 0;
+            if (this._statusFilter === "stopped") return j.state === "Suspended";
             return true;
           });
 

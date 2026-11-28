@@ -2733,7 +2733,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </ha-card>
-    `}_renderJobs(e,t){let n=t.filter(e=>this._matchesNamespace(e.namespace)&&this._matchesSearch(e.name)),r=this._statusFilter===`all`?n:n.filter(e=>this._statusFilter===`healthy`?e.state===`Complete`:this._statusFilter===`degraded`?e.state===`Failed`||e.failed>0&&e.state!==`Complete`:this._statusFilter!==`stopped`||e.active===0);return r.length===0&&this._categoryFilter!==`all`?S`<div class="empty">No jobs match your filters.</div>`:r.length===0?w:S`
+    `}_renderJobs(e,t){let n=t.filter(e=>this._matchesNamespace(e.namespace)&&this._matchesSearch(e.name)),r=this._statusFilter===`all`?n:n.filter(e=>this._statusFilter===`healthy`?e.state===`Complete`:this._statusFilter===`degraded`?e.state===`Failed`||e.failed>0&&e.state!==`Complete`:this._statusFilter!==`stopped`||e.state===`Suspended`);return r.length===0&&this._categoryFilter!==`all`?S`<div class="empty">No jobs match your filters.</div>`:r.length===0?w:S`
       <div class="category-section">
         <div
           class="category-header"
