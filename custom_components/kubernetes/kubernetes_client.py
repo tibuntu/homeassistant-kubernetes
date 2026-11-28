@@ -2865,21 +2865,6 @@ class KubernetesClient:
                 "namespace": target_namespace,
             }
 
-        # Check namespace permissions
-        if not self.monitor_all_namespaces and target_namespace not in self.namespaces:
-            error_msg = (
-                f"Cannot trigger CronJob '{cronjob_name}' in namespace '{target_namespace}': "
-                f"Integration is configured to monitor only namespaces {self.namespaces}. "
-                f"Enable 'monitor_all_namespaces' in configuration to access other namespaces."
-            )
-            _LOGGER.error(error_msg)
-            return {
-                "success": False,
-                "error": error_msg,
-                "cronjob_name": cronjob_name,
-                "namespace": target_namespace,
-            }
-
         # _trigger_cronjob_aiohttp never raises; failures come back in the dict.
         return await self._trigger_cronjob_aiohttp(cronjob_name, target_namespace)
 
@@ -2898,27 +2883,11 @@ class KubernetesClient:
     async def _set_cronjob_suspend(
         self, cronjob_name: str, namespace: str | None, suspend: bool
     ) -> dict[str, Any]:
-        """Patch spec.suspend on a CronJob after checking the namespace is monitored."""
+        """Patch spec.suspend on a CronJob."""
         operation = "suspend" if suspend else "resume"
         target_namespace = namespace or self.namespace
 
         if error_msg := self._invalid_target("CronJob", cronjob_name, namespace):
-            return {
-                "success": False,
-                "error": error_msg,
-                "cronjob_name": cronjob_name,
-                "namespace": target_namespace,
-            }
-
-        # Check namespace permissions
-        if not self.monitor_all_namespaces and target_namespace not in self.namespaces:
-            namespaces_str = ", ".join(self.namespaces)
-            error_msg = (
-                f"Cannot {operation} CronJob '{cronjob_name}' in namespace '{target_namespace}': "
-                f"Integration is configured to monitor only namespace(s) '{namespaces_str}'. "
-                f"Enable 'monitor_all_namespaces' in configuration to access other namespaces."
-            )
-            _LOGGER.error(error_msg)
             return {
                 "success": False,
                 "error": error_msg,

@@ -1937,23 +1937,18 @@ def _trigger_session() -> MagicMock:
     )
 
 
-async def test_trigger_cronjob_unmonitored_namespace_creates_no_job(mock_config):
-    """A namespace outside the monitored list is refused before any API call."""
+async def test_cronjob_actions_accept_an_unmonitored_namespace(mock_config):
+    """The namespace selection limits monitoring, not actions (RBAC decides)."""
     client = _trigger_guard_client(mock_config, monitor_all=False)
-    session = _trigger_session()
+    client._patch_cronjob_aiohttp = AsyncMock(return_value={"success": True})
+    client._trigger_cronjob_aiohttp = AsyncMock(return_value={"success": True})
 
-    with patch.object(client, "_session", session):
-        result = await client.trigger_cronjob("backup", "other")
+    await client.suspend_cronjob("job", "other")
+    await client.trigger_cronjob("job", "other")
 
-    assert result["success"] is False
-    assert result["cronjob_name"] == "backup"
-    assert result["namespace"] == "other"
-    assert result["error"].startswith(
-        "Cannot trigger CronJob 'backup' in namespace 'other': "
-    )
-    assert "monitor_all_namespaces" in result["error"]
-    # No Job was created: the API was never contacted.
-    assert not session.mock_calls
+    client._patch_cronjob_aiohttp.assert_awaited_once()
+    assert client._patch_cronjob_aiohttp.await_args.args[:2] == ("job", "other")
+    client._trigger_cronjob_aiohttp.assert_awaited_once_with("job", "other")
 
 
 async def test_trigger_cronjob_monitored_non_default_namespace(mock_config):
@@ -2119,19 +2114,6 @@ class TestKubernetesClientCronJobOperations:
             "test-cronjob", "default", {"spec": {"suspend": True}}, "suspend"
         )
 
-    async def test_suspend_cronjob_namespace_permission_error(self, mock_client):
-        """Test CronJob suspension with namespace permission error."""
-        # Test with different namespace when monitor_all_namespaces is False
-        result = await mock_client.suspend_cronjob("test-cronjob", "other-namespace")
-
-        # Verify
-        assert result["success"] is False
-        assert "Cannot suspend CronJob" in result["error"]
-        assert (
-            "monitor_all_namespaces" in result["error"]
-            or "namespace(s)" in result["error"]
-        )
-
     async def test_suspend_cronjob_api_exception(self, mock_client):
         """Test CronJob suspension with API exception."""
         # Mock the aiohttp method to fail
@@ -2218,59 +2200,6 @@ class TestKubernetesClientCronJobOperations:
         mock_client._patch_cronjob_aiohttp.assert_called_once_with(
             "test-cronjob", "default", {"spec": {"suspend": False}}, "resume"
         )
-
-    async def test_resume_cronjob_namespace_permission_error(self, mock_client):
-        """Test CronJob resume with namespace permission error."""
-        # Test with different namespace when monitor_all_namespaces is False
-        result = await mock_client.resume_cronjob("test-cronjob", "other-namespace")
-
-        # Verify
-        assert result["success"] is False
-        assert "Cannot resume CronJob" in result["error"]
-        assert (
-            "monitor_all_namespaces" in result["error"]
-            or "namespace(s)" in result["error"]
-        )
-
-    async def test_suspend_cronjob_namespace_permission_error_multiple_namespaces(
-        self, mock_client
-    ):
-        """Test CronJob suspension with namespace permission error when multiple namespaces are configured."""
-        # Configure client with multiple namespaces
-        mock_client.namespaces = ["default", "kube-system", "production"]
-        mock_client.monitor_all_namespaces = False
-
-        # Test with namespace not in the list
-        result = await mock_client.suspend_cronjob("test-cronjob", "other-namespace")
-
-        # Verify
-        assert result["success"] is False
-        assert "Cannot suspend CronJob" in result["error"]
-        assert "namespace(s)" in result["error"]
-        # Verify all namespaces are listed in the error message
-        assert "default" in result["error"]
-        assert "kube-system" in result["error"]
-        assert "production" in result["error"]
-
-    async def test_resume_cronjob_namespace_permission_error_multiple_namespaces(
-        self, mock_client
-    ):
-        """Test CronJob resume with namespace permission error when multiple namespaces are configured."""
-        # Configure client with multiple namespaces
-        mock_client.namespaces = ["default", "kube-system", "production"]
-        mock_client.monitor_all_namespaces = False
-
-        # Test with namespace not in the list
-        result = await mock_client.resume_cronjob("test-cronjob", "other-namespace")
-
-        # Verify
-        assert result["success"] is False
-        assert "Cannot resume CronJob" in result["error"]
-        assert "namespace(s)" in result["error"]
-        # Verify all namespaces are listed in the error message
-        assert "default" in result["error"]
-        assert "kube-system" in result["error"]
-        assert "production" in result["error"]
 
     async def test_resume_cronjob_api_exception(self, mock_client):
         """Test CronJob resume with API exception."""
@@ -6722,14 +6651,6 @@ class TestSetCronjobSuspend:
         mock_client._patch_cronjob_aiohttp.assert_called_once_with(
             "cj", "default", {"spec": {"suspend": False}}, "resume"
         )
-
-    async def test_namespace_check_runs_before_patch(self, mock_client):
-        """A non-monitored namespace is rejected without touching the API."""
-        mock_client._patch_cronjob_aiohttp = AsyncMock()
-        result = await mock_client._set_cronjob_suspend("cj", "other", True)
-        assert result["success"] is False
-        assert "Cannot suspend CronJob 'cj' in namespace 'other'" in result["error"]
-        mock_client._patch_cronjob_aiohttp.assert_not_called()
 
 
 class TestParsePodContainerState:
