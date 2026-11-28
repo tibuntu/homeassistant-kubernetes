@@ -232,7 +232,6 @@ class TestHPAs:
         assert hpa["target_kind"] == "Deployment"
         assert hpa["min_replicas"] == 1
         assert hpa["max_replicas"] == 3
-        assert isinstance(hpa["conditions"], dict)
 
         # The reverse lookup key (kind, namespace, name) matches a real workload
         deployments = await k8s_client.get_deployments()

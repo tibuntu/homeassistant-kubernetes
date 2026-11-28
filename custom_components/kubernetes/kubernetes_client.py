@@ -1066,14 +1066,6 @@ class KubernetesClient:
                         )
                         urls.append(f"{scheme}://{host}{path}")
 
-            load_balancer = ""
-            for lb in (
-                item.get("status", {}).get("loadBalancer", {}).get("ingress") or []
-            ):
-                load_balancer = lb.get("ip") or lb.get("hostname") or ""
-                if load_balancer:
-                    break
-
             return {
                 "name": metadata["name"],
                 "namespace": metadata["namespace"],
@@ -1081,7 +1073,6 @@ class KubernetesClient:
                 "rules": rules,
                 "tls_hosts": tls_hosts,
                 "urls": urls,
-                "load_balancer": load_balancer,
                 "creation_timestamp": metadata.get("creationTimestamp", ""),
             }
         except Exception as ex:
@@ -1157,7 +1148,6 @@ class KubernetesClient:
             metadata = item["metadata"]
             spec = item["spec"]
             target = spec["scaleTargetRef"]
-            status = item.get("status") or {}
             return {
                 "name": metadata["name"],
                 "namespace": metadata["namespace"],
@@ -1166,13 +1156,6 @@ class KubernetesClient:
                 # minReplicas is optional and defaults to 1 server-side
                 "min_replicas": spec.get("minReplicas", 1),
                 "max_replicas": spec["maxReplicas"],
-                "current_replicas": status.get("currentReplicas", 0),
-                "desired_replicas": status.get("desiredReplicas", 0),
-                "conditions": {
-                    c["type"]: c.get("status") == "True"
-                    for c in status.get("conditions") or []
-                },
-                "creation_timestamp": metadata.get("creationTimestamp", ""),
             }
         except Exception as ex:
             _LOGGER.warning("Failed to parse HPA item: %s", ex)
@@ -2668,9 +2651,6 @@ class KubernetesClient:
             "last_schedule_time": status.get("lastScheduleTime"),
             "last_successful_time": status.get("lastSuccessfulTime"),
             "active_jobs_count": len(status.get("active", [])),
-            "successful_jobs_history_limit": spec.get("successfulJobsHistoryLimit", 3),
-            "failed_jobs_history_limit": spec.get("failedJobsHistoryLimit", 1),
-            "concurrency_policy": spec.get("concurrencyPolicy", "Allow"),
             "uid": metadata.get("uid", ""),
             "creation_timestamp": metadata.get("creationTimestamp"),
         }
