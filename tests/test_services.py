@@ -608,6 +608,151 @@ class TestRestartWorkloadService:
         mock_client.rollout_restart_deployment.assert_not_called()
 
 
+_REFRESH_CASES = [
+    (SERVICE_SCALE_WORKLOAD, {ATTR_REPLICAS: 2}, "scale_deployment"),
+    (SERVICE_START_WORKLOAD, {}, "start_deployment"),
+    (SERVICE_STOP_WORKLOAD, {}, "stop_deployment"),
+    (SERVICE_RESTART_WORKLOAD, {}, "rollout_restart_deployment"),
+]
+
+
+class TestServicesRefreshCoordinator:
+    """Workload services and delete_job refresh the coordinator after a change."""
+
+    @staticmethod
+    def _two_deployments(hass: HomeAssistant) -> dict:
+        for name in ("a", "b"):
+            _set_workload_state(
+                hass, f"switch.{name}", deployment_name=name, namespace="default"
+            )
+        return {ATTR_WORKLOAD_NAMES: ["switch.a", "switch.b"]}
+
+    @pytest.mark.parametrize(("service", "extra", "method"), _REFRESH_CASES)
+    async def test_refresh_once_after_success(
+        self,
+        hass: HomeAssistant,
+        mock_client,
+        setup_domain_data,
+        service,
+        extra,
+        method,
+    ):
+        """Every target succeeded: one refresh."""
+        data = self._two_deployments(hass)
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN, service, {**data, **extra}, blocking=True
+        )
+
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    @pytest.mark.parametrize(("service", "extra", "method"), _REFRESH_CASES)
+    async def test_refresh_after_partial_failure(
+        self,
+        hass: HomeAssistant,
+        mock_client,
+        setup_domain_data,
+        service,
+        extra,
+        method,
+    ):
+        """One target succeeded, one failed: refresh once, then raise."""
+        data = self._two_deployments(hass)
+        getattr(mock_client, method).side_effect = [True, False]
+        await async_setup_services(hass)
+
+        with pytest.raises(HomeAssistantError):
+            await hass.services.async_call(
+                DOMAIN, service, {**data, **extra}, blocking=True
+            )
+
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    @pytest.mark.parametrize(("service", "extra", "method"), _REFRESH_CASES)
+    async def test_no_refresh_when_every_target_fails(
+        self,
+        hass: HomeAssistant,
+        mock_client,
+        setup_domain_data,
+        service,
+        extra,
+        method,
+    ):
+        """No change happened: no refresh."""
+        data = self._two_deployments(hass)
+        getattr(mock_client, method).return_value = False
+        await async_setup_services(hass)
+
+        with pytest.raises(HomeAssistantError):
+            await hass.services.async_call(
+                DOMAIN, service, {**data, **extra}, blocking=True
+            )
+
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_not_called()
+
+    async def test_start_cronjob_refreshes(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """Triggering a CronJob through start_workload refreshes too."""
+        _set_workload_state(
+            hass,
+            "switch.cj",
+            workload_type=WORKLOAD_TYPE_CRONJOB,
+            cronjob_name="cj",
+        )
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "switch.cj"},
+            blocking=True,
+        )
+
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_delete_job_refresh(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """delete_job refreshes after a success, also when another job fails."""
+        mock_client.delete_job.side_effect = [True, False]
+        await async_setup_services(hass)
+
+        with pytest.raises(HomeAssistantError):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_DELETE_JOB,
+                {ATTR_JOB_NAMES: ["j1", "j2"], ATTR_NAMESPACE: "default"},
+                blocking=True,
+            )
+
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_delete_job_no_refresh_on_failure(
+        self, hass: HomeAssistant, mock_client, setup_domain_data
+    ):
+        """delete_job does not refresh when nothing was deleted."""
+        mock_client.delete_job.return_value = False
+        await async_setup_services(hass)
+
+        with pytest.raises(HomeAssistantError):
+            await hass.services.async_call(
+                DOMAIN,
+                SERVICE_DELETE_JOB,
+                {ATTR_JOB_NAME: "j1", ATTR_NAMESPACE: "default"},
+                blocking=True,
+            )
+
+        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator.async_request_refresh.assert_not_called()
+
+
 class TestServiceSelectorConfiguration:
     """Test that service selectors are correctly configured."""
 
@@ -1944,6 +2089,7 @@ class TestDeleteJobService:
         coordinator = MagicMock()
         coordinator.client = mock_client
         coordinator.data = {"jobs": {}}
+        coordinator.async_request_refresh = AsyncMock()
         add_loaded_entry(
             "entry-list", config={"namespace": stored}, coordinator=coordinator
         )
@@ -1964,12 +2110,14 @@ class TestDeleteJobService:
         """Test that entry_id routes to the correct cluster's client."""
         mock_coordinator_a = MagicMock()
         mock_coordinator_a.client = mock_client
+        mock_coordinator_a.async_request_refresh = AsyncMock()
         mock_coordinator_a.data = {"jobs": {}}
 
         other_client = MagicMock()
         other_client.delete_job = AsyncMock(return_value=True)
         mock_coordinator_b = MagicMock()
         mock_coordinator_b.client = other_client
+        mock_coordinator_b.async_request_refresh = AsyncMock()
         mock_coordinator_b.data = {"jobs": {}}
 
         add_loaded_entry(
