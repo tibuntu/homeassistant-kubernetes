@@ -737,6 +737,7 @@ class TestDynamicBinarySensorDiscovery:
         mock_config_entry,
         mock_coordinator,
         setup_domain_data,
+        caplog,
     ):
         """Test discovery handles missing add_entities callback gracefully."""
         # Remove the callback
@@ -747,4 +748,8 @@ class TestDynamicBinarySensorDiscovery:
         # Should not raise
         await _async_discover_and_add_new_binary_sensors(
             hass, mock_config_entry, mock_coordinator
+        )
+        assert (
+            "No add_entities callback found for dynamic binary sensor management"
+            in caplog.text
         )

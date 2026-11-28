@@ -1347,7 +1347,7 @@ class TestStatefulSetNamespaceCollisionRegression:
 class TestDiscoverAndAddNewEntities:
     """Test _async_discover_and_add_new_entities helper function."""
 
-    async def test_no_add_entities_callback(self, mock_config_entry):
+    async def test_no_add_entities_callback(self, mock_config_entry, caplog):
         """Test function returns early when no callback stored."""
         hass = MagicMock()
         mock_config_entry.runtime_data = KubernetesEntryData(
@@ -1369,6 +1369,10 @@ class TestDiscoverAndAddNewEntities:
             await _async_discover_and_add_new_entities(
                 hass, mock_config_entry, coordinator, client
             )
+        assert (
+            "No add_entities callback found for dynamic entity management"
+            in caplog.text
+        )
 
     async def test_discovers_new_deployment(self, mock_config_entry):
         """Test discovering and adding a new deployment entity."""
@@ -1587,7 +1591,7 @@ class TestDiscoverAndAddNewEntities:
 
         add_entities_callback.assert_not_called()
 
-    async def test_exception_handled_gracefully(self, mock_config_entry):
+    async def test_exception_handled_gracefully(self, mock_config_entry, caplog):
         """Test that exceptions in the function are caught and logged."""
         hass = MagicMock()
         mock_config_entry.runtime_data = KubernetesEntryData(
@@ -1608,6 +1612,9 @@ class TestDiscoverAndAddNewEntities:
             await _async_discover_and_add_new_entities(
                 hass, mock_config_entry, coordinator, MagicMock()
             )
+
+        assert "Failed to discover and add new entities: Registry error" in caplog.text
+        mock_config_entry.runtime_data.switch_add_entities.assert_not_called()
 
     async def test_does_not_readd_pending_entities(self, mock_config_entry):
         """Test that entities added in a previous cycle are not re-added."""

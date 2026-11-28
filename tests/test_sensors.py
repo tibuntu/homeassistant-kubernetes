@@ -1066,7 +1066,7 @@ class TestDynamicNodeSensorDiscovery:
         assert all(hasattr(sensor, "node_name") for sensor in call_args)
 
     async def test_discover_new_node_sensors_no_callback(
-        self, mock_config_entry, mock_coordinator, mock_client
+        self, mock_config_entry, mock_coordinator, mock_client, caplog
     ):
         """Test discovery when no add_entities callback is available."""
         from custom_components.kubernetes.sensor import (
@@ -1093,6 +1093,10 @@ class TestDynamicNodeSensorDiscovery:
             await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
+        assert (
+            "No add_entities callback found for dynamic sensor management"
+            in caplog.text
+        )
 
     async def test_discover_new_node_sensors_existing_entities(
         self, mock_config_entry, mock_coordinator, mock_client
@@ -1157,7 +1161,7 @@ class TestDynamicNodeSensorDiscovery:
         assert call_args[0].node_name == "node2"
 
     async def test_discover_new_node_sensors_exception(
-        self, mock_config_entry, mock_coordinator, mock_client
+        self, mock_config_entry, mock_coordinator, mock_client, caplog
     ):
         """Test discovery with exception handling."""
         from custom_components.kubernetes.sensor import (
@@ -1185,6 +1189,9 @@ class TestDynamicNodeSensorDiscovery:
             await _async_discover_and_add_new_sensors(
                 mock_hass, mock_config_entry, mock_coordinator, mock_client
             )
+
+        assert "Failed to discover and add new sensors: Registry error" in caplog.text
+        mock_config_entry.runtime_data.sensor_add_entities.assert_not_called()
 
     async def test_discover_does_not_readd_pending_entities(
         self, mock_config_entry, mock_coordinator, mock_client

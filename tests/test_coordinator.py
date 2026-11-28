@@ -3,6 +3,7 @@
 import asyncio
 from datetime import timedelta
 import itertools
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -624,26 +625,23 @@ class TestKubernetesDataCoordinator:
         result = coordinator.get_all_nodes_data()
         assert result == {}
 
-    async def test_cleanup_orphaned_entities_no_config_entry(self, coordinator):
+    async def test_cleanup_orphaned_entities_no_config_entry(self, coordinator, caplog):
         """Test cleanup when config entry is not available."""
+        caplog.set_level(
+            logging.DEBUG, logger="custom_components.kubernetes.coordinator"
+        )
         coordinator.config_entry = None
         await coordinator._cleanup_orphaned_entities({})
+        assert "Skipping entity cleanup: config_entry not available" in caplog.text
 
-    async def test_cleanup_orphaned_entities_no_entity_registry(self, coordinator):
-        """Test cleanup when entity registry is not available."""
-        with patch(
-            "custom_components.kubernetes.coordinator.async_get_entity_registry",
-            return_value=None,
-        ):
-            await coordinator._cleanup_orphaned_entities({})
-
-    async def test_cleanup_orphaned_entities_exception(self, coordinator):
+    async def test_cleanup_orphaned_entities_exception(self, coordinator, caplog):
         """Test cleanup when an exception occurs."""
         with patch(
             "custom_components.kubernetes.coordinator.async_get_entity_registry",
             side_effect=Exception("Registry error"),
         ):
             await coordinator._cleanup_orphaned_entities({})
+        assert "Failed to cleanup orphaned entities: Registry error" in caplog.text
 
     async def test_cleanup_orphaned_entities_removes_deployment(
         self, hass: HomeAssistant, coordinator, mock_config_entry
@@ -1552,7 +1550,9 @@ class TestWatchSupport:
         self, coordinator_watch_enabled
     ):
         """async_stop_watch_tasks should do nothing if no tasks are running."""
+        assert coordinator_watch_enabled._watch_tasks == []
         await coordinator_watch_enabled.async_stop_watch_tasks()
+        assert coordinator_watch_enabled._watch_tasks == []
 
     # ------------------------------------------------------------------
     # _apply_watch_event tests
@@ -1563,12 +1563,15 @@ class TestWatchSupport:
     ):
         """_apply_watch_event should be safe when coordinator.data is None."""
         coordinator_watch_enabled.data = None
+        coordinator_watch_enabled.async_update_listeners = MagicMock()
         coordinator_watch_enabled._apply_watch_event(
             "pods",
             "ADDED",
             {"metadata": {"name": "x", "namespace": "default"}},
             mock_client._parse_pod_item,
         )
+        coordinator_watch_enabled.async_update_listeners.assert_not_called()
+        assert coordinator_watch_enabled.data is None
 
     async def test_apply_watch_event_added(
         self, coordinator_watch_enabled, mock_client
@@ -1717,14 +1720,17 @@ class TestWatchSupport:
     ):
         """CancelledError should exit the loop cleanly."""
 
-        async def _raise_cancel(url):
-            raise asyncio.CancelledError
-
-        mock_client.list_resource_with_version.side_effect = _raise_cancel
+        mock_client.list_resource_with_version = AsyncMock(
+            side_effect=asyncio.CancelledError
+        )
+        mock_client.watch_stream = MagicMock()
 
         await coordinator_watch_enabled._run_watch_loop(
             "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
         )
+
+        mock_client.list_resource_with_version.assert_awaited_once()
+        mock_client.watch_stream.assert_not_called()
 
     async def test_run_watch_loop_handles_resource_version_expired(
         self, coordinator_watch_enabled, mock_client
@@ -1781,9 +1787,12 @@ class TestWatchSupport:
             coordinator_watch_enabled._watch_stop_event.set()
             return [], "789"
 
-        mock_client.list_resource_with_version.side_effect = _stop_after_list
+        mock_client.list_resource_with_version = AsyncMock(side_effect=_stop_after_list)
+
+        watch_calls = []
 
         async def _empty_stream(url, rv):
+            watch_calls.append(rv)
             return
             yield  # make it a generator
 
@@ -1792,6 +1801,10 @@ class TestWatchSupport:
         await coordinator_watch_enabled._run_watch_loop(
             "pods", "https://host/api/v1/pods", mock_client._parse_pod_item
         )
+
+        # One list and one watch, then the stop event ends the loop
+        mock_client.list_resource_with_version.assert_awaited_once()
+        assert watch_calls == ["789"]
 
     async def test_populate_from_list_merges_across_namespaces(
         self, coordinator_watch_enabled, mock_client
@@ -4293,15 +4306,18 @@ class TestEventWatchLoop:
     async def test_event_watch_loop_handles_cancel(self, coord_warning, mock_client):
         """CancelledError during the initial list should exit the loop cleanly."""
 
-        async def _raise_cancel(url, **_kwargs):
-            raise asyncio.CancelledError
-
-        mock_client.list_resource_with_version.side_effect = _raise_cancel
+        mock_client.list_resource_with_version = AsyncMock(
+            side_effect=asyncio.CancelledError
+        )
+        mock_client.watch_stream = MagicMock()
 
         # Should return without raising
         await coord_warning._run_event_watch_loop(
             "https://test-cluster.example.com:6443/api/v1/events"
         )
+
+        mock_client.list_resource_with_version.assert_awaited_once()
+        mock_client.watch_stream.assert_not_called()
 
     async def test_event_watch_loop_handles_resource_version_expired(
         self, coord_warning, mock_client
