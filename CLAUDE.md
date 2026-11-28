@@ -165,7 +165,7 @@ When adding features, check the current rule set at the link above before implem
 ## Code Style
 
 - **Ruff** for linting and formatting (replaces black, isort, flake8). 88-char line length. Selected rule groups: `E,W,F,I,C4,B,UP,SIM,RUF,PIE,PLE,PLW,G,TID252` (see `pyproject.toml`'s `[tool.ruff.lint]` for the per-rule ignores and their reasons).
-- Type hints encouraged but mypy is not strict (`disallow_untyped_defs = false`); `strict_optional = true` is on, so `X | None` must be narrowed before it is passed where `X` is expected. All mypy settings live in `[tool.mypy]` in `pyproject.toml`, shared by CI and the pre-commit hook — the hook adds only `--ignore-missing-imports` (its isolated env has no Home Assistant), so never add other flags to the hook's `args`
+- Type hints encouraged but mypy is not strict (`disallow_untyped_defs = false`); `strict_optional = true` is on, so `X | None` must be narrowed before it is passed where `X` is expected. All mypy settings live in `[tool.mypy]` in `pyproject.toml`, shared by CI and the pre-commit hook — the hook passes no flags of its own (`args: []`; `ignore_missing_imports = true` in `[tool.mypy]` already covers its isolated env without Home Assistant), so never add flags to the hook's `args`
 - Make new HTTP calls through the client's injected `self._session`. Unit tests swap it with `patch.object(client, "_session", mock_aiohttp_session(...))`
 - All integration code must use `async`/`await` — no blocking calls
 - Inside coroutines always use `asyncio.get_running_loop()`, never `asyncio.get_event_loop()` (deprecated in Python 3.10+ within a running loop)
