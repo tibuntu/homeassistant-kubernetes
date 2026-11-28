@@ -20,7 +20,7 @@ This guide covers all configuration options for the Kubernetes Home Assistant In
 | **Monitor All Namespaces** | Enable to monitor all namespaces | `true` |
 | **Namespaces** | List of namespaces to monitor (only shown when "Monitor All Namespaces" is disabled) | Selected from cluster |
 | **Device Grouping Mode** | How entities are organized: `namespace` creates a separate device per monitored namespace, `cluster` puts every entity on the single cluster device | `namespace` |
-| **Switch Update Interval** | How often the integration polls the cluster for resource updates (seconds); all entities are refreshed from that one poll | `60` |
+| **Poll Interval Without Watch API** | How often the integration polls the cluster for resource updates (seconds); all entities are refreshed from that one poll | `60` |
 | **Scale Cooldown** | Seconds after a scaling operation during which cluster refreshes do not overwrite the switch's new state | `10` |
 
 ## Configuration via UI
@@ -105,7 +105,7 @@ For clusters with a self-signed or custom Certificate Authority, do one of:
 
 ### Performance Tuning
 
-- **Switch Update Interval**: Lower values provide more responsive entities but increase API load. Entities themselves are never polled individually — they all update from the coordinator's single poll (or from the Watch API).
+- **Poll Interval Without Watch API**: Lower values provide more responsive entities but increase API load. Entities themselves are never polled individually — they all update from the coordinator's single poll (or from the Watch API).
 - **Scale Cooldown**: After you switch a Deployment/StatefulSet on or off, the switch keeps showing the requested state for this many seconds even if a cluster refresh still reports the old replica count; increase it on slow clusters if switches flicker back briefly after scaling
 
 ## Options (post-setup)
@@ -118,7 +118,7 @@ After the integration is set up, you can configure additional options by clickin
 |--------|-------------|---------|
 | **Enable Watch API** | Use the Kubernetes watch API for real-time updates instead of interval polling | `true` |
 
-When enabled (the default), the integration establishes long-lived HTTP streams to the Kubernetes API server and receives `ADDED`, `MODIFIED`, and `DELETED` events as they happen. Pod and resource state changes typically appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback. Disable the option to use interval polling only (the **Switch Update Interval**, 60 seconds by default).
+When enabled (the default), the integration establishes long-lived HTTP streams to the Kubernetes API server and receives `ADDED`, `MODIFIED`, and `DELETED` events as they happen. Pod and resource state changes typically appear in Home Assistant within seconds. Polling continues every 5 minutes as a fallback. Disable the option to use interval polling only (the **Poll Interval Without Watch API**, 60 seconds by default).
 
 > **RBAC:** The watch feature requires the service account to have `watch` permission on all monitored resources — granted by the `full` permission set, but **not** by `minimal`. If a watch *connection* keeps failing (network issues, an unreachable API server, or a server that keeps closing the stream right away without sending anything), the integration raises a repair issue and automatically falls back to regular interval polling, so data stays current. If the ServiceAccount is not allowed to watch a resource (HTTP 403), that stream retries once a minute and a **Missing permissions** repair issue names it; when every stream is forbidden (for example with the `minimal` RBAC mode) the integration polls at the regular interval instead. Add the RBAC rule (the chart's `full` mode and `manifests/full/` include every rule the integration needs); the issue clears on its own once the watch delivers an event or stays open (after a list 403, on the next successful list). A short-lived 403 right after an API server restart (the RBAC authorizer has not loaded its rules yet) resolves the same way. See the [RBAC guide](RBAC.md) for details.
 

@@ -6,9 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import AbortFlow, FlowResultType
+from homeassistant.data_entry_flow import AbortFlow, FlowResultType, InvalidData
+from homeassistant.helpers import selector
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
+import voluptuous as vol
 
 from custom_components.kubernetes.config_flow import (
     KubernetesConfigFlow,
@@ -2618,3 +2620,175 @@ class TestFlowHonorsTls:
 
         assert result is False
         mock_session.get.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Field types and number ranges (D16, D17)
+# ---------------------------------------------------------------------------
+
+
+def _schema_field(schema, name):
+    """Return the (key, validator) pair of a voluptuous schema field by name."""
+    key = next(k for k in schema if k == name)
+    return key, schema[key]
+
+
+def _assert_password_selector(validator):
+    assert isinstance(validator, selector.TextSelector)
+    assert validator.config["type"] == selector.TextSelectorType.PASSWORD
+
+
+class TestConfigFlowFieldValidation:
+    """API tokens are masked and numeric fields reject out-of-range values."""
+
+    async def _user_form_schema(self, hass: HomeAssistant):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        return result["data_schema"].schema
+
+    async def test_user_api_token_is_password_selector(self, hass: HomeAssistant):
+        """The user step masks the API token."""
+        schema = await self._user_form_schema(hass)
+
+        _, validator = _schema_field(schema, CONF_API_TOKEN)
+        _assert_password_selector(validator)
+
+    async def test_user_number_fields_are_ranged(self, hass: HomeAssistant):
+        """Port, poll interval and cooldown carry their minimums."""
+        schema = await self._user_form_schema(hass)
+
+        _, port = _schema_field(schema, CONF_PORT)
+        assert port(1) == 1
+        assert port(65535) == 65535
+        with pytest.raises(vol.Invalid):
+            port(0)
+        with pytest.raises(vol.Invalid):
+            port(65536)
+
+        _, interval = _schema_field(schema, CONF_SWITCH_UPDATE_INTERVAL)
+        assert interval(1) == 1
+        with pytest.raises(vol.Invalid):
+            interval(0)
+
+        _, cooldown = _schema_field(schema, CONF_SCALE_COOLDOWN)
+        assert cooldown(0) == 0
+        with pytest.raises(vol.Invalid):
+            cooldown(-1)
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            (CONF_PORT, 0),
+            (CONF_SWITCH_UPDATE_INTERVAL, 0),
+            (CONF_SCALE_COOLDOWN, -1),
+        ],
+    )
+    async def test_user_rejects_invalid_number(
+        self, hass: HomeAssistant, field: str, value: int
+    ):
+        """The flow manager rejects out-of-range numbers in the user step."""
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+
+        with pytest.raises(InvalidData):
+            await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={
+                    CONF_CLUSTER_NAME: "test-cluster",
+                    CONF_HOST: "kubernetes.example.com",
+                    field: value,
+                },
+            )
+
+    async def test_reconfigure_api_token_is_password_selector(
+        self, hass: HomeAssistant
+    ):
+        """The reconfigure step masks the token and keeps its suggested value."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "cluster.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "stored-token",
+            },
+            unique_id="test-cluster",
+        )
+        entry.add_to_hass(hass)
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+
+        schema = result["data_schema"].schema
+        key, validator = _schema_field(schema, CONF_API_TOKEN)
+        _assert_password_selector(validator)
+        assert key.description == {"suggested_value": "stored-token"}
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            (CONF_PORT, 0),
+            (CONF_SWITCH_UPDATE_INTERVAL, 0),
+            (CONF_SCALE_COOLDOWN, -1),
+        ],
+    )
+    async def test_reconfigure_rejects_invalid_number(
+        self, hass: HomeAssistant, field: str, value: int
+    ):
+        """The flow manager rejects out-of-range numbers in the reconfigure step."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            data={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "cluster.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "stored-token",
+            },
+            unique_id="test-cluster",
+        )
+        entry.add_to_hass(hass)
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+
+        with pytest.raises(InvalidData):
+            await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={CONF_HOST: "cluster.example.com", field: value},
+            )
+
+    async def test_reauth_api_token_is_password_selector(self, hass: HomeAssistant):
+        """The reauth step masks the new token."""
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="test-cluster",
+            data={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "cluster.example.com",
+                CONF_PORT: 6443,
+                CONF_API_TOKEN: "expired-token",
+            },
+            unique_id="test-cluster",
+        )
+        entry.add_to_hass(hass)
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_REAUTH,
+                "entry_id": entry.entry_id,
+            },
+            data=entry.data,
+        )
+
+        _, validator = _schema_field(result["data_schema"].schema, CONF_API_TOKEN)
+        _assert_password_selector(validator)
