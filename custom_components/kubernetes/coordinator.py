@@ -686,11 +686,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
 
         node_data = self.data["nodes"].get(node_name)
         if node_data is None:
-            _LOGGER.warning(
-                "Node %s not found in coordinator data. Available nodes: %s",
-                node_name,
-                list(self.data["nodes"].keys()),
-            )
+            _LOGGER.debug("Node %s not found in coordinator data", node_name)
         else:
             _LOGGER.debug(
                 "Retrieved data for node %s: status=%s",
