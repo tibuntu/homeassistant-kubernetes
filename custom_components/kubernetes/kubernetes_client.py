@@ -2643,8 +2643,6 @@ class KubernetesClient:
                 cronjob_data = await response.json()
 
                 # Step 2: Create a job from the CronJob template
-                job_name = f"{cronjob_name}-manual-{int(time.time())}"
-
                 # Extract the job template from the CronJob
                 job_template = cronjob_data.get("spec", {}).get("jobTemplate", {})
                 if not job_template:
@@ -2657,17 +2655,31 @@ class KubernetesClient:
                         "namespace": namespace,
                     }
 
-                # Create the job object
+                # Same shape as `kubectl create job --from=cronjob/<name>`: the
+                # server names the Job (generateName), the CronJob owns it with
+                # controller=true (so the CronJob controller prunes it like a
+                # scheduled run). No blockOwnerDeletion: it would need update
+                # on cronjobs/finalizers, which the chart does not grant.
+                template_meta = job_template.get("metadata") or {}
+                annotations = dict(template_meta.get("annotations") or {})
+                annotations["cronjob.kubernetes.io/instantiate"] = "manual"
                 job_data = {
                     "apiVersion": "batch/v1",
                     "kind": "Job",
                     "metadata": {
-                        "name": job_name,
+                        "generateName": f"{cronjob_name}-manual-",
                         "namespace": namespace,
-                        "labels": {
-                            "cronjob.kubernetes.io/manual": "true",
-                            "cronjob.kubernetes.io/name": cronjob_name,
-                        },
+                        "labels": dict(template_meta.get("labels") or {}),
+                        "annotations": annotations,
+                        "ownerReferences": [
+                            {
+                                "apiVersion": "batch/v1",
+                                "kind": "CronJob",
+                                "name": cronjob_name,
+                                "uid": cronjob_data.get("metadata", {}).get("uid"),
+                                "controller": True,
+                            }
+                        ],
                     },
                     "spec": job_template.get("spec", {}),
                 }
@@ -2684,6 +2696,7 @@ class KubernetesClient:
                 ) as job_response:
                     if job_response.status == 201:  # Created
                         job_result = await job_response.json()
+                        job_name = job_result.get("metadata", {}).get("name", "")
                         _LOGGER.info(
                             "Successfully triggered CronJob '%s' in namespace '%s' via aiohttp, created job '%s'",
                             cronjob_name,

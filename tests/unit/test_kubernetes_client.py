@@ -1989,6 +1989,89 @@ async def test_trigger_cronjob_monitor_all_namespaces_lifts_guard(mock_config):
     assert post_url.endswith("/apis/batch/v1/namespaces/other/jobs")
 
 
+async def _trigger_body(mock_config, cronjob_name, cronjob_data, post_json=None):
+    client = _trigger_guard_client(mock_config, monitor_all=True)
+    session = mock_aiohttp_session(
+        get=_mock_response(200, json_data=cronjob_data),
+        post=_mock_response(201, json_data=post_json or {"metadata": {}}),
+    )
+    with patch.object(client, "_session", session):
+        result = await client.trigger_cronjob(cronjob_name, "default")
+    return result, session.post.call_args.kwargs["json"]
+
+
+async def test_trigger_cronjob_job_matches_kubectl_create_job_from(mock_config):
+    """Job gets generateName, template metadata, instantiate annotation, owner."""
+    cronjob_data = {
+        "metadata": {"uid": "u-1"},
+        "spec": {
+            "jobTemplate": {
+                "metadata": {"labels": {"app": "x"}, "annotations": {"a": "b"}},
+                "spec": {"template": {"spec": {"containers": [{"name": "job"}]}}},
+            }
+        },
+    }
+    result, body = await _trigger_body(
+        mock_config,
+        "nightly",
+        cronjob_data,
+        {"metadata": {"name": "nightly-manual-abcde", "uid": "j-1"}},
+    )
+
+    assert body["metadata"] == {
+        "generateName": "nightly-manual-",
+        "namespace": "default",
+        "labels": {"app": "x"},
+        "annotations": {"a": "b", "cronjob.kubernetes.io/instantiate": "manual"},
+        "ownerReferences": [
+            {
+                "apiVersion": "batch/v1",
+                "kind": "CronJob",
+                "name": "nightly",
+                "uid": "u-1",
+                "controller": True,
+            }
+        ],
+    }
+    assert result["success"] is True
+    assert result["job_name"] == "nightly-manual-abcde"
+    assert result["job_uid"] == "j-1"
+
+
+@pytest.mark.parametrize(
+    "template_meta",
+    [{}, {"labels": None, "annotations": None}],
+)
+async def test_trigger_cronjob_without_template_metadata(mock_config, template_meta):
+    """Missing or null template labels/annotations fall back to empty dicts."""
+    jt = {"spec": {"template": {"spec": {"containers": []}}}}
+    if template_meta:
+        jt["metadata"] = template_meta
+    result, body = await _trigger_body(
+        mock_config,
+        "nightly",
+        {"metadata": {"uid": "u-1"}, "spec": {"jobTemplate": jt}},
+    )
+
+    assert result["success"] is True
+    assert body["metadata"]["labels"] == {}
+    assert body["metadata"]["annotations"] == {
+        "cronjob.kubernetes.io/instantiate": "manual"
+    }
+
+
+async def test_trigger_cronjob_long_name_uses_generate_name(mock_config):
+    """A 63-char CronJob name is sent as generateName, never as a fixed name."""
+    name = "c" * 63
+    jt = {"spec": {"template": {"spec": {"containers": []}}}}
+    _, body = await _trigger_body(
+        mock_config, name, {"metadata": {"uid": "u-1"}, "spec": {"jobTemplate": jt}}
+    )
+
+    assert "name" not in body["metadata"]
+    assert body["metadata"]["generateName"] == f"{name}-manual-"
+
+
 @pytest.mark.parametrize(
     ("method", "args"),
     [
