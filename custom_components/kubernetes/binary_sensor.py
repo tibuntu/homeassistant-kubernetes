@@ -135,7 +135,7 @@ async def async_setup_entry(
     # Create condition binary sensors for every known node (unless the node
     # sensors are opted out — the cluster health sensor always stays)
     if "nodes" not in disabled_resources(config_entry):
-        for node_name in coordinator.data.get("nodes", {}):
+        for node_name in (coordinator.data or {}).get("nodes", {}):
             for condition_key in _NODE_CONDITIONS:
                 binary_sensors.append(
                     KubernetesNodeConditionBinarySensor(

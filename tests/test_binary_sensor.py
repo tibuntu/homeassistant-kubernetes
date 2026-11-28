@@ -79,6 +79,24 @@ class TestKubernetesBinarySensorSetup:
         assert len(added_entities) == 1
         assert isinstance(added_entities[0], KubernetesClusterHealthSensor)
 
+    async def test_setup_with_no_coordinator_data(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_client,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """Setup with ``coordinator.data = None`` adds only the health sensor."""
+        mock_coordinator.data = None
+        mock_add_entities = MagicMock()
+
+        await async_setup_entry(hass, mock_config_entry, mock_add_entities)
+
+        added_entities = mock_add_entities.call_args[0][0]
+        assert len(added_entities) == 1
+        assert isinstance(added_entities[0], KubernetesClusterHealthSensor)
+
     async def test_async_setup_entry_with_nodes(
         self,
         hass: HomeAssistant,
