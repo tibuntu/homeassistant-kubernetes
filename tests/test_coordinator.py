@@ -80,7 +80,6 @@ def mock_client():
     client.get_services_count = AsyncMock(return_value=0)
     client.get_pods_count = AsyncMock(return_value=0)
     client.get_pods = AsyncMock(return_value=[])
-    client.get_nodes_count = AsyncMock(return_value=0)
     client.get_nodes = AsyncMock(return_value=[])
     client.get_node_metrics = AsyncMock(return_value={})
     client.get_server_version = AsyncMock(return_value="v1.36.2")
@@ -287,7 +286,6 @@ class TestKubernetesDataCoordinator:
         assert result["pods_count"] == 0
         # Derived from the node list, never from a second request.
         assert result["nodes_count"] == 1
-        mock_client.get_nodes_count.assert_not_called()
 
     async def test_async_update_data_merges_node_metrics(
         self, hass: HomeAssistant, coordinator, mock_client
@@ -5203,7 +5201,6 @@ class TestDisabledResources:
         data = await coordinator._async_update_data()
 
         mock_client.get_pods_count.assert_not_called()
-        mock_client.get_nodes_count.assert_not_called()
         mock_client.get_daemonsets_count.assert_not_called()
         assert data["pods_count"] == 2
         assert data["nodes_count"] == 1
@@ -5241,7 +5238,6 @@ class TestDisabledResources:
         data = await coordinator._async_update_data()
 
         mock_client.get_pods_count.assert_not_called()
-        mock_client.get_nodes_count.assert_not_called()
         assert data["pods_count"] == 2
 
     async def test_metrics_disabled_skips_metrics_api(

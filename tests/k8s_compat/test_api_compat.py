@@ -117,11 +117,6 @@ class TestNodes:
         assert "cpu_cores" in node
         assert "memory_capacity_gib" in node
 
-    async def test_get_nodes_count(self, k8s_client):
-        count = await k8s_client.get_nodes_count()
-        assert isinstance(count, int)
-        assert count >= 1
-
 
 class TestDeployments:
     async def test_get_deployments(self, k8s_client):
@@ -134,11 +129,6 @@ class TestDeployments:
         assert "available_replicas" in dep
         assert "namespace" in dep
 
-    async def test_get_deployments_count(self, k8s_client):
-        count = await k8s_client.get_deployments_count()
-        assert count >= 2
-        assert count == len(await k8s_client.get_deployments())
-
 
 class TestStatefulSets:
     async def test_get_statefulsets(self, k8s_client):
@@ -146,11 +136,6 @@ class TestStatefulSets:
         assert isinstance(statefulsets, list)
         names = [s["name"] for s in statefulsets]
         assert "test-statefulset" in names
-
-    async def test_get_statefulsets_count(self, k8s_client):
-        count = await k8s_client.get_statefulsets_count()
-        assert isinstance(count, int)
-        assert count >= 1
 
 
 class TestDaemonSets:
@@ -175,11 +160,6 @@ class TestCronJobs:
         cj = next(c for c in cronjobs if c["name"] == "test-cronjob")
         assert "schedule" in cj
         assert "suspend" in cj
-
-    async def test_get_cronjobs_count(self, k8s_client):
-        count = await k8s_client.get_cronjobs_count()
-        assert isinstance(count, int)
-        assert count >= 1
 
 
 class TestJobs:

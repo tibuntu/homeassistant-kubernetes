@@ -367,25 +367,6 @@ async def test_get_pods_count_api_exception(mock_client):
         await mock_client.get_pods_count()
 
 
-async def test_get_nodes_count_success(mock_client):
-    """Test successful nodes count retrieval."""
-    # Mock the generic fetch method to return the expected count
-    mock_client._fetch_resource_count = AsyncMock(return_value=2)
-
-    count = await mock_client.get_nodes_count()
-
-    assert count == 2
-
-
-async def test_get_nodes_count_empty(mock_client):
-    """Test nodes count retrieval when no nodes exist."""
-    mock_client._fetch_resource_count = AsyncMock(return_value=0)
-
-    count = await mock_client.get_nodes_count()
-
-    assert count == 0
-
-
 async def test_get_deployments_success(mock_client):
     """Test successful deployments retrieval."""
     # Mock the generic fetch method to return the expected deployments
@@ -480,24 +461,6 @@ async def test_get_statefulsets_skips_metrics_enrichment(mock_client):
     mock_client._enrich_workloads_with_metrics.assert_not_called()
 
 
-async def test_get_deployments_count_success(mock_client):
-    """Test successful deployments count retrieval."""
-    # Mock the generic fetch method to return the expected count
-    mock_client._fetch_resource_count = AsyncMock(return_value=2)
-
-    count = await mock_client.get_deployments_count()
-
-    assert count == 2
-
-
-async def test_get_deployments_count_api_exception(mock_client):
-    """Deployments count propagates API exceptions."""
-    mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
-
-    with pytest.raises(Exception, match="API Error"):
-        await mock_client.get_deployments_count()
-
-
 async def test_get_deployments_api_exception(mock_client):
     """Deployments retrieval propagates API exceptions."""
     mock_client._fetch_resource_list = AsyncMock(side_effect=Exception("API Error"))
@@ -559,24 +522,6 @@ async def test_get_statefulsets_empty(mock_client):
     statefulsets = await mock_client.get_statefulsets()
 
     assert statefulsets == []
-
-
-async def test_get_statefulsets_count_success(mock_client):
-    """Test successful statefulsets count retrieval."""
-    # Mock the generic fetch method to return the expected count
-    mock_client._fetch_resource_count = AsyncMock(return_value=3)
-
-    count = await mock_client.get_statefulsets_count()
-
-    assert count == 3
-
-
-async def test_get_statefulsets_count_api_exception(mock_client):
-    """StatefulSets count propagates API exceptions."""
-    mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
-
-    with pytest.raises(Exception, match="API Error"):
-        await mock_client.get_statefulsets_count()
 
 
 async def test_get_statefulsets_api_exception(mock_client):
@@ -1716,42 +1661,6 @@ async def test_scale_workload_success(mock_client, method_name, args):
 
 
 # CronJob Tests
-async def test_get_cronjobs_count_success(mock_client):
-    """Test successful CronJobs count retrieval."""
-    mock_client._fetch_resource_count = AsyncMock(return_value=3)
-
-    count = await mock_client.get_cronjobs_count()
-
-    assert count == 3
-
-
-async def test_get_cronjobs_count_empty(mock_client):
-    """Test CronJobs count retrieval when no CronJobs exist."""
-    mock_client._fetch_resource_count = AsyncMock(return_value=0)
-
-    count = await mock_client.get_cronjobs_count()
-
-    assert count == 0
-
-
-async def test_get_cronjobs_count_all_namespaces(mock_client):
-    """Test CronJobs count retrieval for all namespaces."""
-    mock_client.monitor_all_namespaces = True
-    mock_client._fetch_resource_count = AsyncMock(return_value=2)
-
-    count = await mock_client.get_cronjobs_count()
-
-    assert count == 2
-
-
-async def test_get_cronjobs_count_api_exception(mock_client):
-    """CronJobs count propagates API exceptions."""
-    mock_client._fetch_resource_count = AsyncMock(side_effect=Exception("API Error"))
-
-    with pytest.raises(Exception, match="API Error"):
-        await mock_client.get_cronjobs_count()
-
-
 async def test_get_cronjobs_success(mock_client):
     """Test successful CronJobs retrieval."""
     mock_cronjobs = [
@@ -3028,23 +2937,6 @@ class TestFetchResourceCount:
             pytest.raises(Exception, match="Network error"),
         ):
             await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
-
-    async def test_cluster_scoped(self, mock_client):
-        """Test counting cluster-scoped resources (like nodes)."""
-        mock_client.monitor_all_namespaces = False
-
-        mock_session = mock_aiohttp_session(
-            get=_mock_response(
-                200, json_data={"items": [{"metadata": {"name": "node1"}}]}
-            )
-        )
-
-        with patch.object(mock_client, "_session", mock_session):
-            count = await mock_client._fetch_resource_count(
-                "api/v1", "nodes", cluster_scoped=True
-            )
-
-        assert count == 1
 
     async def test_multiple_namespaces(self, mock_client):
         """Test counting across multiple namespaces sums the results."""
@@ -6261,27 +6153,6 @@ class TestGetPodsCountSuccessLogging:
 
         with pytest.raises(Exception, match="API error"):
             await mock_client.get_pods_count()
-
-
-class TestGetNodesCountSuccessLogging:
-    """Tests for get_nodes_count success and error logging paths."""
-
-    async def test_get_nodes_count_success_logging(self, mock_client):
-        """Test get_nodes_count success path."""
-        mock_client._fetch_resource_count = AsyncMock(return_value=3)
-
-        count = await mock_client.get_nodes_count()
-
-        assert count == 3
-
-    async def test_get_nodes_count_exception(self, mock_client):
-        """get_nodes_count propagates exceptions."""
-        mock_client._fetch_resource_count = AsyncMock(
-            side_effect=Exception("Cluster unreachable")
-        )
-
-        with pytest.raises(Exception, match="Cluster unreachable"):
-            await mock_client.get_nodes_count()
 
 
 class TestGetNodesAiohttpNodeParseException:
