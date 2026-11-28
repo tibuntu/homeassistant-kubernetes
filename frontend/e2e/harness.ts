@@ -11,6 +11,12 @@
  * `?metrics=0` reports `metrics_available: false` on every cluster (no
  * metrics-server). `?events_error=<code>` makes `kubernetes/pods/describe`
  * report that `events_error` with no events.
+ *
+ * Hooks on `window.__k8s`: `failCodes` maps a failing type to an error code
+ * (a spec sets it via `page.evaluate`); that type then rejects with a plain
+ * `{ code, message }` object like HA's WebSocket errors, else with an `Error`.
+ * `subscribers` is the live list of `kubernetes/subscribe_updates` callbacks;
+ * unsubscribing removes one, so specs can count leaked subscriptions.
  */
 import { KubernetesPanel } from "../src/kubernetes-panel";
 import type { HomeAssistant } from "../src/types/homeassistant";
@@ -31,10 +37,14 @@ declare global {
       services: ServiceCall[];
       /** WebSocket types that reject. */
       fail: Set<string>;
+      /** Error code per failing WebSocket type; rejects with `{ code, message }`. */
+      failCodes: Record<string, string>;
       /** When set, `kubernetes/pods/logs` answers with this text. */
       logs?: string;
       /** Fire a `kubernetes/subscribe_updates` push to every subscriber. */
       push: () => void;
+      /** Live `kubernetes/subscribe_updates` callbacks. */
+      subscribers: (() => void)[];
     };
   }
 }
@@ -47,7 +57,15 @@ const noMetrics = new URLSearchParams(location.search).get("metrics") === "0";
 // Read at load: switching tabs drops the query string from the URL.
 const eventsError = new URLSearchParams(location.search).get("events_error");
 const subscribers: (() => void)[] = [];
-window.__k8s = { calls, services, fail, push: () => subscribers.forEach((cb) => cb()) };
+const failCodes: Record<string, string> = {};
+window.__k8s = {
+  calls,
+  services,
+  fail,
+  failCodes,
+  subscribers,
+  push: () => [...subscribers].forEach((cb) => cb()),
+};
 
 // Stand-ins for HA's own elements: an undefined custom element would render
 // its children anyway, but defining `ha-card` makes `loadHaElements()` return
@@ -65,7 +83,11 @@ const hass: HomeAssistant = {
   async callWS<T>(msg: Record<string, unknown>): Promise<T> {
     calls.push(msg);
     const type = String(msg.type);
-    if (fail.has(type)) throw new Error(`harness: ${type} failed`);
+    if (fail.has(type)) {
+      const message = `harness: ${type} failed`;
+      if (type in failCodes) throw { code: failCodes[type], message };
+      throw new Error(message);
+    }
     if (type === "kubernetes/pods/logs" && window.__k8s.logs !== undefined) {
       return { logs: window.__k8s.logs, truncated: false } as T;
     }
@@ -95,7 +117,12 @@ const hass: HomeAssistant = {
   connection: {
     async subscribeMessage<T>(callback: (msg: T) => void, msg: { type: string }) {
       if (msg.type === "kubernetes/subscribe_updates") {
-        subscribers.push(() => callback({} as T));
+        const cb = () => callback({} as T);
+        subscribers.push(cb);
+        return async () => {
+          const i = subscribers.indexOf(cb);
+          if (i >= 0) subscribers.splice(i, 1);
+        };
       }
       return async () => {};
     },
