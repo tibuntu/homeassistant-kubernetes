@@ -4358,6 +4358,29 @@ class TestListResourceWithVersionExtended:
         assert rv == "0"
         assert len(items) == 1
 
+    async def test_limit_sets_query_param(self, mock_client):
+        """limit=1 should be sent as a query parameter."""
+        payload = {"metadata": {"resourceVersion": "7"}, "items": []}
+        mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
+
+        with patch.object(mock_client, "_session", mock_session):
+            _, rv = await mock_client.list_resource_with_version(
+                "https://host/api/v1/events", limit=1
+            )
+
+        assert rv == "7"
+        assert mock_session.get.call_args.kwargs["params"] == {"limit": "1"}
+
+    async def test_no_limit_sends_no_query_param(self, mock_client):
+        """Without limit the GET must carry no params at all."""
+        payload = {"metadata": {"resourceVersion": "7"}, "items": []}
+        mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
+
+        with patch.object(mock_client, "_session", mock_session):
+            await mock_client.list_resource_with_version("https://host/api/v1/pods")
+
+        assert mock_session.get.call_args.kwargs["params"] is None
+
 
 class TestFetchResourceCountExtended:
     """Extended tests for _fetch_resource_count edge cases."""

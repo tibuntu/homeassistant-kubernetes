@@ -2907,19 +2907,23 @@ class KubernetesClient:
     # -------------------------------------------------------------------------
 
     async def list_resource_with_version(
-        self, url: str
+        self, url: str, *, limit: int | None = None
     ) -> tuple[list[dict[str, Any]], str]:
         """Fetch a resource list and return (items, resourceVersion).
 
         The resourceVersion from the list metadata is used to start a watch
         that picks up only events that occurred after the list was fetched.
+        ``limit`` is for callers that only need the resourceVersion; the
+        server still reports the snapshot's resourceVersion on a paginated list.
         """
         headers = {
             "Authorization": f"Bearer {self.api_token}",
             "Accept": "application/json",
         }
+        params = {"limit": str(limit)} if limit is not None else None
         async with self._session.get(
             url,
+            params=params,
             headers=headers,
             ssl=await self._get_ssl_param(),
             timeout=aiohttp.ClientTimeout(total=10),

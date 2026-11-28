@@ -286,6 +286,13 @@ class TestWatch:
         except TimeoutError:
             pass
 
+    async def test_list_resource_with_version_limit(self, k8s_client):
+        """A one-item events list still reports the snapshot resourceVersion."""
+        url = f"https://{k8s_client.host}:{k8s_client.port}/api/v1/events"
+        items, rv = await k8s_client.list_resource_with_version(url, limit=1)
+        assert len(items) <= 1
+        assert rv != "0"
+
     async def test_watch_stream_expired_resource_version_raises(self, k8s_client):
         """A compacted resourceVersion must surface as ResourceVersionExpired.
 
