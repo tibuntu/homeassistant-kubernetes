@@ -362,6 +362,29 @@ test("a failed refresh keeps the loaded view instead of the error card", async (
   await expect(page.locator('.count-card[title="Show Pods"]')).toBeVisible();
 });
 
+test("a re-attached view subscribes once and refetches on push", async ({ page }) => {
+  await page.goto(HARNESS);
+  await expect(page.locator(".count-card").first()).toBeVisible();
+
+  await page.evaluate(() => {
+    const view = document
+      .querySelector("kubernetes-panel")!
+      .shadowRoot!.querySelector("k8s-overview")!;
+    const parent = view.parentNode!;
+    view.remove();
+    parent.appendChild(view);
+  });
+  await expect.poll(() => page.evaluate(() => window.__k8s.subscribers.length)).toBe(1);
+
+  const before = await page.evaluate(() => window.__k8s.calls.length);
+  await page.evaluate(() => window.__k8s.push());
+  await expect
+    .poll(() => page.evaluate(() => window.__k8s.calls.length))
+    .toBe(before + 1);
+  const last = await page.evaluate(() => window.__k8s.calls.at(-1)!.type);
+  expect(last).toBe("kubernetes/cluster/overview");
+});
+
 test("coordinator push triggers one debounced refetch", async ({ page }) => {
   await page.goto(HARNESS);
   await expect(page.locator(".count-card").first()).toBeVisible();

@@ -284,8 +284,8 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     this._columnMenuOpen = false;
   };
 
-  protected firstUpdated(changedProps: PropertyValues): void {
-    super.firstUpdated(changedProps);
+  connectedCallback(): void {
+    super.connectedCallback();
     document.addEventListener("click", this._boundCloseMenu);
   }
 
