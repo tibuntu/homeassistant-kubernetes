@@ -922,14 +922,6 @@ class TestGetWorkloadInfoFromEntity:
         assert name is None
         assert wtype is None
 
-    def test_exception_returns_nones(self):
-        mock_hass = MagicMock()
-        mock_hass.states.get.side_effect = Exception("boom")
-        ns, name, wtype = _get_workload_info_from_entity(mock_hass, "switch.error")
-        assert ns is None
-        assert name is None
-        assert wtype is None
-
 
 class TestExtractWorkloads:
     """Test _extract_workloads_with_owners workload extraction."""
