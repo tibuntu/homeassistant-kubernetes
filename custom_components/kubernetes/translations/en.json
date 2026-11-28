@@ -357,6 +357,14 @@
       }
     }
   },
+  "system_health": {
+    "info": {
+      "clusters_configured": "Clusters configured",
+      "cluster_health": "Cluster health",
+      "total_pods": "Total pods",
+      "total_nodes": "Total nodes"
+    }
+  },
   "issues": {
     "metrics_server_unavailable": {
       "title": "Metrics server unavailable for {cluster}",
