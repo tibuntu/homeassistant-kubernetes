@@ -262,14 +262,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        SelectOptionDict(
-                            value=DEVICE_GROUPING_MODE_NAMESPACE,
-                            label="Group by Namespace",
-                        ),
-                        SelectOptionDict(
-                            value=DEVICE_GROUPING_MODE_CLUSTER, label="Group by Cluster"
-                        ),
+                        DEVICE_GROUPING_MODE_NAMESPACE,
+                        DEVICE_GROUPING_MODE_CLUSTER,
                     ],
+                    translation_key=CONF_DEVICE_GROUPING_MODE,
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 ),
             ),
@@ -476,15 +472,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             ): selector.SelectSelector(
                 selector.SelectSelectorConfig(
                     options=[
-                        SelectOptionDict(
-                            value=DEVICE_GROUPING_MODE_NAMESPACE,
-                            label="Group by Namespace",
-                        ),
-                        SelectOptionDict(
-                            value=DEVICE_GROUPING_MODE_CLUSTER,
-                            label="Group by Cluster",
-                        ),
+                        DEVICE_GROUPING_MODE_NAMESPACE,
+                        DEVICE_GROUPING_MODE_CLUSTER,
                     ],
+                    translation_key=CONF_DEVICE_GROUPING_MODE,
                     mode=selector.SelectSelectorMode.DROPDOWN,
                 ),
             ),
@@ -795,16 +786,8 @@ class KubernetesOptionsFlow(config_entries.OptionsFlowWithReload):
                     default=current.get(CONF_EVENT_TYPES, DEFAULT_EVENT_TYPES),
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=[
-                            SelectOptionDict(
-                                value=EVENT_TYPES_WARNING,
-                                label="Warning only",
-                            ),
-                            SelectOptionDict(
-                                value=EVENT_TYPES_ALL,
-                                label="All events",
-                            ),
-                        ],
+                        options=[EVENT_TYPES_WARNING, EVENT_TYPES_ALL],
+                        translation_key=CONF_EVENT_TYPES,
                         mode=selector.SelectSelectorMode.DROPDOWN,
                     ),
                 ),

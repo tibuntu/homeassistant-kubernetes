@@ -14,6 +14,7 @@ ICONS = json.loads((COMPONENT_DIR / "icons.json").read_text())
 def test_literal_translation_keys_exist():
     """Every literal translation_key in the code has a string in en.json."""
     known = set(STRINGS["exceptions"])
+    known |= set(STRINGS["selector"])
     for platform in STRINGS["entity"].values():
         known |= set(platform)
     used = {
