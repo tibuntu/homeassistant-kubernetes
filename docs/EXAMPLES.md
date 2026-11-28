@@ -424,22 +424,17 @@ script:
 
 #### Rolling Restart
 
+`kubernetes.restart_workload` replaces the pods one by one according to the workload's update strategy, like `kubectl rollout restart`; scaling to 0 and back would take the workload down.
+
 ```yaml
 script:
   rolling_restart_deployment:
     alias: "Rolling Restart Deployment"
     sequence:
-      - service: kubernetes.scale_workload
+      - service: kubernetes.restart_workload
         data:
           workload_name: "{{ workload_name }}"
           namespace: "{{ namespace }}"
-          replicas: 0
-      - delay: "00:00:30"
-      - service: kubernetes.scale_workload
-        data:
-          workload_name: "{{ workload_name }}"
-          namespace: "{{ namespace }}"
-          replicas: "{{ original_replicas | default(1) }}"
 ```
 
 ## Notification Examples
