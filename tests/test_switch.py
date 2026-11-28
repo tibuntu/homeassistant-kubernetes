@@ -4,6 +4,7 @@ import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 import pytest
 
 from custom_components.kubernetes.const import (
@@ -47,6 +48,7 @@ def mock_coordinator():
             }
         }
     }
+    coordinator.async_request_refresh = AsyncMock()
     return coordinator
 
 
@@ -305,8 +307,14 @@ class TestKubernetesCronJobSwitch:
         cronjob_switch.async_write_ha_state = MagicMock()
 
         # Execute and verify exception
-        with pytest.raises(Exception, match="Permission denied"):
+        with pytest.raises(HomeAssistantError) as err:
             await cronjob_switch.async_turn_on()
+        assert err.value.translation_key == "cronjob_suspend_failed"
+        assert err.value.translation_placeholders == {
+            "action": "resume",
+            "cronjob": "default/test-cronjob",
+            "error": "Permission denied",
+        }
         cronjob_switch.async_write_ha_state.assert_not_called()
 
         # Verify state unchanged
@@ -359,8 +367,14 @@ class TestKubernetesCronJobSwitch:
         cronjob_switch.async_write_ha_state = MagicMock()
 
         # Execute and verify exception
-        with pytest.raises(Exception, match="CronJob not found"):
+        with pytest.raises(HomeAssistantError) as err:
             await cronjob_switch.async_turn_off()
+        assert err.value.translation_key == "cronjob_suspend_failed"
+        assert err.value.translation_placeholders == {
+            "action": "suspend",
+            "cronjob": "default/test-cronjob",
+            "error": "CronJob not found",
+        }
         cronjob_switch.async_write_ha_state.assert_not_called()
 
         # Verify state unchanged
@@ -911,9 +925,17 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch.async_write_ha_state = MagicMock()
         deployment_coordinator.client.start_deployment = AsyncMock(return_value=False)
 
-        await deployment_switch.async_turn_on()
+        with pytest.raises(HomeAssistantError) as err:
+            await deployment_switch.async_turn_on()
 
+        assert err.value.translation_key == "scale_failed"
+        assert err.value.translation_placeholders == {
+            "workload_type": "Deployment",
+            "workload": "default/nginx",
+            "replicas": "1",
+        }
         assert deployment_switch._last_scale_attempt_failed is True
+        deployment_switch.async_write_ha_state.assert_called_once()
         deployment_coordinator.async_request_refresh.assert_called_once()
 
     async def test_async_turn_off_success(
@@ -939,9 +961,17 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch.async_write_ha_state = MagicMock()
         deployment_coordinator.client.stop_deployment = AsyncMock(return_value=False)
 
-        await deployment_switch.async_turn_off()
+        with pytest.raises(HomeAssistantError) as err:
+            await deployment_switch.async_turn_off()
 
+        assert err.value.translation_key == "scale_failed"
+        assert err.value.translation_placeholders == {
+            "workload_type": "Deployment",
+            "workload": "default/nginx",
+            "replicas": "0",
+        }
         assert deployment_switch._last_scale_attempt_failed is True
+        deployment_switch.async_write_ha_state.assert_called_once()
         deployment_coordinator.async_request_refresh.assert_called_once()
 
     async def test_verify_scaling_success(
@@ -1185,9 +1215,17 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch.async_write_ha_state = MagicMock()
         statefulset_coordinator.client.start_statefulset = AsyncMock(return_value=False)
 
-        await statefulset_switch.async_turn_on()
+        with pytest.raises(HomeAssistantError) as err:
+            await statefulset_switch.async_turn_on()
 
+        assert err.value.translation_key == "scale_failed"
+        assert err.value.translation_placeholders == {
+            "workload_type": "StatefulSet",
+            "workload": "default/redis",
+            "replicas": "1",
+        }
         assert statefulset_switch._last_scale_attempt_failed is True
+        statefulset_switch.async_write_ha_state.assert_called_once()
         statefulset_coordinator.async_request_refresh.assert_called_once()
 
     async def test_async_turn_off_success(
@@ -1213,9 +1251,17 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch.async_write_ha_state = MagicMock()
         statefulset_coordinator.client.stop_statefulset = AsyncMock(return_value=False)
 
-        await statefulset_switch.async_turn_off()
+        with pytest.raises(HomeAssistantError) as err:
+            await statefulset_switch.async_turn_off()
 
+        assert err.value.translation_key == "scale_failed"
+        assert err.value.translation_placeholders == {
+            "workload_type": "StatefulSet",
+            "workload": "default/redis",
+            "replicas": "0",
+        }
         assert statefulset_switch._last_scale_attempt_failed is True
+        statefulset_switch.async_write_ha_state.assert_called_once()
         statefulset_coordinator.async_request_refresh.assert_called_once()
 
     async def test_verify_scaling_success(
@@ -1733,8 +1779,14 @@ class TestCronJobOperations:
         cronjob_switch._is_on = True
         cronjob_switch._suspend = False
 
-        with pytest.raises(Exception, match="Namespace not found"):
+        with pytest.raises(HomeAssistantError) as err:
             await cronjob_switch.async_turn_off()
+        assert err.value.translation_key == "cronjob_suspend_failed"
+        assert err.value.translation_placeholders == {
+            "action": "suspend",
+            "cronjob": "default/test-cronjob",
+            "error": "Namespace not found",
+        }
         cronjob_switch.async_write_ha_state.assert_not_called()
 
         # State must remain unchanged
@@ -1778,6 +1830,32 @@ class TestCronJobOperations:
         assert cronjob_switch._last_resume_time is not None
         assert isinstance(cronjob_switch._last_resume_time, float)
 
+    async def test_cronjob_resume_requests_refresh(
+        self, cronjob_switch, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """A successful resume requests exactly one coordinator refresh."""
+        self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
+        cronjob_switch.coordinator = mock_coordinator
+        cronjob_switch._is_on = False
+        cronjob_switch._suspend = True
+
+        await cronjob_switch.async_turn_on()
+
+        mock_coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_cronjob_suspend_requests_refresh(
+        self, cronjob_switch, mock_config_entry, mock_client, mock_coordinator
+    ):
+        """A successful suspend requests exactly one coordinator refresh."""
+        self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
+        cronjob_switch.coordinator = mock_coordinator
+        cronjob_switch._is_on = True
+        cronjob_switch._suspend = False
+
+        await cronjob_switch.async_turn_off()
+
+        mock_coordinator.async_request_refresh.assert_awaited_once()
+
     async def test_resume_failure_raises(
         self, cronjob_switch, mock_config_entry, mock_client
     ):
@@ -1790,8 +1868,14 @@ class TestCronJobOperations:
         cronjob_switch._is_on = False
         cronjob_switch._suspend = True
 
-        with pytest.raises(Exception, match="RBAC forbidden"):
+        with pytest.raises(HomeAssistantError) as err:
             await cronjob_switch.async_turn_on()
+        assert err.value.translation_key == "cronjob_suspend_failed"
+        assert err.value.translation_placeholders == {
+            "action": "resume",
+            "cronjob": "default/test-cronjob",
+            "error": "RBAC forbidden",
+        }
         cronjob_switch.async_write_ha_state.assert_not_called()
 
         # State must remain unchanged
@@ -2117,7 +2201,7 @@ class TestKubernetesNodeSchedulableSwitch:
             config=mock_config_entry.data, client=node_client, coordinator=MagicMock()
         )
 
-        with pytest.raises(Exception, match="Failed to cordon node"):
+        with pytest.raises(HomeAssistantError, match="Failed to cordon node"):
             await node_switch.async_turn_off()
 
     @pytest.mark.usefixtures("load_translations")
@@ -2131,7 +2215,7 @@ class TestKubernetesNodeSchedulableSwitch:
             config=mock_config_entry.data, client=node_client, coordinator=MagicMock()
         )
 
-        with pytest.raises(Exception, match="Failed to uncordon node"):
+        with pytest.raises(HomeAssistantError, match="Failed to uncordon node"):
             await node_switch.async_turn_on()
 
     def test_optimistic_state_cleared_by_coordinator_update(

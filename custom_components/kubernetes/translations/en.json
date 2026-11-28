@@ -524,6 +524,9 @@
     },
     "node_schedule_failed": {
       "message": "Failed to {action} node {node}."
+    },
+    "cronjob_suspend_failed": {
+      "message": "Failed to {action} CronJob {cronjob}: {error}."
     }
   }
 }
