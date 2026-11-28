@@ -880,8 +880,15 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             entity_registry.async_schedule_save()
             _LOGGER.debug("Purged %d pod/Job/node entity tombstones", len(stale))
 
-    async def _cleanup_orphaned_entities(self, current_data: dict[str, Any]) -> None:
-        """Remove entities for Kubernetes resources that no longer exist."""
+    async def _cleanup_orphaned_entities(
+        self, current_data: dict[str, Any], *, purge_tombstones: bool = True
+    ) -> None:
+        """Remove entities for Kubernetes resources that no longer exist.
+
+        Only the poll path purges tombstones: watch-triggered cleanups pass
+        ``purge_tombstones=False`` so a DELETED event skips the
+        ``deleted_entities`` scan.
+        """
         try:
             if not self.config_entry or not hasattr(self.config_entry, "entry_id"):
                 _LOGGER.debug("Skipping entity cleanup: config_entry not available")
@@ -930,7 +937,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             else:
                 _LOGGER.debug("No orphaned entities found")
 
-            self._purge_ephemeral_tombstones(entity_registry, expected_ids)
+            if purge_tombstones:
+                self._purge_ephemeral_tombstones(entity_registry, expected_ids)
 
         except Exception as ex:
             _LOGGER.error("Failed to cleanup orphaned entities: %s", ex)
@@ -1292,7 +1300,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             _LOGGER.debug(
                 "Relist of %s pruned %d stale object(s)", resource_type, pruned
             )
-            self.hass.async_create_task(self._cleanup_orphaned_entities(self.data))
+            self.hass.async_create_task(
+                self._cleanup_orphaned_entities(self.data, purge_tombstones=False)
+            )
 
     def _apply_watch_event(
         self,
@@ -1338,7 +1348,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             if self.data.get(resource_type, {}).pop(key, None) is None:
                 # Never tracked (filtered or unknown) — no entity to clean up.
                 return
-            self.hass.async_create_task(self._cleanup_orphaned_entities(self.data))
+            self.hass.async_create_task(
+                self._cleanup_orphaned_entities(self.data, purge_tombstones=False)
+            )
         else:
             return
 
