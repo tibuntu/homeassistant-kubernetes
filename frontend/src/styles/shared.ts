@@ -44,6 +44,15 @@ export const stateStyles = css`
     color: var(--text-primary-color, #fff);
   }
 
+  .stale-hint {
+    padding: 10px 16px;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
+    color: var(--error-color, #f44336);
+    font-size: 14px;
+  }
+
   .empty {
     text-align: center;
     padding: 64px 16px;

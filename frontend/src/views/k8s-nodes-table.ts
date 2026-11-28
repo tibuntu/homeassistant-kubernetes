@@ -414,6 +414,7 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
     if (state !== nothing) return state;
 
     return html`
+      ${this.renderStaleHint()}
       ${
         this._actionError
           ? html`

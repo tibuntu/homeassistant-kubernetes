@@ -183,7 +183,7 @@ export class K8sSettings extends K8sDataView<ConfigResponse> {
     const state = this.renderState(!this._data?.entries.length);
     if (state !== nothing) return state;
 
-    return html`${this._data!.entries.map((e) => this._renderEntry(e))}`;
+    return html`${this.renderStaleHint()}${this._data!.entries.map((e) => this._renderEntry(e))}`;
   }
 
   private _renderEntry(entry: ConfigEntry) {

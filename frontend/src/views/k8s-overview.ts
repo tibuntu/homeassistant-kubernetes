@@ -425,7 +425,7 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
     const state = this.renderState(!this._data?.clusters.length);
     if (state !== nothing) return state;
 
-    return html` ${this._data!.clusters.map((c) => this._renderCluster(c))} `;
+    return html`${this.renderStaleHint()}${this._data!.clusters.map((c) => this._renderCluster(c))} `;
   }
 
   private _renderCluster(cluster: ClusterOverview) {

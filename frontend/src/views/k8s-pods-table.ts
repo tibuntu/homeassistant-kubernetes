@@ -906,6 +906,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     if (state !== nothing) return state;
 
     return html`
+      ${this.renderStaleHint()}
       ${
         this._actionError
           ? html`
