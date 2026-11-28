@@ -1306,6 +1306,10 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 return
             bucket = self.data.setdefault(resource_type, {})
             _carry_metrics(bucket.get(key), parsed)
+            if bucket.get(key) == parsed:
+                # Identical to what is stored (e.g. a node lease renewal):
+                # nothing changed, so don't wake every entity for it.
+                return
             bucket[key] = parsed
         elif event_type == "DELETED":
             if self.data.get(resource_type, {}).pop(key, None) is None:
