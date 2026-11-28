@@ -24,8 +24,10 @@ All logs include structured context information:
 ### Authentication Failed (401)
 
 ```
-aiohttp connection test failed with status: 401
+Authentication failed while fetching kubernetes_<entry id> data: Kubernetes API rejected the configured token
 ```
+
+The probe detail (`aiohttp connection test failed with status: 401`) is logged at DEBUG only.
 
 **Solutions:**
 
@@ -128,11 +130,18 @@ DEBUG (MainThread) [custom_components.kubernetes.kubernetes_client] Successfully
 ### Authentication Error
 
 ```
-ERROR (MainThread) [custom_components.kubernetes.kubernetes_client] aiohttp connection test failed with status: 401
+ERROR (MainThread) [custom_components.kubernetes.coordinator] Authentication failed while fetching kubernetes_<entry id> data: Kubernetes API rejected the configured token
 ```
+
+A rejected token also raises the reauthentication prompt. The probe line `aiohttp connection test failed with status: 401` is logged at DEBUG.
 
 ### Network Error
 
+While the cluster is unreachable the poll is logged once per outage, not once per poll, and once when it recovers. With the Watch API on (the default), each watch loop also logs a warning on every reconnect attempt until the `watch_connection_failing` repair issue is raised after repeated failures:
+
 ```
-ERROR (MainThread) [custom_components.kubernetes.kubernetes_client] Network error during get nodes (cluster=production, host=k8s.example.com:6443, namespaces=default): Cannot connect to host k8s.example.com:6443 ssl:default [Connection refused]
+ERROR (MainThread) [custom_components.kubernetes.coordinator] Error fetching kubernetes_<entry id> data: Failed to update Kubernetes data: Cannot connect to host k8s.example.com:6443 ssl:default [Connection refused]
+INFO (MainThread) [custom_components.kubernetes.coordinator] Fetching kubernetes_<entry id> data recovered
 ```
+
+The integration's own `Network error during get nodes (cluster=production, ...)` and probe lines are logged at DEBUG.

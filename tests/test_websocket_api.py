@@ -1,5 +1,6 @@
 """Tests for the Kubernetes WebSocket API module."""
 
+import logging
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -2889,7 +2890,7 @@ class TestWebsocketPodLogs:
         client.get_pods.assert_awaited_once()
 
     async def test_pods_list_live_fetch_failure_returns_empty(
-        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry
+        self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry, caplog
     ):
         """A failing live fetch leaves that cluster empty instead of failing."""
         client = MagicMock()
@@ -2905,6 +2906,10 @@ class TestWebsocketPodLogs:
 
         assert msg["success"] is True
         assert msg["result"]["clusters"][0]["pods"] == []
+        assert any(
+            r.levelno == logging.WARNING and "Live pod list failed" in r.getMessage()
+            for r in caplog.records
+        )
 
     async def test_pods_list_uses_coordinator_when_pods_enabled(
         self, hass: HomeAssistant, hass_ws_client, add_loaded_client_entry

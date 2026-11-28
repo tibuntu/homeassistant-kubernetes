@@ -2679,7 +2679,8 @@ class TestKubernetesClientExtended:
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:
             extended_client._log_error("test_op", error_aiohttp)
-            mock_logger.error.assert_called()
+            mock_logger.log.assert_called_once()
+            assert mock_logger.log.call_args[0][0] == logging.ERROR
 
         # Test asyncio.TimeoutError
         error_timeout = TimeoutError()
@@ -2687,7 +2688,8 @@ class TestKubernetesClientExtended:
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:
             extended_client._log_error("test_op", error_timeout)
-            mock_logger.error.assert_called()
+            mock_logger.log.assert_called_once()
+            assert mock_logger.log.call_args[0][0] == logging.ERROR
 
         # Test generic Exception
         error_generic = Exception("Generic error")
@@ -2695,7 +2697,8 @@ class TestKubernetesClientExtended:
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:
             extended_client._log_error("test_op", error_generic)
-            mock_logger.error.assert_called()
+            mock_logger.log.assert_called_once()
+            assert mock_logger.log.call_args[0][0] == logging.ERROR
 
     async def test_test_connection_aiohttp_failure(self, extended_client):
         """Test _test_connection_aiohttp failure scenarios."""
@@ -6116,9 +6119,60 @@ class TestLogErrorGenericBranch:
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:
             extended_client._log_error("test_op", error)
-            mock_logger.error.assert_called_once()
-            call_args = mock_logger.error.call_args[0]
-            assert "Unexpected error during" in call_args[0]
+            mock_logger.log.assert_called_once()
+            call_args = mock_logger.log.call_args[0]
+            assert call_args[0] == logging.ERROR
+            assert "Unexpected error during" in call_args[1]
+
+
+class TestOutageLogging:
+    """An unreachable cluster is reported once by the coordinator, not here."""
+
+    def test_log_error_defaults_to_error(self, mock_client, caplog):
+        """``_log_error`` logs at ERROR unless told otherwise."""
+        caplog.set_level(logging.DEBUG)
+        mock_client._log_error("op", Exception("boom"))
+        records = [r for r in caplog.records if r.name.endswith("kubernetes_client")]
+        assert [r.levelno for r in records] == [logging.ERROR]
+
+        caplog.clear()
+        mock_client._log_error("op", Exception("boom"), level=logging.DEBUG)
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert [r for r in caplog.records if "boom" in r.getMessage()]
+
+    async def test_failed_read_logs_nothing_above_debug(self, mock_client, caplog):
+        """A failed read is re-raised and stays below WARNING."""
+        caplog.set_level(logging.DEBUG)
+        session = mock_aiohttp_session(get=aiohttp.ClientConnectionError("down"))
+        with patch.object(mock_client, "_session", session):
+            with pytest.raises(aiohttp.ClientConnectionError):
+                await mock_client.get_deployments()
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    async def test_failed_probe_is_quiet_and_names_the_status(
+        self, mock_client, caplog
+    ):
+        """A 503 probe logs below WARNING; the reason is in the exception."""
+        caplog.set_level(logging.DEBUG)
+        session = mock_aiohttp_session(get=503)
+        with patch.object(mock_client, "_session", session):
+            assert await mock_client.is_cluster_healthy() is False
+            assert await mock_client.is_cluster_healthy() is False
+            with pytest.raises(KubernetesApiError, match="status 503"):
+                await mock_client.get_pods()
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    async def test_probe_transport_error_names_the_exception_type(
+        self, mock_client, caplog
+    ):
+        """A transport error without text falls back to its type name."""
+        caplog.set_level(logging.DEBUG)
+        session = mock_aiohttp_session(get=TimeoutError())
+        with patch.object(mock_client, "_session", session):
+            assert await mock_client.is_cluster_healthy() is False
+            with pytest.raises(KubernetesApiError, match="TimeoutError"):
+                await mock_client.get_pods_count()
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
 
 class TestGetPodsCountSuccessLogging:

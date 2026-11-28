@@ -659,8 +659,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     raise ConfigEntryAuthFailed(
                         "Kubernetes API rejected the configured token"
                     ) from ex
-                _LOGGER.error("Failed to update Kubernetes data: %s", ex)
-                raise UpdateFailed(f"Failed to update Kubernetes data: {ex}") from ex
+                # No log line here: DataUpdateCoordinator logs the UpdateFailed
+                # once per outage and the recovery once.
+                raise UpdateFailed(
+                    f"Failed to update Kubernetes data: {str(ex) or type(ex).__name__}"
+                ) from ex
 
     def get_cronjob_data(
         self, namespace: str, cronjob_name: str
