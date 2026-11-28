@@ -29,7 +29,7 @@ concurrency:
 # and opens a PR when a new stable release is tagged on kubernetes/kubernetes.
 # The matrix tests this version plus the two preceding minors.
 env:
-  K8S_LATEST: "1.37.2"
+  K8S_LATEST: "1.37.3"
   # The kind CLI and the node images must come from the same kind release.
   KIND_VERSION: "v0.33.0"
 
