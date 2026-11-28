@@ -48,7 +48,6 @@ async def async_setup_entry(
     # Get the coordinator from the entry's runtime data
     entry_data = config_entry.runtime_data
     coordinator = entry_data.coordinator
-    client = entry_data.client
 
     # Ensure namespace devices exist
     from .device import get_or_create_namespace_device
@@ -126,9 +125,7 @@ async def async_setup_entry(
             return
         known_keys = keys
         hass.async_create_task(
-            _async_discover_and_add_new_entities(
-                hass, config_entry, coordinator, client
-            )
+            _async_discover_and_add_new_entities(hass, config_entry, coordinator)
         )
 
     # Register the callback with the coordinator
@@ -141,7 +138,6 @@ async def _async_discover_and_add_new_entities(
     hass: HomeAssistant,
     config_entry: KubernetesConfigEntry,
     coordinator: KubernetesDataCoordinator,
-    client: Any,
 ) -> None:
     """Discover and add new entities for newly created Kubernetes resources."""
     try:

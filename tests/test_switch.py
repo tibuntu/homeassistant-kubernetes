@@ -1344,7 +1344,6 @@ class TestDiscoverAndAddNewEntities:
 
         coordinator = MagicMock()
         coordinator.data = {}
-        client = MagicMock()
 
         entity_registry = MagicMock()
         entity_registry.entities.get_entries_for_config_entry_id.return_value = []
@@ -1355,7 +1354,7 @@ class TestDiscoverAndAddNewEntities:
         ):
             # Should return early without error
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, client
+                hass, mock_config_entry, coordinator
             )
         assert (
             "No add_entities callback found for dynamic entity management"
@@ -1400,7 +1399,7 @@ class TestDiscoverAndAddNewEntities:
             ),
         ):
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         add_entities_callback.assert_called_once()
@@ -1446,7 +1445,7 @@ class TestDiscoverAndAddNewEntities:
             ),
         ):
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         add_entities_callback.assert_called_once()
@@ -1493,7 +1492,7 @@ class TestDiscoverAndAddNewEntities:
             ),
         ):
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         add_entities_callback.assert_called_once()
@@ -1546,7 +1545,7 @@ class TestDiscoverAndAddNewEntities:
             ),
         ):
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         # No new entities should be added
@@ -1574,7 +1573,7 @@ class TestDiscoverAndAddNewEntities:
             return_value=entity_registry,
         ):
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         add_entities_callback.assert_not_called()
@@ -1598,7 +1597,7 @@ class TestDiscoverAndAddNewEntities:
         ):
             # Should not raise
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         assert "Failed to discover and add new entities: Registry error" in caplog.text
@@ -1645,7 +1644,7 @@ class TestDiscoverAndAddNewEntities:
         ):
             # First call: discovers the deployment
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         add_entities_callback.assert_called_once()
@@ -1665,7 +1664,7 @@ class TestDiscoverAndAddNewEntities:
         ):
             # Second call: entity registry still empty, but pending_ids prevents re-add
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         add_entities_callback.assert_not_called()
@@ -2259,7 +2258,7 @@ class TestDiscoverNewNodeSwitches:
             return_value=entity_registry,
         ):
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         add_entities_callback.assert_called_once()
@@ -2303,7 +2302,7 @@ class TestDiscoverNewNodeSwitches:
             return_value=entity_registry,
         ):
             await _async_discover_and_add_new_entities(
-                hass, mock_config_entry, coordinator, MagicMock()
+                hass, mock_config_entry, coordinator
             )
 
         add_entities_callback.assert_not_called()
