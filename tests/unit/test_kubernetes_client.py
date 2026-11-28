@@ -335,7 +335,7 @@ class TestSslParam:
 async def test_get_pods_count_success(mock_client):
     """Test successful pods count retrieval."""
     # Mock the connection test to return True
-    mock_client._test_connection = AsyncMock(return_value=True)
+    mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
 
     # Mock the generic fetch method to return the expected count
     mock_client._fetch_resource_count = AsyncMock(return_value=3)
@@ -347,7 +347,7 @@ async def test_get_pods_count_success(mock_client):
 
 async def test_get_pods_count_empty(mock_client):
     """Test pods count retrieval when no pods exist."""
-    mock_client._test_connection = AsyncMock(return_value=True)
+    mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
     mock_client._fetch_resource_count = AsyncMock(return_value=0)
 
     count = await mock_client.get_pods_count()
@@ -1580,7 +1580,7 @@ async def test_parse_service_item_malformed_returns_none(mock_client):
 async def test_is_cluster_healthy_success(mock_client):
     """Test successful cluster health check."""
     # Mock the connection test to return True
-    mock_client._test_connection = AsyncMock(return_value=True)
+    mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
 
     is_healthy = await mock_client.is_cluster_healthy()
 
@@ -1589,7 +1589,7 @@ async def test_is_cluster_healthy_success(mock_client):
 
 async def test_is_cluster_healthy_connection_failure(mock_client):
     """Test cluster health check when connection fails."""
-    mock_client._test_connection = AsyncMock(return_value=False)
+    mock_client._test_connection_aiohttp = AsyncMock(return_value=False)
 
     is_healthy = await mock_client.is_cluster_healthy()
 
@@ -2226,7 +2226,7 @@ def test_parse_cpu(mock_client):
     assert mock_client._parse_cpu("1000m", "m") == 1000.0
 
 
-async def test_enrich_workloads_with_metrics_deployments(mock_client):
+async def test_enrich_deployments_with_metrics(mock_client):
     """Test enriching deployments with metrics."""
     deployments = [
         {
@@ -2246,7 +2246,7 @@ async def test_enrich_workloads_with_metrics_deployments(mock_client):
         ]
     )
 
-    mock_client._get_pod_metrics_aiohttp = AsyncMock(
+    mock_client.get_pod_metrics = AsyncMock(
         return_value={"default/test-pod": {"cpu": 0.5, "memory": 128.0}}
     )
 
@@ -2254,7 +2254,7 @@ async def test_enrich_workloads_with_metrics_deployments(mock_client):
 
     # pods=None / metrics=None: the method fetches both itself.
     mock_client._get_pods_aiohttp.assert_awaited_once()
-    mock_client._get_pod_metrics_aiohttp.assert_awaited_once()
+    mock_client.get_pod_metrics.assert_awaited_once()
     assert deployments[0]["cpu_usage"] == 0.5
     assert deployments[0]["memory_usage"] == 128.0
 
@@ -2265,7 +2265,7 @@ async def test_enrich_uses_supplied_pods_and_metrics(mock_client, all_namespaces
     mock_client.monitor_all_namespaces = all_namespaces
     mock_client._get_pods_aiohttp = AsyncMock()
     mock_client._get_pods_all_namespaces_aiohttp = AsyncMock()
-    mock_client._get_pod_metrics_aiohttp = AsyncMock()
+    mock_client.get_pod_metrics = AsyncMock()
     deployments = [{"name": "web", "namespace": "default", "selector": {"app": "test"}}]
 
     await mock_client.enrich_workloads_with_metrics(
@@ -2278,12 +2278,12 @@ async def test_enrich_uses_supplied_pods_and_metrics(mock_client, all_namespaces
     assert deployments[0]["memory_usage"] == 128.0
     mock_client._get_pods_aiohttp.assert_not_called()
     mock_client._get_pods_all_namespaces_aiohttp.assert_not_called()
-    mock_client._get_pod_metrics_aiohttp.assert_not_called()
+    mock_client.get_pod_metrics.assert_not_called()
 
 
 async def test_enrich_supplied_empty_metrics_is_not_refetched(mock_client):
     """An empty (but supplied) metrics dict leaves workloads at 0.0 without a refetch."""
-    mock_client._get_pod_metrics_aiohttp = AsyncMock()
+    mock_client.get_pod_metrics = AsyncMock()
     deployments = [{"name": "web", "namespace": "default", "selector": {"app": "test"}}]
 
     await mock_client.enrich_workloads_with_metrics(
@@ -2293,10 +2293,10 @@ async def test_enrich_supplied_empty_metrics_is_not_refetched(mock_client):
     )
 
     assert deployments[0]["cpu_usage"] == 0.0
-    mock_client._get_pod_metrics_aiohttp.assert_not_called()
+    mock_client.get_pod_metrics.assert_not_called()
 
 
-async def test_enrich_workloads_with_metrics_statefulsets(mock_client):
+async def test_enrich_statefulsets_with_metrics(mock_client):
     """Test enriching statefulsets with metrics."""
     statefulsets = [
         {
@@ -2316,7 +2316,7 @@ async def test_enrich_workloads_with_metrics_statefulsets(mock_client):
         ]
     )
 
-    mock_client._get_pod_metrics_aiohttp = AsyncMock(
+    mock_client.get_pod_metrics = AsyncMock(
         return_value={"default/test-pod": {"cpu": 0.5, "memory": 128.0}}
     )
 
@@ -2324,20 +2324,6 @@ async def test_enrich_workloads_with_metrics_statefulsets(mock_client):
 
     assert statefulsets[0]["cpu_usage"] == 0.5
     assert statefulsets[0]["memory_usage"] == 128.0
-
-
-async def test_get_node_metrics(mock_client):
-    """Test get_node_metrics delegates to aiohttp method."""
-    mock_client._get_node_metrics_aiohttp = AsyncMock(
-        return_value={
-            "node1": {"cpu": 410.0, "memory": 2015.0},
-            "node2": {"cpu": 483.0, "memory": 2325.0},
-        }
-    )
-    result = await mock_client.get_node_metrics()
-    assert len(result) == 2
-    assert result["node1"]["cpu"] == 410.0
-    assert result["node2"]["memory"] == 2325.0
 
 
 @pytest.mark.parametrize(
@@ -2401,8 +2387,8 @@ async def test_get_node_metrics_null_items(mock_client):
     assert result == {}
 
 
-async def test_get_node_metrics_aiohttp_success(mock_client):
-    """Test _get_node_metrics_aiohttp parses API response correctly."""
+async def test_get_node_metrics_success(mock_client):
+    """Test get_node_metrics parses API response correctly."""
     mock_session = mock_aiohttp_session(
         get=_mock_response(
             200,
@@ -2428,7 +2414,7 @@ async def test_get_node_metrics_aiohttp_success(mock_client):
     with (
         patch.object(mock_client, "_session", mock_session),
     ):
-        result = await mock_client._get_node_metrics_aiohttp()
+        result = await mock_client.get_node_metrics()
 
     assert len(result) == 2
     assert "node1" in result
@@ -2439,36 +2425,36 @@ async def test_get_node_metrics_aiohttp_success(mock_client):
     assert result["node2"]["memory"] == pytest.approx(3072.0, abs=1)
 
 
-async def test_get_node_metrics_aiohttp_403(mock_client):
-    """Test _get_node_metrics_aiohttp returns empty on 403."""
+async def test_get_node_metrics_403(mock_client):
+    """Test get_node_metrics returns empty on 403."""
     mock_session = mock_aiohttp_session(get=403)
 
     with (
         patch.object(mock_client, "_session", mock_session),
     ):
-        result = await mock_client._get_node_metrics_aiohttp()
+        result = await mock_client.get_node_metrics()
 
     assert result == {}
 
 
-async def test_get_node_metrics_aiohttp_unavailable(mock_client):
-    """Test _get_node_metrics_aiohttp returns empty when the API is not served."""
+async def test_get_node_metrics_unavailable(mock_client):
+    """Test get_node_metrics returns empty when the API is not served."""
     mock_session = mock_aiohttp_session(get=404)
 
     with patch.object(mock_client, "_session", mock_session):
-        result = await mock_client._get_node_metrics_aiohttp()
+        result = await mock_client.get_node_metrics()
 
     assert result == {}
 
 
-async def test_get_node_metrics_aiohttp_exception(mock_client):
-    """Test _get_node_metrics_aiohttp returns empty on exception."""
+async def test_get_node_metrics_exception(mock_client):
+    """Test get_node_metrics returns empty on exception."""
     mock_session = mock_aiohttp_session(get=Exception("Connection refused"))
 
     with (
         patch.object(mock_client, "_session", mock_session),
     ):
-        result = await mock_client._get_node_metrics_aiohttp()
+        result = await mock_client.get_node_metrics()
 
     assert result == {}
 
@@ -2527,8 +2513,8 @@ class TestKubernetesClientExtended:
         ):
             assert await extended_client._test_connection_aiohttp() is False
 
-    async def test_get_nodes_aiohttp_parsing(self, extended_client):
-        """Test _get_nodes_aiohttp parsing logic."""
+    async def test_get_nodes_parsing(self, extended_client):
+        """Test get_nodes parsing logic."""
         mock_node_data = {
             "items": [
                 {
@@ -2562,7 +2548,7 @@ class TestKubernetesClientExtended:
             mock_response.json.return_value = mock_node_data
             mock_get.return_value.__aenter__.return_value = mock_response
 
-            nodes = await extended_client._get_nodes_aiohttp()
+            nodes = await extended_client.get_nodes()
             assert len(nodes) == 1
             node = nodes[0]
             assert node["name"] == "node1"
@@ -2571,8 +2557,8 @@ class TestKubernetesClientExtended:
             assert node["external_ip"] == "1.2.3.4"
             assert node["schedulable"] is True
 
-    async def test_get_nodes_aiohttp_parsing_error(self, extended_client):
-        """Test _get_nodes_aiohttp parsing error handling."""
+    async def test_get_nodes_parsing_error(self, extended_client):
+        """Test get_nodes parsing error handling."""
         # Malformed data that causes parsing error
         mock_node_data = {"items": [{"metadata": {}}]}  # Missing status, spec, etc.
 
@@ -2583,13 +2569,13 @@ class TestKubernetesClientExtended:
             mock_get.return_value.__aenter__.return_value = mock_response
 
             # Should handle parsing error gracefully and return a node with "unknown" status
-            nodes = await extended_client._get_nodes_aiohttp()
+            nodes = await extended_client.get_nodes()
             assert len(nodes) == 1
             assert nodes[0]["name"] == "unknown"
             assert nodes[0]["status"] == "NotReady"
 
-    async def test_get_nodes_aiohttp_failure(self, extended_client):
-        """_get_nodes_aiohttp raises on non-200 and propagates transport errors."""
+    async def test_get_nodes_failure(self, extended_client):
+        """get_nodes raises on non-200 and propagates transport errors."""
         # Test non-200 status
         with patch.object(extended_client._session, "get") as mock_get:
             mock_response = AsyncMock()
@@ -2597,7 +2583,7 @@ class TestKubernetesClientExtended:
             mock_get.return_value.__aenter__.return_value = mock_response
 
             with pytest.raises(KubernetesApiError, match="status 500"):
-                await extended_client._get_nodes_aiohttp()
+                await extended_client.get_nodes()
 
         # Test exception
         with (
@@ -2606,7 +2592,7 @@ class TestKubernetesClientExtended:
             ),
             pytest.raises(Exception, match="Network error"),
         ):
-            await extended_client._get_nodes_aiohttp()
+            await extended_client.get_nodes()
 
 
 class TestKubernetesClientGetPods:
@@ -2749,7 +2735,7 @@ class TestKubernetesClientGetPods:
             await mock_client.get_pods()
 
             # Verify the correct URL was called (all namespaces)
-            # get_pods() calls _test_connection() first, then the actual pods endpoint
+            # get_pods() calls _test_connection_aiohttp() first, then the actual pods endpoint
             assert mock_get.call_count >= 1
             # Find the call to the pods endpoint
             pods_call = None
@@ -4596,7 +4582,7 @@ class TestEnrichWorkloadsWithMetricsExtended:
             }
         ]
         mock_client._get_pods_aiohttp = AsyncMock(return_value=[])
-        mock_client._get_pod_metrics_aiohttp = AsyncMock(return_value={})
+        mock_client.get_pod_metrics = AsyncMock(return_value={})
 
         await mock_client.enrich_workloads_with_metrics(workloads)
 
@@ -4617,7 +4603,7 @@ class TestEnrichWorkloadsWithMetricsExtended:
                 {"name": "pod1", "namespace": "default", "labels": {"app": "test"}}
             ]
         )
-        mock_client._get_pod_metrics_aiohttp = AsyncMock(return_value={})
+        mock_client.get_pod_metrics = AsyncMock(return_value={})
 
         await mock_client.enrich_workloads_with_metrics(workloads)
 
@@ -4659,7 +4645,7 @@ class TestEnrichWorkloadsWithMetricsExtended:
                 {"name": "other-pod", "namespace": "default", "labels": {"app": "db"}},
             ]
         )
-        mock_client._get_pod_metrics_aiohttp = AsyncMock(
+        mock_client.get_pod_metrics = AsyncMock(
             return_value={
                 "default/web-pod-1": {"cpu": 100.0, "memory": 256.0},
                 "default/web-pod-2": {"cpu": 200.0, "memory": 512.0},
@@ -4687,7 +4673,7 @@ class TestEnrichWorkloadsWithMetricsExtended:
                 {"name": "web-pod-2", "namespace": "default", "labels": {"app": "web"}},
             ]
         )
-        mock_client._get_pod_metrics_aiohttp = AsyncMock(
+        mock_client.get_pod_metrics = AsyncMock(
             return_value={
                 "default/web-pod-1": {"cpu": 100.0, "memory": 256.0},
                 # web-pod-2 has no metrics entry
@@ -4715,7 +4701,7 @@ class TestEnrichWorkloadsWithMetricsExtended:
                 {"name": "api-pod", "namespace": "prod", "labels": {"app": "api"}},
             ]
         )
-        mock_client._get_pod_metrics_aiohttp = AsyncMock(
+        mock_client.get_pod_metrics = AsyncMock(
             return_value={
                 "prod/api-pod": {"cpu": 50.0, "memory": 128.0},
             }
@@ -4741,7 +4727,7 @@ class TestEnrichWorkloadsWithMetricsExtended:
                 {"name": "pod1", "namespace": "default", "labels": {"app": "test"}},
             ]
         )
-        mock_client._get_pod_metrics_aiohttp = AsyncMock(
+        mock_client.get_pod_metrics = AsyncMock(
             return_value={
                 "default/pod1": {"cpu": 100.0, "memory": 256.0},
             }
@@ -4931,7 +4917,7 @@ class TestGetPodsExtended:
 
     async def test_get_pods_malformed_pod_item(self, mock_client):
         """get_pods skips malformed pod items gracefully."""
-        mock_client._test_connection = AsyncMock(return_value=True)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
 
         # One valid and one invalid pod
         mock_response_data = {
@@ -4976,7 +4962,7 @@ class TestGetPodsExtended:
 
     async def test_get_pods_connection_failure(self, mock_client):
         """get_pods raises when the connection test fails."""
-        mock_client._test_connection = AsyncMock(return_value=False)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=False)
 
         with pytest.raises(KubernetesApiError, match="Cannot connect"):
             await mock_client.get_pods()
@@ -5084,7 +5070,7 @@ class TestConcurrentNamespaceFetch:
         """A 500 on the pods list raises KubernetesApiError with status 500."""
         mock_client.monitor_all_namespaces = all_namespaces
         mock_client.namespaces = ["default"]
-        mock_client._test_connection = AsyncMock(return_value=True)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
         session = mock_aiohttp_session(get=500)
 
         with patch.object(mock_client, "_session", session):
@@ -5092,19 +5078,6 @@ class TestConcurrentNamespaceFetch:
                 await mock_client.get_pods()
 
         assert exc.value.status == 500
-
-
-class TestGetNodesExtended:
-    """Extended tests for get_nodes."""
-
-    async def test_get_nodes_exception_propagates(self, mock_client):
-        """get_nodes propagates exceptions instead of returning an empty list."""
-        mock_client._get_nodes_aiohttp = AsyncMock(
-            side_effect=Exception("Catastrophic failure")
-        )
-
-        with pytest.raises(Exception, match="Catastrophic failure"):
-            await mock_client.get_nodes()
 
 
 class TestParseReplicaWorkloadItem:
@@ -5558,7 +5531,7 @@ class TestCalculateResourceUsage:
 
 
 class TestGetPodMetricsAiohttp:
-    """Tests for _get_pod_metrics_aiohttp method."""
+    """Tests for get_pod_metrics method."""
 
     async def test_successful_fetch(self, mock_client):
         """Test successful pod metrics fetch returning cpu/memory."""
@@ -5588,7 +5561,7 @@ class TestGetPodMetricsAiohttp:
         with (
             patch.object(mock_client, "_session", mock_session),
         ):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert len(result) == 2
         assert "default/pod1" in result
@@ -5602,40 +5575,40 @@ class TestGetPodMetricsAiohttp:
         assert result["prod/pod2"]["memory"] == 256.0
 
     async def test_http_403(self, mock_client):
-        """Test _get_pod_metrics_aiohttp returns empty on 403 Forbidden."""
+        """Test get_pod_metrics returns empty on 403 Forbidden."""
         mock_session = mock_aiohttp_session(get=403)
 
         with (
             patch.object(mock_client, "_session", mock_session),
         ):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {}
 
     async def test_http_non_200_non_403(self, mock_client):
-        """Test _get_pod_metrics_aiohttp returns empty on other non-200 status."""
+        """Test get_pod_metrics returns empty on other non-200 status."""
         mock_session = mock_aiohttp_session(get=500)
 
         with (
             patch.object(mock_client, "_session", mock_session),
         ):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {}
 
     async def test_exception_handling(self, mock_client):
-        """Test _get_pod_metrics_aiohttp returns empty on exception."""
+        """Test get_pod_metrics returns empty on exception."""
         mock_session = mock_aiohttp_session(get=Exception("Connection refused"))
 
         with (
             patch.object(mock_client, "_session", mock_session),
         ):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {}
 
     async def test_all_namespaces_url(self, mock_client):
-        """Test _get_pod_metrics_aiohttp uses all-namespaces URL when configured."""
+        """Test get_pod_metrics uses all-namespaces URL when configured."""
         mock_client.monitor_all_namespaces = True
 
         mock_session = mock_aiohttp_session(
@@ -5645,7 +5618,7 @@ class TestGetPodMetricsAiohttp:
         with (
             patch.object(mock_client, "_session", mock_session),
         ):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {}
         # Verify the URL used does not contain namespaces segment
@@ -5681,7 +5654,7 @@ class TestGetPodMetricsAiohttp:
         )
 
         with patch.object(mock_client, "_session", mock_session):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {
             "default/pod1": {"cpu": 250.0, "memory": 128.0},
@@ -5713,7 +5686,7 @@ class TestGetPodMetricsAiohttp:
         )
 
         with patch.object(mock_client, "_session", mock_session):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {"production/pod2": {"cpu": 500.0, "memory": 256.0}}
         assert mock_session.get.call_count == 2
@@ -5726,7 +5699,7 @@ class TestGetPodMetricsAiohttp:
         mock_session = mock_aiohttp_session(get=[403, 403])
 
         with patch.object(mock_client, "_session", mock_session):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {}
         forbidden = [r for r in caplog.records if "403 Forbidden" in r.getMessage()]
@@ -5745,7 +5718,7 @@ class TestGetPodMetricsAiohttp:
         mock_session = mock_aiohttp_session(get=403)
 
         with patch.object(mock_client, "_session", mock_session):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {}
         forbidden = [r for r in caplog.records if "403 Forbidden" in r.getMessage()]
@@ -5756,7 +5729,7 @@ class TestGetPodMetricsAiohttp:
     async def test_session_failure_returns_empty(self, mock_client):
         """A failure outside the per-namespace requests still returns empty."""
         with patch.object(mock_client, "_get_ssl_param", side_effect=Exception("boom")):
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert result == {}
 
@@ -5789,15 +5762,15 @@ class TestMetricsLogEpisodes:
         session = mock_aiohttp_session(get=[404, 404, self._node_ok()])
 
         with patch.object(mock_client, "_session", session):
-            assert await mock_client._get_node_metrics_aiohttp() == {}
+            assert await mock_client.get_node_metrics() == {}
             assert len(self._warnings(caplog)) == 1
 
             caplog.clear()
-            assert await mock_client._get_node_metrics_aiohttp() == {}
+            assert await mock_client.get_node_metrics() == {}
             assert self._warnings(caplog) == []
 
             caplog.clear()
-            result = await mock_client._get_node_metrics_aiohttp()
+            result = await mock_client.get_node_metrics()
 
         assert result == {"node1": {"cpu": 250.0, "memory": 128.0}}
         assert self._warnings(caplog) == []
@@ -5825,7 +5798,7 @@ class TestMetricsLogEpisodes:
         )
 
         with patch.object(mock_client, "_session", session):
-            await mock_client._get_pod_metrics_aiohttp()
+            await mock_client.get_pod_metrics()
             warnings = self._warnings(caplog)
             assert len(warnings) == 1
             message = warnings[0].getMessage()
@@ -5833,11 +5806,11 @@ class TestMetricsLogEpisodes:
             assert "production: HTTP 404" in message
 
             caplog.clear()
-            await mock_client._get_pod_metrics_aiohttp()
+            await mock_client.get_pod_metrics()
             assert self._warnings(caplog) == []
 
             caplog.clear()
-            result = await mock_client._get_pod_metrics_aiohttp()
+            result = await mock_client.get_pod_metrics()
 
         assert len(result) == 2
         assert self._warnings(caplog) == []
@@ -5848,8 +5821,8 @@ class TestMetricsLogEpisodes:
         session = mock_aiohttp_session(get=[404, 403])
 
         with patch.object(mock_client, "_session", session):
-            await mock_client._get_node_metrics_aiohttp()
-            await mock_client._get_node_metrics_aiohttp()
+            await mock_client.get_node_metrics()
+            await mock_client.get_node_metrics()
 
         warnings = self._warnings(caplog)
         assert len(warnings) == 2
@@ -5860,7 +5833,7 @@ class TestMetricsLogEpisodes:
         session = mock_aiohttp_session(get=self._node_ok())
 
         with patch.object(mock_client, "_session", session):
-            result = await mock_client._get_node_metrics_aiohttp()
+            result = await mock_client.get_node_metrics()
 
         assert "node1" in result
         assert self._warnings(caplog) == []
@@ -5871,8 +5844,8 @@ class TestMetricsLogEpisodes:
         session = mock_aiohttp_session(get=[aiohttp.ClientConnectionError("down")] * 2)
 
         with patch.object(mock_client, "_session", session):
-            first = await mock_client._get_node_metrics_aiohttp()
-            second = await mock_client._get_node_metrics_aiohttp()
+            first = await mock_client.get_node_metrics()
+            second = await mock_client.get_node_metrics()
 
         assert first == {}
         assert second == {}
@@ -6080,7 +6053,7 @@ class TestGetPodsCountSuccessLogging:
 
     async def test_get_pods_count_success_logging(self, mock_client):
         """Test get_pods_count success path with logging."""
-        mock_client._test_connection = AsyncMock(return_value=True)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
         mock_client._fetch_resource_count = AsyncMock(return_value=5)
 
         count = await mock_client.get_pods_count()
@@ -6090,14 +6063,14 @@ class TestGetPodsCountSuccessLogging:
 
     async def test_get_pods_count_connection_failure(self, mock_client):
         """get_pods_count raises when the connection test fails."""
-        mock_client._test_connection = AsyncMock(return_value=False)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=False)
 
         with pytest.raises(KubernetesApiError, match="Cannot connect"):
             await mock_client.get_pods_count()
 
     async def test_get_pods_count_exception(self, mock_client):
         """get_pods_count propagates exceptions."""
-        mock_client._test_connection = AsyncMock(return_value=True)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
         mock_client._fetch_resource_count = AsyncMock(
             side_effect=Exception("API error")
         )
@@ -6107,10 +6080,10 @@ class TestGetPodsCountSuccessLogging:
 
 
 class TestGetNodesAiohttpNodeParseException:
-    """Tests for _get_nodes_aiohttp node item parse exception."""
+    """Tests for get_nodes node item parse exception."""
 
     async def test_node_parse_exception_skips_item(self, extended_client):
-        """Test _get_nodes_aiohttp skips items that raise during parsing."""
+        """Test get_nodes skips items that raise during parsing."""
         # Create data where one node will parse fine and one will cause an exception
         # by having _parse_node_item raise for the second item
         mock_node_data = {
@@ -6170,7 +6143,7 @@ class TestGetNodesAiohttpNodeParseException:
             # The second node should parse without error since _parse_memory
             # handles invalid strings gracefully. Instead, let's verify the
             # happy path parses both nodes
-            nodes = await extended_client._get_nodes_aiohttp()
+            nodes = await extended_client.get_nodes()
             # Both should parse (the parser is resilient)
             assert len(nodes) == 2
             assert nodes[0]["name"] == "good-node"
@@ -6219,7 +6192,7 @@ class TestGetPodsSuccessLogging:
 
     async def test_get_pods_success_logging(self, mock_client):
         """Test get_pods success path with logging."""
-        mock_client._test_connection = AsyncMock(return_value=True)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
         mock_client._get_pods_aiohttp = AsyncMock(
             return_value=[{"name": "pod1"}, {"name": "pod2"}]
         )
@@ -6230,7 +6203,7 @@ class TestGetPodsSuccessLogging:
 
     async def test_get_pods_exception_propagates(self, mock_client):
         """get_pods propagates a general exception after logging it."""
-        mock_client._test_connection = AsyncMock(return_value=True)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
         mock_client._get_pods_aiohttp = AsyncMock(
             side_effect=Exception("Unexpected error")
         )
@@ -6241,7 +6214,7 @@ class TestGetPodsSuccessLogging:
     async def test_get_pods_all_namespaces_success(self, mock_client):
         """Test get_pods with monitor_all_namespaces delegates correctly."""
         mock_client.monitor_all_namespaces = True
-        mock_client._test_connection = AsyncMock(return_value=True)
+        mock_client._test_connection_aiohttp = AsyncMock(return_value=True)
         mock_client._get_pods_all_namespaces_aiohttp = AsyncMock(
             return_value=[{"name": "pod1"}]
         )
@@ -6250,29 +6223,6 @@ class TestGetPodsSuccessLogging:
 
         assert len(result) == 1
         mock_client._get_pods_all_namespaces_aiohttp.assert_called_once()
-
-
-class TestGetNodesSuccessLogging:
-    """Tests for get_nodes success and error logging."""
-
-    async def test_get_nodes_success_logging(self, mock_client):
-        """Test get_nodes success path with logging."""
-        mock_client._get_nodes_aiohttp = AsyncMock(
-            return_value=[{"name": "node1"}, {"name": "node2"}]
-        )
-
-        result = await mock_client.get_nodes()
-
-        assert len(result) == 2
-
-    async def test_get_nodes_exception_logging(self, mock_client):
-        """get_nodes logs and re-raises exceptions."""
-        mock_client._get_nodes_aiohttp = AsyncMock(
-            side_effect=Exception("API unavailable")
-        )
-
-        with pytest.raises(Exception, match="API unavailable"):
-            await mock_client.get_nodes()
 
 
 class TestDeletePod:

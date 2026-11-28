@@ -551,10 +551,6 @@ class KubernetesClient:
             self._ssl_context = await build_ssl_param(self.verify_ssl, self.ca_cert)
         return self._ssl_context
 
-    async def _test_connection(self) -> bool:
-        """Test the connection to Kubernetes."""
-        return await self._test_connection_aiohttp()
-
     async def _probe_api(self) -> int:
         """GET the API root with the current token and return the HTTP status."""
         async with self._session.get(
@@ -613,7 +609,7 @@ class KubernetesClient:
         """Get the count of pods in the namespace(s)."""
         try:
             # Test connection first
-            if not await self._test_connection():
+            if not await self._test_connection_aiohttp():
                 raise KubernetesApiError(
                     f"Cannot connect to Kubernetes API: {self._probe_failure}"
                 )
@@ -630,7 +626,7 @@ class KubernetesClient:
         """Get detailed information about all pods in the namespace(s)."""
         try:
             # Test connection first
-            if not await self._test_connection():
+            if not await self._test_connection_aiohttp():
                 raise KubernetesApiError(
                     f"Cannot connect to Kubernetes API: {self._probe_failure}"
                 )
@@ -856,18 +852,14 @@ class KubernetesClient:
     async def get_nodes(self) -> list[dict[str, Any]]:
         """Get detailed information about all nodes in the cluster."""
         try:
-            result = await self._get_nodes_aiohttp()
+            result = await self._fetch_resource_list(
+                "api/v1", "nodes", self._parse_node_item, cluster_scoped=True
+            )
             self._log_success("get nodes", f"retrieved {len(result)} nodes")
             return result
         except Exception as ex:
             self._log_error("get nodes", ex, level=logging.DEBUG)
             raise
-
-    async def _get_nodes_aiohttp(self) -> list[dict[str, Any]]:
-        """Get detailed nodes information using aiohttp."""
-        return await self._fetch_resource_list(
-            "api/v1", "nodes", self._parse_node_item, cluster_scoped=True
-        )
 
     def _parse_memory(self, memory_str: str, output_type: str = "MiB") -> float:
         """Parse Kubernetes memory string to specified unit (KiB, MiB, or GiB)."""
@@ -1992,11 +1984,6 @@ class KubernetesClient:
                 response.status,
             )
 
-    async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
-        """Get pod metrics (CPU and memory usage)."""
-        # Metrics API is usually accessed via /apis/metrics.k8s.io/v1beta1/pods
-        return await self._get_pod_metrics_aiohttp()
-
     def _report_metrics(self, kind: str, issues: dict[str, str]) -> None:
         """Warn about a Metrics API problem once per episode; log the recovery once.
 
@@ -2027,7 +2014,7 @@ class KubernetesClient:
             hint,
         )
 
-    async def _get_pod_metrics_aiohttp(self) -> dict[str, dict[str, float]]:
+    async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
         """Get pod metrics using aiohttp.
 
         Without monitor_all_namespaces, each configured namespace is fetched
@@ -2134,10 +2121,6 @@ class KubernetesClient:
 
     async def get_node_metrics(self) -> dict[str, dict[str, float]]:
         """Get node metrics (CPU and memory usage) from the Metrics API."""
-        return await self._get_node_metrics_aiohttp()
-
-    async def _get_node_metrics_aiohttp(self) -> dict[str, dict[str, float]]:
-        """Get node metrics using aiohttp."""
         issues: dict[str, str] = {}
         metrics: dict[str, dict[str, float]] = {}
         try:
@@ -2292,7 +2275,7 @@ class KubernetesClient:
                 else:
                     pods = await self._get_pods_aiohttp()
             if metrics is None:
-                metrics = await self._get_pod_metrics_aiohttp()
+                metrics = await self.get_pod_metrics()
 
             if not pods:
                 _LOGGER.debug("No pods found for workload metrics enrichment")
@@ -2328,7 +2311,7 @@ class KubernetesClient:
 
     async def is_cluster_healthy(self) -> bool:
         """Check if the cluster is healthy."""
-        return await self._test_connection()
+        return await self._test_connection_aiohttp()
 
     async def get_server_version(self) -> str | None:
         """Get the API server's gitVersion from /version — best-effort.
