@@ -14,7 +14,10 @@ repos:
         exclude: ^custom_components/kubernetes/frontend/
       - id: check-yaml
         name: Validate YAML files
-        args: [--unsafe] # Allow custom YAML tags
+        # No tracked YAML uses a custom tag, so the files are really loaded
+        # (--unsafe only checked the syntax). tests/k8s_compat/manifests/
+        # holds several documents per file.
+        args: [--allow-multiple-documents]
         exclude: ^chart/templates/ # Go templates, not parseable YAML
       - id: check-json
         name: Validate JSON files
