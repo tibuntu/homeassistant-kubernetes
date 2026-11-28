@@ -243,6 +243,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   @state() private _namespaceFilter: string = "all";
   @state() private _sortField: SortField = "name";
   @state() private _sortAsc: boolean = true;
+  private _filteredByCluster = new Map<string, PodData[]>();
   protected tab = "pods";
 
   protected readQuery(): void {
@@ -561,15 +562,22 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         this._namespaceFilter = "all";
       }
     }
-    if (
-      [
-        "_searchQuery",
-        "_phaseFilter",
-        "_namespaceFilter",
-        "_sortField",
-        "_sortAsc",
-      ].some((k) => changedProps.has(k))
-    ) {
+    const filterInputs = [
+      "_searchQuery",
+      "_phaseFilter",
+      "_namespaceFilter",
+      "_sortField",
+      "_sortAsc",
+    ];
+    if (changedProps.has("_data") || filterInputs.some((k) => changedProps.has(k))) {
+      this._filteredByCluster = new Map(
+        (this._data?.clusters ?? []).map((c) => [
+          c.entry_id,
+          this._getFilteredPods(c.pods),
+        ]),
+      );
+    }
+    if (filterInputs.some((k) => changedProps.has(k))) {
       this._syncQuery({
         search: this._searchQuery,
         namespace: this._namespaceFilter === "all" ? "" : this._namespaceFilter,
@@ -998,7 +1006,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
   }
 
   private _renderCluster(cluster: ClusterPods) {
-    const filtered = this._getFilteredPods(cluster.pods);
+    const filtered = this._filteredByCluster.get(cluster.entry_id) ?? [];
 
     return html`
       <div class="cluster-section">
