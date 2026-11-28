@@ -32,10 +32,10 @@ Scale one or more Kubernetes workloads (Deployments or StatefulSets) to a specif
 **Parameters**:
 
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.production_default_web_app`)
-- `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
+- `workload_names` (list or multi-entity picker of Kubernetes switches, optional): Multiple workload names or entity IDs (YAML accepts a plain list)
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
 - `replicas` (integer, required): Target number of replicas (0 or more)
-- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). A switch of another kind or in another namespace is skipped when this or `namespace` is given
+- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). For a bare name, a same-named switch of another kind or in another namespace is skipped when this or `namespace` is given
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets
@@ -79,10 +79,10 @@ Start one or more Kubernetes workloads by scaling them to the specified number o
 **Parameters**:
 
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.production_default_web_app`)
-- `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
+- `workload_names` (list or multi-entity picker of Kubernetes switches, optional): Multiple workload names or entity IDs (YAML accepts a plain list)
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
 - `replicas` (integer, optional): Number of replicas for Deployments/StatefulSets (default: 1, ignored for CronJobs)
-- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). A switch of another kind or in another namespace is skipped when this or `namespace` is given
+- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). For a bare name, a same-named switch of another kind or in another namespace is skipped when this or `namespace` is given
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**:
@@ -126,9 +126,9 @@ Stop one or more Kubernetes workloads by scaling them to 0 replicas (Deployments
 **Parameters**:
 
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.production_default_web_app`)
-- `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
+- `workload_names` (list or multi-entity picker of Kubernetes switches, optional): Multiple workload names or entity IDs (YAML accepts a plain list)
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
-- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). A switch of another kind or in another namespace is skipped when this or `namespace` is given
+- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). For a bare name, a same-named switch of another kind or in another namespace is skipped when this or `namespace` is given
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets
@@ -161,9 +161,9 @@ Perform a rolling restart of one or more Kubernetes workloads. This is equivalen
 **Parameters**:
 
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.production_default_web_app`)
-- `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
+- `workload_names` (list or multi-entity picker of Kubernetes switches, optional): Multiple workload names or entity IDs (YAML accepts a plain list)
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
-- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). A switch of another kind or in another namespace is skipped when this or `namespace` is given
+- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). For a bare name, a same-named switch of another kind or in another namespace is skipped when this or `namespace` is given
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets, DaemonSets
@@ -332,6 +332,8 @@ workload_names:
   - switch.production_default_api_server
 ```
 
+`workload_type` is ignored for an explicit `switch.<name>` entity ID; a given `namespace` still overrides the namespace of every target.
+
 **Direct Names** (for programmatic usage):
 ```yaml
 workload_name: web-app
@@ -357,6 +359,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 - None of the given `workload_name` / `workload_names` resolve to a known workload (e.g. the entity ID does not exist, or the switch has no `namespace`/`workload_type` attributes)
 - `delete_job` / `cordon_node` / `uncordon_node` / `drain_node` are called without a usable name
 - A workload's type does not support the requested operation — for example scaling, stopping, or restarting a CronJob. The whole call is rejected; no target in the call is touched.
+- A multi-target call has targets that do not resolve (while others do). The whole call is rejected before anything is changed, and the error lists the unresolved targets.
 - `scale_workload` targets an HPA-managed workload with `replicas` other than `0`. The whole call is rejected; no target in the call is touched.
 - `scale_workload` / `start_workload` / `stop_workload` / `restart_workload` span more than one cluster: the targets belong to different config entries, an explicit `entry_id` contradicts the targets' cluster, or a raw workload name without `entry_id` exists in more than one cluster. The whole call is rejected; call the service once per cluster (or pass `entry_id` to pick the cluster for an ambiguous raw name).
 
@@ -370,7 +373,7 @@ Services raise errors instead of failing silently — Home Assistant shows them 
 ### Asynchronous Operations
 
 - All scaling operations are asynchronous
-- Services return immediately after initiating the scaling operation
+- Services request one coordinator refresh after any successful target and then return
 - Use the entity states to monitor the actual scaling progress
 
 ### Workload Type Detection
