@@ -37,19 +37,25 @@
       "semanticCommitScope": "deps-actions"
     },
     {
+      "description": "Pinned twice: pyproject.toml/uv.lock (what CI runs) and the pre-commit hook rev. The shared preset delays only PyPI releases by 3 days, so without the same age here the hook half was raised alone and the two pins drifted (0.17.5 vs 0.17.6).",
       "matchDepNames": ["ruff", "astral-sh/ruff-pre-commit"],
       "groupName": "ruff",
-      "semanticCommitScope": "deps"
+      "semanticCommitScope": "deps",
+      "minimumReleaseAge": "3 days"
     },
     {
+      "description": "Same double pin as ruff: one release age for both halves of the group.",
       "matchDepNames": ["mypy", "pre-commit/mirrors-mypy"],
       "groupName": "mypy",
-      "semanticCommitScope": "deps"
+      "semanticCommitScope": "deps",
+      "minimumReleaseAge": "3 days"
     },
     {
+      "description": "Same double pin as ruff: one release age for both halves of the group.",
       "matchDepNames": ["bandit", "pycqa/bandit"],
       "groupName": "bandit",
-      "semanticCommitScope": "deps"
+      "semanticCommitScope": "deps",
+      "minimumReleaseAge": "3 days"
     },
     {
       "matchDepNames": ["typescript", "@typescript-eslint/eslint-plugin", "@typescript-eslint/parser"],
