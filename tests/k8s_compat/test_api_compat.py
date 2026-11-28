@@ -249,21 +249,28 @@ class TestMetrics:
 
 
 class TestWatch:
-    async def test_watch_stream_connects(self, k8s_client):
-        """Verify the watch API accepts our request and yields events."""
+    async def test_watch_stream_replays_existing_pods(self, k8s_client):
+        """A watch from resourceVersion 0 starts with ADDED events for the pods.
+
+        The API server replays the current state as synthetic ADDED events
+        for ``resourceVersion=0``, so an event arrives without anything
+        changing in the cluster. A timeout or an empty stream fails the test.
+        """
         base = f"https://{k8s_client.host}:{k8s_client.port}"
         url = f"{base}/api/v1/pods"
         items, rv = await k8s_client.list_resource_with_version(url)
-        assert isinstance(items, list)
+        assert items
         assert rv != "0"
 
-        try:
-            async with asyncio.timeout(5):
-                async for event in k8s_client.watch_stream(url, rv):
-                    assert "type" in event
-                    break
-        except TimeoutError:
-            pass
+        event = None
+        async with asyncio.timeout(10):
+            async for first in k8s_client.watch_stream(url, "0"):
+                event = first
+                break
+
+        assert event is not None
+        assert event["type"] == "ADDED"
+        assert event["object"]["metadata"]["name"]
 
     async def test_list_resource_with_version_limit(self, k8s_client):
         """A one-item events list still reports the snapshot resourceVersion."""
@@ -331,10 +338,6 @@ class TestMutations:
         assert result is True
 
         result = await k8s_client.uncordon_node(node_name)
-        assert result is True
-
-    async def test_delete_job(self, k8s_client):
-        result = await k8s_client.delete_job("test-job", "default")
         assert result is True
 
     async def test_scale_deployment_and_restore(self, k8s_client):
@@ -452,7 +455,7 @@ class TestMutations:
             job = next(j for j in jobs if j["name"] == job_name)
             assert job["owner_cronjob"] == "test-cronjob"
         finally:
-            await k8s_client.delete_job(job_name, "default")
+            assert await k8s_client.delete_job(job_name, "default") is True
 
     async def test_get_pod_metrics_no_crash(self, k8s_client):
         """Metrics API may or may not be available — must not raise."""
