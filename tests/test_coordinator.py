@@ -165,7 +165,6 @@ class TestKubernetesDataCoordinator:
                 "suspend": False,
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         ]
         mock_client.get_cronjobs.return_value = mock_cronjobs

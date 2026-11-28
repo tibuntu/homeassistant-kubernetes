@@ -576,7 +576,6 @@ class KubernetesCronJobSwitch(SwitchEntity):
         self._schedule = ""
         self._suspend = False
         self._last_schedule_time: str | None = None
-        self._next_schedule_time: str | None = None
         self._last_suspend_time: float | None = None
         self._last_resume_time: float | None = None
 
@@ -606,7 +605,6 @@ class KubernetesCronJobSwitch(SwitchEntity):
             "suspended": self._suspend,  # Alias for clarity
             "active_jobs_count": self._active_jobs_count,
             "last_schedule_time": self._last_schedule_time,
-            "next_schedule_time": self._next_schedule_time,
             "last_suspend_time": self._last_suspend_time,
             "last_resume_time": self._last_resume_time,
             ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
@@ -711,11 +709,6 @@ class KubernetesCronJobSwitch(SwitchEntity):
         last_schedule_value = cronjob_data["last_schedule_time"]
         self._last_schedule_time = (
             str(last_schedule_value) if last_schedule_value is not None else None
-        )
-
-        next_schedule_value = cronjob_data["next_schedule_time"]
-        self._next_schedule_time = (
-            str(next_schedule_value) if next_schedule_value is not None else None
         )
 
         # Consider the CronJob "on" if it is not suspended (enabled)

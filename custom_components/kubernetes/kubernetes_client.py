@@ -2775,7 +2775,6 @@ class KubernetesClient:
             "suspend": spec.get("suspend", False),
             "last_schedule_time": status.get("lastScheduleTime"),
             "last_successful_time": status.get("lastSuccessfulTime"),
-            "next_schedule_time": status.get("nextScheduleTime"),
             "active_jobs_count": len(status.get("active", [])),
             "successful_jobs_history_limit": spec.get("successfulJobsHistoryLimit", 3),
             "failed_jobs_history_limit": spec.get("failedJobsHistoryLimit", 1),

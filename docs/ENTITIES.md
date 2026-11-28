@@ -241,7 +241,6 @@ Status values:
 | **schedule** | The cron schedule expression | `0 2 * * *` |
 | **last_schedule_time** | Last time the CronJob was scheduled | `2025-01-01T02:00:00Z` |
 | **last_successful_time** | Last time a Job of this CronJob completed successfully (`null` until the first success). Alert when it is older than the schedule interval plus some slack — this also catches runs that never started or Jobs deleted before the *Failed Jobs* sensor saw them | `2025-01-01T02:03:12Z` |
-| **next_schedule_time** | Next scheduled execution time | `2025-01-02T02:00:00Z` |
 | **active_jobs_count** | Number of currently active Jobs | `0` |
 
 ### Sensor Attributes
@@ -334,7 +333,7 @@ The integration automatically creates switches for controlling Kubernetes worklo
 | **hpa_name** | Name of that HPA (`null` when unmanaged) | `web-app` |
 | **hpa_min_replicas** / **hpa_max_replicas** | The HPA's replica bounds (`null` when unmanaged) | `2` / `10` |
 
-**CronJob switches** expose: `namespace`, `cronjob_name`, `schedule`, `suspend`, `suspended` (alias of `suspend`), `active_jobs_count`, `last_schedule_time`, `next_schedule_time`, `last_suspend_time`, `last_resume_time`, `workload_type`.
+**CronJob switches** expose: `namespace`, `cronjob_name`, `schedule`, `suspend`, `suspended` (alias of `suspend`), `active_jobs_count`, `last_schedule_time`, `last_suspend_time`, `last_resume_time`, `workload_type`.
 
 **Node schedulable switches** expose the attributes listed under [Node Schedulable Switches](#node-schedulable-switches) above: `node_name`, `status`, `schedulable`, `cordoned`, `last_cordon_time`, `last_uncordon_time`.
 

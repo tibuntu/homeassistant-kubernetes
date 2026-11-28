@@ -2605,7 +2605,6 @@ class TestKubernetesCronJobSensor:
                 "schedule": "0 2 * * *",
                 "namespace": "default",
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
@@ -2622,7 +2621,6 @@ class TestKubernetesCronJobSensor:
                 "schedule": "0 2 * * *",
                 "namespace": "default",
                 "last_schedule_time": "2024-01-01T02:00:00Z",
-                "next_schedule_time": "2024-01-02T02:00:00Z",
             }
         )
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
@@ -2639,7 +2637,6 @@ class TestKubernetesCronJobSensor:
                 "schedule": "0 2 * * *",
                 "namespace": "default",
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
@@ -2656,7 +2653,6 @@ class TestKubernetesCronJobSensor:
                 "schedule": "0 2 * * *",
                 "namespace": "default",
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
@@ -2681,7 +2677,6 @@ class TestKubernetesCronJobSensor:
                 "schedule": "0 2 * * *",
                 "namespace": "default",
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
@@ -2699,7 +2694,6 @@ class TestKubernetesCronJobSensor:
                 "namespace": "default",
                 "last_schedule_time": "2024-01-01T02:00:00Z",
                 "last_successful_time": "2024-01-01T02:04:00Z",
-                "next_schedule_time": "2024-01-02T02:00:00Z",
             }
         )
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
@@ -2709,7 +2703,7 @@ class TestKubernetesCronJobSensor:
         assert attrs["schedule"] == "0 2 * * *"
         assert attrs["last_schedule_time"] == "2024-01-01T02:00:00Z"
         assert attrs["last_successful_time"] == "2024-01-01T02:04:00Z"
-        assert attrs["next_schedule_time"] == "2024-01-02T02:00:00Z"
+        assert "next_schedule_time" not in attrs
         assert attrs["active_jobs_count"] == 1
         assert attrs["workload_type"] == "CronJob"
 
@@ -2738,7 +2732,6 @@ class TestDiscoverCronJobSensors:
                     "suspend": False,
                     "active_jobs_count": 0,
                     "last_schedule_time": None,
-                    "next_schedule_time": None,
                 }
             }
         }
@@ -2769,7 +2762,6 @@ class TestDiscoverCronJobSensors:
                     "suspend": False,
                     "active_jobs_count": 0,
                     "last_schedule_time": None,
-                    "next_schedule_time": None,
                 }
             }
         }
@@ -2796,7 +2788,6 @@ class TestDiscoverCronJobSensors:
                     "suspend": False,
                     "active_jobs_count": 0,
                     "last_schedule_time": None,
-                    "next_schedule_time": None,
                 },
                 "production_weekly-report": {
                     "name": "weekly-report",
@@ -2805,7 +2796,6 @@ class TestDiscoverCronJobSensors:
                     "suspend": False,
                     "active_jobs_count": 0,
                     "last_schedule_time": None,
-                    "next_schedule_time": None,
                 },
             }
         }

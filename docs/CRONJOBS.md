@@ -41,7 +41,6 @@ Individual switches for each CronJob that control the suspension state.
 - `suspend` / `suspended`: Whether the CronJob is suspended
 - `active_jobs_count`: Number of currently active jobs
 - `last_schedule_time`: Last time the CronJob was scheduled
-- `next_schedule_time`: Next scheduled execution time
 - `last_suspend_time`: Timestamp when the CronJob was last suspended
 - `last_resume_time`: Timestamp when the CronJob was last resumed
 - `workload_type`: "CronJob"
@@ -353,7 +352,6 @@ The integration provides CronJob data in the following format:
     "suspend": False,
     "last_schedule_time": "2023-01-01T02:00:00Z",
     "last_successful_time": "2023-01-01T02:03:10Z",
-    "next_schedule_time": "2023-01-02T02:00:00Z",
     "active_jobs_count": 1,
     "successful_jobs_history_limit": 3,
     "failed_jobs_history_limit": 1,

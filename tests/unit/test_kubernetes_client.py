@@ -1761,7 +1761,6 @@ async def test_get_cronjobs_success(mock_client):
             "suspend": False,
             "active_jobs_count": 2,
             "last_schedule_time": "2023-01-01T02:00:00Z",
-            "next_schedule_time": "2023-01-02T02:00:00Z",
             "successful_jobs_history_limit": 3,
             "failed_jobs_history_limit": 1,
             "concurrency_policy": "Allow",
@@ -1774,7 +1773,6 @@ async def test_get_cronjobs_success(mock_client):
             "suspend": True,
             "active_jobs_count": 0,
             "last_schedule_time": None,
-            "next_schedule_time": None,
             "successful_jobs_history_limit": 5,
             "failed_jobs_history_limit": 2,
             "concurrency_policy": "Forbid",
@@ -1790,7 +1788,6 @@ async def test_get_cronjobs_success(mock_client):
     assert cronjobs[0]["suspend"] is False
     assert cronjobs[0]["active_jobs_count"] == 2
     assert cronjobs[0]["last_schedule_time"] == "2023-01-01T02:00:00Z"
-    assert cronjobs[0]["next_schedule_time"] == "2023-01-02T02:00:00Z"
     assert cronjobs[0]["successful_jobs_history_limit"] == 3
     assert cronjobs[0]["failed_jobs_history_limit"] == 1
     assert cronjobs[0]["concurrency_policy"] == "Allow"
@@ -1800,7 +1797,6 @@ async def test_get_cronjobs_success(mock_client):
     assert cronjobs[1]["suspend"] is True
     assert cronjobs[1]["active_jobs_count"] == 0
     assert cronjobs[1]["last_schedule_time"] is None
-    assert cronjobs[1]["next_schedule_time"] is None
     assert cronjobs[1]["successful_jobs_history_limit"] == 5
     assert cronjobs[1]["failed_jobs_history_limit"] == 2
     assert cronjobs[1]["concurrency_policy"] == "Forbid"
@@ -4072,7 +4068,6 @@ class TestFormatCronjobFromDict:
             "status": {
                 "lastScheduleTime": "2024-06-01T02:00:00Z",
                 "lastSuccessfulTime": "2024-06-01T02:03:00Z",
-                "nextScheduleTime": "2024-06-02T02:00:00Z",
                 "active": [{"name": "backup-123"}, {"name": "backup-456"}],
             },
         }
@@ -4083,7 +4078,7 @@ class TestFormatCronjobFromDict:
         assert result["suspend"] is True
         assert result["last_schedule_time"] == "2024-06-01T02:00:00Z"
         assert result["last_successful_time"] == "2024-06-01T02:03:00Z"
-        assert result["next_schedule_time"] == "2024-06-02T02:00:00Z"
+        assert "next_schedule_time" not in result
         assert result["active_jobs_count"] == 2
         assert result["successful_jobs_history_limit"] == 5
         assert result["failed_jobs_history_limit"] == 2
@@ -4100,7 +4095,7 @@ class TestFormatCronjobFromDict:
         assert result["suspend"] is False
         assert result["last_schedule_time"] is None
         assert result["last_successful_time"] is None
-        assert result["next_schedule_time"] is None
+        assert "next_schedule_time" not in result
         assert result["active_jobs_count"] == 0
         assert result["successful_jobs_history_limit"] == 3
         assert result["failed_jobs_history_limit"] == 1
