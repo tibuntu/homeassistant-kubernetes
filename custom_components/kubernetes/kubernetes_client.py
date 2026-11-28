@@ -11,7 +11,7 @@ import logging
 import re
 import ssl
 import time
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 from urllib.parse import quote
 
 import aiohttp
@@ -181,11 +181,13 @@ class ResourceVersionExpired(Exception):
 
 
 class KubernetesApiError(Exception):
-    """Raised when a list/count request returns a non-200 status.
+    """Raised for any non-2xx API response the client turns into an error.
 
-    List/count methods raise instead of returning empty results so the
-    coordinator reports ``UpdateFailed`` — an outage must never look like an
-    empty cluster and prune the user's entities.
+    That covers list/count requests, pod logs/detail/events, evictions, watch
+    ERROR events and failed connection probes. List/count methods raise
+    instead of returning empty results so the coordinator reports
+    ``UpdateFailed`` — an outage must never look like an empty cluster and
+    prune the user's entities.
     """
 
     def __init__(self, message: str, status: int | None = None) -> None:
@@ -861,12 +863,16 @@ class KubernetesClient:
             self._log_error("get nodes", ex, level=logging.DEBUG)
             raise
 
-    def _parse_memory(self, memory_str: str, output_type: str = "MiB") -> float:
-        """Parse Kubernetes memory string to specified unit (KiB, MiB, or GiB)."""
+    def _parse_memory(
+        self, memory_str: str, output_type: Literal["MiB", "GiB"] = "MiB"
+    ) -> float:
+        """Parse Kubernetes memory string to MiB or GiB."""
         return parse_memory_quantity(memory_str, output_type)
 
-    def _parse_cpu(self, cpu_str: str, output_type: str = "cores") -> float:
-        """Parse Kubernetes CPU string to specified unit (n, u, m, or cores)."""
+    def _parse_cpu(
+        self, cpu_str: str, output_type: Literal["m", "cores"] = "cores"
+    ) -> float:
+        """Parse Kubernetes CPU string to millicores ("m") or cores."""
         return parse_cpu_quantity(cpu_str, output_type)
 
     def _parse_node_item(self, item: dict[str, Any]) -> dict[str, Any] | None:

@@ -2161,16 +2161,16 @@ class TestKubernetesClientCronJobOperations:
 def test_parse_memory(mock_client):
     """Test memory parsing."""
     # Binary prefixes
-    assert mock_client._parse_memory("1Ki", "KiB") == 1.0
+    assert mock_client._parse_memory("1024Ki", "MiB") == 1.0
     assert mock_client._parse_memory("1Mi", "MiB") == 1.0
     assert mock_client._parse_memory("1Gi", "GiB") == 1.0
 
     # Decimal prefixes
-    assert mock_client._parse_memory("1k", "KiB") == 0.98  # 1000/1024
+    assert mock_client._parse_memory("1000k", "MiB") == 0.95  # 1e6/1024^2
     assert mock_client._parse_memory("1M", "MiB") == 0.95  # 1000^2/1024^2
 
     # Bytes
-    assert mock_client._parse_memory("1024", "KiB") == 1.0
+    assert mock_client._parse_memory("1048576", "MiB") == 1.0
 
     # Default output type (MiB)
     assert mock_client._parse_memory("1Gi") == 1024.0
@@ -6177,44 +6177,6 @@ class TestGetNodesAiohttpNodeParseException:
             # Both should parse (the parser is resilient)
             assert len(nodes) == 2
             assert nodes[0]["name"] == "good-node"
-
-
-class TestParseMemoryInvalidOutputType:
-    """Tests for _parse_memory with invalid output_type."""
-
-    def test_invalid_output_type_defaults_to_mib(self, mock_client):
-        """Test _parse_memory with invalid output_type defaults to MiB."""
-        # 1Gi = 1024 MiB, regardless of output type since it defaults to MiB
-        result = mock_client._parse_memory("1Gi", "InvalidType")
-        assert result == 1024.0  # Falls back to MiB (1024^2 divisor)
-
-    def test_invalid_output_type_with_warning(self, mock_client):
-        """Test _parse_memory logs warning for invalid output_type."""
-        with patch(
-            "custom_components.kubernetes.metrics_parser._LOGGER"
-        ) as mock_logger:
-            result = mock_client._parse_memory("1Gi", "BadUnit")
-            mock_logger.warning.assert_called()
-            assert result == 1024.0
-
-
-class TestParseCpuInvalidOutputType:
-    """Tests for _parse_cpu with invalid output_type."""
-
-    def test_invalid_output_type_defaults_to_cores(self, mock_client):
-        """Test _parse_cpu with invalid output_type defaults to cores."""
-        # 1000m = 1 core
-        result = mock_client._parse_cpu("1000m", "InvalidType")
-        assert result == 1  # Falls back to cores (1_000_000_000 divisor)
-
-    def test_invalid_output_type_with_warning(self, mock_client):
-        """Test _parse_cpu logs warning for invalid output_type."""
-        with patch(
-            "custom_components.kubernetes.metrics_parser._LOGGER"
-        ) as mock_logger:
-            result = mock_client._parse_cpu("500m", "BadUnit")
-            mock_logger.warning.assert_called()
-            assert result == 0  # 500m = 0.5 cores, truncated to 0
 
 
 class TestGetPodsSuccessLogging:

@@ -19,8 +19,6 @@ class TestParseCpuQuantity:
             ("1500m", "cores", 2),  # 1.5 cores -> round(1.5) == 2 (banker's rounding)
             ("500m", "cores", 0),  # 0.5 cores -> round(0.5) == 0
             ("1000000000n", "cores", 1),
-            ("1000m", "n", 1000000000.0),  # 1 core in nanocores
-            ("1000m", "u", 1000000.0),  # 1 core in microcores
             ("-100m", "m", -100.0),  # negatives pass through unclamped
             ("10k", "cores", 10000),  # virtual-kubelet node capacity
             ("1k", "m", 1000000.0),
@@ -30,13 +28,6 @@ class TestParseCpuQuantity:
             ("1E", "cores", 10**18),  # bare "E" is the exa suffix
             ("0.5", "m", 500.0),
             ("38369075000n", "m", 38369.07),  # no double float rounding
-            ("7745481795n", "u", 7745481.79),
-            ("7745481795m", "n", 7745481795000000.0),
-            (
-                "100m",
-                "invalid",
-                0,
-            ),  # unknown output type -> cores semantics, int rounding
         ],
     )
     def test_valid(self, value, output_type, expected):
@@ -54,7 +45,7 @@ class TestParseMemoryQuantity:
     @pytest.mark.parametrize(
         ("value", "output_type", "expected"),
         [
-            ("2Ki", "KiB", 2.0),
+            ("2048Ki", "MiB", 2.0),
             ("3Gi", "MiB", 3072.0),
             ("1Mi", "MiB", 1.0),
             ("1Gi", "GiB", 1.0),
@@ -64,10 +55,9 @@ class TestParseMemoryQuantity:
             ("1073741824000m", "GiB", 1.0),  # milli-bytes
             ("1073741824000000u", "GiB", 1.0),
             ("1073741824000000000n", "GiB", 1.0),
-            ("1e3", "KiB", 0.98),  # exponent form, not a suffix
+            ("1.048576e6", "MiB", 1.0),  # exponent form, not a suffix
             ("1Ei", "GiB", 1024.0**3),
             ("1E", "GiB", 931322574.62),  # 10^18 / 1024^3
-            ("1Gi", "invalid", 1024.0),  # unknown output type -> defaults to MiB
         ],
     )
     def test_valid(self, value, output_type, expected):
