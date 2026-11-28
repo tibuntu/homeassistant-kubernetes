@@ -619,8 +619,7 @@ class KubernetesClient:
                 )
 
             result = await self._fetch_resource_count("api/v1", "pods")
-            if result is not None:
-                self._log_success("get pods count", f"retrieved {result} pods")
+            self._log_success("get pods count", f"retrieved {result} pods")
             return result
 
         except Exception as ex:
@@ -641,8 +640,7 @@ class KubernetesClient:
             else:
                 result = await self._get_pods_aiohttp()
 
-            if result is not None:
-                self._log_success("get pods", f"retrieved {len(result)} pods")
+            self._log_success("get pods", f"retrieved {len(result)} pods")
             return result
 
         except Exception as ex:
@@ -2389,9 +2387,8 @@ class KubernetesClient:
         """Get the count of DaemonSets in the namespace(s)."""
         try:
             result = await self._fetch_resource_count("apis/apps/v1", "daemonsets")
-            if result is not None:
-                self._log_success("get daemonsets count", f"count: {result}")
-            return result or 0
+            self._log_success("get daemonsets count", f"count: {result}")
+            return result
         except Exception as ex:
             self._log_error("get daemonsets count", ex, level=logging.DEBUG)
             raise
@@ -2418,9 +2415,8 @@ class KubernetesClient:
             result = await self._fetch_resource_count(
                 "apis/networking.k8s.io/v1", "ingresses"
             )
-            if result is not None:
-                self._log_success("get ingresses count", f"count: {result}")
-            return result or 0
+            self._log_success("get ingresses count", f"count: {result}")
+            return result
         except Exception as ex:
             self._log_error("get ingresses count", ex, level=logging.DEBUG)
             raise
@@ -2442,9 +2438,8 @@ class KubernetesClient:
         """Get the count of Services in the namespace(s)."""
         try:
             result = await self._fetch_resource_count("api/v1", "services")
-            if result is not None:
-                self._log_success("get services count", f"count: {result}")
-            return result or 0
+            self._log_success("get services count", f"count: {result}")
+            return result
         except Exception as ex:
             self._log_error("get services count", ex, level=logging.DEBUG)
             raise
@@ -2736,8 +2731,7 @@ class KubernetesClient:
         """Get the count of Jobs in the cluster."""
         try:
             result = await self._fetch_resource_count("apis/batch/v1", "jobs")
-            if result is not None:
-                self._log_success("get jobs count", f"count: {result}")
+            self._log_success("get jobs count", f"count: {result}")
             return result
         except Exception as ex:
             self._log_error("get_jobs_count", ex, level=logging.DEBUG)
