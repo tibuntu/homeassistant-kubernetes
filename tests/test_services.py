@@ -13,6 +13,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import entity_registry as er
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
+import voluptuous as vol
 import yaml
 
 from custom_components.kubernetes.const import (
@@ -46,6 +47,7 @@ from custom_components.kubernetes.const import (
 from custom_components.kubernetes.kubernetes_client import OwnPod
 from custom_components.kubernetes.services import (
     SCALE_WORKLOAD_SCHEMA,
+    STOP_WORKLOAD_SCHEMA,
     _collect_entity_ids,
     _collect_job_names,
     _collect_node_names,
@@ -959,12 +961,21 @@ class TestExtractWorkloads:
         )[0]
         assert result == [("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
-    async def test_workload_names_as_dict_entity_id(self, hass: HomeAssistant):
+    async def test_workload_names_bare_dict_resolves_via_schema(
+        self, hass: HomeAssistant
+    ):
+        """The schema wraps a bare dict into a list, which then resolves."""
         _set_workload_state(hass, "switch.app", deployment_name="app")
-        result = _extract_workloads_with_owners(
-            {ATTR_WORKLOAD_NAMES: {"entity_id": ["switch.app"]}}, hass
-        )[0]
+        data = SCALE_WORKLOAD_SCHEMA(
+            {ATTR_WORKLOAD_NAMES: {"entity_id": "switch.app"}, ATTR_REPLICAS: 1}
+        )
+        assert data[ATTR_WORKLOAD_NAMES] == [{"entity_id": "switch.app"}]
+        result = _extract_workloads_with_owners(data, hass)[0]
         assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
+
+    def test_top_level_target_is_rejected_by_schema(self):
+        with pytest.raises(vol.Invalid):
+            STOP_WORKLOAD_SCHEMA({"target": {"entity_id": "switch.app"}})
 
     async def test_workload_names_as_list_of_strings(self, hass: HomeAssistant):
         _set_workload_state(hass, "switch.a", namespace="ns1", deployment_name="a")
@@ -986,13 +997,6 @@ class TestExtractWorkloads:
         _set_workload_state(hass, "switch.app", deployment_name="app")
         result = _extract_workloads_with_owners(
             {ATTR_WORKLOAD_NAMES: [{"entity_id": ["switch.app"]}]}, hass
-        )[0]
-        assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
-
-    async def test_target_fallback(self, hass: HomeAssistant):
-        _set_workload_state(hass, "switch.app", deployment_name="app")
-        result = _extract_workloads_with_owners(
-            {"target": {"entity_id": ["switch.app"]}}, hass
         )[0]
         assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
@@ -1660,55 +1664,12 @@ class TestCollectEntityIds:
         )
         assert result == ["switch.nginx", "switch.redis"]
 
-    def test_dict_with_entity_id_key_in_workload_names(self):
-        """Test dict with entity_id key via workload_names."""
-        result = _collect_entity_ids(
-            {ATTR_WORKLOAD_NAMES: {"entity_id": "switch.nginx"}}
-        )
-        assert result == ["switch.nginx"]
-
-    def test_dict_with_entity_ids_key_in_workload_names(self):
-        """Test dict with entity_ids key (list) via workload_names."""
-        result = _collect_entity_ids(
-            {ATTR_WORKLOAD_NAMES: {"entity_ids": ["switch.nginx", "switch.redis"]}}
-        )
-        assert result == ["switch.nginx", "switch.redis"]
-
-    def test_target_selector_format(self):
-        """Test target selector format as fallback."""
-        result = _collect_entity_ids({"target": {"entity_id": "switch.nginx"}})
-        assert result == ["switch.nginx"]
-
-    def test_target_fallback_only_when_workload_names_empty(self):
-        """Test target is only used when workload_names yields no results."""
-        result = _collect_entity_ids(
-            {
-                ATTR_WORKLOAD_NAMES: "switch.nginx",
-                "target": {"entity_id": "switch.redis"},
-            }
-        )
-        assert result == ["switch.nginx"]
-
     def test_comma_separated_string_in_workload_names(self):
         """Test comma-separated string via workload_names key."""
         result = _collect_entity_ids(
             {ATTR_WORKLOAD_NAMES: "switch.nginx, switch.redis"}
         )
         assert result == ["switch.nginx", "switch.redis"]
-
-    def test_empty_workload_names_falls_back_to_target(self):
-        """Test empty workload_names falls back to target."""
-        result = _collect_entity_ids(
-            {ATTR_WORKLOAD_NAMES: [], "target": "switch.nginx"}
-        )
-        assert result == ["switch.nginx"]
-
-    def test_none_workload_names_falls_back_to_target(self):
-        """Test None workload_names falls back to target."""
-        result = _collect_entity_ids(
-            {ATTR_WORKLOAD_NAMES: None, "target": "switch.nginx"}
-        )
-        assert result == ["switch.nginx"]
 
     def test_empty_dict_returns_empty(self):
         """Test empty call data returns empty list."""
@@ -1741,11 +1702,6 @@ class TestCollectEntityIds:
         )
         assert result == ["switch.nginx", "switch.redis"]
 
-    def test_target_with_list_of_entity_ids(self):
-        """Test target with a list of entity IDs."""
-        result = _collect_entity_ids({"target": ["switch.nginx", "switch.redis"]})
-        assert result == ["switch.nginx", "switch.redis"]
-
 
 class TestExtractEntityIdsFromValue:
     """Tests for _extract_entity_ids_from_value."""
@@ -1764,23 +1720,6 @@ class TestExtractEntityIdsFromValue:
         """Test list of strings input."""
         result = _extract_entity_ids_from_value(["switch.nginx", "switch.redis"])
         assert result == ["switch.nginx", "switch.redis"]
-
-    def test_dict_with_entity_id(self):
-        """Test dict with entity_id key."""
-        result = _extract_entity_ids_from_value({"entity_id": "switch.nginx"})
-        assert result == ["switch.nginx"]
-
-    def test_dict_with_entity_ids(self):
-        """Test dict with entity_ids key (list)."""
-        result = _extract_entity_ids_from_value(
-            {"entity_ids": ["switch.nginx", "switch.redis"]}
-        )
-        assert result == ["switch.nginx", "switch.redis"]
-
-    def test_dict_with_neither_key(self):
-        """Test dict without entity_id or entity_ids returns empty."""
-        result = _extract_entity_ids_from_value({"foo": "bar"})
-        assert result == []
 
     def test_mixed_list_with_dicts_and_strings(self):
         """Test mixed list containing dicts and strings."""
@@ -1821,11 +1760,6 @@ class TestExtractEntityIdsFromValue:
         result = _extract_entity_ids_from_value([])
         assert result == []
 
-    def test_empty_dict(self):
-        """Test empty dict returns empty list."""
-        result = _extract_entity_ids_from_value({})
-        assert result == []
-
     def test_list_with_non_string_non_dict_items(self):
         """Test list with non-string, non-dict items ignores them."""
         result = _extract_entity_ids_from_value(["switch.nginx", 42, None])
@@ -1839,7 +1773,7 @@ class TestExtractEntityIdsFromValue:
     def test_dict_entity_id_prefers_entity_id_over_entity_ids(self):
         """Test dict with both entity_id and entity_ids uses entity_id first."""
         result = _extract_entity_ids_from_value(
-            {"entity_id": "switch.nginx", "entity_ids": ["switch.redis"]}
+            [{"entity_id": "switch.nginx", "entity_ids": ["switch.redis"]}]
         )
         assert result == ["switch.nginx"]
 
@@ -2837,14 +2771,17 @@ class TestMultiEntryRouting:
     async def test_workload_names_dict_wrapped_raw_name(
         self, hass: HomeAssistant, two_entries
     ):
-        """A raw name inside a dict-wrapped workload_names value resolves."""
+        """A raw name inside a dict-wrapped workload_names value resolves.
+
+        The schema wraps a bare dict into a one-item list, so pass that shape.
+        """
         _, entry_b = two_entries
         entry_b.runtime_data.coordinator.data = {
             "deployments": {"default_web": {"name": "web", "namespace": "default"}}
         }
 
         workloads, owners = _extract_workloads_with_owners(
-            {ATTR_WORKLOAD_NAMES: {"entity_id": ["web"]}}, hass
+            {ATTR_WORKLOAD_NAMES: [{"entity_id": ["web"]}]}, hass
         )
 
         assert workloads == [("web", "default", WORKLOAD_TYPE_DEPLOYMENT)]
@@ -3009,21 +2946,6 @@ class TestMultiEntryRouting:
         assert err.value.translation_key == "no_valid_workloads"
         entry_a.runtime_data.client.scale_deployment.assert_not_called()
         entry_b.runtime_data.client.scale_deployment.assert_not_called()
-
-    async def test_raw_name_via_target_is_not_resolved(
-        self, hass: HomeAssistant, two_entries
-    ):
-        """Only workload_names accepts raw names; target stays switch-only."""
-        _, entry_b = two_entries
-        entry_b.runtime_data.coordinator.data = {
-            "deployments": {"default_web": {"name": "web", "namespace": "default"}}
-        }
-
-        result = _extract_workloads_with_owners(
-            {"target": {"entity_id": ["web"]}}, hass
-        )[0]
-
-        assert result == []
 
     async def test_unresolved_target_rejects_whole_call(
         self, hass: HomeAssistant, two_entries

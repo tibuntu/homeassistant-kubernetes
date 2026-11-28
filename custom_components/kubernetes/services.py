@@ -205,19 +205,16 @@ def _normalize_entity_id_list(entity_ids_raw: Any) -> list[str]:
 
 
 def _extract_entity_ids_from_value(value: Any) -> list[str]:
-    """Extract entity ID strings from a value that may be a string, list, or dict.
+    """Extract entity ID strings from a string or a list.
 
-    Handles all the formats that HA service calls can produce:
+    The schema hands over only these shapes (a bare dict arrives wrapped in a
+    list):
     - "switch.foo" (plain string)
     - ["switch.foo", "switch.bar"] (list of strings)
-    - {"entity_id": "switch.foo"} or {"entity_ids": ["switch.foo"]}
-    - [{"entity_id": "switch.foo"}, "switch.bar"] (mixed list)
+    - [{"entity_id": "switch.foo"}, {"entity_ids": ["switch.bar"]}, "switch.baz"]
     """
     if isinstance(value, str):
         return _normalize_entity_id_list(value)
-    if isinstance(value, dict):
-        raw = value.get("entity_id") or value.get("entity_ids")
-        return _normalize_entity_id_list(raw)
     if isinstance(value, list):
         result: list[str] = []
         for item in value:
@@ -233,26 +230,14 @@ def _extract_entity_ids_from_value(value: Any) -> list[str]:
 def _collect_entity_ids(call_data: dict[str, Any]) -> list[str]:
     """Collect all entity IDs from service call data, regardless of format.
 
-    Checks ATTR_WORKLOAD_NAMES, then falls back to top-level "target".
-    Filters to switch entities only.
+    Reads ATTR_WORKLOAD_NAMES only and filters to switch entities.
     """
-    entity_ids: list[str] = []
-
-    if ATTR_WORKLOAD_NAMES in call_data:
-        entity_ids = _extract_entity_ids_from_value(call_data[ATTR_WORKLOAD_NAMES])
-
-    if not entity_ids and "target" in call_data:
-        entity_ids = _extract_entity_ids_from_value(call_data["target"])
-
+    entity_ids = _extract_entity_ids_from_value(call_data.get(ATTR_WORKLOAD_NAMES))
     return [eid for eid in entity_ids if eid.startswith("switch.")]
 
 
 def _collect_raw_workload_names(call_data: dict[str, Any]) -> list[str]:
-    """Collect raw (non switch.*) workload names from workload_names only.
-
-    The top-level "target" fallback is never consulted: it only carries
-    entity IDs.
-    """
+    """Collect raw (non switch.*) workload names from workload_names."""
     if ATTR_WORKLOAD_NAMES not in call_data:
         return []
     return [
@@ -339,7 +324,7 @@ def _extract_workloads_with_owners(
 
     _LOGGER.debug("Extracting workload info from call data: %s", call_data)
 
-    # Resolve entity IDs from workload_names / target
+    # Resolve entity IDs from workload_names
     for entity_id in _collect_entity_ids(call_data):
         namespace, workload_name, workload_type = _get_workload_info_from_entity(
             hass, entity_id
@@ -542,21 +527,24 @@ _WORKLOAD_TYPES = [
     WORKLOAD_TYPE_CRONJOB,
 ]
 
+# Keys shared by the four workload services.  workload_names takes a string or
+# a list of strings/dicts; a bare dict is wrapped into a one-item list.
+_WORKLOAD_TARGET_FIELDS = {
+    vol.Optional(ATTR_WORKLOAD_NAME): vol.Any(cv.string, dict),
+    vol.Optional(ATTR_WORKLOAD_NAMES): vol.Any(
+        cv.string, vol.All(cv.ensure_list, [vol.Any(cv.string, dict)])
+    ),
+    vol.Optional(ATTR_NAMESPACE): cv.string,
+    vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
+    vol.Optional("entry_id"): cv.string,
+}
+
 # Generic service schemas
 SCALE_WORKLOAD_SCHEMA = vol.Schema(
     vol.All(
         {
-            vol.Optional(ATTR_WORKLOAD_NAME): vol.Any(cv.string, dict),
-            vol.Optional(ATTR_WORKLOAD_NAMES): vol.Any(
-                cv.string,
-                vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
-                vol.All(cv.ensure_list, [cv.string]),
-                dict,
-            ),
+            **_WORKLOAD_TARGET_FIELDS,
             vol.Required(ATTR_REPLICAS): vol.All(vol.Coerce(int), vol.Range(min=0)),
-            vol.Optional(ATTR_NAMESPACE): cv.string,
-            vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
-            vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
     )
@@ -565,19 +553,10 @@ SCALE_WORKLOAD_SCHEMA = vol.Schema(
 START_WORKLOAD_SCHEMA = vol.Schema(
     vol.All(
         {
-            vol.Optional(ATTR_WORKLOAD_NAME): vol.Any(cv.string, dict),
-            vol.Optional(ATTR_WORKLOAD_NAMES): vol.Any(
-                cv.string,
-                vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
-                vol.All(cv.ensure_list, [cv.string]),
-                dict,
-            ),
+            **_WORKLOAD_TARGET_FIELDS,
             vol.Optional(ATTR_REPLICAS, default=1): vol.All(
                 vol.Coerce(int), vol.Range(min=1)
             ),
-            vol.Optional(ATTR_NAMESPACE): cv.string,
-            vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
-            vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
     )
@@ -586,16 +565,7 @@ START_WORKLOAD_SCHEMA = vol.Schema(
 STOP_WORKLOAD_SCHEMA = vol.Schema(
     vol.All(
         {
-            vol.Optional(ATTR_WORKLOAD_NAME): vol.Any(cv.string, dict),
-            vol.Optional(ATTR_WORKLOAD_NAMES): vol.Any(
-                cv.string,
-                vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
-                vol.All(cv.ensure_list, [cv.string]),
-                dict,
-            ),
-            vol.Optional(ATTR_NAMESPACE): cv.string,
-            vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
-            vol.Optional("entry_id"): cv.string,
+            **_WORKLOAD_TARGET_FIELDS,
         },
         _validate_workload_schema,
     )
@@ -604,16 +574,7 @@ STOP_WORKLOAD_SCHEMA = vol.Schema(
 RESTART_WORKLOAD_SCHEMA = vol.Schema(
     vol.All(
         {
-            vol.Optional(ATTR_WORKLOAD_NAME): vol.Any(cv.string, dict),
-            vol.Optional(ATTR_WORKLOAD_NAMES): vol.Any(
-                cv.string,
-                vol.All(cv.ensure_list, [vol.Any(cv.string, dict)]),
-                vol.All(cv.ensure_list, [cv.string]),
-                dict,
-            ),
-            vol.Optional(ATTR_NAMESPACE): cv.string,
-            vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
-            vol.Optional("entry_id"): cv.string,
+            **_WORKLOAD_TARGET_FIELDS,
         },
         _validate_workload_schema,
     )
