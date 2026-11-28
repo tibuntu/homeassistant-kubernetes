@@ -57,6 +57,13 @@ jobs:
             # Find the latest patch image for this minor version.
             IMAGE=$(echo "$IMAGES" | grep "kindest/node:v${TARGET}\." | tail -1)
             if [ -z "$IMAGE" ]; then
+              # The newest minor must always be tested: the Renovate script writes
+              # N into README/SETUP.md, so a missing image fails the job instead of
+              # silently testing only N-1/N-2.
+              if [ "$TARGET" = "${TARGETS[0]}" ]; then
+                echo "::error::No kind image for k8s ${TARGET} in kind ${KIND_VERSION}; bump KIND_VERSION or wait for a kind release"
+                exit 1
+              fi
               echo "::warning::No kind image found for k8s ${TARGET}, skipping"
               continue
             fi
