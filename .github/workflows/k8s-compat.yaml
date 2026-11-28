@@ -10,6 +10,7 @@ on:
       - "tests/conftest.py"
       - "chart/**"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/k8s-compat.yaml"
   schedule:
     # Weekly Monday 06:00 UTC — catches upstream k8s changes between PRs.
@@ -37,9 +38,10 @@ jobs:
     name: Build version matrix
     runs-on: ubuntu-latest
     # The release PR changes only version strings, in files the path filter
-    # above also matches (manifest.json, pyproject.toml). This workflow is not
-    # a required check, so skipping is safe; `k8s-compat` needs this job and is
-    # skipped with it. head_ref is empty for schedule and workflow_dispatch.
+    # above also matches (manifest.json, pyproject.toml, uv.lock). This
+    # workflow is not a required check, so skipping is safe; `k8s-compat`
+    # needs this job and is skipped with it. head_ref is empty for schedule
+    # and workflow_dispatch.
     if: github.head_ref != 'release-please--branches--main'
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -136,8 +138,16 @@ jobs:
         with:
           python-version: "3.15"
 
+      # Same versions as the unit-test environment, read from uv.lock instead of
+      # whatever is newest on PyPI. Not `uv sync`: the locked dev environment
+      # includes Home Assistant, and this suite runs without it. A package that
+      # is missing from uv.lock yields an empty requirement, which pip rejects.
       - name: Install dependencies
-        run: pip install -e . pytest pytest-asyncio
+        run: |
+          pin() {
+            awk -v n="$1" '$0 == "name = \"" n "\"" { getline; gsub(/version = |"/, ""); print n "==" $0 }' uv.lock
+          }
+          pip install -e . "$(pin aiohttp)" "$(pin pytest)" "$(pin pytest-asyncio)"
 
       - name: Run compatibility tests
         run: pytest tests/k8s_compat/ -m k8s_compat -v -o "addopts="
