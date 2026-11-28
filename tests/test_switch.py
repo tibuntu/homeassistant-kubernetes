@@ -286,127 +286,6 @@ class TestKubernetesCronJobSwitch:
         assert attributes["last_resume_time"] == 1234567891.0
         assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_CRONJOB
 
-    async def test_async_turn_on_success(
-        self, cronjob_switch, mock_config_entry, mock_client
-    ):
-        """Test successful turn on (resume CronJob)."""
-        # Setup
-        cronjob_switch.hass = MagicMock()
-        mock_config_entry.runtime_data = KubernetesEntryData(
-            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
-        )
-        cronjob_switch.config_entry = mock_config_entry
-        cronjob_switch._is_on = False
-        cronjob_switch._suspend = True
-        written_states = []
-        cronjob_switch.async_write_ha_state = MagicMock(
-            side_effect=lambda: written_states.append(cronjob_switch.is_on)
-        )
-
-        # Execute
-        await cronjob_switch.async_turn_on()
-
-        # Verify: the new state is published (should_poll is False)
-        assert written_states == [True]
-        mock_client.resume_cronjob.assert_called_once_with("test-cronjob", "default")
-        assert cronjob_switch._is_on is True
-        assert cronjob_switch._suspend is False
-        assert cronjob_switch._last_resume_time is not None
-
-    async def test_async_turn_on_failure(
-        self, cronjob_switch, mock_config_entry, mock_client
-    ):
-        """Test failed turn on (resume CronJob)."""
-        # Setup
-        cronjob_switch.hass = MagicMock()
-        mock_config_entry.runtime_data = KubernetesEntryData(
-            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
-        )
-        cronjob_switch.config_entry = mock_config_entry
-        mock_client.resume_cronjob.return_value = {
-            "success": False,
-            "error": "Permission denied",
-        }
-        cronjob_switch._is_on = False
-        cronjob_switch._suspend = True
-
-        cronjob_switch.async_write_ha_state = MagicMock()
-
-        # Execute and verify exception
-        with pytest.raises(HomeAssistantError) as err:
-            await cronjob_switch.async_turn_on()
-        assert err.value.translation_key == "cronjob_suspend_failed"
-        assert err.value.translation_placeholders == {
-            "action": "resume",
-            "cronjob": "default/test-cronjob",
-            "error": "Permission denied",
-        }
-        cronjob_switch.async_write_ha_state.assert_not_called()
-
-        # Verify state unchanged
-        assert cronjob_switch._is_on is False
-        assert cronjob_switch._suspend is True
-
-    async def test_async_turn_off_success(
-        self, cronjob_switch, mock_config_entry, mock_client
-    ):
-        """Test successful turn off (suspend CronJob)."""
-        # Setup
-        cronjob_switch.hass = MagicMock()
-        mock_config_entry.runtime_data = KubernetesEntryData(
-            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
-        )
-        cronjob_switch.config_entry = mock_config_entry
-        cronjob_switch._is_on = True
-        cronjob_switch._suspend = False
-        written_states = []
-        cronjob_switch.async_write_ha_state = MagicMock(
-            side_effect=lambda: written_states.append(cronjob_switch.is_on)
-        )
-
-        # Execute
-        await cronjob_switch.async_turn_off()
-
-        # Verify: the new state is published (should_poll is False)
-        assert written_states == [False]
-        mock_client.suspend_cronjob.assert_called_once_with("test-cronjob", "default")
-        assert cronjob_switch._is_on is False
-        assert cronjob_switch._suspend is True
-        assert cronjob_switch._last_suspend_time is not None
-
-    async def test_async_turn_off_failure(
-        self, cronjob_switch, mock_config_entry, mock_client
-    ):
-        """Test failed turn off (suspend CronJob)."""
-        # Setup
-        cronjob_switch.hass = MagicMock()
-        mock_config_entry.runtime_data = KubernetesEntryData(
-            config=mock_config_entry.data, client=mock_client, coordinator=MagicMock()
-        )
-        cronjob_switch.config_entry = mock_config_entry
-        mock_client.suspend_cronjob.return_value = {
-            "success": False,
-            "error": "CronJob not found",
-        }
-        cronjob_switch._is_on = True
-        cronjob_switch._suspend = False
-        cronjob_switch.async_write_ha_state = MagicMock()
-
-        # Execute and verify exception
-        with pytest.raises(HomeAssistantError) as err:
-            await cronjob_switch.async_turn_off()
-        assert err.value.translation_key == "cronjob_suspend_failed"
-        assert err.value.translation_placeholders == {
-            "action": "suspend",
-            "cronjob": "default/test-cronjob",
-            "error": "CronJob not found",
-        }
-        cronjob_switch.async_write_ha_state.assert_not_called()
-
-        # Verify state unchanged
-        assert cronjob_switch._is_on is True
-        assert cronjob_switch._suspend is False
-
     def test_coordinator_update_enabled_cronjob(self, cronjob_switch, mock_coordinator):
         """Test _handle_coordinator_update with enabled CronJob."""
         # Setup coordinator data for enabled CronJob
@@ -1670,10 +1549,14 @@ class TestCronJobOperations:
         self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
         cronjob_switch._is_on = True
         cronjob_switch._suspend = False
+        written_states = []
+        cronjob_switch.async_write_ha_state = MagicMock(
+            side_effect=lambda: written_states.append(cronjob_switch.is_on)
+        )
 
         await cronjob_switch.async_turn_off()
 
-        cronjob_switch.async_write_ha_state.assert_called_once()
+        assert written_states == [False]
         mock_client.suspend_cronjob.assert_called_once_with("test-cronjob", "default")
         assert cronjob_switch._is_on is False
         assert cronjob_switch._suspend is True
@@ -1733,10 +1616,14 @@ class TestCronJobOperations:
         self._setup_hass(cronjob_switch, mock_config_entry, mock_client)
         cronjob_switch._is_on = False
         cronjob_switch._suspend = True
+        written_states = []
+        cronjob_switch.async_write_ha_state = MagicMock(
+            side_effect=lambda: written_states.append(cronjob_switch.is_on)
+        )
 
         await cronjob_switch.async_turn_on()
 
-        cronjob_switch.async_write_ha_state.assert_called_once()
+        assert written_states == [True]
         mock_client.resume_cronjob.assert_called_once_with("test-cronjob", "default")
         assert cronjob_switch._is_on is True
         assert cronjob_switch._suspend is False
