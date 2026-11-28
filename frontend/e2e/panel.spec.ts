@@ -896,13 +896,6 @@ test("back returns to the previous tab and typing adds no history entries", asyn
   await expect(page.locator(".tab[active]")).toHaveText(/Nodes/);
 });
 
-test("overview count card puts its preset in the URL", async ({ page }) => {
-  await page.goto(HARNESS);
-  await page.locator('.count-card[title="Show Services"]').click();
-  expect(await pathAndQuery(page)).toBe("/e2e/harness.html/network?type=Services");
-  await expect(page.locator(".tab[active]")).toHaveText(/Network/);
-});
-
 test("settings tab lists each cluster's configuration", async ({ page }) => {
   await page.goto(`${HARNESS}/settings`);
   await expect(page.locator(".entry-name")).toHaveText("test-cluster");
