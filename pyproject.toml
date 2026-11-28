@@ -88,9 +88,6 @@ ignore = [
     "SIM117",  # 9 hits in 3 test files; merging nested `with` blocks (mocks/patches) is not a mechanical local fix
 ]
 
-[tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
-
 [tool.ruff.lint.isort]
 known-first-party = ["custom_components"]
 known-third-party = ["homeassistant", "aiohttp"]
