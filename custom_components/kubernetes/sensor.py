@@ -1227,13 +1227,7 @@ class KubernetesCronJobSensor(KubernetesBaseSensor):
         if cronjob_data is None:
             return "Unknown"
 
-        suspend_value = cronjob_data.get("suspend", False)
-        if isinstance(suspend_value, bool):
-            is_suspended = suspend_value
-        elif isinstance(suspend_value, str):
-            is_suspended = suspend_value.lower() in ("true", "1", "yes", "on")
-        else:
-            is_suspended = False
+        is_suspended = bool(cronjob_data.get("suspend"))
 
         if is_suspended:
             return "Suspended"
