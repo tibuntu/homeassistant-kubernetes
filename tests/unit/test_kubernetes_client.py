@@ -2591,6 +2591,18 @@ async def test_get_server_version_best_effort(mock_client, get):
         assert await mock_client.get_server_version() is None
 
 
+async def test_get_node_metrics_null_items(mock_client):
+    """A metrics response with "items": null yields no metrics."""
+    mock_session = mock_aiohttp_session(
+        get=_mock_response(200, json_data={"items": None})
+    )
+
+    with patch.object(mock_client, "_session", mock_session):
+        result = await mock_client.get_node_metrics()
+
+    assert result == {}
+
+
 async def test_get_node_metrics_aiohttp_success(mock_client):
     """Test _get_node_metrics_aiohttp parses API response correctly."""
     mock_session = mock_aiohttp_session(
@@ -3167,6 +3179,23 @@ class TestFetchResourceList:
         assert len(result) == 1
         assert result[0]["name"] == "nginx"
 
+    async def test_null_items_is_an_empty_list(self, mock_client):
+        """An API server may send "items": null for an empty list."""
+        mock_client.namespaces = ["default"]
+        mock_client.monitor_all_namespaces = False
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(200, json_data={"items": None})
+        )
+
+        with patch.object(mock_client, "_session", mock_session):
+            result = await mock_client._fetch_resource_list(
+                "apis/apps/v1",
+                "deployments",
+                mock_client._parse_replica_workload_item,
+            )
+
+        assert result == []
+
     async def test_all_namespaces_success(self, mock_client):
         """Test fetching resources across all namespaces."""
         mock_client.monitor_all_namespaces = True
@@ -3424,6 +3453,18 @@ class TestListResourceWithVersion:
         assert rv == "42"
         assert len(items) == 2
         assert items[0]["metadata"]["name"] == "pod1"
+
+    async def test_null_items_is_an_empty_list(self, mock_client):
+        """A null "items" reads as an empty list, keeping the resourceVersion."""
+        payload = {"metadata": {"resourceVersion": "5"}, "items": None}
+        mock_session = mock_aiohttp_session(get=_mock_response(200, json_data=payload))
+
+        with patch.object(mock_client, "_session", mock_session):
+            result = await mock_client.list_resource_with_version(
+                "https://host/api/v1/pods"
+            )
+
+        assert result == ([], "5")
 
     async def test_returns_zero_resource_version_when_missing(self, mock_client):
         """If metadata.resourceVersion is absent, '0' should be returned."""

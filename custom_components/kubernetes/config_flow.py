@@ -744,7 +744,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 if response.status == 200:
                     data = await response.json()
                     namespaces = [
-                        item["metadata"]["name"] for item in data.get("items", [])
+                        item["metadata"]["name"] for item in data.get("items") or []
                     ]
                     _LOGGER.info(
                         "Successfully fetched %d namespaces from cluster",
