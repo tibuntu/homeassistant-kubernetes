@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.18.2](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.18.1...v1.18.2) (2026-11-28)
+
+
+### Bug Fixes
+
+* act once on a workload that is targeted twice in one service call ([b69f011](https://github.com/tibuntu/homeassistant-kubernetes/commit/b69f0119a2ae41f6795ca6295d534187fffaa96c))
+* **config-flow:** reject an empty token when re-authenticating an in-cluster entry ([79343ff](https://github.com/tibuntu/homeassistant-kubernetes/commit/79343ff60ca8e227dfa6d60dc882c1c1fb912e74))
+* **config-flow:** report a duplicate cluster name before the namespace step ([b415035](https://github.com/tibuntu/homeassistant-kubernetes/commit/b415035dc98e115d250b740fa87e85a156471286))
+* count a pending pod's containers from its spec ([aa4621c](https://github.com/tibuntu/homeassistant-kubernetes/commit/aa4621c4acc78b40a90244f3a7e8866435b51fa3))
+* create manually triggered Jobs like kubectl create job --from ([67df3ff](https://github.com/tibuntu/homeassistant-kubernetes/commit/67df3ff01735f824322c08bfb456d943cf41af13))
+* disable panel scale and drain while their number input is empty ([e9588f8](https://github.com/tibuntu/homeassistant-kubernetes/commit/e9588f8c8fe9e56df2f10323633ef2d918515364))
+* do not flag a scheduling-gated pod as a problem pod ([0c6fb0a](https://github.com/tibuntu/homeassistant-kubernetes/commit/0c6fb0a2ff1aa0c3410055ba2b20d1537672f874))
+* give the workload services' namespace field a selector and an accurate description ([2e78dc2](https://github.com/tibuntu/homeassistant-kubernetes/commit/2e78dc29b072ea5819354cb89f2bbe736420381f))
+* keep panel live updates working after a config entry reloads ([44e369e](https://github.com/tibuntu/homeassistant-kubernetes/commit/44e369ef1bc7238564ba676267377d69f08a7ce1))
+* let CronJob actions target any namespace, like every other action ([f25f756](https://github.com/tibuntu/homeassistant-kubernetes/commit/f25f7566bfdfc25231b848dfe8209aa01cecac21))
+* log an unreachable cluster once per outage instead of on every poll and probe ([0fdecfb](https://github.com/tibuntu/homeassistant-kubernetes/commit/0fdecfbf9d95da18da60ec198f4b95b540ee64dd))
+* make pods sort headers buttons with aria-sort ([a215fc6](https://github.com/tibuntu/homeassistant-kubernetes/commit/a215fc601b4ba5053c1bb0025c59dbd615bf73b1))
+* mask API tokens and reject invalid numbers in the config flow ([f34687a](https://github.com/tibuntu/homeassistant-kubernetes/commit/f34687a6ea6094b84e1eca1210a7ee31613616fe))
+* poll at the fast interval on minimal RBAC without optional CRDs ([e3e9b4c](https://github.com/tibuntu/homeassistant-kubernetes/commit/e3e9b4c341c1f0ea58faad3ac001b3bae892bec3))
+* probe for a rejected token only after a 401 ([df8b4cc](https://github.com/tibuntu/homeassistant-kubernetes/commit/df8b4ccc8e59ed005af878845b2d86c136b763ec))
+* raise translated errors when a switch fails to scale or suspend ([1896927](https://github.com/tibuntu/homeassistant-kubernetes/commit/18969276698b3aedf43109c7e125603372823a0b))
+* read "items": null in a list response as an empty list ([0206a12](https://github.com/tibuntu/homeassistant-kubernetes/commit/0206a128666ad9b7dc71215553afe6d48a9015cf))
+* refresh cluster data after workload and Job services ([a2fd0d1](https://github.com/tibuntu/homeassistant-kubernetes/commit/a2fd0d1a0834908429445bc7b569162fb1bacc6b))
+* reject service calls with unresolvable workload targets ([f79cd8b](https://github.com/tibuntu/homeassistant-kubernetes/commit/f79cd8b0342b1d56ca4faf92d3da943b53b7fe62))
+* remove the next_schedule_time attribute that was always empty ([8afbd4a](https://github.com/tibuntu/homeassistant-kubernetes/commit/8afbd4ab4fdaf499775d1177dd884a098036700a))
+* render one panel filter bar for all clusters ([63e90d1](https://github.com/tibuntu/homeassistant-kubernetes/commit/63e90d124e328a82a01359107e75f6c1b0ac9fca))
+* restart panel refreshes when a view is re-attached ([6f22bf0](https://github.com/tibuntu/homeassistant-kubernetes/commit/6f22bf04f871c791623c18ba8282e5c263610ab5))
+* say when no workload matches the panel filters ([0756fc5](https://github.com/tibuntu/homeassistant-kubernetes/commit/0756fc5c66ecf93644fcad8c19bab2a907f42327))
+* set up binary sensors when the coordinator has no data ([232adab](https://github.com/tibuntu/homeassistant-kubernetes/commit/232adab13846054f9f8c3742d424129b4a282f29))
+* show a replica switch as on while the workload has replicas, not only available pods ([c8ba204](https://github.com/tibuntu/homeassistant-kubernetes/commit/c8ba204387d06983c6a1b3a4ff600140acdbb4ea))
+* show ingresses and services in the overview namespace table ([c69f8ac](https://github.com/tibuntu/homeassistant-kubernetes/commit/c69f8ac20bdaa3597d502675e2e83db31b61dcbd))
+* show the cluster health sensor as connected right after setup ([75bf64e](https://github.com/tibuntu/homeassistant-kubernetes/commit/75bf64e934e814486033f07e40ef8996f38a5870))
+* show when the panel's last refresh failed ([b810bd6](https://github.com/tibuntu/homeassistant-kubernetes/commit/b810bd61be5032cce9db3c303f460ce6225b6fa3))
+* stop counting gracefully terminating pods as problem pods ([cd59fe7](https://github.com/tibuntu/homeassistant-kubernetes/commit/cd59fe7dbd0a67b0fdc7a698a6b93a19e93d9a2f))
+* stop warning on every lookup of a node that no longer exists ([8e9355f](https://github.com/tibuntu/homeassistant-kubernetes/commit/8e9355f7d41e0b7454583cdbb087a74f156ec259))
+* target the right workload kind when names are shared across kinds ([f6c6a47](https://github.com/tibuntu/homeassistant-kubernetes/commit/f6c6a47dfc48deca3cea679f3a41a07da272432f))
+* translate the labels of the System Health card ([ee67d64](https://github.com/tibuntu/homeassistant-kubernetes/commit/ee67d64d6d95dc88860e4e0c0b1d3883489fe2a8))
+* treat only suspended jobs as stopped in the panel ([93da40f](https://github.com/tibuntu/homeassistant-kubernetes/commit/93da40fa0d917037139601caca82f99fcaf16dea))
+* validate pod log targets in the client and reword the invalid-target error ([f98a831](https://github.com/tibuntu/homeassistant-kubernetes/commit/f98a8310a3ff443becaee6a4901a535a804297e8))
+* warn about an unavailable Metrics API once per episode, not on every poll ([c3328f6](https://github.com/tibuntu/homeassistant-kubernetes/commit/c3328f6cab5f013a45781253cd304ca629b2111a))
+
 ## [1.18.1](https://github.com/tibuntu/homeassistant-kubernetes/compare/v1.18.0...v1.18.1) (2026-11-27)
 
 
