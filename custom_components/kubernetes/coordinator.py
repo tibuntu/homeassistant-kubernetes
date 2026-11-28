@@ -647,9 +647,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 # Route it to reauth instead of UpdateFailed. A non-200 from
                 # a fetch that runs before the pods call aborts the cycle
                 # before the probe, so probe here or a dead token would
-                # never reach reauth (issue #408).
+                # never reach reauth (issue #408). Only a 401 can mean a
+                # rejected token; any other status needs no second probe.
                 if (
                     isinstance(ex, KubernetesApiError)
+                    and ex.status == 401
                     and self.client.auth_failed is not True
                 ):
                     await self.client.is_cluster_healthy()
