@@ -343,7 +343,7 @@ This will provide detailed information about CronJob operations and state change
 
 ### CronJob Data Structure
 
-The integration provides CronJob data in the following format:
+The integration uses these fields of each CronJob:
 
 ```python
 {
@@ -353,13 +353,7 @@ The integration provides CronJob data in the following format:
     "suspend": False,
     "last_schedule_time": "2023-01-01T02:00:00Z",
     "last_successful_time": "2023-01-01T02:03:10Z",
-    "next_schedule_time": "2023-01-02T02:00:00Z",
     "active_jobs_count": 1,
-    "successful_jobs_history_limit": 3,
-    "failed_jobs_history_limit": 1,
-    "concurrency_policy": "Allow",
-    "uid": "cronjob-uid-123",
-    "creation_timestamp": "2023-01-01T00:00:00Z",
 }
 ```
 
