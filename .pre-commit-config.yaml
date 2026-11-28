@@ -53,11 +53,11 @@ repos:
     hooks:
       - id: mypy
         name: Type check with mypy
-        # All other settings come from [tool.mypy] in pyproject.toml, shared
-        # with CI. Only this flag differs: the hook's isolated env has no
-        # Home Assistant, so its imports must resolve to Any.
-        args:
-          - --ignore-missing-imports
+        # Every setting comes from [tool.mypy] in pyproject.toml, shared with
+        # CI; that section already sets ignore_missing_imports for this hook's
+        # isolated env without Home Assistant. `args: []` drops the mirror's
+        # default flags, so the hook adds none of its own.
+        args: []
         files: ^custom_components/
 
   # Security linting
