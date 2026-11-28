@@ -2484,7 +2484,7 @@ class TestReauthFlow:
         )
         entry.add_to_hass(hass)
 
-        with patched_connection():
+        with patched_connection() as mock_test_connection:
             result = await self._init_reauth(hass, entry)
             result = await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -2496,6 +2496,52 @@ class TestReauthFlow:
         assert entry.data[CONF_API_TOKEN] == "pasted-token"
         assert entry.data[CONF_USE_IN_CLUSTER] is False
         assert entry.data[CONF_HOST] == "kubernetes.default.svc"
+        # The candidate mirrors what is stored: in-cluster mode off.
+        assert mock_test_connection.call_args[0][0][CONF_USE_IN_CLUSTER] is False
+
+    async def test_reauth_in_cluster_entry_rejects_an_empty_token(
+        self, hass: HomeAssistant
+    ):
+        """Test an empty token is not filled from the pod's ServiceAccount.
+
+        The entry would be saved with an empty token and in-cluster mode off,
+        so validation must run with in-cluster mode off.
+        """
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            title="in-cluster",
+            data={
+                CONF_CLUSTER_NAME: "in-cluster",
+                CONF_HOST: "kubernetes.default.svc",
+                CONF_PORT: 443,
+                CONF_API_TOKEN: "stale-fallback-token",
+                CONF_USE_IN_CLUSTER: True,
+                CONF_MONITOR_ALL_NAMESPACES: True,
+            },
+            unique_id="in-cluster",
+        )
+        entry.add_to_hass(hass)
+
+        probe = AsyncMock(return_value=True)
+        with (
+            patch(
+                "custom_components.kubernetes.config_flow.async_detect_in_cluster_config",
+                AsyncMock(return_value={"api_token": "pod-token"}),
+            ),
+            patch.object(KubernetesConfigFlow, "_test_connection_aiohttp", probe),
+        ):
+            result = await self._init_reauth(hass, entry)
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={CONF_API_TOKEN: ""},
+            )
+
+        assert result["type"] is FlowResultType.FORM
+        assert result["step_id"] == "reauth_confirm"
+        assert result["errors"] == {"base": "invalid_auth"}
+        assert entry.data[CONF_API_TOKEN] == "stale-fallback-token"
+        assert entry.data[CONF_USE_IN_CLUSTER] is True
+        probe.assert_not_awaited()
 
     async def test_reauth_invalid_token_reshows_form_then_succeeds(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry

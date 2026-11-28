@@ -326,8 +326,14 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         if user_input is not None:
             # _test_connection mutates the dict it validates (it normalizes the
             # host), so hand it a throwaway copy of the entry's settings. Only
-            # the token is written back to the entry.
-            candidate = {**entry.data, CONF_API_TOKEN: user_input[CONF_API_TOKEN]}
+            # the token is written back to the entry. In-cluster mode is off in
+            # the candidate (as it will be in the stored entry), so an empty
+            # token is rejected instead of being filled from the pod's token.
+            candidate = {
+                **entry.data,
+                CONF_API_TOKEN: user_input[CONF_API_TOKEN],
+                CONF_USE_IN_CLUSTER: False,
+            }
             try:
                 await self._test_connection(candidate)
             except Exception as ex:  # pylint: disable=broad-except
