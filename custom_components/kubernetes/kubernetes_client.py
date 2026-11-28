@@ -1384,7 +1384,7 @@ class KubernetesClient:
         pages = await self._fetch_resource_pages(
             api_path, resource_name, cluster_scoped=cluster_scoped, label=label
         )
-        return [item for page in pages for item in page.get("items", [])]
+        return [item for page in pages for item in page.get("items") or []]
 
     async def _fetch_resource_list(
         self,
@@ -1433,7 +1433,7 @@ class KubernetesClient:
                         label="count request",
                     )
                 )
-            total += len(page.get("items", [])) + (remaining or 0)
+            total += len(page.get("items") or []) + (remaining or 0)
         return total
 
     async def get_deployments_count(self) -> int:
@@ -2143,7 +2143,7 @@ class KubernetesClient:
             if response.status != 200:
                 return response.status, []
             data = await response.json()
-            return 200, data.get("items", [])
+            return 200, data.get("items") or []
 
     def _merge_pod_metrics_items(
         self, items: list[dict[str, Any]], metrics: dict[str, dict[str, float]]
@@ -2200,7 +2200,7 @@ class KubernetesClient:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    for item in data.get("items", []):
+                    for item in data.get("items") or []:
                         name = item.get("metadata", {}).get("name")
                         if not name:
                             continue
@@ -2959,7 +2959,7 @@ class KubernetesClient:
             resource_version = (
                 data.get("metadata", {}).get("resourceVersion", "0") or "0"
             )
-            return data.get("items", []), resource_version
+            return data.get("items") or [], resource_version
 
     async def watch_stream(
         self, url: str, resource_version: str
