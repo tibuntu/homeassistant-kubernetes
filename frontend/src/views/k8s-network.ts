@@ -491,6 +491,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
     }
 
     return html`
+      ${this.renderStaleHint()}
       <div class="filters">
         <input
           class="search-input"

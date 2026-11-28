@@ -191,9 +191,9 @@ export abstract class K8sDataView<T> extends LitElement {
     if (!this.hasData()) {
       this._loading = true;
     }
-    this._error = null;
     try {
       await this.fetchData();
+      this._error = null;
     } catch (err: unknown) {
       this._error = errorMessage(err, this.loadErrorFallback);
     } finally {
@@ -254,6 +254,14 @@ export abstract class K8sDataView<T> extends LitElement {
     });
   }
 
+  /** Banner for a failed refresh while earlier data is still shown. */
+  protected renderStaleHint(): TemplateResult | typeof nothing {
+    if (!this._error || !this.hasData()) return nothing;
+    return html`<div class="stale-hint" role="status">
+      Last refresh failed: ${this._error}. Showing earlier data.
+    </div>`;
+  }
+
   /**
    * Loading spinner, error card or empty message, or `nothing` when the view
    * should render its data. `empty` is the view's own "no items" test.
@@ -269,7 +277,6 @@ export abstract class K8sDataView<T> extends LitElement {
 
     // A failed refresh keeps the loaded view (and any open dialog): the error
     // card would otherwise replace both until the next poll succeeds.
-    // ponytail: no "data is stale" hint; add one if silent staleness confuses.
     if (this._error && !this.hasData()) {
       return html`
         <ha-card>

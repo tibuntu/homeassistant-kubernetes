@@ -516,6 +516,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     if (state !== nothing) return state;
 
     return html`
+      ${this.renderStaleHint()}
       ${
         this._actionError
           ? html`

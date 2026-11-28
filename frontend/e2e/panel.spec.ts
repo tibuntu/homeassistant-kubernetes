@@ -360,6 +360,13 @@ test("a failed refresh keeps the loaded view instead of the error card", async (
 
   await expect(page.locator(".error-card")).toHaveCount(0);
   await expect(page.locator('.count-card[title="Show Pods"]')).toBeVisible();
+  await expect(page.locator(".stale-hint")).toContainText("Last refresh failed");
+
+  await page.evaluate(() => {
+    window.__k8s.fail.clear();
+    window.__k8s.push();
+  });
+  await expect(page.locator(".stale-hint")).toHaveCount(0);
 });
 
 test("a re-attached view subscribes once and refetches on push", async ({ page }) => {
