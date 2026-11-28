@@ -595,7 +595,7 @@ class KubernetesClient:
                 self._last_auth_error_time = time.time()
             if status == 200:
                 self._probe_failure = None
-                self._log_success("connection test", "using aiohttp")
+                self._log_success("connection test", "API server reachable")
                 return True
             self._probe_failure = f"status {status}"
             _LOGGER.debug("aiohttp connection test failed with status: %s", status)
@@ -1480,7 +1480,7 @@ class KubernetesClient:
         replicas: int,
         namespace: str | None = None,
     ) -> bool:
-        """Scale a workload by patching its /scale subresource via aiohttp."""
+        """Scale a workload by patching its /scale subresource."""
         kind = resource_type.rstrip("s")
         try:
             target_namespace = namespace or self.namespace
@@ -1498,12 +1498,6 @@ class KubernetesClient:
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status in [200, 201]:
-                    _LOGGER.info(
-                        "Successfully scaled %s %s to %d replicas using aiohttp",
-                        kind,
-                        name,
-                        replicas,
-                    )
                     return True
                 response_text = await response.text()
                 _LOGGER.error(
@@ -1585,7 +1579,7 @@ class KubernetesClient:
     async def _delete_pod_aiohttp(
         self, pod_name: str, namespace: str | None = None
     ) -> bool:
-        """Delete a pod using aiohttp."""
+        """Delete a pod."""
         try:
             target_namespace = namespace or self.namespace
             headers = {
@@ -1749,7 +1743,7 @@ class KubernetesClient:
     async def _delete_job_aiohttp(
         self, job_name: str, namespace: str | None = None
     ) -> bool:
-        """Delete a job using aiohttp (Background propagation cascades to its pods)."""
+        """Delete a job (Background propagation cascades to its pods)."""
         try:
             target_namespace = namespace or self.namespace
             headers = {
@@ -1832,7 +1826,7 @@ class KubernetesClient:
     async def _rollout_restart_aiohttp(
         self, resource_type: str, name: str, namespace: str | None = None
     ) -> bool:
-        """Perform rollout restart using aiohttp PATCH."""
+        """Perform rollout restart with a PATCH."""
         try:
             target_namespace = namespace or self.namespace
             headers = {
@@ -1896,7 +1890,7 @@ class KubernetesClient:
     async def _set_node_schedulable_aiohttp(
         self, node_name: str, schedulable: bool
     ) -> bool:
-        """Set a node's schedulable state using aiohttp PATCH."""
+        """Set a node's schedulable state with a PATCH."""
         action = "uncordon" if schedulable else "cordon"
         try:
             headers = {
@@ -2015,7 +2009,7 @@ class KubernetesClient:
         )
 
     async def get_pod_metrics(self) -> dict[str, dict[str, float]]:
-        """Get pod metrics using aiohttp.
+        """Get pod metrics.
 
         Without monitor_all_namespaces, each configured namespace is fetched
         separately and concurrently. Metrics are best-effort: a namespace that
@@ -2491,7 +2485,7 @@ class KubernetesClient:
         patch_body: dict[str, Any],
         operation: str,
     ) -> dict[str, Any]:
-        """Apply a strategic-merge patch to a CronJob via aiohttp."""
+        """Apply a strategic-merge patch to a CronJob."""
         try:
             headers = {
                 "Authorization": f"Bearer {self.api_token}",
@@ -2509,7 +2503,7 @@ class KubernetesClient:
             ) as response:
                 if response.status == 200:
                     _LOGGER.info(
-                        "Successfully applied %s to CronJob '%s' in namespace '%s' via aiohttp",
+                        "Successfully applied %s to CronJob '%s' in namespace '%s'",
                         operation,
                         cronjob_name,
                         namespace,
@@ -2519,7 +2513,8 @@ class KubernetesClient:
                         "cronjob_name": cronjob_name,
                         "namespace": namespace,
                     }
-                error_msg = f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
+                body = await response.text()
+                error_msg = f"Failed to {operation} CronJob '{cronjob_name}': HTTP {response.status}: {body[:500]}"
                 _LOGGER.error(error_msg)
                 return {
                     "success": False,
@@ -2528,10 +2523,8 @@ class KubernetesClient:
                     "namespace": namespace,
                 }
         except Exception as ex:
-            error_msg = (
-                f"Failed to {operation} CronJob '{cronjob_name}' via aiohttp: {ex!s}"
-            )
-            self._log_error(f"_{operation}_cronjob_aiohttp", ex)
+            error_msg = f"Failed to {operation} CronJob '{cronjob_name}': {ex!s}"
+            self._log_error(f"{operation} CronJob", ex)
             return {
                 "success": False,
                 "error": error_msg,
@@ -2542,7 +2535,7 @@ class KubernetesClient:
     async def _trigger_cronjob_aiohttp(
         self, cronjob_name: str, namespace: str
     ) -> dict[str, Any]:
-        """Trigger a CronJob using aiohttp by creating a job from it."""
+        """Trigger a CronJob by creating a Job from its template."""
         try:
             headers = {
                 "Authorization": f"Bearer {self.api_token}",
@@ -2560,7 +2553,8 @@ class KubernetesClient:
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status != 200:
-                    error_msg = f"Failed to get CronJob '{cronjob_name}' via aiohttp: HTTP {response.status}"
+                    body = await response.text()
+                    error_msg = f"Failed to get CronJob '{cronjob_name}': HTTP {response.status}: {body[:500]}"
                     _LOGGER.error(error_msg)
                     return {
                         "success": False,
@@ -2627,7 +2621,7 @@ class KubernetesClient:
                         job_result = await job_response.json()
                         job_name = job_result.get("metadata", {}).get("name", "")
                         _LOGGER.info(
-                            "Successfully triggered CronJob '%s' in namespace '%s' via aiohttp, created job '%s'",
+                            "Successfully triggered CronJob '%s' in namespace '%s', created job '%s'",
                             cronjob_name,
                             namespace,
                             job_name,
@@ -2640,7 +2634,8 @@ class KubernetesClient:
                             "job_uid": job_result.get("metadata", {}).get("uid", ""),
                         }
                     else:
-                        error_msg = f"Failed to create job for CronJob '{cronjob_name}' via aiohttp: HTTP {job_response.status}"
+                        body = await job_response.text()
+                        error_msg = f"Failed to create job for CronJob '{cronjob_name}': HTTP {job_response.status}: {body[:500]}"
                         _LOGGER.error(error_msg)
                         return {
                             "success": False,
@@ -2650,10 +2645,8 @@ class KubernetesClient:
                         }
 
         except Exception as ex:
-            error_msg = (
-                f"Failed to trigger CronJob '{cronjob_name}' via aiohttp: {ex!s}"
-            )
-            self._log_error("_trigger_cronjob_aiohttp", ex)
+            error_msg = f"Failed to trigger CronJob '{cronjob_name}': {ex!s}"
+            self._log_error("trigger CronJob", ex)
             return {
                 "success": False,
                 "error": error_msg,

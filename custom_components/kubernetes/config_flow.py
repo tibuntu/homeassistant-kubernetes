@@ -710,9 +710,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as response:
                 if response.status == 200:
-                    _LOGGER.info(
-                        "Successfully connected to Kubernetes API using aiohttp"
-                    )
+                    _LOGGER.info("Successfully connected to Kubernetes API")
                     return True
                 else:
                     _LOGGER.error(
