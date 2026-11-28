@@ -44,7 +44,6 @@ def mock_coordinator():
                 "suspend": False,
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         }
     }
@@ -271,7 +270,6 @@ class TestKubernetesCronJobSwitch:
         cronjob_switch._suspend = False
         cronjob_switch._active_jobs_count = 1
         cronjob_switch._last_schedule_time = "2023-01-01T02:00:00Z"
-        cronjob_switch._next_schedule_time = "2023-01-02T02:00:00Z"
         cronjob_switch._last_suspend_time = 1234567890.0
         cronjob_switch._last_resume_time = 1234567891.0
 
@@ -283,7 +281,7 @@ class TestKubernetesCronJobSwitch:
         assert attributes["suspended"] is False
         assert attributes["active_jobs_count"] == 1
         assert attributes["last_schedule_time"] == "2023-01-01T02:00:00Z"
-        assert attributes["next_schedule_time"] == "2023-01-02T02:00:00Z"
+        assert "next_schedule_time" not in attributes
         assert attributes["last_suspend_time"] == 1234567890.0
         assert attributes["last_resume_time"] == 1234567891.0
         assert attributes[ATTR_WORKLOAD_TYPE] == WORKLOAD_TYPE_CRONJOB
@@ -421,7 +419,6 @@ class TestKubernetesCronJobSwitch:
                     "suspend": False,
                     "active_jobs_count": 2,
                     "last_schedule_time": "2023-01-01T02:00:00Z",
-                    "next_schedule_time": "2023-01-02T02:00:00Z",
                 }
             }
         }
@@ -441,7 +438,6 @@ class TestKubernetesCronJobSwitch:
         assert cronjob_switch._active_jobs_count == 2
         assert cronjob_switch._schedule == "0 2 * * *"
         assert cronjob_switch._last_schedule_time == "2023-01-01T02:00:00Z"
-        assert cronjob_switch._next_schedule_time == "2023-01-02T02:00:00Z"
 
     def test_coordinator_update_suspended_cronjob(
         self, cronjob_switch, mock_coordinator
@@ -457,7 +453,6 @@ class TestKubernetesCronJobSwitch:
                     "suspend": True,
                     "active_jobs_count": 0,
                     "last_schedule_time": None,
-                    "next_schedule_time": None,
                 }
             }
         }
@@ -511,7 +506,6 @@ class TestKubernetesCronJobSwitch:
                     "suspend": "true",  # String value
                     "active_jobs_count": 0,
                     "last_schedule_time": None,
-                    "next_schedule_time": None,
                 }
             }
         }
@@ -543,7 +537,6 @@ class TestKubernetesCronJobSwitch:
                     "suspend": None,  # None value
                     "active_jobs_count": 0,
                     "last_schedule_time": None,
-                    "next_schedule_time": None,
                 }
             }
         }
@@ -594,7 +587,6 @@ class TestKubernetesCronJobSwitch:
             return_value={
                 **mock_coordinator.data["cronjobs"]["default_test-cronjob"],
                 "active_jobs_count": 1,
-                "next_schedule_time": "2026-01-01T00:00:00Z",
             }
         )
 
@@ -604,10 +596,6 @@ class TestKubernetesCronJobSwitch:
         # Verify
         assert cronjob_switch.is_on is True
         assert cronjob_switch.extra_state_attributes["active_jobs_count"] == 1
-        assert (
-            cronjob_switch.extra_state_attributes["next_schedule_time"]
-            == "2026-01-01T00:00:00Z"
-        )
         cronjob_switch.async_write_ha_state.assert_called_once()
 
     @pytest.mark.parametrize(
@@ -1854,7 +1842,6 @@ class TestCronJobOperations:
                 "suspend": False,
                 "active_jobs_count": 3,
                 "last_schedule_time": "2026-03-14T10:00:00Z",
-                "next_schedule_time": "2026-03-14T10:05:00Z",
             }
         )
 
@@ -1866,7 +1853,6 @@ class TestCronJobOperations:
         assert cronjob_switch._schedule == "*/5 * * * *"
         assert cronjob_switch._active_jobs_count == 3
         assert cronjob_switch._last_schedule_time == "2026-03-14T10:00:00Z"
-        assert cronjob_switch._next_schedule_time == "2026-03-14T10:05:00Z"
 
     def test_update_no_data_returns_early(self, cronjob_switch, mock_coordinator):
         """No data from coordinator: returns early without crash."""
@@ -1889,7 +1875,6 @@ class TestCronJobOperations:
                 "suspend": True,
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
 
@@ -1907,7 +1892,6 @@ class TestCronJobOperations:
                 "suspend": False,
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
 
@@ -1925,7 +1909,6 @@ class TestCronJobOperations:
                 "suspend": "true",
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
 
@@ -1943,7 +1926,6 @@ class TestCronJobOperations:
                 "suspend": "false",
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
 
@@ -1963,7 +1945,6 @@ class TestCronJobOperations:
                 "suspend": 42,
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
 
@@ -1981,7 +1962,6 @@ class TestCronJobOperations:
                 "suspend": False,
                 "active_jobs_count": 1,
                 "last_schedule_time": "2026-03-14T00:00:00Z",
-                "next_schedule_time": "2026-03-15T00:00:00Z",
             }
         )
 
@@ -1989,9 +1969,7 @@ class TestCronJobOperations:
         cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._last_schedule_time == "2026-03-14T00:00:00Z"
-        assert cronjob_switch._next_schedule_time == "2026-03-15T00:00:00Z"
         assert isinstance(cronjob_switch._last_schedule_time, str)
-        assert isinstance(cronjob_switch._next_schedule_time, str)
 
     def test_update_schedule_time_none(self, cronjob_switch, mock_coordinator):
         """Schedule times that are None remain None."""
@@ -2001,7 +1979,6 @@ class TestCronJobOperations:
                 "suspend": False,
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
 
@@ -2009,7 +1986,6 @@ class TestCronJobOperations:
         cronjob_switch._handle_coordinator_update()
 
         assert cronjob_switch._last_schedule_time is None
-        assert cronjob_switch._next_schedule_time is None
 
     # -----------------------------------------------------------------------
     # 4. CronJob coordinator update (_handle_coordinator_update)
@@ -2026,7 +2002,6 @@ class TestCronJobOperations:
                 "suspend": False,
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
-                "next_schedule_time": None,
             }
         )
 

@@ -41,7 +41,6 @@ Individual switches for each CronJob that control the suspension state.
 - `suspend` / `suspended`: Whether the CronJob is suspended
 - `active_jobs_count`: Number of currently active jobs
 - `last_schedule_time`: Last time the CronJob was scheduled
-- `next_schedule_time`: Next scheduled execution time
 - `last_suspend_time`: Timestamp when the CronJob was last suspended
 - `last_resume_time`: Timestamp when the CronJob was last resumed
 - `workload_type`: "CronJob"

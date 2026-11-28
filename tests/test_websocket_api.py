@@ -949,7 +949,6 @@ class TestWebsocketWorkloadsList:
             "schedule": "0 2 * * *",
             "suspend": False,
             "last_schedule_time": "2024-01-01T02:00:00Z",
-            "next_schedule_time": "2024-01-02T02:00:00Z",
             "active_jobs_count": 0,
             "successful_jobs_history_limit": 3,
             "failed_jobs_history_limit": 1,
