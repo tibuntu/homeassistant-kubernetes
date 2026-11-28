@@ -1,14 +1,15 @@
 /**
  * URL navigation shared by the panel and its views.
  *
- * Mirrors Home Assistant's own `navigate()` (src/common/navigate.ts): push or
- * replace a history entry, then fire `location-changed` on `window` with
+ * Mirrors Home Assistant's own `navigate()` (src/common/navigate.ts): push a
+ * history entry, then fire `location-changed` on `window` with
  * `detail.replace` so HA's router updates the panel's `route`.
  */
-export function navigate(url: string, replace = false): void {
-  if (replace) history.replaceState(history.state, "", url);
-  else history.pushState(null, "", url);
-  window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace } }));
+export function navigate(url: string): void {
+  history.pushState(null, "", url);
+  window.dispatchEvent(
+    new CustomEvent("location-changed", { detail: { replace: false } }),
+  );
 }
 
 /** One query parameter of the current URL (`null` when absent). */
