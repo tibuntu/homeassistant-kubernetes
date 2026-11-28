@@ -628,6 +628,15 @@ class TestKubernetesDataCoordinator:
         result = coordinator.get_node_data("worker-node-1")
         assert result is None
 
+    async def test_get_node_data_miss_does_not_warn(self, coordinator, caplog):
+        """A node that is gone is a normal state, not a warning."""
+        coordinator.data = {"nodes": {"worker-node-1": {"name": "worker-node-1"}}}
+
+        with caplog.at_level(logging.DEBUG):
+            assert coordinator.get_node_data("gone") is None
+
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
     async def test_get_all_nodes_data(self, coordinator):
         """Test getting all nodes data."""
         nodes_data = {
