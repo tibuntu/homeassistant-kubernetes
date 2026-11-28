@@ -302,12 +302,11 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=config_entry,
             name=f"{DOMAIN}_{config_entry.entry_id}",
             update_interval=timedelta(seconds=update_interval),
         )
 
-        # Set attributes after super().__init__() to ensure they're not overridden
-        self.config_entry = config_entry
         self.client = client
         self._watch_enabled = watch_enabled
         self._poll_interval = poll_interval
@@ -891,10 +890,6 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         ``deleted_entities`` scan.
         """
         try:
-            if not self.config_entry or not hasattr(self.config_entry, "entry_id"):
-                _LOGGER.debug("Skipping entity cleanup: config_entry not available")
-                return
-
             entity_registry = async_get_entity_registry(self.hass)
 
             entities = entity_registry.entities.get_entries_for_config_entry_id(
