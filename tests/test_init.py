@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntryDisabler, ConfigEntryState
 from homeassistant.const import EVENT_HOMEASSISTANT_CLOSE, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
@@ -26,6 +27,7 @@ from custom_components.kubernetes import (
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.kubernetes.const import SIGNAL_COORDINATOR_UPDATED
 from custom_components.kubernetes.coordinator import (
     KubernetesEntryData,
     panel_requires_admin,
@@ -114,6 +116,47 @@ async def test_async_setup_entry_success(
 
         # Verify platforms were forwarded
         mock_forward.assert_called_once_with(mock_config_entry, PLATFORMS)
+
+
+async def test_setup_relays_coordinator_updates_until_unload(
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry
+):
+    """The coordinator listener fires the panel signal once, and not after unload."""
+    received = []
+    async_dispatcher_connect(
+        hass, SIGNAL_COORDINATOR_UPDATED, lambda: received.append(1)
+    )
+    listeners = []
+
+    def add_listener(cb):
+        listeners.append(cb)
+        return lambda: listeners.remove(cb)
+
+    with (
+        patch("custom_components.kubernetes.KubernetesClient"),
+        patch(
+            "custom_components.kubernetes.KubernetesDataCoordinator"
+        ) as mock_coordinator_class,
+        patch("custom_components.kubernetes._async_sync_panel"),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new_callable=AsyncMock
+        ),
+    ):
+        mock_coordinator = MagicMock()
+        mock_coordinator.async_config_entry_first_refresh = AsyncMock()
+        mock_coordinator.async_start_watch_tasks = AsyncMock()
+        mock_coordinator.async_add_listener.side_effect = add_listener
+        mock_coordinator_class.return_value = mock_coordinator
+
+        assert await async_setup_entry(hass, mock_config_entry) is True
+
+    assert len(listeners) == 1
+    listeners[0]()
+    await hass.async_block_till_done()
+    assert received == [1]
+
+    await mock_config_entry._async_process_on_unload(hass)
+    assert listeners == []
 
 
 class TestAsyncCreateSession:

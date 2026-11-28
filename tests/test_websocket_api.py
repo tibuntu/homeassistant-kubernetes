@@ -5,11 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.kubernetes.alerts import build_alerts
-from custom_components.kubernetes.const import DOMAIN
+from custom_components.kubernetes.const import DOMAIN, SIGNAL_COORDINATOR_UPDATED
 from custom_components.kubernetes.coordinator import KubernetesEntryData
 from custom_components.kubernetes.kubernetes_client import KubernetesApiError
 from custom_components.kubernetes.websocket_api import (
@@ -21,7 +22,6 @@ from custom_components.kubernetes.websocket_api import (
     _get_workloads_list_data,
     _list_data,
     async_register_websocket_commands,
-    websocket_subscribe_updates,
 )
 
 
@@ -3245,84 +3245,35 @@ class TestWebsocketDeleteJob:
 
 
 class TestWebsocketSubscribeUpdates:
-    """Tests for the kubernetes/subscribe_updates subscription."""
+    """End-to-end tests for kubernetes/subscribe_updates.
 
-    @staticmethod
-    def _make_connection():
-        connection = MagicMock()
-        connection.subscriptions = {}
-        return connection
+    The command is decorated with ``require_admin``-style wrappers, so it is
+    driven through a real WebSocket connection.
+    """
 
-    @staticmethod
-    def _make_listening_coordinator(listeners):
-        coordinator = _make_coordinator({})
+    async def test_signal_pushes_event_and_unsubscribe_stops_it(
+        self, hass: HomeAssistant, hass_ws_client
+    ):
+        """A signal (as any, e.g. a reloaded, coordinator sends) pushes an event."""
+        async_register_websocket_commands(hass)
+        ws = await hass_ws_client(hass)
 
-        def add_listener(cb):
-            listeners.append(cb)
-            return lambda: listeners.remove(cb)
+        await ws.send_json({"id": 1, "type": "kubernetes/subscribe_updates"})
+        assert (await ws.receive_json())["success"] is True
 
-        coordinator.async_add_listener = MagicMock(side_effect=add_listener)
-        return coordinator
+        async_dispatcher_send(hass, SIGNAL_COORDINATOR_UPDATED)
+        event = await ws.receive_json()
+        assert event["id"] == 1
+        assert event["event"] == {"event": "updated"}
 
-    def test_subscribe_sends_result_and_registers_listener(self, mock_hass):
-        """Test that subscribing acks and hooks the coordinator."""
-        listeners = []
-        coordinator = self._make_listening_coordinator(listeners)
-        _load_entries(mock_hass, _make_entry("entry1", coordinator))
-        connection = self._make_connection()
-        msg = {"id": 42, "type": "kubernetes/subscribe_updates"}
+        await ws.send_json({"id": 2, "type": "unsubscribe_events", "subscription": 1})
+        assert (await ws.receive_json())["success"] is True
 
-        websocket_subscribe_updates(mock_hass, connection, msg)
-
-        connection.send_result.assert_called_once_with(42)
-        assert 42 in connection.subscriptions
-        assert len(listeners) == 1
-
-    def test_coordinator_update_pushes_event(self, mock_hass):
-        """Test that a coordinator update pushes an 'updated' event."""
-        listeners = []
-        coordinator = self._make_listening_coordinator(listeners)
-        _load_entries(mock_hass, _make_entry("entry1", coordinator))
-        connection = self._make_connection()
-        msg = {"id": 42, "type": "kubernetes/subscribe_updates"}
-
-        websocket_subscribe_updates(mock_hass, connection, msg)
-        listeners[0]()
-
-        connection.send_message.assert_called_once()
-        sent = connection.send_message.call_args[0][0]
-        assert sent["id"] == 42
-        assert sent["event"] == {"event": "updated"}
-
-    def test_unsubscribe_removes_all_listeners(self, mock_hass):
-        """Test that the stored unsubscribe detaches every coordinator."""
-        listeners = []
-        coordinator_a = self._make_listening_coordinator(listeners)
-        coordinator_b = self._make_listening_coordinator(listeners)
-        _load_entries(
-            mock_hass,
-            _make_entry("entry1", coordinator_a),
-            _make_entry("entry2", coordinator_b),
-        )
-        connection = self._make_connection()
-        msg = {"id": 7, "type": "kubernetes/subscribe_updates"}
-
-        websocket_subscribe_updates(mock_hass, connection, msg)
-        assert len(listeners) == 2
-
-        connection.subscriptions[7]()
-        assert listeners == []
-
-    def test_subscribe_with_no_entries(self, mock_hass):
-        """Test subscribing when no config entries exist."""
-        _load_entries(mock_hass)
-        connection = self._make_connection()
-        msg = {"id": 1, "type": "kubernetes/subscribe_updates"}
-
-        websocket_subscribe_updates(mock_hass, connection, msg)
-
-        connection.send_result.assert_called_once_with(1)
-        connection.send_message.assert_not_called()
+        async_dispatcher_send(hass, SIGNAL_COORDINATOR_UPDATED)
+        await hass.async_block_till_done()
+        # Any further message would be a leaked push: ping must be answered next.
+        await ws.send_json({"id": 3, "type": "ping"})
+        assert (await ws.receive_json())["type"] == "pong"
 
 
 class TestWebsocketSuspendCronJobEndToEnd:
