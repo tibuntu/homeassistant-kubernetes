@@ -1724,7 +1724,7 @@ async def test_trigger_cronjob_api_exception(mock_client):
             "success": False,
             "cronjob_name": "nonexistent-job",
             "namespace": "default",
-            "error": "Failed to get CronJob 'nonexistent-job' via aiohttp: HTTP 404",
+            "error": "Failed to get CronJob 'nonexistent-job': HTTP 404",
         }
     )
 
@@ -1745,7 +1745,7 @@ async def test_trigger_cronjob_general_exception(mock_client):
             "success": False,
             "cronjob_name": "backup-job",
             "namespace": "default",
-            "error": "Failed to trigger CronJob 'backup-job' via aiohttp: Connection error",
+            "error": "Failed to trigger CronJob 'backup-job': Connection error",
         }
     )
 
@@ -1988,7 +1988,7 @@ class TestKubernetesClientCronJobOperations:
                 "success": False,
                 "cronjob_name": "test-cronjob",
                 "namespace": "default",
-                "error": "Failed to suspend CronJob 'test-cronjob' via aiohttp: HTTP 404",
+                "error": "Failed to suspend CronJob 'test-cronjob': HTTP 404",
             }
         )
 
@@ -2008,7 +2008,7 @@ class TestKubernetesClientCronJobOperations:
                 "success": False,
                 "cronjob_name": "test-cronjob",
                 "namespace": "default",
-                "error": "Failed to suspend CronJob 'test-cronjob' via aiohttp: Network error",
+                "error": "Failed to suspend CronJob 'test-cronjob': Network error",
             }
         )
 
@@ -2075,7 +2075,7 @@ class TestKubernetesClientCronJobOperations:
                 "success": False,
                 "cronjob_name": "test-cronjob",
                 "namespace": "default",
-                "error": "Failed to resume CronJob 'test-cronjob' via aiohttp: HTTP 404",
+                "error": "Failed to resume CronJob 'test-cronjob': HTTP 404",
             }
         )
 
@@ -2095,7 +2095,7 @@ class TestKubernetesClientCronJobOperations:
                 "success": False,
                 "cronjob_name": "test-cronjob",
                 "namespace": "default",
-                "error": "Failed to resume CronJob 'test-cronjob' via aiohttp: Network error",
+                "error": "Failed to resume CronJob 'test-cronjob': Network error",
             }
         )
 
@@ -3088,6 +3088,41 @@ class TestFetchResourceList:
         assert result == [{"parsed": True}]
 
 
+class TestPatchCronjobAiohttp:
+    """Real-path tests for _patch_cronjob_aiohttp error text."""
+
+    async def test_patch_non_200_carries_status_and_body(self, mock_client):
+        """A non-200 PATCH reports the HTTP status and the API server's body."""
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(422, text="spec.suspend: invalid value")
+        )
+
+        with patch.object(mock_client, "_session", mock_session):
+            result = await mock_client._patch_cronjob_aiohttp(
+                "test-cron", "default", {"spec": {"suspend": True}}, "suspend"
+            )
+
+        assert result["success"] is False
+        assert result["error"] == (
+            "Failed to suspend CronJob 'test-cron': HTTP 422: "
+            "spec.suspend: invalid value"
+        )
+
+    async def test_patch_exception_message(self, mock_client):
+        """A transport error is reported as a plain message."""
+        mock_session = mock_aiohttp_session(patch=Exception("Network error"))
+
+        with patch.object(mock_client, "_session", mock_session):
+            result = await mock_client._patch_cronjob_aiohttp(
+                "test-cron", "default", {"spec": {"suspend": False}}, "resume"
+            )
+
+        assert result["success"] is False
+        assert result["error"] == (
+            "Failed to resume CronJob 'test-cron': Network error"
+        )
+
+
 class TestTriggerCronjobAiohttp:
     """Test _trigger_cronjob_aiohttp method."""
 
@@ -3128,7 +3163,9 @@ class TestTriggerCronjobAiohttp:
 
     async def test_trigger_cronjob_get_fails(self, mock_client):
         """Test _trigger_cronjob_aiohttp when GET cronjob returns non-200."""
-        mock_session = mock_aiohttp_session(get=404)
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(404, text='{"message": "cronjobs not found"}')
+        )
 
         with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._trigger_cronjob_aiohttp(
@@ -3136,7 +3173,8 @@ class TestTriggerCronjobAiohttp:
             )
 
         assert result["success"] is False
-        assert "404" in result["error"]
+        assert "HTTP 404" in result["error"]
+        assert "cronjobs not found" in result["error"]
 
     async def test_trigger_cronjob_no_job_template(self, mock_client):
         """Test _trigger_cronjob_aiohttp when cronjob has no job template."""
@@ -3162,14 +3200,15 @@ class TestTriggerCronjobAiohttp:
 
         mock_session = mock_aiohttp_session(
             get=_mock_response(200, json_data=cronjob_data),
-            post=409,  # Conflict
+            post=_mock_response(409, text="jobs already exist"),  # Conflict
         )
 
         with patch.object(mock_client, "_session", mock_session):
             result = await mock_client._trigger_cronjob_aiohttp("test-cron", "default")
 
         assert result["success"] is False
-        assert "409" in result["error"]
+        assert "HTTP 409" in result["error"]
+        assert "jobs already exist" in result["error"]
 
     async def test_trigger_cronjob_exception(self, mock_client):
         """Test _trigger_cronjob_aiohttp handles exceptions."""
@@ -4530,6 +4569,22 @@ class TestScaleDeploymentExtended:
         assert result is True
         mock_session.patch.assert_called_once()
 
+    async def test_scale_deployment_logs_one_info_record(self, mock_client, caplog):
+        """A successful scale logs exactly one INFO line (from _scale_workload)."""
+        caplog.set_level(logging.INFO)
+        mock_session = mock_aiohttp_session(patch=200)
+
+        with patch.object(mock_client, "_session", mock_session):
+            assert await mock_client.scale_deployment("test-deploy", 4, "default")
+
+        infos = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.INFO and r.name.endswith("kubernetes_client")
+        ]
+        assert len(infos) == 1
+        assert "Successfully scaled" in infos[0].getMessage()
+
     async def test_scale_workload_aiohttp_builds_scale_url(self, mock_client):
         """_scale_workload_aiohttp PATCHes the /scale subresource of the given type."""
         mock_session = mock_aiohttp_session(patch=200)
@@ -5856,7 +5911,7 @@ class TestSuspendCronjobAiohttp:
     """Tests for suspend_cronjob (aiohttp path) method."""
 
     async def test_successful_suspend(self, mock_client):
-        """Test successful CronJob suspension via aiohttp."""
+        """Test successful CronJob suspension."""
         mock_session = mock_aiohttp_session(patch=200)
 
         with patch.object(mock_client, "_session", mock_session):
@@ -5868,13 +5923,16 @@ class TestSuspendCronjobAiohttp:
 
     async def test_non_200_response(self, mock_client):
         """Test suspend_cronjob (aiohttp path) with non-200 response."""
-        mock_session = mock_aiohttp_session(patch=404)
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(404, text="cronjobs.batch not found")
+        )
 
         with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.suspend_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
-        assert "404" in result["error"]
+        assert "HTTP 404" in result["error"]
+        assert "cronjobs.batch not found" in result["error"]
         assert result["cronjob_name"] == "test-cronjob"
 
     async def test_exception(self, mock_client):
@@ -5893,7 +5951,7 @@ class TestResumeCronjobAiohttp:
     """Tests for resume_cronjob (aiohttp path) method."""
 
     async def test_successful_resume(self, mock_client):
-        """Test successful CronJob resume via aiohttp."""
+        """Test successful CronJob resume."""
         mock_session = mock_aiohttp_session(patch=200)
 
         with patch.object(mock_client, "_session", mock_session):
@@ -5905,13 +5963,16 @@ class TestResumeCronjobAiohttp:
 
     async def test_non_200_response(self, mock_client):
         """Test resume_cronjob (aiohttp path) with non-200 response."""
-        mock_session = mock_aiohttp_session(patch=403)
+        mock_session = mock_aiohttp_session(
+            patch=_mock_response(403, text="cronjobs is forbidden")
+        )
 
         with patch.object(mock_client, "_session", mock_session):
             result = await mock_client.resume_cronjob("test-cronjob", "default")
 
         assert result["success"] is False
-        assert "403" in result["error"]
+        assert "HTTP 403" in result["error"]
+        assert "cronjobs is forbidden" in result["error"]
         assert result["cronjob_name"] == "test-cronjob"
 
     async def test_exception(self, mock_client):
@@ -6961,7 +7022,7 @@ class TestNodeCordon:
     """Tests for cordon_node / uncordon_node."""
 
     async def test_cordon_node_aiohttp_success(self, mock_client):
-        """Test cordon_node patches spec.unschedulable=true via aiohttp."""
+        """Test cordon_node patches spec.unschedulable=true."""
         mock_session = mock_aiohttp_session(
             patch=_mock_response(200, text="error body")
         )
@@ -6974,7 +7035,7 @@ class TestNodeCordon:
         assert call.kwargs["json"] == {"spec": {"unschedulable": True}}
 
     async def test_uncordon_node_aiohttp_success(self, mock_client):
-        """Test uncordon_node patches spec.unschedulable=false via aiohttp."""
+        """Test uncordon_node patches spec.unschedulable=false."""
         mock_session = mock_aiohttp_session(
             patch=_mock_response(200, text="error body")
         )
