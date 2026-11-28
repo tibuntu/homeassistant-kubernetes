@@ -31,6 +31,17 @@ scale_workload:
       name: Namespace
       description: The namespace containing the workload(s) (optional, defaults to configured namespace).
       required: false
+    workload_type:
+      name: Workload Type
+      description: Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name).
+      required: false
+      selector:
+        select:
+          options:
+            - Deployment
+            - StatefulSet
+            - DaemonSet
+            - CronJob
     entry_id:
       name: Config Entry ID
       description: Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first).
@@ -72,6 +83,17 @@ start_workload:
       name: Namespace
       description: The namespace containing the workload(s) (optional, defaults to configured namespace).
       required: false
+    workload_type:
+      name: Workload Type
+      description: Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name).
+      required: false
+      selector:
+        select:
+          options:
+            - Deployment
+            - StatefulSet
+            - DaemonSet
+            - CronJob
     entry_id:
       name: Config Entry ID
       description: Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first).
@@ -104,6 +126,17 @@ stop_workload:
       name: Namespace
       description: The namespace containing the workload(s) (optional, defaults to configured namespace).
       required: false
+    workload_type:
+      name: Workload Type
+      description: Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name).
+      required: false
+      selector:
+        select:
+          options:
+            - Deployment
+            - StatefulSet
+            - DaemonSet
+            - CronJob
     entry_id:
       name: Config Entry ID
       description: Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first).
@@ -136,6 +169,17 @@ restart_workload:
       name: Namespace
       description: The namespace containing the workload(s) (optional, defaults to configured namespace).
       required: false
+    workload_type:
+      name: Workload Type
+      description: Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name).
+      required: false
+      selector:
+        select:
+          options:
+            - Deployment
+            - StatefulSet
+            - DaemonSet
+            - CronJob
     entry_id:
       name: Config Entry ID
       description: Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first).

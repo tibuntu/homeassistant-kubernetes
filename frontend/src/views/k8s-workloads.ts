@@ -108,6 +108,7 @@ const REPLICA_KIND_META: Record<
     emptyLabel: string;
     readyField: "available_replicas" | "ready_replicas";
     actionPrefix: string;
+    workloadType: string;
   }
 > = {
   deployment: {
@@ -117,6 +118,7 @@ const REPLICA_KIND_META: Record<
     emptyLabel: "deployments",
     readyField: "available_replicas",
     actionPrefix: "deploy_",
+    workloadType: "Deployment",
   },
   statefulset: {
     category: "statefulsets",
@@ -125,6 +127,7 @@ const REPLICA_KIND_META: Record<
     emptyLabel: "statefulsets",
     readyField: "ready_replicas",
     actionPrefix: "sts_",
+    workloadType: "StatefulSet",
   },
 };
 
@@ -178,6 +181,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     entry_id: string;
     workload_name: string;
     namespace: string;
+    workload_type: string;
     current: number;
     /** Set when an HPA manages the workload — only 0 sticks then. */
     hpa: string | null;
@@ -753,11 +757,11 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                   role="button"
                   tabindex="0"
                   title="Click to scale"
-                  @click=${() => this._openScaleDialog(entryId, item)}
+                  @click=${() => this._openScaleDialog(entryId, item, meta.workloadType)}
                   @keydown=${(e: KeyboardEvent) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      this._openScaleDialog(entryId, item);
+                      this._openScaleDialog(entryId, item, meta.workloadType);
                     }
                   }}
                 >
@@ -806,6 +810,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                                   {
                                     workload_name: item.name,
                                     namespace: item.namespace,
+                                    workload_type: meta.workloadType,
                                     entry_id: entryId,
                                   },
                                   actionKey,
@@ -825,6 +830,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                                   {
                                     workload_name: item.name,
                                     namespace: item.namespace,
+                                    workload_type: meta.workloadType,
                                     entry_id: entryId,
                                   },
                                   actionKey,
@@ -844,6 +850,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                           {
                             workload_name: item.name,
                             namespace: item.namespace,
+                            workload_type: meta.workloadType,
                             entry_id: entryId,
                           },
                           actionKey,
@@ -933,6 +940,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                           {
                             workload_name: ds.name,
                             namespace: ds.namespace,
+                            workload_type: "DaemonSet",
                             entry_id: entryId,
                           },
                           actionKey,
@@ -1048,6 +1056,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
                           {
                             workload_name: cj.name,
                             namespace: cj.namespace,
+                            workload_type: "CronJob",
                             entry_id: entryId,
                           },
                           actionKey,
@@ -1162,11 +1171,16 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     `;
   }
 
-  private _openScaleDialog(entryId: string, item: ReplicaWorkloadData): void {
+  private _openScaleDialog(
+    entryId: string,
+    item: ReplicaWorkloadData,
+    workloadType: string,
+  ): void {
     this._scaleTarget = {
       entry_id: entryId,
       workload_name: item.name,
       namespace: item.namespace,
+      workload_type: workloadType,
       current: item.replicas,
       hpa: item.hpa_managed ? (item.hpa_name ?? null) : null,
     };
@@ -1184,6 +1198,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
       await this.hass.callService("kubernetes", "scale_workload", {
         workload_name: this._scaleTarget.workload_name,
         namespace: this._scaleTarget.namespace,
+        workload_type: this._scaleTarget.workload_type,
         entry_id: this._scaleTarget.entry_id,
         replicas: this._scaleValue,
       });

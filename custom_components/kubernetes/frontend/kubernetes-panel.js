@@ -2376,7 +2376,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         <a class="url-link" href=${e} target="_blank" rel="noopener noreferrer"
           >${e}</a
         >
-      `):`—`}_renderTlsBadge(e){return this._hasTls(e)?S`<span class="badge badge-tls">TLS</span>`:S`<span class="badge badge-plain">HTTP</span>`}};V([M()],Z.prototype,`_services`,void 0),V([M()],Z.prototype,`_httproutes`,void 0),V([M()],Z.prototype,`_certificates`,void 0),V([M()],Z.prototype,`_ingressError`,void 0),V([M()],Z.prototype,`_servicesError`,void 0),V([M()],Z.prototype,`_httprouteError`,void 0),V([M()],Z.prototype,`_certificateError`,void 0),V([M()],Z.prototype,`_searchQuery`,void 0),V([M()],Z.prototype,`_typeFilter`,void 0),Z=V([A(`k8s-network`)],Z);var Bt={Complete:`complete`,Failed:`failed`,Retrying:`degraded`,Running:`running`,Suspended:`suspended`,Pending:`pending`},Vt={healthy:{badgeClass:`badge-healthy`,label:`Healthy`},degraded:{badgeClass:`badge-degraded`,label:`Degraded`},stopped:{badgeClass:`badge-stopped`,label:`Stopped`}},Ht={deployment:{category:`deployments`,icon:`mdi:rocket-launch`,label:`Deployments`,emptyLabel:`deployments`,readyField:`available_replicas`,actionPrefix:`deploy_`},statefulset:{category:`statefulsets`,icon:`mdi:database`,label:`StatefulSets`,emptyLabel:`statefulsets`,readyField:`ready_replicas`,actionPrefix:`sts_`}},Ut=[`all`,`deployments`,`statefulsets`,`daemonsets`,`cronjobs`,`jobs`],Wt=[`all`,`healthy`,`degraded`,`stopped`],Q=class extends H{constructor(...e){super(...e),this._namespaceFilter=`all`,this._categoryFilter=`all`,this._statusFilter=`all`,this._searchQuery=``,this.tab=`workloads`,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._jobDeleteConfirm=null,this._deletingJob=!1,this._collapsedCategories=/* @__PURE__ */ new Set,this._scaleTarget=null,this._scaleValue=0,this._scaling=!1,this.loadErrorFallback=`Failed to load workloads data`}readQuery(){this._namespaceFilter=z(`namespace`)||`all`,this._categoryFilter=B(z(`category`),Ut,`all`),this._statusFilter=B(z(`status`),Wt,`all`),this._searchQuery=z(`search`)??``}willUpdate(e){if(this._data&&this._namespaceFilter!==`all`){let e=this._data.clusters.flatMap(e=>this._getNamespaces(e));e.length&&!e.includes(this._namespaceFilter)&&(this._namespaceFilter=`all`)}(e.has(`_namespaceFilter`)||e.has(`_categoryFilter`)||e.has(`_statusFilter`)||e.has(`_searchQuery`))&&this._syncQuery({search:this._searchQuery,namespace:this._namespaceFilter===`all`?``:this._namespaceFilter,category:this._categoryFilter===`all`?``:this._categoryFilter,status:this._statusFilter===`all`?``:this._statusFilter})}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/workloads/list`});this._data=e}_getNamespaces(e){let t=/* @__PURE__ */ new Set;for(let n of e.deployments)t.add(n.namespace);for(let n of e.statefulsets)t.add(n.namespace);for(let n of e.daemonsets)t.add(n.namespace);for(let n of e.cronjobs)t.add(n.namespace);for(let n of e.jobs)t.add(n.namespace);return[...t].sort()}_toggleCategory(e){this._collapsedCategories=L(this._collapsedCategories,e)}_handleCategoryKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._toggleCategory(t))}_matchesNamespace(e){return this._namespaceFilter===`all`||e===this._namespaceFilter}_matchesSearch(e){return!this._searchQuery||e.toLowerCase().includes(this._searchQuery.toLowerCase())}_formatAgo(e){let t=I(e);return t===`N/A`?t:`${t} ago`}async _runAction(e,t){let n=new Set(this._actionInProgress);n.add(e),this._actionInProgress=n;try{await t()}catch(e){let t=R(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-workloads] Action failed:`,e)}finally{let t=new Set(this._actionInProgress);t.delete(e),this._actionInProgress=t}}_callService(e,t,n){return this._runAction(n,async()=>{await this.hass.callService(`kubernetes`,e,t),this._scheduleReload(2e3)})}_setCronJobSuspend(e,t,n,r){return this._runAction(r,async()=>{await this.hass.callWS({type:`kubernetes/cronjobs/suspend`,entry_id:e,cronjob_name:t.name,namespace:t.namespace,suspend:n}),await this._loadData()})}static{this.styles=[ht,U,W,G,ot,o`
+      `):`—`}_renderTlsBadge(e){return this._hasTls(e)?S`<span class="badge badge-tls">TLS</span>`:S`<span class="badge badge-plain">HTTP</span>`}};V([M()],Z.prototype,`_services`,void 0),V([M()],Z.prototype,`_httproutes`,void 0),V([M()],Z.prototype,`_certificates`,void 0),V([M()],Z.prototype,`_ingressError`,void 0),V([M()],Z.prototype,`_servicesError`,void 0),V([M()],Z.prototype,`_httprouteError`,void 0),V([M()],Z.prototype,`_certificateError`,void 0),V([M()],Z.prototype,`_searchQuery`,void 0),V([M()],Z.prototype,`_typeFilter`,void 0),Z=V([A(`k8s-network`)],Z);var Bt={Complete:`complete`,Failed:`failed`,Retrying:`degraded`,Running:`running`,Suspended:`suspended`,Pending:`pending`},Vt={healthy:{badgeClass:`badge-healthy`,label:`Healthy`},degraded:{badgeClass:`badge-degraded`,label:`Degraded`},stopped:{badgeClass:`badge-stopped`,label:`Stopped`}},Ht={deployment:{category:`deployments`,icon:`mdi:rocket-launch`,label:`Deployments`,emptyLabel:`deployments`,readyField:`available_replicas`,actionPrefix:`deploy_`,workloadType:`Deployment`},statefulset:{category:`statefulsets`,icon:`mdi:database`,label:`StatefulSets`,emptyLabel:`statefulsets`,readyField:`ready_replicas`,actionPrefix:`sts_`,workloadType:`StatefulSet`}},Ut=[`all`,`deployments`,`statefulsets`,`daemonsets`,`cronjobs`,`jobs`],Wt=[`all`,`healthy`,`degraded`,`stopped`],Q=class extends H{constructor(...e){super(...e),this._namespaceFilter=`all`,this._categoryFilter=`all`,this._statusFilter=`all`,this._searchQuery=``,this.tab=`workloads`,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._jobDeleteConfirm=null,this._deletingJob=!1,this._collapsedCategories=/* @__PURE__ */ new Set,this._scaleTarget=null,this._scaleValue=0,this._scaling=!1,this.loadErrorFallback=`Failed to load workloads data`}readQuery(){this._namespaceFilter=z(`namespace`)||`all`,this._categoryFilter=B(z(`category`),Ut,`all`),this._statusFilter=B(z(`status`),Wt,`all`),this._searchQuery=z(`search`)??``}willUpdate(e){if(this._data&&this._namespaceFilter!==`all`){let e=this._data.clusters.flatMap(e=>this._getNamespaces(e));e.length&&!e.includes(this._namespaceFilter)&&(this._namespaceFilter=`all`)}(e.has(`_namespaceFilter`)||e.has(`_categoryFilter`)||e.has(`_statusFilter`)||e.has(`_searchQuery`))&&this._syncQuery({search:this._searchQuery,namespace:this._namespaceFilter===`all`?``:this._namespaceFilter,category:this._categoryFilter===`all`?``:this._categoryFilter,status:this._statusFilter===`all`?``:this._statusFilter})}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/workloads/list`});this._data=e}_getNamespaces(e){let t=/* @__PURE__ */ new Set;for(let n of e.deployments)t.add(n.namespace);for(let n of e.statefulsets)t.add(n.namespace);for(let n of e.daemonsets)t.add(n.namespace);for(let n of e.cronjobs)t.add(n.namespace);for(let n of e.jobs)t.add(n.namespace);return[...t].sort()}_toggleCategory(e){this._collapsedCategories=L(this._collapsedCategories,e)}_handleCategoryKeydown(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._toggleCategory(t))}_matchesNamespace(e){return this._namespaceFilter===`all`||e===this._namespaceFilter}_matchesSearch(e){return!this._searchQuery||e.toLowerCase().includes(this._searchQuery.toLowerCase())}_formatAgo(e){let t=I(e);return t===`N/A`?t:`${t} ago`}async _runAction(e,t){let n=new Set(this._actionInProgress);n.add(e),this._actionInProgress=n;try{await t()}catch(e){let t=R(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-workloads] Action failed:`,e)}finally{let t=new Set(this._actionInProgress);t.delete(e),this._actionInProgress=t}}_callService(e,t,n){return this._runAction(n,async()=>{await this.hass.callService(`kubernetes`,e,t),this._scheduleReload(2e3)})}_setCronJobSuspend(e,t,n,r){return this._runAction(r,async()=>{await this.hass.callWS({type:`kubernetes/cronjobs/suspend`,entry_id:e,cronjob_name:t.name,namespace:t.namespace,suspend:n}),await this._loadData()})}static{this.styles=[ht,U,W,G,ot,o`
       .cluster-section {
         margin-bottom: 24px;
       }
@@ -2677,8 +2677,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                   role="button"
                   tabindex="0"
                   title="Click to scale"
-                  @click=${()=>this._openScaleDialog(n,t)}
-                  @keydown=${e=>{(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._openScaleDialog(n,t))}}
+                  @click=${()=>this._openScaleDialog(n,t,i.workloadType)}
+                  @keydown=${e=>{(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._openScaleDialog(n,t,i.workloadType))}}
                 >
                   ${c}/${t.replicas} ready
                 </span>`:S`<span class="replica-info">
@@ -2705,7 +2705,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                               class="action-btn start"
                               title="Start (scale to 1)"
                               ?disabled=${s}
-                              @click=${()=>this._callService(`start_workload`,{workload_name:t.name,namespace:t.namespace,entry_id:n},o)}
+                              @click=${()=>this._callService(`start_workload`,{workload_name:t.name,namespace:t.namespace,workload_type:i.workloadType,entry_id:n},o)}
                             >
                               <ha-icon icon="mdi:play"></ha-icon>
                             </button>
@@ -2714,7 +2714,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                               class="action-btn stop"
                               title="Stop (scale to 0)"
                               ?disabled=${s}
-                              @click=${()=>this._callService(`stop_workload`,{workload_name:t.name,namespace:t.namespace,entry_id:n},o)}
+                              @click=${()=>this._callService(`stop_workload`,{workload_name:t.name,namespace:t.namespace,workload_type:i.workloadType,entry_id:n},o)}
                             >
                               <ha-icon icon="mdi:stop"></ha-icon>
                             </button>
@@ -2723,7 +2723,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                       class="action-btn restart"
                       title="Rolling restart"
                       ?disabled=${s}
-                      @click=${()=>this._callService(`restart_workload`,{workload_name:t.name,namespace:t.namespace,entry_id:n},o)}
+                      @click=${()=>this._callService(`restart_workload`,{workload_name:t.name,namespace:t.namespace,workload_type:i.workloadType,entry_id:n},o)}
                     >
                       <ha-icon icon="mdi:restart"></ha-icon>
                     </button>
@@ -2771,7 +2771,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                       class="action-btn restart"
                       title="Rolling restart"
                       ?disabled=${a}
-                      @click=${()=>this._callService(`restart_workload`,{workload_name:e.name,namespace:e.namespace,entry_id:t},i)}
+                      @click=${()=>this._callService(`restart_workload`,{workload_name:e.name,namespace:e.namespace,workload_type:`DaemonSet`,entry_id:t},i)}
                     >
                       <ha-icon icon="mdi:restart"></ha-icon>
                     </button>
@@ -2830,7 +2830,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                       class="action-btn start"
                       title="Trigger now"
                       ?disabled=${r}
-                      @click=${()=>this._callService(`start_workload`,{workload_name:e.name,namespace:e.namespace,entry_id:t},n)}
+                      @click=${()=>this._callService(`start_workload`,{workload_name:e.name,namespace:e.namespace,workload_type:`CronJob`,entry_id:t},n)}
                     >
                       <ha-icon icon="mdi:play"></ha-icon>
                     </button>
@@ -2886,7 +2886,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </ha-card>
-    `}_openScaleDialog(e,t){this._scaleTarget={entry_id:e,workload_name:t.name,namespace:t.namespace,current:t.replicas,hpa:t.hpa_managed?t.hpa_name??null:null},this._scaleValue=t.replicas}_cancelScale(){this._scaleTarget=null}async _confirmScale(){if(this._scaleTarget){this._scaling=!0;try{await this.hass.callService(`kubernetes`,`scale_workload`,{workload_name:this._scaleTarget.workload_name,namespace:this._scaleTarget.namespace,entry_id:this._scaleTarget.entry_id,replicas:this._scaleValue}),this._scaleTarget=null,this._scheduleReload(2e3)}catch(e){this._actionError=R(e,`Failed to scale workload`),this._scaleTarget=null}finally{this._scaling=!1}}}_renderScaleDialog(){let e=this._scaleTarget;return S`
+    `}_openScaleDialog(e,t,n){this._scaleTarget={entry_id:e,workload_name:t.name,namespace:t.namespace,workload_type:n,current:t.replicas,hpa:t.hpa_managed?t.hpa_name??null:null},this._scaleValue=t.replicas}_cancelScale(){this._scaleTarget=null}async _confirmScale(){if(this._scaleTarget){this._scaling=!0;try{await this.hass.callService(`kubernetes`,`scale_workload`,{workload_name:this._scaleTarget.workload_name,namespace:this._scaleTarget.namespace,workload_type:this._scaleTarget.workload_type,entry_id:this._scaleTarget.entry_id,replicas:this._scaleValue}),this._scaleTarget=null,this._scheduleReload(2e3)}catch(e){this._actionError=R(e,`Failed to scale workload`),this._scaleTarget=null}finally{this._scaling=!1}}}_renderScaleDialog(){let e=this._scaleTarget;return S`
       <div
         class="confirm-overlay"
         tabindex="-1"
