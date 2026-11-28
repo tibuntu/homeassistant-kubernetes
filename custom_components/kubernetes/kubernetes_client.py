@@ -650,52 +650,14 @@ class KubernetesClient:
             raise
 
     async def _get_pods_aiohttp(self) -> list[dict[str, Any]]:
-        """Get pods using aiohttp for configured namespaces."""
-        all_pods = []
-        headers = {
-            "Authorization": f"Bearer {self.api_token}",
-            "Accept": "application/json",
-        }
-
-        for namespace in self.namespaces:
-            async with self._session.get(
-                f"https://{self.host}:{self.port}/api/v1/namespaces/{namespace}/pods",
-                headers=headers,
-                ssl=await self._get_ssl_param(),
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.status != 200:
-                    raise KubernetesApiError(
-                        f"pods request failed for namespace {namespace} "
-                        f"with status {response.status}"
-                    )
-                data = await response.json()
-                all_pods.extend(self._parse_pods_data(data.get("items", [])))
-        return all_pods
+        """Get pods for the configured namespaces."""
+        return self._parse_pods_data(await self._fetch_resource_items("api/v1", "pods"))
 
     async def _get_pods_all_namespaces_aiohttp(self) -> list[dict[str, Any]]:
-        """Get pods using aiohttp for all namespaces."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_token}",
-                "Accept": "application/json",
-            }
-
-            async with self._session.get(
-                f"https://{self.host}:{self.port}/api/v1/pods",
-                headers=headers,
-                ssl=await self._get_ssl_param(),
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as response:
-                if response.status != 200:
-                    raise KubernetesApiError(
-                        f"pods request failed with status {response.status}"
-                    )
-                data = await response.json()
-                return self._parse_pods_data(data.get("items", []))
-        except Exception as ex:
-            self._log_error("aiohttp get all pods", ex, level=logging.DEBUG)
-            raise
+        """Get pods for all namespaces."""
+        return self._parse_pods_data(
+            await self._fetch_resource_items("api/v1", "pods", cluster_scoped=True)
+        )
 
     @staticmethod
     def _first_container_problem(
@@ -1384,14 +1346,15 @@ class KubernetesClient:
             "Accept": "application/json",
         }
         timeout = aiohttp.ClientTimeout(total=10)
-        pages: list[dict[str, Any]] = []
+        # Resolved before the gather so each GET is issued in target order.
+        ssl_param = await self._get_ssl_param()
 
-        for namespace, url in targets:
+        async def fetch(namespace: str | None, url: str) -> dict[str, Any]:
             async with self._session.get(
                 url,
                 headers=headers,
                 params=params,
-                ssl=await self._get_ssl_param(),
+                ssl=ssl_param,
                 timeout=timeout,
             ) as response:
                 if response.status != 200:
@@ -1403,8 +1366,11 @@ class KubernetesClient:
                         f"with status {response.status}",
                         response.status,
                     )
-                pages.append(await response.json())
-        return pages
+                return await response.json()
+
+        # ponytail: unbounded fan-out, add a semaphore if someone monitors
+        # hundreds of namespaces.
+        return list(await asyncio.gather(*(fetch(ns, url) for ns, url in targets)))
 
     async def _fetch_resource_items(
         self,

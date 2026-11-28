@@ -1,5 +1,6 @@
 """Tests for the Kubernetes integration client."""
 
+import asyncio
 import ipaddress
 import logging
 import ssl
@@ -4443,8 +4444,9 @@ class TestFetchResourceCountExtended:
         ):
             await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
-        # The loop stops at the broken namespace; prod is never requested.
-        assert mock_session.get.call_count == 2
+        # All namespaces are requested concurrently; the broken one still fails
+        # the whole count.
+        assert mock_session.get.call_count == 3
 
     async def test_non_200_all_namespaces(self, mock_client):
         """_fetch_resource_count raises on non-200 in all-namespaces mode."""
@@ -5183,6 +5185,91 @@ class TestGetPodsExtended:
                 KubernetesApiError, match="pods request failed with status 502"
             ):
                 await mock_client._get_pods_all_namespaces_aiohttp()
+
+
+class TestConcurrentNamespaceFetch:
+    """Per-namespace list requests run concurrently and keep target order."""
+
+    async def test_per_namespace_requests_run_concurrently(self, mock_client):
+        """All three namespace GETs are in flight at once (serial code peaks at 1)."""
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["a", "b", "c"]
+        state = {"now": 0, "peak": 0}
+
+        class _Response:
+            status = 200
+
+            async def __aenter__(self):
+                await asyncio.sleep(0)
+                state["now"] += 1
+                state["peak"] = max(state["peak"], state["now"])
+                await asyncio.sleep(0)
+                return self
+
+            async def __aexit__(self, *exc):
+                state["now"] -= 1
+
+            async def json(self):
+                return {"items": []}
+
+        session = MagicMock()
+        session.get = MagicMock(side_effect=lambda *a, **k: _Response())
+
+        with patch.object(mock_client, "_session", session):
+            await mock_client._fetch_resource_items("api/v1", "pods")
+
+        assert session.get.call_count == 3
+        assert state["peak"] == 3
+
+    async def test_one_forbidden_namespace_raises_api_error_with_status(
+        self, mock_client
+    ):
+        """A 403 in the middle namespace fails the call with its status."""
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["a", "b", "c"]
+        session = mock_aiohttp_session(
+            get=[
+                _mock_response(200, json_data={"items": []}),
+                _mock_response(403),
+                _mock_response(200, json_data={"items": []}),
+            ]
+        )
+
+        with patch.object(mock_client, "_session", session):
+            with pytest.raises(KubernetesApiError, match="for namespace b") as exc:
+                await mock_client._fetch_resource_items("api/v1", "pods")
+
+        assert exc.value.status == 403
+
+    async def test_pages_keep_namespace_order(self, mock_client):
+        """Items come back in namespace order a, b, c."""
+        mock_client.monitor_all_namespaces = False
+        mock_client.namespaces = ["a", "b", "c"]
+        session = mock_aiohttp_session(
+            get=[
+                _mock_response(200, json_data={"items": [{"n": ns}]})
+                for ns in ("a", "b", "c")
+            ]
+        )
+
+        with patch.object(mock_client, "_session", session):
+            items = await mock_client._fetch_resource_items("api/v1", "pods")
+
+        assert [i["n"] for i in items] == ["a", "b", "c"]
+
+    @pytest.mark.parametrize("all_namespaces", [False, True])
+    async def test_get_pods_error_carries_status(self, mock_client, all_namespaces):
+        """A 500 on the pods list raises KubernetesApiError with status 500."""
+        mock_client.monitor_all_namespaces = all_namespaces
+        mock_client.namespaces = ["default"]
+        mock_client._test_connection = AsyncMock(return_value=True)
+        session = mock_aiohttp_session(get=500)
+
+        with patch.object(mock_client, "_session", session):
+            with pytest.raises(KubernetesApiError) as exc:
+                await mock_client.get_pods()
+
+        assert exc.value.status == 500
 
 
 class TestGetNodesExtended:
