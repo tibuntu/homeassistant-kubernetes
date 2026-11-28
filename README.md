@@ -38,7 +38,7 @@ A Home Assistant integration for monitoring and controlling Kubernetes clusters.
 | Python | 3.13+ |
 | Kubernetes | **1.35 – 1.37** (the three most recent stable releases) |
 
-The integration uses only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `networking.k8s.io/v1`, `autoscaling/v2`, core `v1`) plus, where installed, the Gateway API's `gateway.networking.k8s.io/v1`, so older clusters may work but are not tested. CI runs the full API compatibility suite against all three listed versions on every PR — see [`.github/workflows/k8s-compat.yaml`](.github/workflows/k8s-compat.yaml). The supported range updates automatically when a new Kubernetes stable release is published.
+The core features use only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `networking.k8s.io/v1`, `autoscaling/v2`, `policy/v1`, core `v1`), so older clusters may work but are not tested. Three optional features read APIs outside that set: CPU and memory usage comes from the Metrics API (`metrics.k8s.io/v1beta1`, served by metrics-server), HTTPRoutes need the Gateway API (`gateway.networking.k8s.io/v1`) and Certificates need cert-manager (`cert-manager.io/v1`). CI runs the full API compatibility suite against all three listed versions on every PR that changes the integration, its tests or the chart — see [`.github/workflows/k8s-compat.yaml`](.github/workflows/k8s-compat.yaml). The supported range updates automatically when a new Kubernetes stable release is published.
 
 ## Installation
 
