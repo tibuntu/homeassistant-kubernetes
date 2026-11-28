@@ -585,6 +585,41 @@ test("pod detail renders detail-only with the RBAC hint when events are forbidde
   await expect(dialog.locator(".events-table")).toHaveCount(0);
 });
 
+test("pod logs forbidden error links the RBAC docs", async ({ page }) => {
+  await page.goto(HARNESS);
+  await page.evaluate(() => {
+    window.__k8s.failCodes["kubernetes/pods/logs"] = "forbidden";
+    window.__k8s.fail.add("kubernetes/pods/logs");
+  });
+  await openTab(page, "Pods");
+  await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+
+  const error = page.locator(".logs-dialog .inline-error");
+  await expect(error).toContainText("kubernetes/pods/logs failed");
+  await expect(error.locator("a")).toHaveAttribute("href", /RBAC\.md$/);
+});
+
+test("pod detail notes failed events without the RBAC hint", async ({ page }) => {
+  await page.goto(`${HARNESS}?events_error=events_failed`);
+  await openTab(page, "Pods");
+  await page.locator(".pod-link", { hasText: "db-0" }).click();
+
+  const dialog = page.locator(".detail-dialog");
+  await expect(dialog.locator(".containers-table")).toContainText("postgres:17");
+  await expect(dialog.locator(".inline-error")).toHaveText("Failed to load events.");
+  await expect(dialog.locator("a")).toHaveCount(0);
+  await expect(dialog.locator(".events-table")).toHaveCount(0);
+});
+
+test("switching tabs leaves one live subscription", async ({ page }) => {
+  await page.goto(HARNESS);
+  for (const label of ["Pods", "Workloads", "Nodes", "Overview"]) {
+    await openTab(page, label);
+    await expect(page.locator(".tab[active]")).toHaveText(new RegExp(label));
+  }
+  await expect.poll(() => page.evaluate(() => window.__k8s.subscribers.length)).toBe(1);
+});
+
 test("pod detail failure shows an inline error", async ({ page }) => {
   await page.goto(`${HARNESS}?fail=kubernetes/pods/describe`);
   await openTab(page, "Pods");
