@@ -197,7 +197,10 @@ class TestKubernetesClusterHealthSensor:
         assert sensor.unique_id == "test_entry_id_cluster_health"
         assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
         assert sensor.entity_category == EntityCategory.DIAGNOSTIC
-        assert sensor._attr_has_entity_name is True
+        assert sensor.translation_key == "cluster_health"
+        assert sensor.has_entity_name is True
+        # Starts on: setup only runs after a successful first refresh
+        assert sensor.is_on is True
         # The one deliberately polled entity: HA's 30 s poll is its live probe.
         assert sensor.should_poll is True
 
@@ -237,47 +240,6 @@ class TestKubernetesClusterHealthSensor:
         assert sensor.is_on is False
         mock_client.is_cluster_healthy.assert_called_once()
 
-    async def test_sensor_update_connection_error(self, mock_config_entry, mock_client):
-        """Test sensor update with connection error."""
-        mock_client.is_cluster_healthy.side_effect = ConnectionError(
-            "Connection failed"
-        )
-
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        await sensor.async_update()
-
-        # Should handle connection error gracefully
-        assert sensor.is_on is False
-        mock_client.is_cluster_healthy.assert_called_once()
-
-    def test_sensor_properties(self, mock_config_entry, mock_client):
-        """Test sensor properties."""
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        # Starts on: setup only runs after a successful first refresh
-        assert sensor.is_on is True
-
-        # Test after setting state
-        sensor._attr_is_on = False
-        assert sensor.is_on is False
-
-        sensor._attr_is_on = True
-        assert sensor.is_on is True
-
-    def test_sensor_unique_id_format(self, mock_config_entry, mock_client):
-        """Test sensor unique ID format."""
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        expected_unique_id = f"{mock_config_entry.entry_id}_cluster_health"
-        assert sensor.unique_id == expected_unique_id
-
-    def test_sensor_device_class(self, mock_config_entry, mock_client):
-        """Test sensor device class."""
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
-
     async def test_sensor_multiple_updates(self, mock_config_entry, mock_client):
         """Test multiple sensor updates."""
         # First update - healthy
@@ -294,30 +256,6 @@ class TestKubernetesClusterHealthSensor:
 
         # Verify client was called twice
         assert mock_client.is_cluster_healthy.call_count == 2
-
-    async def test_sensor_update_with_none_client(self, mock_config_entry):
-        """Test sensor update with None client."""
-        sensor = KubernetesClusterHealthSensor(None, mock_config_entry)
-
-        # Should handle None client gracefully
-        await sensor.async_update()
-        assert sensor.is_on is False
-
-    def test_sensor_entity_attributes(self, mock_config_entry, mock_client):
-        """Test sensor entity attributes."""
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        # Test that the sensor has the expected attributes
-        assert hasattr(sensor, "_attr_translation_key")
-        assert hasattr(sensor, "_attr_unique_id")
-        assert hasattr(sensor, "_attr_device_class")
-        assert hasattr(sensor, "_attr_has_entity_name")
-        assert hasattr(sensor, "_attr_is_on")
-
-        assert sensor._attr_translation_key == "cluster_health"
-        assert sensor._attr_unique_id == "test_entry_id_cluster_health"
-        assert sensor._attr_device_class == BinarySensorDeviceClass.CONNECTIVITY
-        assert sensor._attr_has_entity_name is True
 
 
 class TestKubernetesNodeConditionBinarySensor:

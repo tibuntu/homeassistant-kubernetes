@@ -7,7 +7,6 @@ from homeassistant.core import HomeAssistant
 import pytest
 from pytest_homeassistant.common import MockConfigEntry
 
-from custom_components.kubernetes.binary_sensor import KubernetesClusterHealthSensor
 from custom_components.kubernetes.const import (
     ATTR_WORKLOAD_TYPE,
     CONF_DISABLED_RESOURCES,
@@ -85,63 +84,6 @@ class TestShouldPoll:
             mock_coordinator, mock_client, mock_config_entry, *extra_args
         )
         assert sensor.should_poll is False
-
-    def test_cluster_health_sensor_polls(self, mock_config_entry, mock_client):
-        """The cluster health sensor is the one deliberately polled entity."""
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-        assert sensor.should_poll is True
-
-
-class TestKubernetesClusterHealthSensor:
-    """Test Kubernetes cluster health binary sensor."""
-
-    def test_binary_sensor_initialization(
-        self, mock_config_entry, mock_client, mock_coordinator, entity_name
-    ):
-        """Test binary sensor initialization."""
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        assert entity_name(sensor, "binary_sensor") == "Cluster Health"
-        assert sensor.unique_id == "test_entry_id_cluster_health"
-        assert sensor.device_class == "connectivity"
-
-    async def test_binary_sensor_update_healthy(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test binary sensor update when cluster is healthy."""
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        await sensor.async_update()
-
-        assert sensor.is_on is True
-        mock_client.is_cluster_healthy.assert_called_once()
-
-    async def test_binary_sensor_update_unhealthy(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test binary sensor update when cluster is unhealthy."""
-        mock_client.is_cluster_healthy.return_value = False
-
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        await sensor.async_update()
-
-        assert sensor.is_on is False
-        mock_client.is_cluster_healthy.assert_called_once()
-
-    async def test_binary_sensor_update_failure(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test binary sensor update failure."""
-        mock_client.is_cluster_healthy.side_effect = Exception("API Error")
-
-        sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        # Should handle exception gracefully
-        await sensor.async_update()
-
-        # Value should be False on error
-        assert sensor.is_on is False
 
 
 class TestSensorSetup:
@@ -555,18 +497,6 @@ class TestDisabledResourceGating:
             mock_coordinator, mock_client, mock_config_entry
         )
         assert sensor.native_value == 3
-
-
-class TestSensorProperties:
-    """Test sensor properties."""
-
-    def test_binary_sensor_has_entity_name(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test that binary sensors have entity name."""
-        health_sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        assert health_sensor.has_entity_name is True
 
 
 class TestKubernetesNodeSensor:
