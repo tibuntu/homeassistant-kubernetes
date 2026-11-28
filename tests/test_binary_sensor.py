@@ -248,15 +248,15 @@ class TestKubernetesClusterHealthSensor:
         """Test sensor properties."""
         sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
 
-        # Test initial state
-        assert sensor.is_on is None
-
-        # Test after setting state
-        sensor._attr_is_on = True
+        # Starts on: setup only runs after a successful first refresh
         assert sensor.is_on is True
 
+        # Test after setting state
         sensor._attr_is_on = False
         assert sensor.is_on is False
+
+        sensor._attr_is_on = True
+        assert sensor.is_on is True
 
     def test_sensor_unique_id_format(self, mock_config_entry, mock_client):
         """Test sensor unique ID format."""

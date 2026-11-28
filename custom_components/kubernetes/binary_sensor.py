@@ -189,6 +189,10 @@ class KubernetesClusterHealthSensor(KubernetesBaseBinarySensor):
         self._attr_unique_id = f"{config_entry.entry_id}_cluster_health"
         self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        # Setup only reaches this platform after a successful first refresh, so
+        # the cluster was reachable a moment ago; without this the sensor would
+        # read "unknown" until HA's first 30 s poll.
+        self._attr_is_on = True
 
     @property
     def device_info(self) -> DeviceInfo:
