@@ -1,6 +1,6 @@
 # Home Assistant Kubernetes Integration
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![codecov](https://codecov.io/gh/tibuntu/homeassistant-kubernetes/graph/badge.svg)](https://codecov.io/gh/tibuntu/homeassistant-kubernetes)
 [![GitHub Release](https://img.shields.io/github/v/release/tibuntu/homeassistant-kubernetes)](https://github.com/tibuntu/homeassistant-kubernetes/releases/latest)
