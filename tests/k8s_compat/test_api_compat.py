@@ -247,6 +247,11 @@ class TestMetrics:
         metrics = await k8s_client.get_node_metrics()
         assert isinstance(metrics, dict)
 
+    async def test_get_pod_metrics_no_crash(self, k8s_client):
+        """Metrics API may or may not be available — must not raise."""
+        metrics = await k8s_client.get_pod_metrics()
+        assert isinstance(metrics, dict)
+
 
 class TestWatch:
     async def test_watch_stream_replays_existing_pods(self, k8s_client):
@@ -456,8 +461,3 @@ class TestMutations:
             assert job["owner_cronjob"] == "test-cronjob"
         finally:
             assert await k8s_client.delete_job(job_name, "default") is True
-
-    async def test_get_pod_metrics_no_crash(self, k8s_client):
-        """Metrics API may or may not be available — must not raise."""
-        metrics = await k8s_client.get_pod_metrics()
-        assert isinstance(metrics, dict)

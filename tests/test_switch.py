@@ -69,7 +69,7 @@ def cronjob_switch(mock_config_entry, mock_coordinator):
 
 
 # ---------------------------------------------------------------------------
-# Platform setup tests (merged from test_switch_platform.py)
+# Platform setup tests
 # ---------------------------------------------------------------------------
 
 
