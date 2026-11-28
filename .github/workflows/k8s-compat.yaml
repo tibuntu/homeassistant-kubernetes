@@ -23,10 +23,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The latest stable Kubernetes minor version.  Renovate tracks this pin and
-# opens a PR when a new stable release is tagged on kubernetes/kubernetes.
+# The latest stable Kubernetes minor version. Renovate tracks this pin with the
+# custom regex manager in renovate.json (it matches the K8S_LATEST line itself)
+# and opens a PR when a new stable release is tagged on kubernetes/kubernetes.
 # The matrix tests this version plus the two preceding minors.
-# renovate: datasource=github-releases depName=kubernetes/kubernetes versioning=semver
 env:
   K8S_LATEST: "1.37.2"
   # The kind CLI and the node images must come from the same kind release.
