@@ -14,6 +14,8 @@ Never add yourself as a git co-author. Do not include `Co-Authored-By` trailers 
 
 ## Commands
 
+**For coding agents:** the block below lists what CI and human contributors run. Do not run `pytest` and do not install Python packages (`uv sync`, `pip install`, `uv run`) — the tests run in CI. Run locally: `ruff check .` and `ruff format --check .`, the pre-commit hooks (mypy and bandit run there, in pre-commit's own environments), `uv lock` after a dependency change, `actionlint` for workflow changes, the Helm commands, and the frontend toolchain (`npm ci`, typecheck, build, Playwright) — the built bundle is committed, so it has to be built locally.
+
 ```bash
 # Install Python dev dependencies (exact versions from uv.lock, like CI)
 uv sync --extra dev
@@ -205,8 +207,6 @@ The autouse `fail_on_ha_deprecations` fixture in `conftest.py` monitors the `hom
 ### Test directory structure
 
 Pure unit tests (no HA dependency) live in `tests/unit/`. `test_kubernetes_client.py` (the K8s API wrapper in isolation) and `test_metrics_parser.py` live there. All other test files in `tests/` use HA fixtures via `pytest-homeassistant`. `tests/k8s_compat/` contains API compatibility tests that run against a real kind cluster (marked `k8s_compat`); they auto-skip when `K8S_SERVER`/`K8S_TOKEN` env vars are not set, so the regular CI test suite collects but skips them. pytest discovers all directories recursively via `testpaths = ["tests"]`. The frontend panel's browser tests are separate: `frontend/e2e/` (Playwright, see the `frontend/` bullet above), run by the frontend CI workflow rather than pytest.
-- Do not attempt to run tests locally — the CI pipeline handles test execution.
-- Do not install packages locally (no `pip install`). All dependencies are managed by the CI pipeline.
 
 ## Documentation
 
