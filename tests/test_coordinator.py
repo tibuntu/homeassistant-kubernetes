@@ -33,6 +33,7 @@ from custom_components.kubernetes.const import (
 from custom_components.kubernetes.coordinator import (
     KubernetesDataCoordinator,
     _watch_url_namespace,
+    discovery_keys,
     get_hpa_for,
     hpa_attributes,
 )
@@ -5571,6 +5572,27 @@ class TestFetchCertificates:
         data = await coordinator._async_update_data()
 
         assert data["certificates"] == {"default_web-tls": cert}
+
+
+class TestDiscoveryKeys:
+    """Tests for the discovery_keys helper."""
+
+    def test_none_and_empty(self):
+        """No data yields no keys."""
+        assert discovery_keys(None) == frozenset()
+        assert discovery_keys({}) == frozenset()
+
+    def test_collects_bucket_keys(self):
+        """Keys are paired with their bucket; other buckets are ignored."""
+        data = {
+            "nodes": {"n1": {}},
+            "pods": {"ns_p": {}},
+            "jobs": {},
+            "hpas": {"ns_h": {}},
+            "services": {"ns_s": {}},
+            "deployments": None,
+        }
+        assert discovery_keys(data) == {("nodes", "n1"), ("pods", "ns_p")}
 
 
 class TestGetHpaFor:

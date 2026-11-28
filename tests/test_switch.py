@@ -171,6 +171,34 @@ class TestSwitchSetup:
         added_entities = mock_add_entities.call_args[0][0]
         assert len(added_entities) == 0
 
+    async def test_listener_runs_discovery_only_on_new_keys(
+        self, hass: HomeAssistant, mock_config_entry
+    ):
+        """Unchanged resource keys create no task; a new Deployment creates one."""
+        coordinator = MagicMock()
+        coordinator.data = {"deployments": {}, "nodes": {}}
+        coordinator.async_add_listener = MagicMock(return_value=lambda: None)
+        mock_config_entry.runtime_data = KubernetesEntryData(
+            config=mock_config_entry.data, client=MagicMock(), coordinator=coordinator
+        )
+        await async_setup_entry(hass, mock_config_entry, MagicMock())
+        listener = coordinator.async_add_listener.call_args[0][0]
+
+        with (
+            patch(
+                "custom_components.kubernetes.switch._async_discover_and_add_new_entities",
+                new=MagicMock(return_value=None),
+            ),
+            patch.object(hass, "async_create_task") as create_task,
+        ):
+            listener()
+            listener()
+            create_task.assert_not_called()
+            coordinator.data["deployments"]["default_new"] = {"name": "new"}
+            listener()
+            listener()
+            assert create_task.call_count == 1
+
     async def test_async_setup_entry_no_coordinator_data(
         self, hass: HomeAssistant, mock_config_entry
     ):

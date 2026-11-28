@@ -207,6 +207,29 @@ def get_loaded_entries(hass: HomeAssistant) -> list[KubernetesConfigEntry]:
     return hass.config_entries.async_loaded_entries(DOMAIN)
 
 
+_DISCOVERY_BUCKETS = (
+    "nodes",
+    "pods",
+    "deployments",
+    "statefulsets",
+    "daemonsets",
+    "cronjobs",
+    "jobs",
+)
+
+
+def discovery_keys(data: dict[str, Any] | None) -> frozenset[tuple[str, str]]:
+    """Return ``(bucket, key)`` for every resource the platforms may discover."""
+    if not data:
+        return frozenset()
+    return frozenset(
+        (bucket, key)
+        for bucket in _DISCOVERY_BUCKETS
+        if isinstance(items := data.get(bucket), dict)
+        for key in items
+    )
+
+
 @callback
 def disabled_resources(entry: ConfigEntry) -> frozenset[str]:
     """Return the data categories the user opted out of collecting."""

@@ -20,6 +20,7 @@ from .coordinator import (
     KubernetesConfigEntry,
     KubernetesDataCoordinator,
     disabled_resources,
+    discovery_keys,
 )
 from .device import get_cluster_device_info
 from .kubernetes_client import KubernetesClient
@@ -148,14 +149,24 @@ async def async_setup_entry(
     entry_data.binary_sensor_add_entities = async_add_entities
 
     # Set up listener for adding new entities dynamically
+    # Setup created the entities for the keys present now.
+    known_keys = discovery_keys(coordinator.data)
+
     @callback
     def _async_add_new_binary_sensors() -> None:
         """Add new binary sensors when new nodes are discovered."""
+        nonlocal known_keys
+        keys = discovery_keys(coordinator.data)
+        if keys == known_keys:
+            return
+        known_keys = keys
         hass.async_create_task(
             _async_discover_and_add_new_binary_sensors(hass, config_entry, coordinator)
         )
 
-    coordinator.async_add_listener(_async_add_new_binary_sensors)
+    config_entry.async_on_unload(
+        coordinator.async_add_listener(_async_add_new_binary_sensors)
+    )
 
 
 class KubernetesBaseBinarySensor(BinarySensorEntity):

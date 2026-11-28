@@ -1,6 +1,6 @@
 """Tests for the Kubernetes binary sensor platform."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.const import EntityCategory
@@ -601,6 +601,34 @@ class TestDynamicBinarySensorDiscovery:
         # The coordinator should have had async_add_listener called
         # (once for each condition sensor via async_added_to_hass, plus once for discovery)
         assert mock_coordinator.async_add_listener.called
+
+    async def test_listener_runs_discovery_only_on_new_keys(
+        self,
+        hass: HomeAssistant,
+        mock_config_entry,
+        mock_coordinator,
+        setup_domain_data,
+    ):
+        """Unchanged resource keys create no task; a new node creates one."""
+        await async_setup_entry(hass, mock_config_entry, MagicMock())
+        listener = mock_coordinator.async_add_listener.call_args_list[-1][0][0]
+
+        with (
+            patch(
+                "custom_components.kubernetes.binary_sensor."
+                "_async_discover_and_add_new_binary_sensors",
+                new=MagicMock(return_value=None),
+            ) as discover,
+            patch.object(hass, "async_create_task") as create_task,
+        ):
+            listener()
+            listener()
+            create_task.assert_not_called()
+            mock_coordinator.data["nodes"]["new-node"] = {}
+            listener()
+            listener()
+            assert create_task.call_count == 1
+            assert discover.call_count == 1
 
     async def test_discover_adds_new_node_sensors(
         self,

@@ -26,6 +26,7 @@ from .const import (
 from .coordinator import (
     KubernetesConfigEntry,
     KubernetesDataCoordinator,
+    discovery_keys,
     get_hpa_for,
     hpa_attributes,
 )
@@ -113,9 +114,17 @@ async def async_setup_entry(
     entry_data.switch_add_entities = async_add_entities
 
     # Set up listener for adding new entities dynamically
+    # Setup created the entities for the keys present now.
+    known_keys = discovery_keys(coordinator.data)
+
     @callback
     def _async_add_new_entities() -> None:
         """Add new entities when new resources are discovered."""
+        nonlocal known_keys
+        keys = discovery_keys(coordinator.data)
+        if keys == known_keys:
+            return
+        known_keys = keys
         hass.async_create_task(
             _async_discover_and_add_new_entities(
                 hass, config_entry, coordinator, client
@@ -123,7 +132,9 @@ async def async_setup_entry(
         )
 
     # Register the callback with the coordinator
-    coordinator.async_add_listener(_async_add_new_entities)
+    config_entry.async_on_unload(
+        coordinator.async_add_listener(_async_add_new_entities)
+    )
 
 
 async def _async_discover_and_add_new_entities(
