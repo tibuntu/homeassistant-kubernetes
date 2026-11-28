@@ -440,10 +440,18 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
             else:
                 await self._verify_scaling(1)
         else:
-            _LOGGER.error("Failed to start %s %s", self._log_label, self.workload_name)
             self._last_scale_attempt_failed = True
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="scale_failed",
+                translation_placeholders={
+                    "workload_type": self._workload_type,
+                    "workload": f"{self.namespace}/{self.workload_name}",
+                    "replicas": "1",
+                },
+            )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the workload off by scaling to 0 replicas."""
@@ -466,10 +474,18 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
             )
             await self._verify_scaling(0)
         else:
-            _LOGGER.error("Failed to stop %s %s", self._log_label, self.workload_name)
             self._last_scale_attempt_failed = True
             self.async_write_ha_state()
             await self.coordinator.async_request_refresh()
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="scale_failed",
+                translation_placeholders={
+                    "workload_type": self._workload_type,
+                    "workload": f"{self.namespace}/{self.workload_name}",
+                    "replicas": "0",
+                },
+            )
 
     async def _verify_scaling(self, target_replicas: int) -> None:
         """Verify that scaling actually took effect."""
@@ -658,66 +674,52 @@ class KubernetesCronJobSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Resume the CronJob by setting suspend=false."""
-        try:
-            _LOGGER.info("Resuming CronJob: %s", self.cronjob_name)
+        _LOGGER.info("Resuming CronJob: %s", self.cronjob_name)
 
-            client = self.config_entry.runtime_data.client
+        client = self.config_entry.runtime_data.client
+        result = await client.resume_cronjob(self.cronjob_name, self.namespace)
+        if not result["success"]:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="cronjob_suspend_failed",
+                translation_placeholders={
+                    "action": "resume",
+                    "cronjob": f"{self.namespace}/{self.cronjob_name}",
+                    "error": str(result["error"]),
+                },
+            )
 
-            # Resume the CronJob
-            result = await client.resume_cronjob(self.cronjob_name, self.namespace)
-
-            if result["success"]:
-                self._last_resume_time = time.time()
-                self._is_on = True
-                self._suspend = False
-                _LOGGER.info(
-                    "Successfully resumed CronJob '%s'",
-                    self.cronjob_name,
-                )
-                # should_poll is False, so HA will not write state for us.
-                self.async_write_ha_state()
-            else:
-                _LOGGER.error(
-                    "Failed to resume CronJob '%s': %s",
-                    self.cronjob_name,
-                    result["error"],
-                )
-                raise Exception(result["error"])
-
-        except Exception as ex:
-            _LOGGER.error("Failed to resume CronJob %s: %s", self.cronjob_name, ex)
-            raise
+        self._last_resume_time = time.time()
+        self._is_on = True
+        self._suspend = False
+        _LOGGER.info("Successfully resumed CronJob '%s'", self.cronjob_name)
+        # should_poll is False, so HA will not write state for us.
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Suspend the CronJob by setting suspend=true."""
-        try:
-            _LOGGER.info("Suspending CronJob: %s", self.cronjob_name)
+        _LOGGER.info("Suspending CronJob: %s", self.cronjob_name)
 
-            client = self.config_entry.runtime_data.client
+        client = self.config_entry.runtime_data.client
+        result = await client.suspend_cronjob(self.cronjob_name, self.namespace)
+        if not result["success"]:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="cronjob_suspend_failed",
+                translation_placeholders={
+                    "action": "suspend",
+                    "cronjob": f"{self.namespace}/{self.cronjob_name}",
+                    "error": str(result["error"]),
+                },
+            )
 
-            # Suspend the CronJob
-            result = await client.suspend_cronjob(self.cronjob_name, self.namespace)
-
-            if result["success"]:
-                self._last_suspend_time = time.time()
-                self._is_on = False
-                self._suspend = True
-                _LOGGER.info(
-                    "Successfully suspended CronJob '%s'",
-                    self.cronjob_name,
-                )
-                self.async_write_ha_state()
-            else:
-                _LOGGER.error(
-                    "Failed to suspend CronJob '%s': %s",
-                    self.cronjob_name,
-                    result["error"],
-                )
-                raise Exception(result["error"])
-
-        except Exception as ex:
-            _LOGGER.error("Failed to suspend CronJob %s: %s", self.cronjob_name, ex)
-            raise
+        self._last_suspend_time = time.time()
+        self._is_on = False
+        self._suspend = True
+        _LOGGER.info("Successfully suspended CronJob '%s'", self.cronjob_name)
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
     def _sync_from_coordinator(self) -> None:
         """Sync the switch state from coordinator data."""
@@ -882,52 +884,44 @@ class KubernetesNodeSchedulableSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Uncordon the node (mark it schedulable)."""
-        try:
-            _LOGGER.info("Uncordoning node: %s", self.node_name)
-            client = self.config_entry.runtime_data.client
+        _LOGGER.info("Uncordoning node: %s", self.node_name)
+        client = self.config_entry.runtime_data.client
 
-            result = await client.uncordon_node(self.node_name)
-            if not result:
-                raise HomeAssistantError(
-                    translation_domain=DOMAIN,
-                    translation_key="node_schedule_failed",
-                    translation_placeholders={
-                        "action": "uncordon",
-                        "node": self.node_name,
-                    },
-                )
+        result = await client.uncordon_node(self.node_name)
+        if not result:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="node_schedule_failed",
+                translation_placeholders={
+                    "action": "uncordon",
+                    "node": self.node_name,
+                },
+            )
 
-            self._last_uncordon_time = time.time()
-            self._optimistic_is_on = True
-            self._optimistic_stale_allowance = 1
-            self.async_write_ha_state()
-            await self.coordinator.async_request_refresh()
-        except Exception as ex:
-            _LOGGER.error("Failed to uncordon node %s: %s", self.node_name, ex)
-            raise
+        self._last_uncordon_time = time.time()
+        self._optimistic_is_on = True
+        self._optimistic_stale_allowance = 1
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Cordon the node (mark it unschedulable)."""
-        try:
-            _LOGGER.info("Cordoning node: %s", self.node_name)
-            client = self.config_entry.runtime_data.client
+        _LOGGER.info("Cordoning node: %s", self.node_name)
+        client = self.config_entry.runtime_data.client
 
-            result = await client.cordon_node(self.node_name)
-            if not result:
-                raise HomeAssistantError(
-                    translation_domain=DOMAIN,
-                    translation_key="node_schedule_failed",
-                    translation_placeholders={
-                        "action": "cordon",
-                        "node": self.node_name,
-                    },
-                )
+        result = await client.cordon_node(self.node_name)
+        if not result:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="node_schedule_failed",
+                translation_placeholders={
+                    "action": "cordon",
+                    "node": self.node_name,
+                },
+            )
 
-            self._last_cordon_time = time.time()
-            self._optimistic_is_on = False
-            self._optimistic_stale_allowance = 1
-            self.async_write_ha_state()
-            await self.coordinator.async_request_refresh()
-        except Exception as ex:
-            _LOGGER.error("Failed to cordon node %s: %s", self.node_name, ex)
-            raise
+        self._last_cordon_time = time.time()
+        self._optimistic_is_on = False
+        self._optimistic_stale_allowance = 1
+        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
