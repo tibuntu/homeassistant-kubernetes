@@ -279,7 +279,7 @@ automation:
 
 All service calls include comprehensive error handling:
 
-- **Namespace Permissions**: Services respect the `monitor_all_namespaces` configuration
+- **Namespace Permissions**: The namespace selection limits what is monitored; which namespaces the services may change is decided by RBAC (`rbac.writeNamespaces` in the chart)
 - **API Errors**: Detailed error messages for API failures
 - **Validation**: Input validation for CronJob names and namespaces
 - **Logging**: Comprehensive logging for debugging
