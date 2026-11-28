@@ -2428,23 +2428,17 @@ async def test_get_node_metrics_exception(mock_client):
     assert result == {}
 
 
-@pytest.fixture
-def extended_client(mock_config):
-    """Create a Kubernetes client instance for extended tests."""
-    return KubernetesClient(mock_config, MagicMock())
-
-
 class TestKubernetesClientExtended:
     """Extended tests for Kubernetes client."""
 
-    def test_log_error(self, extended_client):
+    def test_log_error(self, mock_client):
         """Test _log_error method with various exceptions."""
         # Test aiohttp.ClientError
         error_aiohttp = aiohttp.ClientError("Network error")
         with patch(
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:
-            extended_client._log_error("test_op", error_aiohttp)
+            mock_client._log_error("test_op", error_aiohttp)
             mock_logger.log.assert_called_once()
             assert mock_logger.log.call_args[0][0] == logging.ERROR
 
@@ -2453,7 +2447,7 @@ class TestKubernetesClientExtended:
         with patch(
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:
-            extended_client._log_error("test_op", error_timeout)
+            mock_client._log_error("test_op", error_timeout)
             mock_logger.log.assert_called_once()
             assert mock_logger.log.call_args[0][0] == logging.ERROR
 
@@ -2462,27 +2456,27 @@ class TestKubernetesClientExtended:
         with patch(
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:
-            extended_client._log_error("test_op", error_generic)
+            mock_client._log_error("test_op", error_generic)
             mock_logger.log.assert_called_once()
             assert mock_logger.log.call_args[0][0] == logging.ERROR
 
-    async def test_test_connection_aiohttp_failure(self, extended_client):
+    async def test_test_connection_aiohttp_failure(self, mock_client):
         """Test _test_connection_aiohttp failure scenarios."""
         # Test non-200 status
-        with patch.object(extended_client._session, "get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 401
             mock_get.return_value.__aenter__.return_value = mock_response
 
-            assert await extended_client._test_connection_aiohttp() is False
+            assert await mock_client._test_connection_aiohttp() is False
 
         # Test exception
         with patch.object(
-            extended_client._session, "get", side_effect=Exception("Connection error")
+            mock_client._session, "get", side_effect=Exception("Connection error")
         ):
-            assert await extended_client._test_connection_aiohttp() is False
+            assert await mock_client._test_connection_aiohttp() is False
 
-    async def test_get_nodes_parsing(self, extended_client):
+    async def test_get_nodes_parsing(self, mock_client):
         """Test get_nodes parsing logic."""
         mock_node_data = {
             "items": [
@@ -2511,13 +2505,13 @@ class TestKubernetesClientExtended:
             ]
         }
 
-        with patch.object(extended_client._session, "get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json.return_value = mock_node_data
             mock_get.return_value.__aenter__.return_value = mock_response
 
-            nodes = await extended_client.get_nodes()
+            nodes = await mock_client.get_nodes()
             assert len(nodes) == 1
             node = nodes[0]
             assert node["name"] == "node1"
@@ -2526,42 +2520,42 @@ class TestKubernetesClientExtended:
             assert node["external_ip"] == "1.2.3.4"
             assert node["schedulable"] is True
 
-    async def test_get_nodes_parsing_error(self, extended_client):
+    async def test_get_nodes_parsing_error(self, mock_client):
         """Test get_nodes parsing error handling."""
         # Malformed data that causes parsing error
         mock_node_data = {"items": [{"metadata": {}}]}  # Missing status, spec, etc.
 
-        with patch.object(extended_client._session, "get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json.return_value = mock_node_data
             mock_get.return_value.__aenter__.return_value = mock_response
 
             # Should handle parsing error gracefully and return a node with "unknown" status
-            nodes = await extended_client.get_nodes()
+            nodes = await mock_client.get_nodes()
             assert len(nodes) == 1
             assert nodes[0]["name"] == "unknown"
             assert nodes[0]["status"] == "NotReady"
 
-    async def test_get_nodes_failure(self, extended_client):
+    async def test_get_nodes_failure(self, mock_client):
         """get_nodes raises on non-200 and propagates transport errors."""
         # Test non-200 status
-        with patch.object(extended_client._session, "get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 500
             mock_get.return_value.__aenter__.return_value = mock_response
 
             with pytest.raises(KubernetesApiError, match="status 500"):
-                await extended_client.get_nodes()
+                await mock_client.get_nodes()
 
         # Test exception
         with (
             patch.object(
-                extended_client._session, "get", side_effect=Exception("Network error")
+                mock_client._session, "get", side_effect=Exception("Network error")
             ),
             pytest.raises(Exception, match="Network error"),
         ):
-            await extended_client.get_nodes()
+            await mock_client.get_nodes()
 
 
 class TestKubernetesClientGetPods:
@@ -6015,13 +6009,13 @@ class TestInitNamespaceParsing:
 class TestLogErrorGenericBranch:
     """Tests for _log_error generic/other status branch."""
 
-    def test_generic_exception(self, extended_client):
+    def test_generic_exception(self, mock_client):
         """Test _log_error with a non-standard exception type."""
         error = RuntimeError("Something went wrong")
         with patch(
             "custom_components.kubernetes.kubernetes_client._LOGGER"
         ) as mock_logger:
-            extended_client._log_error("test_op", error)
+            mock_client._log_error("test_op", error)
             mock_logger.log.assert_called_once()
             call_args = mock_logger.log.call_args[0]
             assert call_args[0] == logging.ERROR
@@ -6112,7 +6106,7 @@ class TestGetPodsCountSuccessLogging:
 class TestGetNodesAiohttpNodeParseException:
     """Tests for get_nodes node item parse exception."""
 
-    async def test_node_parse_exception_skips_item(self, extended_client):
+    async def test_node_parse_exception_skips_item(self, mock_client):
         """Test get_nodes skips items that raise during parsing."""
         # Create data where one node will parse fine and one will cause an exception
         # by having _parse_node_item raise for the second item
@@ -6163,7 +6157,7 @@ class TestGetNodesAiohttpNodeParseException:
             ]
         }
 
-        with patch.object(extended_client._session, "get") as mock_get:
+        with patch.object(mock_client._session, "get") as mock_get:
             mock_response = AsyncMock()
             mock_response.status = 200
             mock_response.json.return_value = mock_node_data
@@ -6173,7 +6167,7 @@ class TestGetNodesAiohttpNodeParseException:
             # The second node should parse without error since _parse_memory
             # handles invalid strings gracefully. Instead, let's verify the
             # happy path parses both nodes
-            nodes = await extended_client.get_nodes()
+            nodes = await mock_client.get_nodes()
             # Both should parse (the parser is resilient)
             assert len(nodes) == 2
             assert nodes[0]["name"] == "good-node"
