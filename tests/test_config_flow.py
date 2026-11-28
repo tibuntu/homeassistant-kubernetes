@@ -1023,6 +1023,30 @@ class TestKubernetesOptionsFlow:
         """Default value for event_types should be 'warning'."""
         assert DEFAULT_EVENT_TYPES == EVENT_TYPES_WARNING
 
+    async def test_options_flow_event_types_selector_is_translated(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """event_types offers plain-string options labelled via translations."""
+        result = await hass.config_entries.options.async_init(
+            mock_config_entry.entry_id
+        )
+        schema = result["data_schema"].schema
+        config = schema[next(k for k in schema if k == CONF_EVENT_TYPES)].config
+        assert config["options"] == [EVENT_TYPES_WARNING, EVENT_TYPES_ALL]
+        assert config["translation_key"] == CONF_EVENT_TYPES
+
+    async def test_user_flow_grouping_selector_is_translated(self, hass: HomeAssistant):
+        """The grouping selector offers plain-string options labelled via translations."""
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        schema = result["data_schema"].schema
+        config = schema[
+            next(k for k in schema if k == CONF_DEVICE_GROUPING_MODE)
+        ].config
+        assert config["options"] == ["namespace", "cluster"]
+        assert config["translation_key"] == "device_grouping_mode"
+
     async def test_options_flow_saves_enable_events_true_and_event_types_all(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
     ):
@@ -1158,6 +1182,26 @@ class TestReconfigureFlow:
         assert mock_config_entry.data[CONF_HOST] == "new-host.example.com"
         assert mock_config_entry.data[CONF_CLUSTER_NAME] == "test-cluster"
         assert mock_config_entry.data[CONF_NAMESPACE] == []
+
+    async def test_reconfigure_stores_cluster_grouping_unchanged(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """A submitted "cluster" grouping mode is stored as-is."""
+        with patched_connection():
+            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={
+                    CONF_HOST: "new-host.example.com",
+                    CONF_PORT: 6443,
+                    CONF_API_TOKEN: "new-token",
+                    CONF_MONITOR_ALL_NAMESPACES: True,
+                    CONF_DEVICE_GROUPING_MODE: "cluster",
+                },
+            )
+
+        assert result["reason"] == "reconfigure_successful"
+        assert mock_config_entry.data[CONF_DEVICE_GROUPING_MODE] == "cluster"
 
     async def test_reconfigure_proceeds_to_namespace_step(
         self, hass: HomeAssistant, mock_config_entry: MockConfigEntry

@@ -132,6 +132,12 @@
         "cluster": "Group by Cluster"
       }
     },
+    "event_types": {
+      "options": {
+        "warning": "Warning only",
+        "all": "All events"
+      }
+    },
     "disabled_resources": {
       "options": {
         "pods": "Pods (sensors + API fetch)",
