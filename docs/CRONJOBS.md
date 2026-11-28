@@ -365,4 +365,4 @@ The integration provides CronJob data in the following format:
 
 ### Service Response
 
-`kubernetes.start_workload` returns nothing that an automation could capture. On success the name of the created Job (`<cronjob>-manual-<unix time>`, e.g. `backup-job-manual-1234567890`) is logged at INFO level; on failure the call raises an error that names the CronJob.
+`kubernetes.start_workload` returns nothing that an automation could capture. On success the name of the created Job (`<cronjob>-manual-<5 random characters>`, e.g. `backup-job-manual-x7k2q`) is logged at INFO level; on failure the call raises an error that names the CronJob.

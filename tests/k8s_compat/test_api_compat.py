@@ -462,6 +462,9 @@ class TestMutations:
                 return any(j["name"] == job_name for j in jobs)
 
             await _poll_until(_job_exists)
+            jobs = await k8s_client.get_jobs()
+            job = next(j for j in jobs if j["name"] == job_name)
+            assert job["owner_cronjob"] == "test-cronjob"
         finally:
             await k8s_client.delete_job(job_name, "default")
 
