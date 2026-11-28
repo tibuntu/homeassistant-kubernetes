@@ -213,8 +213,31 @@ test("scale dialog calls scale_workload with the new replica count", async ({
       data: {
         workload_name: "web",
         namespace: "default",
+        workload_type: "Deployment",
         entry_id: "entry_1",
         replicas: 3,
+      },
+    },
+  ]);
+});
+
+test("CronJob trigger sends workload_type CronJob", async ({ page }) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Workloads");
+  await page
+    .locator(".workload-card", { hasText: "backup" })
+    .locator("button[title='Trigger now']")
+    .click();
+
+  expect(await page.evaluate(() => window.__k8s.services)).toEqual([
+    {
+      domain: "kubernetes",
+      service: "start_workload",
+      data: {
+        workload_name: "backup",
+        namespace: "default",
+        workload_type: "CronJob",
+        entry_id: "entry_1",
       },
     },
   ]);

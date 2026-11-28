@@ -172,6 +172,10 @@
           "name": "Namespace",
           "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
         },
+        "workload_type": {
+          "name": "Workload Type",
+          "description": "Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name)."
+        },
         "entry_id": {
           "name": "Config Entry ID",
           "description": "Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first)."
@@ -198,6 +202,10 @@
           "name": "Namespace",
           "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
         },
+        "workload_type": {
+          "name": "Workload Type",
+          "description": "Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name)."
+        },
         "entry_id": {
           "name": "Config Entry ID",
           "description": "Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first)."
@@ -220,6 +228,10 @@
           "name": "Namespace",
           "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
         },
+        "workload_type": {
+          "name": "Workload Type",
+          "description": "Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name)."
+        },
         "entry_id": {
           "name": "Config Entry ID",
           "description": "Target a specific configured cluster (optional; defaults to the cluster that owns the targeted workloads, else the first)."
@@ -241,6 +253,10 @@
         "namespace": {
           "name": "Namespace",
           "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+        },
+        "workload_type": {
+          "name": "Workload Type",
+          "description": "Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name)."
         },
         "entry_id": {
           "name": "Config Entry ID",

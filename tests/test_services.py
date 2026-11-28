@@ -45,6 +45,7 @@ from custom_components.kubernetes.const import (
 )
 from custom_components.kubernetes.kubernetes_client import OwnPod
 from custom_components.kubernetes.services import (
+    SCALE_WORKLOAD_SCHEMA,
     _collect_entity_ids,
     _collect_job_names,
     _collect_node_names,
@@ -2684,6 +2685,99 @@ class TestMultiEntryRouting:
         entry_b.runtime_data.client.scale_deployment.assert_awaited_once()
         entry_a.runtime_data.client.scale_statefulset.assert_not_called()
         entry_b.runtime_data.client.scale_statefulset.assert_not_called()
+
+    async def test_workload_type_disambiguates_shared_name(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """workload_type CronJob triggers the CronJob, not the same-named Deployment."""
+        entry_a, _ = two_entries
+        entry_a.runtime_data.coordinator.data = {
+            "deployments": {"ns1_backup": {"name": "backup", "namespace": "ns1"}},
+            "cronjobs": {"ns1_backup": {"name": "backup", "namespace": "ns1"}},
+        }
+        entry_a.runtime_data.client.trigger_cronjob.return_value = {
+            "success": True,
+            "job_name": "backup-1",
+        }
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {
+                ATTR_WORKLOAD_NAME: "backup",
+                ATTR_NAMESPACE: "ns1",
+                ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB,
+                "entry_id": "entry_a",
+            },
+            blocking=True,
+        )
+
+        entry_a.runtime_data.client.trigger_cronjob.assert_awaited_once()
+        entry_a.runtime_data.client.start_deployment.assert_not_called()
+
+    async def test_switch_in_other_namespace_is_not_used(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """A same-named switch in another namespace does not hijack the call."""
+        entry_a, _ = two_entries
+        self._register(hass, entry_a, "web", namespace="ns-a", deployment_name="web")
+        entry_a.runtime_data.coordinator.data = {
+            "statefulsets": {"prod_web": {"name": "web", "namespace": "prod"}}
+        }
+        entry_a.runtime_data.client.rollout_restart_statefulset = AsyncMock(
+            return_value=True
+        )
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESTART_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "web", ATTR_NAMESPACE: "prod"},
+            blocking=True,
+        )
+
+        entry_a.runtime_data.client.rollout_restart_statefulset.assert_awaited_once_with(
+            "web", "prod"
+        )
+        entry_a.runtime_data.client.rollout_restart_deployment.assert_not_called()
+
+    async def test_switch_of_other_type_is_skipped(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """A Deployment switch is skipped when workload_type asks for a CronJob."""
+        entry_a, _ = two_entries
+        self._register(hass, entry_a, "backup", deployment_name="backup")
+        entry_a.runtime_data.coordinator.data = {
+            "cronjobs": {"default_backup": {"name": "backup", "namespace": "default"}}
+        }
+        entry_a.runtime_data.client.trigger_cronjob.return_value = {
+            "success": True,
+            "job_name": "backup-1",
+        }
+        await async_setup_services(hass)
+
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_START_WORKLOAD,
+            {ATTR_WORKLOAD_NAME: "backup", ATTR_WORKLOAD_TYPE: WORKLOAD_TYPE_CRONJOB},
+            blocking=True,
+        )
+
+        entry_a.runtime_data.client.trigger_cronjob.assert_awaited_once()
+        entry_a.runtime_data.client.start_deployment.assert_not_called()
+
+    def test_invalid_workload_type_is_rejected(self):
+        """The schema only accepts the four workload kinds."""
+        import voluptuous as vol
+
+        with pytest.raises(vol.Invalid):
+            SCALE_WORKLOAD_SCHEMA(
+                {ATTR_WORKLOAD_NAME: "web", ATTR_REPLICAS: 1, ATTR_WORKLOAD_TYPE: "Pod"}
+            )
+        SCALE_WORKLOAD_SCHEMA(
+            {ATTR_WORKLOAD_NAME: "web", ATTR_REPLICAS: 1, ATTR_WORKLOAD_TYPE: "CronJob"}
+        )
 
     async def test_only_unresolvable_raw_names_is_no_valid_workloads(
         self, hass: HomeAssistant, two_entries

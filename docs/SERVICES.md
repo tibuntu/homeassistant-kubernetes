@@ -35,6 +35,7 @@ Scale one or more Kubernetes workloads (Deployments or StatefulSets) to a specif
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
 - `replicas` (integer, required): Target number of replicas (0 or more)
+- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). A switch of another kind or in another namespace is skipped when this or `namespace` is given
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets
@@ -81,6 +82,7 @@ Start one or more Kubernetes workloads by scaling them to the specified number o
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
 - `replicas` (integer, optional): Number of replicas for Deployments/StatefulSets (default: 1, ignored for CronJobs)
+- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). A switch of another kind or in another namespace is skipped when this or `namespace` is given
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**:
@@ -126,6 +128,7 @@ Stop one or more Kubernetes workloads by scaling them to 0 replicas (Deployments
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.production_default_web_app`)
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
+- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). A switch of another kind or in another namespace is skipped when this or `namespace` is given
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets
@@ -160,6 +163,7 @@ Perform a rolling restart of one or more Kubernetes workloads. This is equivalen
 - `workload_name` (string or entity ID, optional): Single workload name or entity ID (e.g., `switch.production_default_web_app`)
 - `workload_names` (list or target selector, optional): Multiple workload names or entity IDs
 - `namespace` (string, optional): Kubernetes namespace (defaults to configured namespace)
+- `workload_type` (string, optional): `Deployment`, `StatefulSet`, `DaemonSet` or `CronJob`. Only needed with a bare `workload_name` that exists as several kinds; without it, a same-named switch wins, else the first match (Deployment, StatefulSet, DaemonSet, CronJob). A switch of another kind or in another namespace is skipped when this or `namespace` is given
 - `entry_id` (string, optional): Config entry ID (defaults to the cluster that owns the targeted workloads, otherwise the first configured entry; must match the targets' cluster)
 
 **Supported Workloads**: Deployments, StatefulSets, DaemonSets

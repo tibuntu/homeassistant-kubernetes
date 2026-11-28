@@ -136,12 +136,14 @@ def _find_raw_workloads(
     name: str,
     namespace: str | None,
     entry_id: str | None = None,
+    workload_type: str | None = None,
 ) -> list[tuple[str, tuple[str, str | None, str]]]:
     """Find a raw workload name in coordinator data.
 
     Returns one ``(owner_entry_id, (name, namespace, workload_type))`` per
     loaded config entry that contains a match.  When *entry_id* is given only
-    that entry is searched.
+    that entry is searched; when *workload_type* is given only that type's
+    bucket is.
     """
     resource_type_map = {
         "deployments": WORKLOAD_TYPE_DEPLOYMENT,
@@ -159,7 +161,9 @@ def _find_raw_workloads(
             continue
 
         match: tuple[str, str | None, str] | None = None
-        for resource_key, workload_type in resource_type_map.items():
+        for resource_key, wl_type in resource_type_map.items():
+            if workload_type and wl_type != workload_type:
+                continue
             for _wl_name, wl_data in coordinator.data.get(resource_key, {}).items():
                 if wl_data.get("name") != name:
                     continue
@@ -169,10 +173,10 @@ def _find_raw_workloads(
                 _LOGGER.debug(
                     "Resolved raw workload name '%s' to type %s in namespace %s",
                     name,
-                    workload_type,
+                    wl_type,
                     wl_ns,
                 )
-                match = (name, wl_ns, workload_type)
+                match = (name, wl_ns, wl_type)
                 break
             if match:
                 break
@@ -278,34 +282,46 @@ def _resolve_workload_name(
     name: str,
     provided_ns: str | None,
     explicit_entry_id: str | None,
+    workload_type: str | None = None,
 ) -> tuple[tuple[str, str | None, str] | None, set[str]]:
     """Resolve a single entity ID or bare workload name.
+
+    A same-named switch is skipped for a bare name when it is of another
+    *workload_type* or in another namespace than *provided_ns*; the name is
+    then resolved through the coordinator data.
 
     Returns (workload or None, owning entry IDs).
     """
     is_entity_id = name.startswith("switch.")
     entity_id = name if is_entity_id else f"switch.{name}"
 
-    namespace, workload_name, workload_type = _get_workload_info_from_entity(hass, name)
-    owner = (
-        _entity_entry_id(hass, entity_id) if workload_name and workload_type else None
-    )
+    namespace, workload_name, switch_type = _get_workload_info_from_entity(hass, name)
+    if not is_entity_id and (
+        (workload_type and switch_type != workload_type)
+        or (provided_ns and namespace != provided_ns)
+    ):
+        workload_name = None
+    owner = _entity_entry_id(hass, entity_id) if workload_name and switch_type else None
 
     # Panel calls send a bare name plus entry_id.  When the same-named
     # switch belongs to a different entry, resolve the name in the
     # explicit entry instead.
     raw_found: list[tuple[str, tuple[str, str | None, str]]] = []
     if explicit_entry_id and not is_entity_id and owner and owner != explicit_entry_id:
-        raw_found = _find_raw_workloads(hass, name, provided_ns, explicit_entry_id)
+        raw_found = _find_raw_workloads(
+            hass, name, provided_ns, explicit_entry_id, workload_type
+        )
 
     if raw_found:
         return raw_found[0][1], {o for o, _ in raw_found}
-    if workload_name and workload_type:
-        return (workload_name, namespace, workload_type), ({owner} if owner else set())
+    if workload_name and switch_type:
+        return (workload_name, namespace, switch_type), ({owner} if owner else set())
 
     # Try resolving as a raw workload name via coordinator data
     # (the scoped search above only runs for a resolved entity).
-    raw_found = _find_raw_workloads(hass, name, provided_ns, explicit_entry_id)
+    raw_found = _find_raw_workloads(
+        hass, name, provided_ns, explicit_entry_id, workload_type
+    )
     if raw_found:
         return raw_found[0][1], {o for o, _ in raw_found}
     _LOGGER.warning(
@@ -313,7 +329,7 @@ def _resolve_workload_name(
         name,
         namespace,
         workload_name,
-        workload_type,
+        switch_type,
     )
     return None, set()
 
@@ -370,6 +386,7 @@ def _extract_workloads_with_owners(
                 name,
                 call_data.get(ATTR_NAMESPACE),
                 call_data.get("entry_id"),
+                call_data.get(ATTR_WORKLOAD_TYPE),
             )
             if resolved:
                 workloads.append(resolved)
@@ -382,6 +399,7 @@ def _extract_workloads_with_owners(
             raw_name,
             call_data.get(ATTR_NAMESPACE),
             call_data.get("entry_id"),
+            call_data.get(ATTR_WORKLOAD_TYPE),
         )
         if resolved:
             workloads.append(resolved)
@@ -524,6 +542,13 @@ def _validate_node_schema(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+_WORKLOAD_TYPES = [
+    WORKLOAD_TYPE_DEPLOYMENT,
+    WORKLOAD_TYPE_STATEFULSET,
+    WORKLOAD_TYPE_DAEMONSET,
+    WORKLOAD_TYPE_CRONJOB,
+]
+
 # Generic service schemas
 SCALE_WORKLOAD_SCHEMA = vol.Schema(
     vol.All(
@@ -537,6 +562,7 @@ SCALE_WORKLOAD_SCHEMA = vol.Schema(
             ),
             vol.Required(ATTR_REPLICAS): vol.All(vol.Coerce(int), vol.Range(min=0)),
             vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
             vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
@@ -557,6 +583,7 @@ START_WORKLOAD_SCHEMA = vol.Schema(
                 vol.Coerce(int), vol.Range(min=1)
             ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
             vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
@@ -574,6 +601,7 @@ STOP_WORKLOAD_SCHEMA = vol.Schema(
                 dict,
             ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
             vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
@@ -591,6 +619,7 @@ RESTART_WORKLOAD_SCHEMA = vol.Schema(
                 dict,
             ),
             vol.Optional(ATTR_NAMESPACE): cv.string,
+            vol.Optional(ATTR_WORKLOAD_TYPE): vol.In(_WORKLOAD_TYPES),
             vol.Optional("entry_id"): cv.string,
         },
         _validate_workload_schema,
