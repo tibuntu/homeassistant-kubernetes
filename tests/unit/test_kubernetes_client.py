@@ -6677,6 +6677,37 @@ class TestParsePodContainerState:
         assert parsed["problem"] is True
         assert parsed["problem_reason"] == "CrashLoopBackOff"
 
+    @pytest.mark.parametrize("entry_point", ["_parse_pods_data", "_parse_pod_item"])
+    def test_terminating_pod_is_not_a_problem(self, mock_client, entry_point):
+        """A pod with deletionTimestamp (SIGTERM exit 143) is not flagged."""
+        raw = self._make_raw_pod(
+            phase="Running",
+            container_statuses=[self._terminated(143, "Error")],
+        )
+        raw["metadata"]["deletionTimestamp"] = "2024-01-01T00:05:00Z"
+        if entry_point == "_parse_pods_data":
+            parsed = mock_client._parse_pods_data([raw])[0]
+        else:
+            parsed = mock_client._parse_pod_item(raw)
+        assert parsed["problem"] is False
+        assert parsed["problem_reason"] is None
+
+    @pytest.mark.parametrize("entry_point", ["_parse_pods_data", "_parse_pod_item"])
+    def test_same_pod_without_deletion_timestamp_is_a_problem(
+        self, mock_client, entry_point
+    ):
+        """Control: the same exit 143 without deletionTimestamp is still flagged."""
+        raw = self._make_raw_pod(
+            phase="Running",
+            container_statuses=[self._terminated(143, "Error")],
+        )
+        if entry_point == "_parse_pods_data":
+            parsed = mock_client._parse_pods_data([raw])[0]
+        else:
+            parsed = mock_client._parse_pod_item(raw)
+        assert parsed["problem"] is True
+        assert parsed["problem_reason"] == "Error"
+
 
 class TestNodeCordon:
     """Tests for cordon_node / uncordon_node."""
