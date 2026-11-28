@@ -380,11 +380,11 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         self.async_write_ha_state()
 
     def _sync_from_coordinator(self) -> None:
-        """Sync replicas, running state and metrics from coordinator data."""
+        """Sync replicas, on state (replicas > 0) and metrics from coordinator data."""
         workload_data = self._get_workload_data()
         if workload_data:
             self._replicas = workload_data.get("replicas", 0)
-            self._is_on = workload_data.get("is_running", False)
+            self._is_on = self._replicas > 0
             old_cpu = self._cpu_usage
             old_memory = self._memory_usage
             self._cpu_usage = workload_data.get("cpu_usage", 0.0)

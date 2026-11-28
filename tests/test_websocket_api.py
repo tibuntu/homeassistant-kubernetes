@@ -36,7 +36,6 @@ def sample_coordinator_data():
                 "replicas": 3,
                 "available_replicas": 3,
                 "ready_replicas": 3,
-                "is_running": True,
             },
             "production_api": {
                 "name": "api",
@@ -44,7 +43,6 @@ def sample_coordinator_data():
                 "replicas": 2,
                 "available_replicas": 1,
                 "ready_replicas": 1,
-                "is_running": True,
             },
         },
         "statefulsets": {
@@ -54,7 +52,6 @@ def sample_coordinator_data():
                 "replicas": 1,
                 "available_replicas": 1,
                 "ready_replicas": 1,
-                "is_running": True,
             },
         },
         "daemonsets": {
@@ -65,7 +62,6 @@ def sample_coordinator_data():
                 "current_number_scheduled": 3,
                 "number_ready": 3,
                 "number_available": 3,
-                "is_running": True,
             },
         },
         "cronjobs": {
@@ -862,7 +858,6 @@ class TestWebsocketWorkloadsList:
                         "replicas": 1,
                         "available_replicas": 1,
                         "ready_replicas": 1,
-                        "is_running": True,
                     },
                 },
                 "statefulsets": {},
@@ -899,7 +894,6 @@ class TestWebsocketWorkloadsList:
         assert nginx["namespace"] == "default"
         assert nginx["replicas"] == 3
         assert nginx["available_replicas"] == 3
-        assert nginx["is_running"] is True
         assert nginx["hpa_managed"] is False
         assert nginx["hpa_name"] is None
 
@@ -2431,7 +2425,6 @@ class TestSameNameDifferentNamespace:
                     "replicas": 10,
                     "available_replicas": 10,
                     "ready_replicas": 10,
-                    "is_running": True,
                 },
                 "toothless_bot": {
                     "name": "bot",
@@ -2439,7 +2432,6 @@ class TestSameNameDifferentNamespace:
                     "replicas": 0,
                     "available_replicas": 0,
                     "ready_replicas": 0,
-                    "is_running": False,
                 },
             },
             "daemonsets": {},
