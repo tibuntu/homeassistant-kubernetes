@@ -16,7 +16,6 @@ from custom_components.kubernetes.binary_sensor import (
     async_setup_entry,
 )
 from custom_components.kubernetes.const import CONF_DISABLED_RESOURCES, DOMAIN
-from custom_components.kubernetes.coordinator import KubernetesEntryData
 
 # `mock_config_entry` (host/port/verify_ssl/cluster_name shape) comes from
 # tests/conftest.py's `mock_config_entry` fixture.
@@ -45,19 +44,6 @@ def mock_coordinator():
     return coordinator
 
 
-@pytest.fixture
-def setup_domain_data(
-    hass: HomeAssistant, mock_config_entry, mock_coordinator, mock_client
-) -> KubernetesEntryData:
-    """Attach runtime data to the config entry."""
-    mock_config_entry.runtime_data = KubernetesEntryData(
-        config=mock_config_entry.data,
-        client=mock_client,
-        coordinator=mock_coordinator,
-    )
-    return mock_config_entry.runtime_data
-
-
 class TestKubernetesBinarySensorSetup:
     """Test binary sensor setup."""
 
@@ -66,7 +52,7 @@ class TestKubernetesBinarySensorSetup:
         hass: HomeAssistant,
         mock_config_entry,
         mock_client,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Test successful binary sensor setup with no nodes yields 1 entity."""
         mock_add_entities = MagicMock()
@@ -84,7 +70,7 @@ class TestKubernetesBinarySensorSetup:
         mock_config_entry,
         mock_client,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Setup with ``coordinator.data = None`` adds only the health sensor."""
         mock_coordinator.data = None
@@ -102,7 +88,7 @@ class TestKubernetesBinarySensorSetup:
         mock_config_entry,
         mock_client,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Test setup creates 5 condition sensors per node (incl. Ready)."""
         mock_coordinator.data = {
@@ -141,7 +127,7 @@ class TestKubernetesBinarySensorSetup:
         mock_config_entry,
         mock_client,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """With nodes disabled, only the cluster health sensor is created."""
         hass.config_entries.async_update_entry(
@@ -521,7 +507,7 @@ class TestDynamicBinarySensorDiscovery:
         mock_config_entry,
         mock_client,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Test setup stores the add_entities callback for dynamic discovery."""
         mock_add_entities = MagicMock()
@@ -537,7 +523,7 @@ class TestDynamicBinarySensorDiscovery:
         mock_config_entry,
         mock_client,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Test setup registers a listener on the coordinator for dynamic discovery."""
         mock_add_entities = MagicMock()
@@ -552,7 +538,7 @@ class TestDynamicBinarySensorDiscovery:
         hass: HomeAssistant,
         mock_config_entry,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Unchanged resource keys create no task; a new node creates one."""
         await async_setup_entry(hass, mock_config_entry, MagicMock())
@@ -580,7 +566,7 @@ class TestDynamicBinarySensorDiscovery:
         hass: HomeAssistant,
         mock_config_entry,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Test discovery adds binary sensors for a newly appeared node."""
         mock_add_entities = MagicMock()
@@ -613,7 +599,7 @@ class TestDynamicBinarySensorDiscovery:
         hass: HomeAssistant,
         mock_config_entry,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Test discovery does not re-add nodes already in the entity registry."""
         mock_add_entities = MagicMock()
@@ -650,7 +636,7 @@ class TestDynamicBinarySensorDiscovery:
         hass: HomeAssistant,
         mock_config_entry,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
     ):
         """Test discovery does not re-add nodes in the pending set."""
         mock_add_entities = MagicMock()
@@ -681,7 +667,7 @@ class TestDynamicBinarySensorDiscovery:
         hass: HomeAssistant,
         mock_config_entry,
         mock_coordinator,
-        setup_domain_data,
+        entry_runtime_data,
         caplog,
     ):
         """Test discovery handles missing add_entities callback gracefully."""
