@@ -903,6 +903,23 @@ test("overview count card puts its preset in the URL", async ({ page }) => {
   await expect(page.locator(".tab[active]")).toHaveText(/Network/);
 });
 
+test("settings tab lists each cluster's configuration", async ({ page }) => {
+  await page.goto(`${HARNESS}/settings`);
+  await expect(page.locator(".entry-name")).toHaveText("test-cluster");
+  await expect(page.locator(".badge-healthy")).toHaveText("Connected");
+  const row = (label: string) =>
+    page.locator(".setting-row", { hasText: label }).first();
+  await expect(row("Host")).toContainText("k8s.example.com");
+  await expect(row("Port")).toContainText("6443");
+  await expect(row("Update Mode")).toContainText("Watch (real-time)");
+  await expect(row("Sidebar Panel")).toContainText("Enabled");
+  await expect(row("Admin-only Panel")).toContainText("Disabled");
+  await expect(row("Pod Logs (experimental)")).toContainText("Enabled");
+  await expect(
+    page.getByRole("button", { name: /Configure Integration/ }),
+  ).toBeVisible();
+});
+
 test("deep links apply search, namespace and the Problems phase", async ({ page }) => {
   await page.goto(`${HARNESS}/pods?phase=problems&namespace=default`);
   await expect(page.locator(".filter-chip[active]")).toContainText("Problems");
