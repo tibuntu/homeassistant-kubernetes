@@ -29,8 +29,10 @@ scale_workload:
           max: 100
     namespace:
       name: Namespace
-      description: The namespace containing the workload(s) (optional, defaults to configured namespace).
+      description: "Namespace of the workload(s). Optional: an entity target already carries its namespace; set this for a raw workload name that exists in more than one namespace. If set, it applies to every target."
       required: false
+      selector:
+        text:
     workload_type:
       name: Workload Type
       description: Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name).
@@ -81,8 +83,10 @@ start_workload:
           max: 100
     namespace:
       name: Namespace
-      description: The namespace containing the workload(s) (optional, defaults to configured namespace).
+      description: "Namespace of the workload(s). Optional: an entity target already carries its namespace; set this for a raw workload name that exists in more than one namespace. If set, it applies to every target."
       required: false
+      selector:
+        text:
     workload_type:
       name: Workload Type
       description: Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name).
@@ -124,8 +128,10 @@ stop_workload:
           integration: kubernetes
     namespace:
       name: Namespace
-      description: The namespace containing the workload(s) (optional, defaults to configured namespace).
+      description: "Namespace of the workload(s). Optional: an entity target already carries its namespace; set this for a raw workload name that exists in more than one namespace. If set, it applies to every target."
       required: false
+      selector:
+        text:
     workload_type:
       name: Workload Type
       description: Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name).
@@ -167,8 +173,10 @@ restart_workload:
           integration: kubernetes
     namespace:
       name: Namespace
-      description: The namespace containing the workload(s) (optional, defaults to configured namespace).
+      description: "Namespace of the workload(s). Optional: an entity target already carries its namespace; set this for a raw workload name that exists in more than one namespace. If set, it applies to every target."
       required: false
+      selector:
+        text:
     workload_type:
       name: Workload Type
       description: Kind of the workload (optional; needed when a Deployment, StatefulSet, DaemonSet or CronJob share a name).

@@ -170,7 +170,7 @@
         },
         "namespace": {
           "name": "Namespace",
-          "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+          "description": "Namespace of the workload(s). Optional: an entity target already carries its namespace; set this for a raw workload name that exists in more than one namespace. If set, it applies to every target."
         },
         "workload_type": {
           "name": "Workload Type",
@@ -200,7 +200,7 @@
         },
         "namespace": {
           "name": "Namespace",
-          "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+          "description": "Namespace of the workload(s). Optional: an entity target already carries its namespace; set this for a raw workload name that exists in more than one namespace. If set, it applies to every target."
         },
         "workload_type": {
           "name": "Workload Type",
@@ -226,7 +226,7 @@
         },
         "namespace": {
           "name": "Namespace",
-          "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+          "description": "Namespace of the workload(s). Optional: an entity target already carries its namespace; set this for a raw workload name that exists in more than one namespace. If set, it applies to every target."
         },
         "workload_type": {
           "name": "Workload Type",
@@ -252,7 +252,7 @@
         },
         "namespace": {
           "name": "Namespace",
-          "description": "The namespace containing the workload(s) (optional, defaults to configured namespace)."
+          "description": "Namespace of the workload(s). Optional: an entity target already carries its namespace; set this for a raw workload name that exists in more than one namespace. If set, it applies to every target."
         },
         "workload_type": {
           "name": "Workload Type",
