@@ -106,6 +106,7 @@ The core features use only stable (GA) Kubernetes APIs (`apps/v1`, `batch/v1`, `
 - **Replica numbers go up to 100**, and **pod logs are polled snapshots** (experimental; long lines wrap, optional 5 s auto-refresh, but no live streaming; capped at 256 KiB).
 - **`drain_node` does not wait for evicted pods to terminate**, and it skips pods without a controller (unless `force` is set) and the pod Home Assistant runs in. Without a mounted ServiceAccount token, it recognises that pod only by hostname and namespace: then it misses it with `hostNetwork: true` or a custom hostname, and it can skip a same-named pod in another cluster ([details](https://tibuntu.github.io/homeassistant-kubernetes/SERVICES/#drain-node)).
 - **The cluster name cannot be changed** after setup; it identifies the config entry. Remove and re-add the integration to rename it.
+- **Upgrading from 1.5 or older needs a stop at 1.18.1.** Releases up to 1.18.1 migrated the unique IDs of namespaced workloads' entities on setup; later releases no longer do. Going straight from 1.5 or older creates new switch and sensor entities for namespaced workloads and leaves the old ones orphaned. Upgrade to 1.18.1 first, then to the latest release.
 
 ## Removal
 
