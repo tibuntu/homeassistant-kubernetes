@@ -254,6 +254,15 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
         "Failed to load certificate data",
       );
     }
+    // Every list failed: let the base class show its full-page error card.
+    if (
+      ingresses.status === "rejected" &&
+      this._servicesError &&
+      this._httprouteError &&
+      this._certificateError
+    ) {
+      throw ingresses.reason;
+    }
   }
 
   private _getFilteredIngresses(ingresses: IngressData[]): IngressData[] {
@@ -459,31 +468,8 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
   ];
 
   protected render() {
-    if (this._loading) {
-      return html`<div class="loading">
-        <ha-spinner></ha-spinner>
-      </div>`;
-    }
-
-    // Full-page error only before any data arrived; a failed refresh keeps
-    // the loaded sections (each shows its own inline error).
-    if (
-      !this.hasData() &&
-      this._ingressError &&
-      this._servicesError &&
-      this._httprouteError &&
-      this._certificateError
-    ) {
-      return html`
-        <ha-card>
-          <div class="error-card">
-            <ha-icon icon="mdi:alert-circle"></ha-icon>
-            <p>${this._ingressError}</p>
-            <button class="retry-btn" @click=${() => this._loadData()}>Retry</button>
-          </div>
-        </ha-card>
-      `;
-    }
+    const state = this.renderState(false);
+    if (state !== nothing) return state;
 
     const ingressClusters = this._data?.clusters ?? [];
     const serviceClusters = this._services?.clusters ?? [];

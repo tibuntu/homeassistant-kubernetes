@@ -1313,7 +1313,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     const message = c.state.message || c.last_state.message;
     const last = c.last_state;
     return html`
-      <tr class="container-row">
+      <tr>
         <td>
           ${c.name}${c.init ? html` <span class="owner-info">(init)</span>` : nothing}
         </td>
@@ -1353,7 +1353,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
       </div>`;
     }
     if (detail.events_error) {
-      return html`<div class="inline-error events-failed">Failed to load events.</div>`;
+      return html`<div class="inline-error">Failed to load events.</div>`;
     }
     if (!detail.events.length) {
       return html`<div class="logs-note">No events recorded for this pod.</div>`;
