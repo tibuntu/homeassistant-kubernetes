@@ -2742,6 +2742,43 @@ class TestMultiEntryRouting:
             ("b", "default", WORKLOAD_TYPE_DEPLOYMENT),
         ]
 
+    async def test_duplicate_targets_are_merged(self, hass: HomeAssistant, two_entries):
+        """A workload targeted twice is returned once, in first-seen order."""
+        entry_a, _ = two_entries
+        id_a = self._register(hass, entry_a, "a", deployment_name="a")
+        id_b = self._register(hass, entry_a, "b", deployment_name="b")
+
+        workloads, _ = _extract_workloads_with_owners(
+            {ATTR_WORKLOAD_NAMES: [id_a, id_a]}, hass
+        )
+        assert workloads == [("a", "default", WORKLOAD_TYPE_DEPLOYMENT)]
+
+        workloads, _ = _extract_workloads_with_owners(
+            {ATTR_WORKLOAD_NAMES: [id_a, id_b, id_a]}, hass
+        )
+        assert workloads == [
+            ("a", "default", WORKLOAD_TYPE_DEPLOYMENT),
+            ("b", "default", WORKLOAD_TYPE_DEPLOYMENT),
+        ]
+
+    async def test_namespace_override_merges_same_named_workloads(
+        self, hass: HomeAssistant, two_entries
+    ):
+        """Two same-named workloads of different namespaces collapse under override."""
+        entry_a, _ = two_entries
+        id_1 = self._register(
+            hass, entry_a, "web_1", deployment_name="web", namespace="ns-a"
+        )
+        id_2 = self._register(
+            hass, entry_a, "web_2", deployment_name="web", namespace="ns-b"
+        )
+
+        workloads, _ = _extract_workloads_with_owners(
+            {ATTR_WORKLOAD_NAMES: [id_1, id_2], ATTR_NAMESPACE: "ns-c"}, hass
+        )
+
+        assert workloads == [("web", "ns-c", WORKLOAD_TYPE_DEPLOYMENT)]
+
     async def test_scale_workload_names_raw_name_routes_to_owner(
         self, hass: HomeAssistant, two_entries
     ):

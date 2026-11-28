@@ -428,6 +428,10 @@ def _extract_workloads_with_owners(
         )
         workloads = [(name, provided_namespace, wtype) for name, _, wtype in workloads]
 
+    # The same workload named twice (or in two namespaces that the override
+    # collapses) must be acted on once; dict.fromkeys keeps the first-seen order.
+    workloads = list(dict.fromkeys(workloads))
+
     _LOGGER.debug("Extracted workloads: %s (owners: %s)", workloads, owners)
     return workloads, owners
 
