@@ -518,7 +518,7 @@ class TestKubernetesDataCoordinator:
         """
         mock_client.auth_failed = False
         mock_client.get_deployments.side_effect = KubernetesApiError(
-            "deployments request failed with status 401"
+            "deployments request failed with status 401", 401
         )
 
         async def probe() -> bool:
@@ -532,20 +532,41 @@ class TestKubernetesDataCoordinator:
 
         mock_client.is_cluster_healthy.assert_awaited_once()
 
-    async def test_async_update_data_non_auth_api_error_stays_update_failed(
+    async def test_async_update_data_unconfirmed_401_stays_update_failed(
         self, coordinator, mock_client
     ):
-        """A non-200 the probe does not confirm as 401 remains UpdateFailed."""
+        """A 401 the probe does not confirm remains UpdateFailed."""
         mock_client.auth_failed = False
         mock_client.get_deployments.side_effect = KubernetesApiError(
-            "deployments request failed with status 500"
+            "deployments request failed with status 401", 401
         )
         mock_client.is_cluster_healthy = AsyncMock(return_value=True)
 
-        with pytest.raises(UpdateFailed, match="status 500"):
+        with pytest.raises(UpdateFailed, match="status 401"):
             await coordinator._async_update_data()
 
         mock_client.is_cluster_healthy.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            KubernetesApiError("deployments request failed with status 500", 500),
+            KubernetesApiError("Cannot connect to Kubernetes API: status 503"),
+        ],
+        ids=["status-500", "statusless"],
+    )
+    async def test_non_401_api_error_does_not_probe_again(
+        self, coordinator, mock_client, error
+    ):
+        """Only a 401 can mean a rejected token, so nothing else re-probes."""
+        mock_client.auth_failed = False
+        mock_client.get_deployments.side_effect = error
+        mock_client.is_cluster_healthy = AsyncMock(return_value=True)
+
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+
+        mock_client.is_cluster_healthy.assert_not_awaited()
 
     async def test_async_update_data_transport_error_does_not_probe(
         self, coordinator, mock_client
