@@ -89,20 +89,8 @@ class TestShouldPoll:
 class TestSensorSetup:
     """Test sensor setup functions."""
 
-    @pytest.fixture
-    def setup_domain_data(
-        self, hass: HomeAssistant, mock_config_entry, mock_coordinator, mock_client
-    ) -> KubernetesEntryData:
-        """Attach runtime data to the config entry."""
-        mock_config_entry.runtime_data = KubernetesEntryData(
-            config=mock_config_entry.data,
-            client=mock_client,
-            coordinator=mock_coordinator,
-        )
-        return mock_config_entry.runtime_data
-
     async def test_async_setup_entry_sensor_success(
-        self, hass, mock_config_entry, mock_client, mock_coordinator, setup_domain_data
+        self, hass, mock_config_entry, mock_client, mock_coordinator, entry_runtime_data
     ):
         """Test successful sensor setup."""
         from custom_components.kubernetes.sensor import async_setup_entry
@@ -118,7 +106,7 @@ class TestSensorSetup:
         assert len(sensors) == expected_count
 
     async def test_async_setup_entry_binary_sensor_success(
-        self, hass, mock_config_entry, mock_client, mock_coordinator, setup_domain_data
+        self, hass, mock_config_entry, mock_client, mock_coordinator, entry_runtime_data
     ):
         """Test successful binary sensor setup."""
         from custom_components.kubernetes.binary_sensor import async_setup_entry
@@ -162,7 +150,7 @@ class TestSensorSetup:
         mock_coordinator.async_add_listener.assert_called_once()
 
     async def test_listener_runs_discovery_only_on_new_keys(
-        self, hass, mock_config_entry, mock_coordinator, setup_domain_data
+        self, hass, mock_config_entry, mock_coordinator, entry_runtime_data
     ):
         """Unchanged resource keys create no task; a new pod creates one."""
         from custom_components.kubernetes.sensor import async_setup_entry

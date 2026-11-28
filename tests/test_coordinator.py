@@ -95,6 +95,61 @@ def coordinator(hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_cl
         return KubernetesDataCoordinator(hass, mock_config_entry, mock_client)
 
 
+@pytest.fixture
+def coord(hass: HomeAssistant, make_config_entry, mock_client):
+    """Watch-enabled coordinator on the requesting class's ``mock_client``."""
+    entry = make_config_entry(
+        entry_id="test-entry-id",
+        data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
+        options={CONF_ENABLE_WATCH: True},
+    )
+    with patch("homeassistant.helpers.frame.report_usage"):
+        return KubernetesDataCoordinator(hass, entry, mock_client)
+
+
+@pytest.fixture
+def parsing_watch_client():
+    """Watch client with parse mocks (TestPopulateFromList, TestApplyWatchEventExtended)."""
+    client = MagicMock()
+    client.enrich_workloads_with_metrics = AsyncMock()
+    client.get_pod_metrics = AsyncMock(return_value={})
+    client.host = "test-cluster.example.com"
+    client.port = 6443
+    client.monitor_all_namespaces = True
+    client.namespaces = ["default"]
+    client._parse_pod_item = MagicMock()
+    client._parse_node_item = MagicMock()
+    client._parse_deployment_item = MagicMock()
+    client.list_resource_with_version = AsyncMock(return_value=([], "123"))
+
+    async def _empty_stream(url, rv):
+        return
+        yield
+
+    client.watch_stream = _empty_stream
+    return client
+
+
+@pytest.fixture
+def bare_watch_client():
+    """Watch client without parse mocks (TestRelistPruning, TestEventWatchLoop)."""
+    client = MagicMock()
+    client.enrich_workloads_with_metrics = AsyncMock()
+    client.get_pod_metrics = AsyncMock(return_value={})
+    client.host = "test-cluster.example.com"
+    client.port = 6443
+    client.monitor_all_namespaces = True
+    client.namespaces = ["default"]
+    client.list_resource_with_version = AsyncMock(return_value=([], "100"))
+
+    async def _empty_stream(url, rv):
+        return
+        yield
+
+    client.watch_stream = _empty_stream
+    return client
+
+
 def _create_entity(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
@@ -1891,37 +1946,9 @@ class TestPopulateFromList:
     """Tests for _populate_from_list method."""
 
     @pytest.fixture
-    def mock_client(self):
-        """Mock Kubernetes client."""
-        client = MagicMock()
-        client.enrich_workloads_with_metrics = AsyncMock()
-        client.get_pod_metrics = AsyncMock(return_value={})
-        client.host = "test-cluster.example.com"
-        client.port = 6443
-        client.monitor_all_namespaces = True
-        client.namespaces = ["default"]
-        client._parse_pod_item = MagicMock()
-        client._parse_node_item = MagicMock()
-        client._parse_deployment_item = MagicMock()
-        client.list_resource_with_version = AsyncMock(return_value=([], "123"))
-
-        async def _empty_stream(url, rv):
-            return
-            yield
-
-        client.watch_stream = _empty_stream
-        return client
-
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
-        """Create coordinator for populate tests."""
-        entry = make_config_entry(
-            entry_id="test-entry-id",
-            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
-            options={CONF_ENABLE_WATCH: True},
-        )
-        with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(hass, entry, mock_client)
+    def mock_client(self, parsing_watch_client):
+        """Watch client with parse mocks."""
+        return parsing_watch_client
 
     async def test_returns_early_when_data_is_none(self, coord, mock_client):
         """_populate_from_list should return early if coordinator.data is None."""
@@ -2072,37 +2099,9 @@ class TestApplyWatchEventExtended:
     """Extended tests for _apply_watch_event method."""
 
     @pytest.fixture
-    def mock_client(self):
-        """Mock Kubernetes client."""
-        client = MagicMock()
-        client.enrich_workloads_with_metrics = AsyncMock()
-        client.get_pod_metrics = AsyncMock(return_value={})
-        client.host = "test-cluster.example.com"
-        client.port = 6443
-        client.monitor_all_namespaces = True
-        client.namespaces = ["default"]
-        client._parse_pod_item = MagicMock()
-        client._parse_node_item = MagicMock()
-        client._parse_deployment_item = MagicMock()
-        client.list_resource_with_version = AsyncMock(return_value=([], "123"))
-
-        async def _empty_stream(url, rv):
-            return
-            yield
-
-        client.watch_stream = _empty_stream
-        return client
-
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
-        """Create coordinator for apply_watch_event tests."""
-        entry = make_config_entry(
-            entry_id="test-entry-id",
-            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
-            options={CONF_ENABLE_WATCH: True},
-        )
-        with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(hass, entry, mock_client)
+    def mock_client(self, parsing_watch_client):
+        """Watch client with parse mocks."""
+        return parsing_watch_client
 
     async def test_unknown_event_type_ignored(self, coord, mock_client):
         """Unknown event types should return early without modifying data."""
@@ -2399,23 +2398,9 @@ class TestRelistPruning:
     """A relist is authoritative for its scope and prunes stale objects."""
 
     @pytest.fixture
-    def mock_client(self):
-        """Mock Kubernetes client."""
-        client = MagicMock()
-        client.enrich_workloads_with_metrics = AsyncMock()
-        client.get_pod_metrics = AsyncMock(return_value={})
-        client.host = "test-cluster.example.com"
-        client.port = 6443
-        client.monitor_all_namespaces = True
-        client.namespaces = ["default"]
-        client.list_resource_with_version = AsyncMock(return_value=([], "100"))
-
-        async def _empty_stream(url, rv):
-            return
-            yield
-
-        client.watch_stream = _empty_stream
-        return client
+    def mock_client(self, bare_watch_client):
+        """Watch client without parse mocks."""
+        return bare_watch_client
 
     @pytest.fixture
     def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
@@ -3741,17 +3726,6 @@ class TestBuildWatchConfigs:
         client._parse_hpa_item = MagicMock()
         return client
 
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
-        """Create coordinator for build_watch_configs tests."""
-        entry = make_config_entry(
-            entry_id="test-entry-id",
-            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
-            options={CONF_ENABLE_WATCH: True},
-        )
-        with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(hass, entry, mock_client)
-
     async def test_cluster_scoped_configs_when_monitor_all(self, coord, mock_client):
         """When monitor_all_namespaces=True, should return cluster-wide URLs."""
         mock_client.monitor_all_namespaces = True
@@ -4030,17 +4004,6 @@ class TestStartStopWatchTasksExtended:
         client.watch_stream = _empty_stream
         return client
 
-    @pytest.fixture
-    def coord(self, hass: HomeAssistant, make_config_entry, mock_client):
-        """Create coordinator for start/stop tests."""
-        entry = make_config_entry(
-            entry_id="test-entry-id",
-            data={"cluster_name": "Test Cluster", "host": "test-cluster.example.com"},
-            options={CONF_ENABLE_WATCH: True},
-        )
-        with patch("homeassistant.helpers.frame.report_usage"):
-            return KubernetesDataCoordinator(hass, entry, mock_client)
-
     async def test_start_creates_task_per_watch_config(self, hass, coord, mock_client):
         """async_start_watch_tasks should create one task per config entry."""
         created_coros = []
@@ -4105,23 +4068,9 @@ class TestEventWatchLoop:
     """Tests for the event watch loop and dispatcher."""
 
     @pytest.fixture
-    def mock_client(self):
-        """Mock Kubernetes client for event watch tests."""
-        client = MagicMock()
-        client.enrich_workloads_with_metrics = AsyncMock()
-        client.get_pod_metrics = AsyncMock(return_value={})
-        client.host = "test-cluster.example.com"
-        client.port = 6443
-        client.monitor_all_namespaces = True
-        client.namespaces = ["default"]
-        client.list_resource_with_version = AsyncMock(return_value=([], "100"))
-
-        async def _empty_stream(url, rv):
-            return
-            yield  # make it an async generator
-
-        client.watch_stream = _empty_stream
-        return client
+    def mock_client(self, bare_watch_client):
+        """Watch client without parse mocks."""
+        return bare_watch_client
 
     @pytest.fixture
     def coord_warning(self, hass: HomeAssistant, make_config_entry, mock_client):

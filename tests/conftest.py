@@ -157,6 +157,23 @@ def mock_config_entry(make_config_entry) -> MockConfigEntry:
 
 
 @pytest.fixture
+def entry_runtime_data(
+    mock_config_entry, mock_coordinator, mock_client
+) -> KubernetesEntryData:
+    """Attach runtime data to ``mock_config_entry`` and return it.
+
+    ``mock_client`` (and, where a module shadows it, ``mock_coordinator``)
+    come from the requesting test's module.
+    """
+    mock_config_entry.runtime_data = KubernetesEntryData(
+        config=mock_config_entry.data,
+        client=mock_client,
+        coordinator=mock_coordinator,
+    )
+    return mock_config_entry.runtime_data
+
+
+@pytest.fixture
 def add_loaded_entry(hass):
     """Factory: add a config entry in the LOADED state with runtime_data attached.
 

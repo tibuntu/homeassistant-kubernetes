@@ -1105,6 +1105,18 @@ class TestKubernetesOptionsFlow:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def reconfigure_entry(hass: HomeAssistant, existing_entry_data) -> MockConfigEntry:
+    """Config entry for the reconfigure tests, built from the class's data."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data=existing_entry_data,
+        unique_id="test-cluster",
+    )
+    entry.add_to_hass(hass)
+    return entry
+
+
 class TestReconfigureFlow:
     """Tests for the Kubernetes integration reconfigure flow."""
 
@@ -1124,19 +1136,6 @@ class TestReconfigureFlow:
             CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
         }
 
-    @pytest.fixture
-    def mock_config_entry(
-        self, hass: HomeAssistant, existing_entry_data
-    ) -> MockConfigEntry:
-        """Return a config entry added to hass for reconfigure tests."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            data=existing_entry_data,
-            unique_id="test-cluster",
-        )
-        entry.add_to_hass(hass)
-        return entry
-
     async def _init_reconfigure(self, hass, entry):
         """Helper to start a reconfigure flow."""
         return await hass.config_entries.flow.async_init(
@@ -1148,10 +1147,10 @@ class TestReconfigureFlow:
         )
 
     async def test_reconfigure_shows_form_with_current_values(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test reconfigure step shows form pre-filled with current entry data."""
-        result = await self._init_reconfigure(hass, mock_config_entry)
+        result = await self._init_reconfigure(hass, reconfigure_entry)
 
         assert result["type"] is FlowResultType.FORM
         assert result["step_id"] == "reconfigure"
@@ -1160,11 +1159,11 @@ class TestReconfigureFlow:
         assert any(CONF_HOST in k for k in schema_keys)
 
     async def test_reconfigure_successful_monitor_all_namespaces(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test successful reconfigure with monitor_all_namespaces=True."""
         with patched_connection():
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
 
             result = await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -1179,16 +1178,16 @@ class TestReconfigureFlow:
 
         assert result["type"] is FlowResultType.ABORT
         assert result["reason"] == "reconfigure_successful"
-        assert mock_config_entry.data[CONF_HOST] == "new-host.example.com"
-        assert mock_config_entry.data[CONF_CLUSTER_NAME] == "test-cluster"
-        assert mock_config_entry.data[CONF_NAMESPACE] == []
+        assert reconfigure_entry.data[CONF_HOST] == "new-host.example.com"
+        assert reconfigure_entry.data[CONF_CLUSTER_NAME] == "test-cluster"
+        assert reconfigure_entry.data[CONF_NAMESPACE] == []
 
     async def test_reconfigure_stores_cluster_grouping_unchanged(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """A submitted "cluster" grouping mode is stored as-is."""
         with patched_connection():
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
             result = await hass.config_entries.flow.async_configure(
                 result["flow_id"],
                 user_input={
@@ -1201,10 +1200,10 @@ class TestReconfigureFlow:
             )
 
         assert result["reason"] == "reconfigure_successful"
-        assert mock_config_entry.data[CONF_DEVICE_GROUPING_MODE] == "cluster"
+        assert reconfigure_entry.data[CONF_DEVICE_GROUPING_MODE] == "cluster"
 
     async def test_reconfigure_proceeds_to_namespace_step(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test reconfigure proceeds to namespace step when monitor_all=False."""
         with (
@@ -1216,7 +1215,7 @@ class TestReconfigureFlow:
                 return_value=["default", "kube-system", "production"],
             ),
         ):
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
 
             result = await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -1231,11 +1230,11 @@ class TestReconfigureFlow:
         assert result["step_id"] == "reconfigure_namespaces"
 
     async def test_reconfigure_connection_failure(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test reconfigure shows error on connection failure."""
         with patched_connection(side_effect=Exception("Connection refused")):
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
 
             result = await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -1250,11 +1249,11 @@ class TestReconfigureFlow:
         assert result["errors"]["base"] == "cannot_connect"
 
     async def test_reconfigure_token_required(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Reconfigure reports a missing token as token_required."""
         with patched_connection(side_effect=TokenRequired("API token is required")):
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
 
             result = await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -1265,11 +1264,11 @@ class TestReconfigureFlow:
         assert result["errors"]["base"] == "token_required"
 
     async def test_reconfigure_abort_flow_propagates(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test AbortFlow is re-raised instead of becoming a cannot_connect error."""
         with patched_connection(side_effect=AbortFlow("already_configured")):
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
 
             result = await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -1285,11 +1284,11 @@ class TestReconfigureFlow:
         assert result["reason"] == "already_configured"
 
     async def test_reconfigure_preserves_cluster_name(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test that cluster_name is always injected from existing entry."""
         with patched_connection():
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
 
             await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -1301,14 +1300,14 @@ class TestReconfigureFlow:
                 },
             )
 
-        assert mock_config_entry.data[CONF_CLUSTER_NAME] == "test-cluster"
+        assert reconfigure_entry.data[CONF_CLUSTER_NAME] == "test-cluster"
 
     async def test_reconfigure_updates_connection_fields(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test that updated host/port/token values are passed through."""
         with patched_connection():
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
 
             await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -1321,10 +1320,10 @@ class TestReconfigureFlow:
                 },
             )
 
-        assert mock_config_entry.data[CONF_HOST] == "updated-host.example.com"
-        assert mock_config_entry.data[CONF_PORT] == 8443
-        assert mock_config_entry.data[CONF_API_TOKEN] == "updated-token"
-        assert mock_config_entry.data[CONF_VERIFY_SSL] is True
+        assert reconfigure_entry.data[CONF_HOST] == "updated-host.example.com"
+        assert reconfigure_entry.data[CONF_PORT] == 8443
+        assert reconfigure_entry.data[CONF_API_TOKEN] == "updated-token"
+        assert reconfigure_entry.data[CONF_VERIFY_SSL] is True
 
     async def test_reconfigure_clears_namespaces_when_switching_to_all(
         self, hass: HomeAssistant
@@ -1364,11 +1363,11 @@ class TestReconfigureFlow:
         assert entry.data[CONF_NAMESPACE] == []
 
     async def test_reconfigure_clears_ca_cert_when_removed(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test that CA cert is cleared when user removes it from the form."""
         with patched_connection():
-            result = await self._init_reconfigure(hass, mock_config_entry)
+            result = await self._init_reconfigure(hass, reconfigure_entry)
 
             await hass.config_entries.flow.async_configure(
                 result["flow_id"],
@@ -1380,7 +1379,7 @@ class TestReconfigureFlow:
                 },
             )
 
-        assert mock_config_entry.data[CONF_CA_CERT] == ""
+        assert reconfigure_entry.data[CONF_CA_CERT] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -1406,19 +1405,6 @@ class TestReconfigureNamespacesFlow:
             CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
             CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
         }
-
-    @pytest.fixture
-    def mock_config_entry(
-        self, hass: HomeAssistant, existing_entry_data
-    ) -> MockConfigEntry:
-        """Return a config entry added to hass for reconfigure tests."""
-        entry = MockConfigEntry(
-            domain=DOMAIN,
-            data=existing_entry_data,
-            unique_id="test-cluster",
-        )
-        entry.add_to_hass(hass)
-        return entry
 
     async def _init_reconfigure_to_namespaces(self, hass, entry, fetch_return):
         """Helper to start reconfigure and advance to namespace step."""
@@ -1450,12 +1436,12 @@ class TestReconfigureNamespacesFlow:
             return result
 
     async def test_reconfigure_namespaces_shows_form(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test namespace step shows form with fetched namespaces."""
         result = await self._init_reconfigure_to_namespaces(
             hass,
-            mock_config_entry,
+            reconfigure_entry,
             ["default", "kube-system", "production", "staging"],
         )
 
@@ -1463,12 +1449,12 @@ class TestReconfigureNamespacesFlow:
         assert result["step_id"] == "reconfigure_namespaces"
 
     async def test_reconfigure_namespaces_preselects_current(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test that currently configured namespaces are pre-selected."""
         result = await self._init_reconfigure_to_namespaces(
             hass,
-            mock_config_entry,
+            reconfigure_entry,
             ["default", "kube-system", "production", "staging"],
         )
 
@@ -1482,13 +1468,13 @@ class TestReconfigureNamespacesFlow:
             pytest.fail(f"{CONF_NAMESPACE} not found in schema")
 
     async def test_reconfigure_namespaces_filters_stale(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test that stale namespaces are filtered from defaults."""
         # "staging" was configured but no longer exists on the cluster
         result = await self._init_reconfigure_to_namespaces(
             hass,
-            mock_config_entry,
+            reconfigure_entry,
             ["default", "kube-system", "production"],
         )
 
@@ -1504,12 +1490,12 @@ class TestReconfigureNamespacesFlow:
             pytest.fail(f"{CONF_NAMESPACE} not found in schema")
 
     async def test_reconfigure_namespaces_all_stale_leaves_empty(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test that no namespace is auto-selected when all previous ones are gone."""
         result = await self._init_reconfigure_to_namespaces(
             hass,
-            mock_config_entry,
+            reconfigure_entry,
             ["default", "kube-system", "new-ns"],
         )
 
@@ -1523,12 +1509,12 @@ class TestReconfigureNamespacesFlow:
             pytest.fail(f"{CONF_NAMESPACE} not found in schema")
 
     async def test_reconfigure_namespaces_successful_submission(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test successful namespace selection during reconfigure."""
         result = await self._init_reconfigure_to_namespaces(
             hass,
-            mock_config_entry,
+            reconfigure_entry,
             ["default", "production"],
         )
 
@@ -1539,16 +1525,16 @@ class TestReconfigureNamespacesFlow:
 
         assert result["type"] is FlowResultType.ABORT
         assert result["reason"] == "reconfigure_successful"
-        assert mock_config_entry.data[CONF_NAMESPACE] == ["default", "production"]
-        assert mock_config_entry.data[CONF_CLUSTER_NAME] == "test-cluster"
+        assert reconfigure_entry.data[CONF_NAMESPACE] == ["default", "production"]
+        assert reconfigure_entry.data[CONF_CLUSTER_NAME] == "test-cluster"
 
     async def test_reconfigure_namespaces_empty_selection_error(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test error when no namespace selected."""
         result = await self._init_reconfigure_to_namespaces(
             hass,
-            mock_config_entry,
+            reconfigure_entry,
             ["default", "production"],
         )
 
@@ -1561,7 +1547,7 @@ class TestReconfigureNamespacesFlow:
         assert CONF_NAMESPACE in result["errors"]
 
     async def test_reconfigure_namespaces_string_conversion(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test that comma-separated string is converted to list.
 
@@ -1580,7 +1566,7 @@ class TestReconfigureNamespacesFlow:
         flow.handler = DOMAIN
         flow.context = {
             "source": config_entries.SOURCE_RECONFIGURE,
-            "entry_id": mock_config_entry.entry_id,
+            "entry_id": reconfigure_entry.entry_id,
         }
 
         result = await flow.async_step_reconfigure_namespaces(
@@ -1589,14 +1575,14 @@ class TestReconfigureNamespacesFlow:
 
         assert result["type"] is FlowResultType.ABORT
         assert result["reason"] == "reconfigure_successful"
-        assert "default" in mock_config_entry.data[CONF_NAMESPACE]
-        assert "production" in mock_config_entry.data[CONF_NAMESPACE]
+        assert "default" in reconfigure_entry.data[CONF_NAMESPACE]
+        assert "production" in reconfigure_entry.data[CONF_NAMESPACE]
 
     async def test_reconfigure_namespaces_fetch_failure(
-        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+        self, hass: HomeAssistant, reconfigure_entry: MockConfigEntry
     ):
         """Test error and text fallback when namespace fetch returns empty."""
-        result = await self._init_reconfigure_to_namespaces(hass, mock_config_entry, [])
+        result = await self._init_reconfigure_to_namespaces(hass, reconfigure_entry, [])
 
         assert result["type"] is FlowResultType.FORM
         assert result["errors"].get("base") == "cannot_fetch_namespaces"
