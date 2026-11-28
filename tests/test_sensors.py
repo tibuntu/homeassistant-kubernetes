@@ -58,205 +58,6 @@ def mock_client():
     return client
 
 
-class TestKubernetesPodsSensor:
-    """Test Kubernetes pods sensor."""
-
-    def test_sensor_device_info(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test sensor device info."""
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-        device_info = sensor.device_info
-        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
-        assert device_info["name"] == "test-cluster"
-
-    async def test_sensor_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test successful sensor update."""
-        # Set up coordinator data
-        mock_coordinator.data = {"pods_count": 5}
-
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-
-        # The sensor should read from coordinator data
-        assert sensor.native_value == 5
-
-
-class TestKubernetesNodesSensor:
-    """Test Kubernetes nodes sensor."""
-
-    def test_sensor_device_info(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test sensor device info."""
-        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
-        device_info = sensor.device_info
-        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
-        assert device_info["name"] == "test-cluster"
-
-    async def test_sensor_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test successful sensor update."""
-        # Set up coordinator data
-        mock_coordinator.data = {"nodes_count": 3}
-
-        sensor = KubernetesNodesSensor(mock_coordinator, mock_client, mock_config_entry)
-
-        # The sensor should read from coordinator data
-        assert sensor.native_value == 3
-
-
-class TestKubernetesDeploymentsSensor:
-    """Test Kubernetes deployments sensor."""
-
-    async def test_sensor_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test successful sensor update."""
-        # Set up coordinator data
-        mock_coordinator.data = {"deployments": {"deployment1": {}, "deployment2": {}}}
-
-        sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # The sensor should read from coordinator data
-        assert sensor.native_value == 2
-
-
-class TestKubernetesStatefulSetsSensor:
-    """Test Kubernetes statefulsets sensor."""
-
-    async def test_sensor_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test successful sensor update."""
-        # Set up coordinator data
-        mock_coordinator.data = {"statefulsets": {"statefulset1": {}}}
-
-        sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # The sensor should read from coordinator data
-        assert sensor.native_value == 1
-
-
-class TestKubernetesDaemonSetsSensor:
-    """Test Kubernetes daemonsets sensor."""
-
-    async def test_sensor_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test successful sensor update."""
-        # Set up coordinator data
-        mock_coordinator.data = {"daemonsets": {"daemonset1": {}}}
-
-        sensor = KubernetesDaemonSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # The sensor should read from coordinator data
-        assert sensor.native_value == 1
-
-
-class TestKubernetesIngressesSensor:
-    """Test Kubernetes ingresses sensor."""
-
-    async def test_sensor_update_success(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test successful sensor update with coordinator data."""
-        # Set up coordinator data with ingresses
-        mock_coordinator.data = {"ingresses": {"default_web": {}, "prod_web": {}}}
-
-        sensor = KubernetesIngressesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # The sensor should read from coordinator data
-        assert sensor.native_value == 2
-
-    async def test_sensor_missing_ingresses_bucket(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor when ingresses bucket is missing from coordinator data."""
-        # Set up coordinator data without ingresses bucket
-        mock_coordinator.data = {}
-
-        sensor = KubernetesIngressesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # The sensor should return 0 when bucket is missing
-        assert sensor.native_value == 0
-
-    async def test_sensor_none_coordinator_data(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor when coordinator data is None."""
-        mock_coordinator.data = None
-
-        sensor = KubernetesIngressesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # The sensor should return 0 when coordinator data is None
-        assert sensor.native_value == 0
-
-
-class TestKubernetesServicesSensor:
-    """Test Kubernetes services count sensor."""
-
-    def test_value_from_bucket(self, mock_config_entry, mock_client, mock_coordinator):
-        """Without a count key the value is the bucket length."""
-        mock_coordinator.data = {"services": {"default_web": {}, "prod_api": {}}}
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        assert sensor.native_value == 2
-
-    def test_value_prefers_count_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """A services_count key (type fully off, counts on) wins over the bucket."""
-        mock_coordinator.data = {"services": {}, "services_count": 6}
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        assert sensor.native_value == 6
-
-    def test_missing_bucket_and_none_data(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """No bucket or no data at all -> 0."""
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        mock_coordinator.data = {}
-        assert sensor.native_value == 0
-        mock_coordinator.data = None
-        assert sensor.native_value == 0
-
-    def test_device_info(self, mock_config_entry, mock_client, mock_coordinator):
-        """Device info matches cluster device."""
-        from custom_components.kubernetes.device import get_cluster_device_info
-
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        expected = get_cluster_device_info(mock_config_entry)
-        assert sensor.device_info["identifiers"] == expected["identifiers"]
-
-    def test_value_with_bare_data(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """With data but no services/services_count keys, return 0."""
-        mock_coordinator.data = {"pods": {}}
-        sensor = KubernetesServicesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        assert sensor.native_value == 0
-
-
 class TestShouldPoll:
     """Coordinator-backed sensors are never polled by HA.
 
@@ -759,48 +560,6 @@ class TestDisabledResourceGating:
 class TestSensorProperties:
     """Test sensor properties."""
 
-    def test_sensor_has_entity_name(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test that sensors have entity name."""
-        pods_sensor = KubernetesPodsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        nodes_sensor = KubernetesNodesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        deployments_sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        statefulsets_sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert pods_sensor.has_entity_name is True
-        assert nodes_sensor.has_entity_name is True
-        assert deployments_sensor.has_entity_name is True
-        assert statefulsets_sensor.has_entity_name is True
-
-    def test_sensor_state_class(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test that sensors have measurement state class."""
-        pods_sensor = KubernetesPodsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        nodes_sensor = KubernetesNodesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        deployments_sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        statefulsets_sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert pods_sensor.state_class == SensorStateClass.MEASUREMENT
-        assert nodes_sensor.state_class == SensorStateClass.MEASUREMENT
-        assert deployments_sensor.state_class == SensorStateClass.MEASUREMENT
-        assert statefulsets_sensor.state_class == SensorStateClass.MEASUREMENT
-
     def test_binary_sensor_has_entity_name(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -808,120 +567,6 @@ class TestSensorProperties:
         health_sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
 
         assert health_sensor.has_entity_name is True
-
-    def test_sensor_unique_ids(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test that sensors have unique IDs."""
-        pods_sensor = KubernetesPodsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        nodes_sensor = KubernetesNodesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        deployments_sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        statefulsets_sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        health_sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
-
-        ids = [
-            pods_sensor.unique_id,
-            nodes_sensor.unique_id,
-            deployments_sensor.unique_id,
-            statefulsets_sensor.unique_id,
-            health_sensor.unique_id,
-        ]
-
-        # All IDs should be unique
-        assert len(ids) == len(set(ids))
-
-        # IDs should contain the entry_id
-        for sensor_id in ids:
-            assert mock_config_entry.entry_id in sensor_id
-
-
-class TestCronJobsSensor:
-    """Test CronJobs sensor."""
-
-    def test_cronjobs_sensor_native_value_with_data(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobs sensor native value when coordinator has data."""
-        # Mock coordinator data with CronJobs
-        mock_coordinator.data = {
-            "cronjobs": {
-                "default_backup-job": {"name": "backup-job", "namespace": "default"},
-                "default_cleanup-job": {"name": "cleanup-job", "namespace": "default"},
-                "default_monitoring-job": {
-                    "name": "monitoring-job",
-                    "namespace": "default",
-                },
-            }
-        }
-
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.native_value == 3
-
-    def test_cronjobs_sensor_native_value_without_data(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobs sensor native value when coordinator has no data."""
-        # Mock coordinator with no data
-        mock_coordinator.data = None
-
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.native_value == 0
-
-    def test_cronjobs_sensor_native_value_empty_cronjobs(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobs sensor native value when no CronJobs exist."""
-        # Mock coordinator data with empty CronJobs
-        mock_coordinator.data = {"cronjobs": {}}
-
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.native_value == 0
-
-    def test_cronjobs_sensor_native_value_missing_cronjobs_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobs sensor native value when cronjobs key is missing."""
-        # Mock coordinator data without cronjobs key
-        mock_coordinator.data = {"deployments": {}, "statefulsets": {}}
-
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        assert sensor.native_value == 0
-
-    def test_cronjobs_sensor_available(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobs sensor availability."""
-        from custom_components.kubernetes.sensor import KubernetesCronJobsSensor
-
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-
-        # Test when coordinator is successful
-        mock_coordinator.last_update_success = True
-        assert sensor.available is True
-
-        # Test when coordinator fails
-        mock_coordinator.last_update_success = False
-        assert sensor.available is False
 
 
 class TestKubernetesNodeSensor:
@@ -2821,42 +2466,6 @@ class TestDiscoverCronJobSensors:
         assert new_sensors == []
 
 
-class TestKubernetesJobsSensor:
-    """Test the Jobs count sensor."""
-
-    def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
-        return KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
-
-    def test_native_value_returns_count(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test that native_value returns the number of jobs."""
-        mock_coordinator.data = {
-            "jobs": {
-                "default_backup-job": {"namespace": "default"},
-                "production_import-job": {"namespace": "production"},
-            }
-        }
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == 2
-
-    def test_native_value_no_coordinator_data(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test native_value returns 0 when coordinator has no data."""
-        mock_coordinator.data = None
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == 0
-
-    def test_native_value_empty_jobs(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test native_value returns 0 when no jobs exist."""
-        mock_coordinator.data = {"jobs": {}}
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == 0
-
-
 class TestKubernetesJobSensor:
     """Test individual Job status sensors."""
 
@@ -3376,40 +2985,6 @@ class TestDiscoverPodSensors:
         assert len(new_sensors) == 1
         assert new_sensors[0].namespace == "default"
         assert new_sensors[0].unique_id == "test_entry_id_pod_default_orphan-pod"
-
-
-class TestKubernetesJobsSensorExtended:
-    """Extended tests for KubernetesJobsSensor covering availability and edge cases."""
-
-    def _make_sensor(self, mock_coordinator, mock_client, mock_config_entry):
-        return KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
-
-    def test_native_value_missing_jobs_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test native_value returns 0 when jobs key is missing from data."""
-        mock_coordinator.data = {"deployments": {}, "statefulsets": {}}
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == 0
-
-    def test_device_info_uses_cluster_device(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test that the jobs count sensor uses the cluster device."""
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        device_info = sensor.device_info
-        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
-        assert device_info["name"] == "test-cluster"
-
-    def test_available_property(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test sensor availability follows coordinator status."""
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-
-        mock_coordinator.last_update_success = True
-        assert sensor.available is True
-
-        mock_coordinator.last_update_success = False
-        assert sensor.available is False
 
 
 class TestKubernetesJobSensorExtended:
@@ -4064,63 +3639,6 @@ class TestDiscoverAndAddNewSensorsDeviceCreation:
         assert len(metric_sensors) == 4
 
 
-class TestAggregateSensorDeviceInfo:
-    """Test device_info properties for aggregate sensors."""
-
-    def test_deployments_sensor_device_info(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test DeploymentsSensor device_info returns cluster device."""
-        sensor = KubernetesDeploymentsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        device_info = sensor.device_info
-        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
-        assert device_info["name"] == "test-cluster"
-
-    def test_statefulsets_sensor_device_info(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test StatefulSetsSensor device_info returns cluster device."""
-        sensor = KubernetesStatefulSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        device_info = sensor.device_info
-        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
-        assert device_info["name"] == "test-cluster"
-
-    def test_daemonsets_sensor_device_info(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test DaemonSetsSensor device_info returns cluster device."""
-        sensor = KubernetesDaemonSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        device_info = sensor.device_info
-        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
-        assert device_info["name"] == "test-cluster"
-
-    def test_cronjobs_sensor_device_info(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test CronJobsSensor device_info returns cluster device."""
-        sensor = KubernetesCronJobsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        device_info = sensor.device_info
-        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
-        assert device_info["name"] == "test-cluster"
-
-    def test_jobs_sensor_device_info(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test JobsSensor device_info returns cluster device."""
-        sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
-        device_info = sensor.device_info
-        assert device_info["identifiers"] == {("kubernetes", "test_entry_id_cluster")}
-        assert device_info["name"] == "test-cluster"
-
-
 class TestDaemonSetSensorEmptyData:
     """Test KubernetesDaemonSetSensor extra_state_attributes with empty/missing daemonset data."""
 
@@ -4386,7 +3904,62 @@ class TestCountSensorTable:
         assert sensor.device_info["identifiers"] == {
             ("kubernetes", "test_entry_id_cluster")
         }
+        assert sensor.device_info["name"] == "test-cluster"
         assert sensor.native_value == expected
+
+    @pytest.mark.parametrize("cls", [row[0] for row in _COUNT_SENSORS])
+    def test_available_follows_coordinator(
+        self, mock_config_entry, mock_client, mock_coordinator, cls
+    ):
+        """Availability is the coordinator's last_update_success."""
+        sensor = cls(mock_coordinator, mock_client, mock_config_entry)
+        mock_coordinator.last_update_success = True
+        assert sensor.available is True
+        mock_coordinator.last_update_success = False
+        assert sensor.available is False
+
+    @pytest.mark.parametrize("cls", [row[0] for row in _COUNT_SENSORS])
+    def test_zero_without_own_keys(
+        self, mock_config_entry, mock_client, mock_coordinator, cls
+    ):
+        """Data without the sensor's keys, or with empty buckets, reads 0."""
+        sensor = cls(mock_coordinator, mock_client, mock_config_entry)
+        mock_coordinator.data = {"unrelated": {}}
+        assert sensor.native_value == 0
+        mock_coordinator.data = {
+            bucket: {}
+            for bucket in (
+                "pods",
+                "nodes",
+                "deployments",
+                "statefulsets",
+                "daemonsets",
+                "cronjobs",
+                "jobs",
+                "ingresses",
+                "services",
+            )
+        }
+        assert sensor.native_value == 0
+
+    @pytest.mark.parametrize(
+        ("cls", "bucket"),
+        [
+            (KubernetesDaemonSetsSensor, "daemonsets"),
+            (KubernetesJobsSensor, "jobs"),
+            (KubernetesIngressesSensor, "ingresses"),
+            (KubernetesServicesSensor, "services"),
+        ],
+    )
+    def test_fully_disableable_types_prefer_count_key(
+        self, mock_config_entry, mock_client, mock_coordinator, cls, bucket
+    ):
+        """Without a count key the bucket is counted; a count key wins."""
+        sensor = cls(mock_coordinator, mock_client, mock_config_entry)
+        mock_coordinator.data = {bucket: {"a": {}, "b": {}}}
+        assert sensor.native_value == 2
+        mock_coordinator.data = {bucket: {}, f"{bucket}_count": 6}
+        assert sensor.native_value == 6
 
     @pytest.mark.parametrize("cls", [row[0] for row in _COUNT_SENSORS])
     def test_zero_without_data(
