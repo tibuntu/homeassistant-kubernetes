@@ -165,7 +165,3 @@ source = ["custom_components/kubernetes"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "build", "dist"]
-skips = ["B101", "B601"]  # Skip assert and shell usage in tests
-
-[tool.bandit.assert_used]
-skips = ["*_test.py", "*/test_*.py"]
