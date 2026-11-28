@@ -36,12 +36,10 @@ DEFAULT_DEVICE_GROUPING_MODE = DEVICE_GROUPING_MODE_NAMESPACE
 
 # Update intervals
 DEFAULT_SWITCH_UPDATE_INTERVAL = 60  # Default polling interval for switches
-DEFAULT_SCALE_VERIFICATION_TIMEOUT = 30  # Timeout for verifying scaling operations
 DEFAULT_SCALE_COOLDOWN = 10  # Cooldown period after scaling operations
 
 # Polling configuration keys
 CONF_SWITCH_UPDATE_INTERVAL = "switch_update_interval"
-CONF_SCALE_VERIFICATION_TIMEOUT = "scale_verification_timeout"
 CONF_SCALE_COOLDOWN = "scale_cooldown"
 
 # Panel

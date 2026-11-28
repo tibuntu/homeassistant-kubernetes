@@ -3179,10 +3179,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           <span class="setting-value">${e.switch_update_interval}s</span>
         </div>
         <div class="setting-row">
-          <span class="setting-label">Scale Timeout</span>
-          <span class="setting-value">${e.scale_verification_timeout}s</span>
-        </div>
-        <div class="setting-row">
           <span class="setting-label">Scale Cooldown</span>
           <span class="setting-value">${e.scale_cooldown}s</span>
         </div>

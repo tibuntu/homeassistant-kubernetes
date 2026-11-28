@@ -13,7 +13,6 @@ interface ConfigEntry {
   namespaces: string[];
   device_grouping_mode: string;
   switch_update_interval: number;
-  scale_verification_timeout: number;
   scale_cooldown: number;
   panel_enabled: boolean;
   panel_admin_only: boolean;
@@ -294,10 +293,6 @@ export class K8sSettings extends K8sDataView<ConfigResponse> {
         <div class="setting-row">
           <span class="setting-label">Poll Interval</span>
           <span class="setting-value">${entry.switch_update_interval}s</span>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Scale Timeout</span>
-          <span class="setting-value">${entry.scale_verification_timeout}s</span>
         </div>
         <div class="setting-row">
           <span class="setting-label">Scale Cooldown</span>

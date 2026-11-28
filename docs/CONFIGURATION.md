@@ -21,7 +21,6 @@ This guide covers all configuration options for the Kubernetes Home Assistant In
 | **Namespaces** | List of namespaces to monitor (only shown when "Monitor All Namespaces" is disabled) | Selected from cluster |
 | **Device Grouping Mode** | How entities are organized: `namespace` creates a separate device per monitored namespace, `cluster` puts every entity on the single cluster device | `namespace` |
 | **Switch Update Interval** | How often the integration polls the cluster for resource updates (seconds); all entities are refreshed from that one poll | `60` |
-| **Scale Verification Timeout** | Maximum time to wait for scaling operations (seconds) | `30` |
 | **Scale Cooldown** | Seconds after a scaling operation during which cluster refreshes do not overwrite the switch's new state | `10` |
 
 ## Configuration via UI
@@ -107,7 +106,6 @@ For clusters with a self-signed or custom Certificate Authority, do one of:
 ### Performance Tuning
 
 - **Switch Update Interval**: Lower values provide more responsive entities but increase API load. Entities themselves are never polled individually — they all update from the coordinator's single poll (or from the Watch API).
-- **Scale Verification Timeout**: Increase for slow clusters or large deployments
 - **Scale Cooldown**: After you switch a Deployment/StatefulSet on or off, the switch keeps showing the requested state for this many seconds even if a cluster refresh still reports the old replica count; increase it on slow clusters if switches flicker back briefly after scaling
 
 ## Options (post-setup)

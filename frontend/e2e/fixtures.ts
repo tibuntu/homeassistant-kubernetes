@@ -464,7 +464,6 @@ export const RESPONSES: Record<string, unknown> = {
         namespaces: [],
         device_grouping_mode: "namespace",
         switch_update_interval: 60,
-        scale_verification_timeout: 60,
         scale_cooldown: 30,
         panel_enabled: true,
         panel_admin_only: false,
