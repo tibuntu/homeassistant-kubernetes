@@ -818,6 +818,30 @@ test("Escape closes the drain dialog without calling the service", async ({ page
   expect(await page.evaluate(() => window.__k8s.services)).toEqual([]);
 });
 
+test("cleared scale and timeout inputs disable their buttons", async ({ page }) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Workloads");
+  await page.locator(".replica-info.scalable").first().click();
+  await page.locator(".scale-input").fill("");
+  await expect(page.locator("button.scale-action")).toBeDisabled();
+  await expect(page.locator(".scale-btn").first()).toBeDisabled();
+  await expect(page.locator(".scale-btn").last()).toBeDisabled();
+  await page.locator("button.scale-action").click({ force: true });
+  expect(await page.evaluate(() => window.__k8s.services)).toEqual([]);
+  await page.locator(".scale-input").fill("3");
+  await expect(page.locator("button.scale-action")).toBeEnabled();
+  await page.keyboard.press("Escape");
+
+  await openTab(page, "Nodes");
+  await page.locator(".node-card .action-btn.drain").click();
+  await page.locator(".drain-timeout").fill("");
+  await expect(page.locator("button.drain-action")).toBeDisabled();
+  await page.locator("button.drain-action").click({ force: true });
+  expect(await page.evaluate(() => window.__k8s.services)).toEqual([]);
+  await page.locator(".drain-timeout").fill("3");
+  await expect(page.locator("button.drain-action")).toBeEnabled();
+});
+
 test("network tab shows ingresses, HTTPRoutes, and services", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Network");

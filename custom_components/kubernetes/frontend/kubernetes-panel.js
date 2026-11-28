@@ -813,7 +813,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
   .action-error .dismiss-btn:hover {
     background: rgba(var(--rgb-error-color, 244, 67, 54), 0.15);
   }
-`,mt={mirror_pod:`static pod`,daemonset:`DaemonSet`,completed:`finished`,emptydir:`emptyDir data`,unmanaged:`no controller`,home_assistant:`Home Assistant itself`},ht={ignore_daemonsets:!0,delete_emptydir_data:!1,force:!1,timeout:120},gt=[`all`,`ready`,`not-ready`],J=class extends H{constructor(...e){super(...e),this._expandedNodes=/* @__PURE__ */ new Set,this._statusFilter=`all`,this._searchQuery=``,this.tab=`nodes`,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._drainTarget=null,this._drainOptions={...ht},this._draining=!1,this._drainResult=null,this.loadErrorFallback=`Failed to load nodes data`}readQuery(){this._statusFilter=B(z(`status`),gt,`all`),this._searchQuery=z(`search`)??``}willUpdate(e){(e.has(`_statusFilter`)||e.has(`_searchQuery`))&&this._syncQuery({search:this._searchQuery,status:this._statusFilter===`all`?``:this._statusFilter})}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/nodes/list`});this._data=e}_toggleNode(e){this._expandedNodes=L(this._expandedNodes,e)}_getConditions(e){let t=[];return e.memory_pressure&&t.push(`memory_pressure`),e.disk_pressure&&t.push(`disk_pressure`),e.pid_pressure&&t.push(`pid_pressure`),e.network_unavailable&&t.push(`network_unavailable`),t}_getFilteredNodes(e){let t=e;if(this._statusFilter!==`all`&&(t=t.filter(e=>this._statusFilter===`ready`?e.status===`Ready`:e.status!==`Ready`)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.internal_ip.toLowerCase().includes(e)||t.kubelet_version.toLowerCase().includes(e))}return t}async _setSchedulable(e,t,n){let r=`${e}_${t.name}`,i=new Set(this._actionInProgress);i.add(r),this._actionInProgress=i;try{await this.hass.callService(`kubernetes`,n?`uncordon_node`:`cordon_node`,{node_name:t.name,entry_id:e}),await this._loadData()}catch(e){let t=R(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-nodes-table] Action failed:`,e)}finally{let e=new Set(this._actionInProgress);e.delete(r),this._actionInProgress=e}}_requestDrain(e,t){this._drainTarget={entry_id:e,node:t.name},this._drainOptions={...ht},this._drainResult=null}_closeDrain(){this._drainTarget=null,this._drainResult=null}async _confirmDrain(){if(!this._drainTarget)return;let{entry_id:e,node:t}=this._drainTarget;this._draining=!0;try{let n=(await this.hass.callService(`kubernetes`,`drain_node`,{node_name:t,entry_id:e,...this._drainOptions},void 0,!0,!0))?.response;this._drainResult=n?.[t]??{evicted:[],skipped:[],blocked:[]},await this._loadData()}catch(e){this._actionError=`Drain failed: ${R(e,`Action failed`)}`,this._drainTarget=null}finally{this._draining=!1}}static{this.styles=[pt,U,G,K,it,W,o`
+`,mt={mirror_pod:`static pod`,daemonset:`DaemonSet`,completed:`finished`,emptydir:`emptyDir data`,unmanaged:`no controller`,home_assistant:`Home Assistant itself`},ht={ignore_daemonsets:!0,delete_emptydir_data:!1,force:!1,timeout:120},gt=[`all`,`ready`,`not-ready`],J=class extends H{constructor(...e){super(...e),this._expandedNodes=/* @__PURE__ */ new Set,this._statusFilter=`all`,this._searchQuery=``,this.tab=`nodes`,this._actionInProgress=/* @__PURE__ */ new Set,this._actionError=null,this._drainTarget=null,this._drainOptions={...ht},this._draining=!1,this._drainResult=null,this.loadErrorFallback=`Failed to load nodes data`}readQuery(){this._statusFilter=B(z(`status`),gt,`all`),this._searchQuery=z(`search`)??``}willUpdate(e){(e.has(`_statusFilter`)||e.has(`_searchQuery`))&&this._syncQuery({search:this._searchQuery,status:this._statusFilter===`all`?``:this._statusFilter})}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/nodes/list`});this._data=e}_toggleNode(e){this._expandedNodes=L(this._expandedNodes,e)}_getConditions(e){let t=[];return e.memory_pressure&&t.push(`memory_pressure`),e.disk_pressure&&t.push(`disk_pressure`),e.pid_pressure&&t.push(`pid_pressure`),e.network_unavailable&&t.push(`network_unavailable`),t}_getFilteredNodes(e){let t=e;if(this._statusFilter!==`all`&&(t=t.filter(e=>this._statusFilter===`ready`?e.status===`Ready`:e.status!==`Ready`)),this._searchQuery){let e=this._searchQuery.toLowerCase();t=t.filter(t=>t.name.toLowerCase().includes(e)||t.internal_ip.toLowerCase().includes(e)||t.kubelet_version.toLowerCase().includes(e))}return t}async _setSchedulable(e,t,n){let r=`${e}_${t.name}`,i=new Set(this._actionInProgress);i.add(r),this._actionInProgress=i;try{await this.hass.callService(`kubernetes`,n?`uncordon_node`:`cordon_node`,{node_name:t.name,entry_id:e}),await this._loadData()}catch(e){let t=R(e,`Action failed`);this._actionError=`Action failed: ${t}`,console.error(`[k8s-nodes-table] Action failed:`,e)}finally{let e=new Set(this._actionInProgress);e.delete(r),this._actionInProgress=e}}_requestDrain(e,t){this._drainTarget={entry_id:e,node:t.name},this._drainOptions={...ht},this._drainResult=null}_closeDrain(){this._drainTarget=null,this._drainResult=null}async _confirmDrain(){if(!this._drainTarget||this._drainOptions.timeout===null)return;let{entry_id:e,node:t}=this._drainTarget;this._draining=!0;try{let n=(await this.hass.callService(`kubernetes`,`drain_node`,{node_name:t,entry_id:e,...this._drainOptions},void 0,!0,!0))?.response;this._drainResult=n?.[t]??{evicted:[],skipped:[],blocked:[]},await this._loadData()}catch(e){this._actionError=`Drain failed: ${R(e,`Action failed`)}`,this._drainTarget=null}finally{this._draining=!1}}static{this.styles=[pt,U,G,K,it,W,o`
       .node-actions {
         display: flex;
         gap: 4px;
@@ -1066,9 +1066,9 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                       type="number"
                       min="0"
                       max="3600"
-                      .value=${String(n.timeout)}
+                      .value=${n.timeout===null?``:String(n.timeout)}
                       ?disabled=${this._draining}
-                      @input=${e=>{let t=parseInt(e.target.value,10);!isNaN(t)&&t>=0&&t<=3600&&(this._drainOptions={...n,timeout:t})}}
+                      @input=${e=>{let t=parseInt(e.target.value,10);this._drainOptions={...n,timeout:!isNaN(t)&&t>=0&&t<=3600?t:null}}}
                     />
                     s
                   </label>
@@ -1081,7 +1081,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                     <button
                       class="drain-action"
                       @click=${this._confirmDrain}
-                      ?disabled=${this._draining}
+                      ?disabled=${this._draining||n.timeout===null}
                     >
                       ${this._draining?`Draining...`:`Drain`}
                     </button>
@@ -2781,7 +2781,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </div>
         </div>
       </ha-card>
-    `}_openScaleDialog(e,t,n){this._scaleTarget={entry_id:e,workload_name:t.name,namespace:t.namespace,workload_type:n,current:t.replicas,hpa:t.hpa_managed?t.hpa_name??null:null},this._scaleValue=t.replicas}_cancelScale(){this._scaleTarget=null}async _confirmScale(){if(this._scaleTarget){this._scaling=!0;try{await this.hass.callService(`kubernetes`,`scale_workload`,{workload_name:this._scaleTarget.workload_name,namespace:this._scaleTarget.namespace,workload_type:this._scaleTarget.workload_type,entry_id:this._scaleTarget.entry_id,replicas:this._scaleValue}),this._scaleTarget=null,this._scheduleReload(2e3)}catch(e){this._actionError=R(e,`Failed to scale workload`),this._scaleTarget=null}finally{this._scaling=!1}}}_renderScaleDialog(){let e=this._scaleTarget;return S`
+    `}_openScaleDialog(e,t,n){this._scaleTarget={entry_id:e,workload_name:t.name,namespace:t.namespace,workload_type:n,current:t.replicas,hpa:t.hpa_managed?t.hpa_name??null:null},this._scaleValue=t.replicas}_cancelScale(){this._scaleTarget=null}async _confirmScale(){if(this._scaleTarget&&this._scaleValue!==null){this._scaling=!0;try{await this.hass.callService(`kubernetes`,`scale_workload`,{workload_name:this._scaleTarget.workload_name,namespace:this._scaleTarget.namespace,workload_type:this._scaleTarget.workload_type,entry_id:this._scaleTarget.entry_id,replicas:this._scaleValue}),this._scaleTarget=null,this._scheduleReload(2e3)}catch(e){this._actionError=R(e,`Failed to scale workload`),this._scaleTarget=null}finally{this._scaling=!1}}}_renderScaleDialog(){let e=this._scaleTarget;return S`
       <div
         class="confirm-overlay"
         tabindex="-1"
@@ -2802,8 +2802,8 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           <div class="scale-controls">
             <button
               class="scale-btn"
-              ?disabled=${this._scaleValue<=0||this._scaling}
-              @click=${()=>this._scaleValue--}
+              ?disabled=${this._scaleValue===null||this._scaleValue<=0||this._scaling}
+              @click=${()=>this._scaleValue!==null&&this._scaleValue--}
             >
               <ha-icon icon="mdi:minus"></ha-icon>
             </button>
@@ -2811,14 +2811,14 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               class="scale-input"
               type="number"
               min="0"
-              .value=${String(this._scaleValue)}
+              .value=${this._scaleValue===null?``:String(this._scaleValue)}
               ?disabled=${this._scaling}
-              @input=${e=>{let t=parseInt(e.target.value,10);!isNaN(t)&&t>=0&&(this._scaleValue=t)}}
+              @input=${e=>{let t=parseInt(e.target.value,10);this._scaleValue=!isNaN(t)&&t>=0?t:null}}
             />
             <button
               class="scale-btn"
-              ?disabled=${this._scaling}
-              @click=${()=>this._scaleValue++}
+              ?disabled=${this._scaleValue===null||this._scaling}
+              @click=${()=>this._scaleValue!==null&&this._scaleValue++}
             >
               <ha-icon icon="mdi:plus"></ha-icon>
             </button>
@@ -2830,7 +2830,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
             <button
               class="scale-action"
               @click=${this._confirmScale}
-              ?disabled=${this._scaling||this._scaleValue===e.current||e.hpa!==null&&this._scaleValue!==0}
+              ?disabled=${this._scaling||this._scaleValue===null||this._scaleValue===e.current||e.hpa!==null&&this._scaleValue!==0}
             >
               ${this._scaling?`Scaling...`:`Scale`}
             </button>

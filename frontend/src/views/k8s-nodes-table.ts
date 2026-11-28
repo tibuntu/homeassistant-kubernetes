@@ -89,7 +89,9 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
   @state() private _actionInProgress: Set<string> = new Set();
   @state() private _actionError: string | null = null;
   @state() private _drainTarget: { entry_id: string; node: string } | null = null;
-  @state() private _drainOptions = { ...DRAIN_DEFAULTS };
+  @state() private _drainOptions: Omit<typeof DRAIN_DEFAULTS, "timeout"> & {
+    timeout: number | null;
+  } = { ...DRAIN_DEFAULTS };
   @state() private _draining = false;
   @state() private _drainResult: DrainResult | null = null;
 
@@ -190,7 +192,7 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
 
   /** Drain via the HA service; the dialog stays open to show its response. */
   private async _confirmDrain(): Promise<void> {
-    if (!this._drainTarget) return;
+    if (!this._drainTarget || this._drainOptions.timeout === null) return;
     const { entry_id, node } = this._drainTarget;
     this._draining = true;
     try {
@@ -511,13 +513,14 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
                       type="number"
                       min="0"
                       max="3600"
-                      .value=${String(opts.timeout)}
+                      .value=${opts.timeout === null ? "" : String(opts.timeout)}
                       ?disabled=${this._draining}
                       @input=${(e: InputEvent) => {
                         const v = parseInt((e.target as HTMLInputElement).value, 10);
-                        if (!isNaN(v) && v >= 0 && v <= 3600) {
-                          this._drainOptions = { ...opts, timeout: v };
-                        }
+                        this._drainOptions = {
+                          ...opts,
+                          timeout: !isNaN(v) && v >= 0 && v <= 3600 ? v : null,
+                        };
                       }}
                     />
                     s
@@ -535,7 +538,7 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
                     <button
                       class="drain-action"
                       @click=${this._confirmDrain}
-                      ?disabled=${this._draining}
+                      ?disabled=${this._draining || opts.timeout === null}
                     >
                       ${this._draining ? "Draining..." : "Drain"}
                     </button>
