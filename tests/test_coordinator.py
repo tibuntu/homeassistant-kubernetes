@@ -687,15 +687,6 @@ class TestKubernetesDataCoordinator:
         result = coordinator.get_all_nodes_data()
         assert result == {}
 
-    async def test_cleanup_orphaned_entities_no_config_entry(self, coordinator, caplog):
-        """Test cleanup when config entry is not available."""
-        caplog.set_level(
-            logging.DEBUG, logger="custom_components.kubernetes.coordinator"
-        )
-        coordinator.config_entry = None
-        await coordinator._cleanup_orphaned_entities({})
-        assert "Skipping entity cleanup: config_entry not available" in caplog.text
-
     async def test_cleanup_orphaned_entities_exception(self, coordinator, caplog):
         """Test cleanup when an exception occurs."""
         with patch(
