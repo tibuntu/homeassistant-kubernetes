@@ -1016,7 +1016,6 @@ class KubernetesClient:
                 "updated_replicas": item["status"].get("updatedReplicas", 0),
                 "rollout_stalled": rollout_stalled,
                 "rollout_reason": rollout_reason,
-                "is_running": item["status"].get("availableReplicas", 0) > 0,
                 "selector": match_labels,
                 "selector_expressions": selector_expressions,
             }
@@ -1047,7 +1046,6 @@ class KubernetesClient:
                 ),
                 "number_ready": item["status"].get("numberReady", 0),
                 "number_available": item["status"].get("numberAvailable", 0),
-                "is_running": item["status"].get("numberReady", 0) > 0,
                 "selector": match_labels,
                 "selector_expressions": selector_expressions,
             }

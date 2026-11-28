@@ -27,14 +27,10 @@ def _client() -> MagicMock:
     client.enrich_workloads_with_metrics = AsyncMock()
     client.get_pod_metrics = AsyncMock(return_value={})
     client.get_deployments = AsyncMock(
-        return_value=[
-            {"name": "web", "namespace": "default", "replicas": 2, "is_running": True}
-        ]
+        return_value=[{"name": "web", "namespace": "default", "replicas": 2}]
     )
     client.get_statefulsets = AsyncMock(
-        return_value=[
-            {"name": "pg", "namespace": "db", "replicas": 1, "is_running": True}
-        ]
+        return_value=[{"name": "pg", "namespace": "db", "replicas": 1}]
     )
     for method in (
         "get_cronjobs",

@@ -89,7 +89,6 @@ class TestSwitchSetup:
                     "name": "test-deployment",
                     "namespace": "default",
                     "replicas": 1,
-                    "is_running": True,
                 }
             },
             "statefulsets": {
@@ -97,7 +96,6 @@ class TestSwitchSetup:
                     "name": "test-statefulset",
                     "namespace": "default",
                     "replicas": 1,
-                    "is_running": True,
                 }
             },
             "cronjobs": {
@@ -627,7 +625,6 @@ def deployment_coordinator():
                 "name": "nginx",
                 "namespace": "default",
                 "replicas": 2,
-                "is_running": True,
                 "cpu_usage": 50.0,
                 "memory_usage": 128.0,
             }
@@ -758,12 +755,34 @@ class TestKubernetesDeploymentSwitch:
 
         await deployment_switch.async_added_to_hass()
 
-        # fixture data: replicas=2, is_running=True, cpu=50.0, memory=128.0
+        # fixture data: replicas=2, cpu=50.0, memory=128.0
         assert deployment_switch.is_on is True
         assert deployment_switch._replicas == 2
         assert deployment_switch._cpu_usage == 50.0
         assert deployment_switch._memory_usage == 128.0
         deployment_switch.async_write_ha_state.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("replicas", "available", "expected_on"),
+        [(3, 0, True), (0, 0, False)],
+    )
+    def test_sync_on_state_follows_replicas_not_availability(
+        self,
+        deployment_switch,
+        deployment_coordinator,
+        replicas,
+        available,
+        expected_on,
+    ):
+        """On state follows spec.replicas, not how many pods are available."""
+        deployment_coordinator.data["deployments"]["default_nginx"] = {
+            "replicas": replicas,
+            "available_replicas": available,
+            "cpu_usage": 0.0,
+            "memory_usage": 0.0,
+        }
+        deployment_switch._sync_from_coordinator()
+        assert deployment_switch.is_on is expected_on
 
     def test_handle_coordinator_update_with_data(
         self, deployment_switch, deployment_coordinator
@@ -772,7 +791,6 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch.async_write_ha_state = MagicMock()
         deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 3,
-            "is_running": True,
             "cpu_usage": 200.0,
             "memory_usage": 512.0,
         }
@@ -800,7 +818,6 @@ class TestKubernetesDeploymentSwitch:
         deployment_switch._memory_usage = 64.0
         deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 1,
-            "is_running": True,
             "cpu_usage": 200.0,
             "memory_usage": 512.0,
         }
@@ -935,7 +952,6 @@ class TestKubernetesDeploymentSwitch:
         deployment_coordinator.async_request_refresh = AsyncMock()
         deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 1,
-            "is_running": True,
         }
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await deployment_switch._verify_scaling(1)
@@ -959,7 +975,6 @@ class TestKubernetesDeploymentSwitch:
         deployment_coordinator.async_request_refresh = AsyncMock()
         deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 0,
-            "is_running": False,
         }
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await deployment_switch._verify_scaling(1)
@@ -983,7 +998,6 @@ class TestKubernetesDeploymentSwitch:
         deployment_coordinator.async_request_refresh = AsyncMock()
         deployment_coordinator.data["deployments"]["default_nginx"] = {
             "replicas": 0,
-            "is_running": False,
         }
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await deployment_switch._verify_scaling(1)
@@ -1006,7 +1020,6 @@ def statefulset_coordinator():
                 "name": "redis",
                 "namespace": "default",
                 "replicas": 1,
-                "is_running": True,
                 "cpu_usage": 20.0,
                 "memory_usage": 64.0,
             }
@@ -1116,7 +1129,6 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch.async_write_ha_state = MagicMock()
         statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 2,
-            "is_running": True,
             "cpu_usage": 100.0,
             "memory_usage": 256.0,
         }
@@ -1143,7 +1155,6 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_switch._memory_usage = 32.0
         statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 1,
-            "is_running": True,
             "cpu_usage": 150.0,
             "memory_usage": 512.0,
         }
@@ -1215,7 +1226,6 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_coordinator.async_request_refresh = AsyncMock()
         statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 1,
-            "is_running": True,
         }
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await statefulset_switch._verify_scaling(1)
@@ -1239,7 +1249,6 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_coordinator.async_request_refresh = AsyncMock()
         statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 0,
-            "is_running": False,
         }
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await statefulset_switch._verify_scaling(1)
@@ -1263,7 +1272,6 @@ class TestKubernetesStatefulSetSwitch:
         statefulset_coordinator.async_request_refresh = AsyncMock()
         statefulset_coordinator.data["statefulsets"]["default_redis"] = {
             "replicas": 0,
-            "is_running": False,
         }
         with patch("asyncio.sleep", new_callable=AsyncMock):
             await statefulset_switch._verify_scaling(1)
@@ -1289,7 +1297,6 @@ class TestStatefulSetNamespaceCollisionRegression:
                     "name": "bot",
                     "namespace": "c3po",
                     "replicas": 10,
-                    "is_running": True,
                     "cpu_usage": 100.0,
                     "memory_usage": 200.0,
                 },
@@ -1297,7 +1304,6 @@ class TestStatefulSetNamespaceCollisionRegression:
                     "name": "bot",
                     "namespace": "toothless",
                     "replicas": 0,
-                    "is_running": False,
                     "cpu_usage": 0.0,
                     "memory_usage": 0.0,
                 },
@@ -1323,9 +1329,7 @@ class TestStatefulSetNamespaceCollisionRegression:
         c3po_data = switch_c3po._get_workload_data()
         toothless_data = switch_toothless._get_workload_data()
         assert c3po_data["replicas"] == 10
-        assert c3po_data["is_running"] is True
         assert toothless_data["replicas"] == 0
-        assert toothless_data["is_running"] is False
 
         # The coordinator listener must sync independent, non-colliding state
         switch_c3po.async_write_ha_state = MagicMock()
@@ -1388,7 +1392,6 @@ class TestDiscoverAndAddNewEntities:
                     "name": "new-deploy",
                     "namespace": "default",
                     "replicas": 1,
-                    "is_running": True,
                 }
             },
             "statefulsets": {},
@@ -1436,7 +1439,6 @@ class TestDiscoverAndAddNewEntities:
                     "name": "new-sts",
                     "namespace": "default",
                     "replicas": 1,
-                    "is_running": True,
                 }
             },
             "cronjobs": {},
@@ -1631,7 +1633,6 @@ class TestDiscoverAndAddNewEntities:
                     "name": "my-deploy",
                     "namespace": "default",
                     "replicas": 1,
-                    "is_running": True,
                 }
             },
             "statefulsets": {},

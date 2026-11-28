@@ -394,7 +394,6 @@ async def test_get_deployments_success(mock_client):
             "replicas": 3,
             "available_replicas": 3,
             "ready_replicas": 3,
-            "is_running": True,
         }
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_deployments)
@@ -408,7 +407,6 @@ async def test_get_deployments_success(mock_client):
     assert deployments[0]["replicas"] == 3
     assert deployments[0]["available_replicas"] == 3
     assert deployments[0]["ready_replicas"] == 3
-    assert deployments[0]["is_running"] is True
 
 
 async def test_get_deployments_not_running(mock_client):
@@ -421,7 +419,6 @@ async def test_get_deployments_not_running(mock_client):
             "replicas": 0,
             "available_replicas": 0,
             "ready_replicas": 0,
-            "is_running": False,
         }
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_deployments)
@@ -431,7 +428,6 @@ async def test_get_deployments_not_running(mock_client):
 
     assert len(deployments) == 1
     assert deployments[0]["name"] == "api-deployment"
-    assert deployments[0]["is_running"] is False
 
 
 async def test_get_deployments_empty(mock_client):
@@ -518,7 +514,6 @@ async def test_get_statefulsets_success(mock_client):
             "replicas": 3,
             "available_replicas": 3,
             "ready_replicas": 3,
-            "is_running": True,
         }
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_statefulsets)
@@ -532,7 +527,6 @@ async def test_get_statefulsets_success(mock_client):
     assert statefulsets[0]["replicas"] == 3
     assert statefulsets[0]["available_replicas"] == 3
     assert statefulsets[0]["ready_replicas"] == 3
-    assert statefulsets[0]["is_running"] is True
 
 
 async def test_get_statefulsets_not_running(mock_client):
@@ -545,7 +539,6 @@ async def test_get_statefulsets_not_running(mock_client):
             "replicas": 0,
             "available_replicas": 0,
             "ready_replicas": 0,
-            "is_running": False,
         }
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_statefulsets)
@@ -555,7 +548,6 @@ async def test_get_statefulsets_not_running(mock_client):
 
     assert len(statefulsets) == 1
     assert statefulsets[0]["name"] == "api-statefulset"
-    assert statefulsets[0]["is_running"] is False
 
 
 async def test_get_statefulsets_empty(mock_client):
@@ -624,7 +616,6 @@ async def test_get_daemonsets_success(mock_client):
                 "current_number_scheduled": 3,
                 "number_ready": 3,
                 "number_available": 3,
-                "is_running": True,
             }
         ]
     )
@@ -648,7 +639,6 @@ async def test_get_daemonsets_all_namespaces(mock_client):
                 "current_number_scheduled": 3,
                 "number_ready": 3,
                 "number_available": 3,
-                "is_running": True,
             },
             {
                 "name": "fluentd",
@@ -657,7 +647,6 @@ async def test_get_daemonsets_all_namespaces(mock_client):
                 "current_number_scheduled": 2,
                 "number_ready": 2,
                 "number_available": 2,
-                "is_running": True,
             },
         ]
     )
@@ -3629,7 +3618,6 @@ class TestParseHelpers:
         assert result is not None
         assert result["name"] == "nginx"
         assert result["replicas"] == 3
-        assert result["is_running"] is True
 
     async def test_parse_statefulset_item(self, mock_client):
         """_parse_statefulset_item should return a dict with standard statefulset fields."""
@@ -3641,7 +3629,6 @@ class TestParseHelpers:
         result = mock_client._parse_statefulset_item(raw)
         assert result is not None
         assert result["name"] == "redis"
-        assert result["is_running"] is True
 
     async def test_parse_daemonset_item(self, mock_client):
         """_parse_daemonset_item should return a dict with standard daemonset fields."""
@@ -3659,7 +3646,6 @@ class TestParseHelpers:
         assert result is not None
         assert result["name"] == "fluentd"
         assert result["number_ready"] == 3
-        assert result["is_running"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -3836,7 +3822,7 @@ class TestParseHelpersExtended:
     # -- _parse_deployment_item / _parse_statefulset_item edge cases --
 
     def test_parse_deployment_item_zero_replicas(self, mock_client):
-        """_parse_deployment_item with 0 replicas should show is_running=False."""
+        """_parse_deployment_item with 0 replicas should parse to replicas 0."""
         raw = {
             "metadata": {"name": "stopped-deploy", "namespace": "default"},
             "spec": {"replicas": 0, "selector": {"matchLabels": {"app": "stopped"}}},
@@ -3847,7 +3833,6 @@ class TestParseHelpersExtended:
         assert result["replicas"] == 0
         assert result["available_replicas"] == 0
         assert result["ready_replicas"] == 0
-        assert result["is_running"] is False
 
     @pytest.mark.parametrize(
         ("conditions", "stalled", "reason"),
@@ -3931,7 +3916,6 @@ class TestParseHelpersExtended:
         }
         result = mock_client._parse_statefulset_item(raw)
         assert result is not None
-        assert result["is_running"] is False
 
     def test_parse_statefulset_item_completely_empty(self, mock_client):
         """_parse_statefulset_item with empty dict returns None."""
@@ -3941,7 +3925,7 @@ class TestParseHelpersExtended:
     # -- _parse_daemonset_item edge cases --
 
     def test_parse_daemonset_item_zero_ready(self, mock_client):
-        """_parse_daemonset_item with 0 ready should show is_running=False."""
+        """_parse_daemonset_item with 0 ready should parse to replicas 0."""
         raw = {
             "metadata": {"name": "broken-ds", "namespace": "kube-system"},
             "spec": {"selector": {"matchLabels": {"app": "broken"}}},
@@ -3954,7 +3938,6 @@ class TestParseHelpersExtended:
         }
         result = mock_client._parse_daemonset_item(raw)
         assert result is not None
-        assert result["is_running"] is False
         assert result["desired_number_scheduled"] == 3
         assert result["number_ready"] == 0
 
@@ -3982,7 +3965,6 @@ class TestParseHelpersExtended:
         assert result["current_number_scheduled"] == 0
         assert result["number_ready"] == 0
         assert result["number_available"] == 0
-        assert result["is_running"] is False
 
 
 class TestFormatCronjobFromDict:
@@ -5018,7 +5000,6 @@ class TestParseReplicaWorkloadItem:
         result = mock_client._parse_replica_workload_item(raw)
         assert result is not None
         assert result["selector"] == {"app": "web", "tier": "frontend"}
-        assert result["is_running"] is True
         assert result["available_replicas"] == 2
 
     def test_selector_expressions_emitted(self, mock_client):
