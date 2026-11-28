@@ -807,7 +807,7 @@ class KubernetesClient:
                 )
                 if problem_reason is None and phase == "Failed":
                     problem_reason = "Failed"
-                elif problem_reason is None and phase == "Pending" and pending_reason:
+                elif problem_reason is None and pending_reason == "Unschedulable":
                     problem_reason = pending_reason
                 # A pod being deleted (SIGTERM exit 143, eviction) is not a problem.
                 if metadata.get("deletionTimestamp"):

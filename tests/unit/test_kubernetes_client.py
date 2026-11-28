@@ -7079,6 +7079,23 @@ class TestParsePodContainerState:
         assert pod["problem"] is True
         assert pod["problem_reason"] == "Unschedulable"
 
+    def test_scheduling_gated_pod_is_not_a_problem(self, mock_client):
+        """A SchedulingGated pod waits by design: reported, but not a problem."""
+        raw = self._make_raw_pod(
+            phase="Pending",
+            conditions=[
+                {
+                    "type": "PodScheduled",
+                    "status": "False",
+                    "reason": "SchedulingGated",
+                }
+            ],
+        )
+        pod = mock_client._parse_pods_data([raw])[0]
+        assert pod["pending_reason"] == "SchedulingGated"
+        assert pod["problem"] is False
+        assert pod["problem_reason"] is None
+
     def test_completed_exit_zero(self, mock_client):
         """Succeeded phase with exitCode 0 → Completed reason captured, problem False."""
         raw = self._make_raw_pod(
