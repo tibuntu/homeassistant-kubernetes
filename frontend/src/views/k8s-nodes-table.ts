@@ -3,7 +3,13 @@ import { customElement, state } from "lit/decorators.js";
 import { oneOf, queryParam } from "../utils/nav";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
-import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
+import {
+  stateStyles,
+  filterStyles,
+  badgeStyles,
+  dialogStyles,
+  clusterStyles,
+} from "../styles/shared";
 import {
   formatAge,
   toggleInSet,
@@ -213,6 +219,7 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
     filterStyles,
     badgeStyles,
     dialogStyles,
+    clusterStyles,
     css`
       .node-actions {
         display: flex;
@@ -260,17 +267,6 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
         overflow-y: auto;
         font-family: monospace;
         font-size: 13px;
-      }
-
-      .cluster-section {
-        margin-bottom: 24px;
-      }
-
-      .cluster-name {
-        font-size: 20px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-        margin-bottom: 12px;
       }
 
       .node-card {

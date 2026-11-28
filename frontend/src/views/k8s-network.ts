@@ -2,7 +2,13 @@ import { html, css, nothing, PropertyValues } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { oneOf, queryParam } from "../utils/nav";
 import { K8sDataView } from "./base-view";
-import { stateStyles, filterStyles, badgeStyles, tableStyles } from "../styles/shared";
+import {
+  stateStyles,
+  filterStyles,
+  badgeStyles,
+  tableStyles,
+  clusterStyles,
+} from "../styles/shared";
 import { formatAge, errorMessage } from "../utils/format";
 
 interface IngressRule {
@@ -362,6 +368,7 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
     filterStyles,
     badgeStyles,
     tableStyles,
+    clusterStyles,
     css`
       /* stateStyles' .empty is 64px padding; network uses .empty for five
        in-section messages, where that much padding doubles up. */
@@ -391,17 +398,6 @@ export class K8sNetwork extends K8sDataView<IngressesResponse> {
 
       .section-title:first-of-type {
         margin-top: 0;
-      }
-
-      .cluster-section {
-        margin-bottom: 24px;
-      }
-
-      .cluster-name {
-        font-size: 20px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-        margin-bottom: 12px;
       }
 
       .network-table {

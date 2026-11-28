@@ -9,6 +9,7 @@ import {
   badgeStyles,
   dialogStyles,
   tableStyles,
+  clusterStyles,
 } from "../styles/shared";
 import {
   formatAge,
@@ -609,18 +610,8 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     badgeStyles,
     dialogStyles,
     tableStyles,
+    clusterStyles,
     css`
-      .cluster-section {
-        margin-bottom: 24px;
-      }
-
-      .cluster-name {
-        font-size: 20px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-        margin-bottom: 12px;
-      }
-
       .pod-count {
         font-size: 13px;
         color: var(--secondary-text-color);
