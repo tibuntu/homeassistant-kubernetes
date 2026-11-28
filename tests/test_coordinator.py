@@ -2071,6 +2071,64 @@ class TestApplyWatchEventExtended:
             "memory_usage": 32.0,
         }
 
+    async def test_identical_modified_event_skips_listeners(self, coord, mock_client):
+        """A MODIFIED event that parses to the stored object wakes no listener."""
+        stored = {
+            "name": "dep1",
+            "namespace": "default",
+            "replicas": 2,
+            "cpu_usage": 120.0,
+            "memory_usage": 64.0,
+        }
+        coord.data = {"deployments": {"default_dep1": dict(stored)}, "last_update": 1.0}
+        coord.async_update_listeners = MagicMock()
+        mock_client._parse_deployment_item.return_value = {
+            "name": "dep1",
+            "namespace": "default",
+            "replicas": 2,
+        }
+
+        coord._apply_watch_event(
+            "deployments",
+            "MODIFIED",
+            {"metadata": {"name": "dep1", "namespace": "default"}},
+            mock_client._parse_deployment_item,
+        )
+
+        coord.async_update_listeners.assert_not_called()
+        assert coord.data["last_update"] == 1.0
+        assert coord.data["deployments"]["default_dep1"] == stored
+
+    async def test_changed_modified_event_notifies_listeners(self, coord, mock_client):
+        """A MODIFIED event with one changed field updates the bucket and notifies once."""
+        coord.data = {
+            "deployments": {
+                "default_dep1": {
+                    "name": "dep1",
+                    "namespace": "default",
+                    "ready_replicas": 1,
+                }
+            },
+            "last_update": 1.0,
+        }
+        coord.async_update_listeners = MagicMock()
+        mock_client._parse_deployment_item.return_value = {
+            "name": "dep1",
+            "namespace": "default",
+            "ready_replicas": 2,
+        }
+
+        coord._apply_watch_event(
+            "deployments",
+            "MODIFIED",
+            {"metadata": {"name": "dep1", "namespace": "default"}},
+            mock_client._parse_deployment_item,
+        )
+
+        coord.async_update_listeners.assert_called_once()
+        assert coord.data["deployments"]["default_dep1"]["ready_replicas"] == 2
+        assert coord.data["last_update"] != 1.0
+
     async def test_last_update_timestamp_set(self, coord, mock_client):
         """_apply_watch_event should set last_update in coordinator.data."""
         coord.data = {"nodes": {}, "nodes_count": 0}
