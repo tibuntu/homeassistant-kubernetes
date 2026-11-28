@@ -96,7 +96,7 @@ homeassistant-kubernetes/
 │       │   ├── k8s-network.ts       # Network tab
 │       │   └── k8s-settings.ts      # Settings tab
 │       ├── styles/
-│       │   ├── shared.ts            # Loading/error/empty state + filter styles
+│       │   ├── shared.ts            # Loading/error/empty state, filter and cluster-section styles
 │       │   └── actions.ts           # Round action-button + action-error banner styles
 │       ├── types/
 │       │   └── homeassistant.ts     # The slice of the `hass` object the panel uses

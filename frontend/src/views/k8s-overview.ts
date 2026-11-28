@@ -1,7 +1,7 @@
 import { html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { K8sDataView } from "./base-view";
-import { stateStyles, badgeStyles } from "../styles/shared";
+import { stateStyles, badgeStyles, clusterStyles } from "../styles/shared";
 import { formatRelative, toggleInSet, CONDITION_LABELS } from "../utils/format";
 import { navigate } from "../utils/nav";
 
@@ -162,11 +162,8 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
   static styles = [
     stateStyles,
     badgeStyles,
+    clusterStyles,
     css`
-      .cluster-section {
-        margin-bottom: 24px;
-      }
-
       .cluster-header {
         display: flex;
         align-items: center;
@@ -179,6 +176,7 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
         font-size: 24px;
         font-weight: 500;
         color: var(--primary-text-color);
+        margin-bottom: 0;
       }
 
       .meta-row {

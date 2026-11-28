@@ -3,7 +3,13 @@ import { customElement, state } from "lit/decorators.js";
 import { oneOf, queryParam } from "../utils/nav";
 import { actionStyles } from "../styles/actions";
 import { K8sDataView } from "./base-view";
-import { stateStyles, filterStyles, badgeStyles, dialogStyles } from "../styles/shared";
+import {
+  stateStyles,
+  filterStyles,
+  badgeStyles,
+  dialogStyles,
+  clusterStyles,
+} from "../styles/shared";
 import {
   formatAge,
   formatCpu,
@@ -313,18 +319,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     filterStyles,
     badgeStyles,
     dialogStyles,
+    clusterStyles,
     css`
-      .cluster-section {
-        margin-bottom: 24px;
-      }
-
-      .cluster-name {
-        font-size: 20px;
-        font-weight: 500;
-        color: var(--primary-text-color);
-        margin-bottom: 12px;
-      }
-
       .category-section {
         margin-bottom: 20px;
       }
