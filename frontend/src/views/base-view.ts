@@ -37,6 +37,8 @@ export abstract class K8sDataView<T> extends LitElement {
   private _loadingInFlight = false;
   private _boundVisibilityHandler = this._handleVisibilityChange.bind(this);
   private _unsubUpdates?: () => Promise<void>;
+  /** Bumped on every subscribe and on disconnect, so a late result can tell it is stale. */
+  private _subscribeGen = 0;
   private _updateDebounce?: ReturnType<typeof setTimeout>;
   private _reloadTimer?: ReturnType<typeof setTimeout>;
 
@@ -76,6 +78,8 @@ export abstract class K8sDataView<T> extends LitElement {
     this.readQuery();
     window.addEventListener("location-changed", this._onLocationChange);
     window.addEventListener("popstate", this._onLocationChange);
+    // A re-attach (the first attach starts in firstUpdated): teardown stopped everything.
+    if (this.hasUpdated) this._startLifecycle();
   }
 
   /** Fetch from the backend and assign `this._data`. Throw to show the error card. */
@@ -90,6 +94,11 @@ export abstract class K8sDataView<T> extends LitElement {
   }
 
   protected firstUpdated(_changedProps: PropertyValues): void {
+    this._startLifecycle();
+  }
+
+  /** Initial load, polling, visibility handling and the push subscription. */
+  private _startLifecycle(): void {
     this._loadData();
     if (this.pollMs > 0) {
       this._startPolling();
@@ -102,6 +111,7 @@ export abstract class K8sDataView<T> extends LitElement {
     super.disconnectedCallback();
     window.removeEventListener("location-changed", this._onLocationChange);
     window.removeEventListener("popstate", this._onLocationChange);
+    this._subscribeGen++;
     this._stopPolling();
     document.removeEventListener("visibilitychange", this._boundVisibilityHandler);
     void this._unsubUpdates?.().catch(() => {});
@@ -139,12 +149,13 @@ export abstract class K8sDataView<T> extends LitElement {
   }
 
   private async _subscribeUpdates(): Promise<void> {
+    const gen = ++this._subscribeGen;
     try {
       const unsub = await this.hass.connection.subscribeMessage(
         () => this._scheduleLoad(),
         { type: "kubernetes/subscribe_updates" },
       );
-      if (!this.isConnected) {
+      if (!this.isConnected || gen !== this._subscribeGen) {
         void unsub().catch(() => {});
         return;
       }
