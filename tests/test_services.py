@@ -81,7 +81,6 @@ def mock_client():
     client.trigger_cronjob = AsyncMock(
         return_value={"success": True, "job_name": "test-job-123"}
     )
-    client.suspend_cronjob = AsyncMock(return_value={"success": True})
     client.rollout_restart_deployment = AsyncMock(return_value=True)
     client.rollout_restart_statefulset = AsyncMock(return_value=True)
     client.rollout_restart_daemonset = AsyncMock(return_value=True)
@@ -254,7 +253,6 @@ class TestGenericWorkloadServices:
                 blocking=True,
             )
 
-        mock_client.suspend_cronjob.assert_not_called()
         mock_client.stop_deployment.assert_not_called()
         mock_client.stop_statefulset.assert_not_called()
 
