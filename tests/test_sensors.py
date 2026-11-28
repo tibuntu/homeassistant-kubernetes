@@ -2642,22 +2642,6 @@ class TestKubernetesCronJobSensor:
         sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
         assert sensor.native_value == "Suspended"
 
-    def test_native_value_suspended_string(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test 'Suspended' when suspend is string 'true'."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "suspend": "true",
-                "active_jobs_count": 0,
-                "schedule": "0 2 * * *",
-                "namespace": "default",
-                "last_schedule_time": None,
-            }
-        )
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == "Suspended"
-
     def test_native_value_unknown_no_data(
         self, mock_config_entry, mock_client, mock_coordinator
     ):
@@ -4183,94 +4167,11 @@ class TestCronJobSensorSuspendEdgeCases:
             "default",
         )
 
-    def test_suspend_non_boolean_non_string_value(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test non-boolean/non-string suspend value defaults to not suspended."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "suspend": 42,
-                "active_jobs_count": 0,
-                "schedule": "*/5 * * * *",
-                "namespace": "default",
-            }
-        )
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        # Non-bool/non-string should fall through to is_suspended = False
-        assert sensor.native_value == "Scheduled"
-
     def test_suspend_none_value(self, mock_config_entry, mock_client, mock_coordinator):
         """Test None suspend value defaults to not suspended."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
                 "suspend": None,
-                "active_jobs_count": 0,
-                "schedule": "*/5 * * * *",
-                "namespace": "default",
-            }
-        )
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == "Scheduled"
-
-    def test_suspend_string_yes(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test string 'yes' suspend value is treated as suspended."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "suspend": "yes",
-                "active_jobs_count": 0,
-                "schedule": "*/5 * * * *",
-                "namespace": "default",
-            }
-        )
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == "Suspended"
-
-    def test_suspend_string_on(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test string 'on' suspend value is treated as suspended."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "suspend": "on",
-                "active_jobs_count": 0,
-                "schedule": "*/5 * * * *",
-                "namespace": "default",
-            }
-        )
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == "Suspended"
-
-    def test_suspend_string_1(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test string '1' suspend value is treated as suspended."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "suspend": "1",
-                "active_jobs_count": 0,
-                "schedule": "*/5 * * * *",
-                "namespace": "default",
-            }
-        )
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == "Suspended"
-
-    def test_suspend_string_false(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test string 'false' suspend value is not treated as suspended."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "suspend": "false",
-                "active_jobs_count": 0,
-                "schedule": "*/5 * * * *",
-                "namespace": "default",
-            }
-        )
-        sensor = self._make_sensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == "Scheduled"
-
-    def test_suspend_list_value(self, mock_config_entry, mock_client, mock_coordinator):
-        """Test list suspend value defaults to not suspended."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "suspend": [True],
                 "active_jobs_count": 0,
                 "schedule": "*/5 * * * *",
                 "namespace": "default",

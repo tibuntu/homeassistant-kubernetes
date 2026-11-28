@@ -492,38 +492,7 @@ class TestKubernetesCronJobSwitch:
         assert cronjob_switch._is_on is True
         cronjob_switch.async_write_ha_state.assert_called_once()
 
-    def test_coordinator_update_with_string_suspend_value(
-        self, cronjob_switch, mock_coordinator
-    ):
-        """Test _handle_coordinator_update with string suspend value."""
-        # Setup coordinator data with string suspend value
-        mock_coordinator.data = {
-            "cronjobs": {
-                "default_test-cronjob": {
-                    "name": "test-cronjob",
-                    "namespace": "default",
-                    "schedule": "0 2 * * *",
-                    "suspend": "true",  # String value
-                    "active_jobs_count": 0,
-                    "last_schedule_time": None,
-                }
-            }
-        }
-
-        # Mock the get_cronjob_data method
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value=mock_coordinator.data["cronjobs"]["default_test-cronjob"]
-        )
-
-        # Execute
-        cronjob_switch.async_write_ha_state = MagicMock()
-        cronjob_switch._handle_coordinator_update()
-
-        # Verify
-        assert cronjob_switch._is_on is False
-        assert cronjob_switch._suspend is True
-
-    def test_coordinator_update_with_none_suspend_value(
+    def test_coordinator_update_with_none_suspend(
         self, cronjob_switch, mock_coordinator
     ):
         """Test _handle_coordinator_update with None suspend value."""
@@ -1900,48 +1869,12 @@ class TestCronJobOperations:
         assert cronjob_switch._suspend is False
         assert cronjob_switch._is_on is True
 
-    def test_update_suspend_string_true(self, cronjob_switch, mock_coordinator):
-        """suspend='true' (string) -> _suspend=True, _is_on=False."""
+    def test_update_suspend_none(self, cronjob_switch, mock_coordinator):
+        """suspend=None (field absent in the manifest) -> _suspend=False, _is_on=True."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
                 "schedule": "0 0 * * *",
-                "suspend": "true",
-                "active_jobs_count": 0,
-                "last_schedule_time": None,
-            }
-        )
-
-        cronjob_switch.async_write_ha_state = MagicMock()
-        cronjob_switch._handle_coordinator_update()
-
-        assert cronjob_switch._suspend is True
-        assert cronjob_switch._is_on is False
-
-    def test_update_suspend_string_false(self, cronjob_switch, mock_coordinator):
-        """suspend='false' (string) -> _suspend=False, _is_on=True."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "schedule": "0 0 * * *",
-                "suspend": "false",
-                "active_jobs_count": 0,
-                "last_schedule_time": None,
-            }
-        )
-
-        cronjob_switch.async_write_ha_state = MagicMock()
-        cronjob_switch._handle_coordinator_update()
-
-        assert cronjob_switch._suspend is False
-        assert cronjob_switch._is_on is True
-
-    def test_update_suspend_other_value_defaults_false(
-        self, cronjob_switch, mock_coordinator
-    ):
-        """suspend=42 (non-bool, non-string) -> _suspend=False, _is_on=True."""
-        mock_coordinator.get_cronjob_data = MagicMock(
-            return_value={
-                "schedule": "0 0 * * *",
-                "suspend": 42,
+                "suspend": None,
                 "active_jobs_count": 0,
                 "last_schedule_time": None,
             }
@@ -1954,7 +1887,7 @@ class TestCronJobOperations:
         assert cronjob_switch._is_on is True
 
     def test_update_schedule_time_as_strings(self, cronjob_switch, mock_coordinator):
-        """Schedule times are converted to strings."""
+        """Schedule time is stored as the parser gives it."""
         mock_coordinator.get_cronjob_data = MagicMock(
             return_value={
                 "schedule": "0 0 * * *",

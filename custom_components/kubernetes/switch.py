@@ -688,24 +688,8 @@ class KubernetesCronJobSwitch(SwitchEntity):
         # Update state based on CronJob data
         self._active_jobs_count = cronjob_data["active_jobs_count"]
         self._schedule = cronjob_data["schedule"]
-        # Ensure suspend is always a boolean
-        suspend_value = cronjob_data["suspend"]
-        if suspend_value is True:
-            self._suspend = True
-        elif suspend_value is False:
-            self._suspend = False
-        elif isinstance(suspend_value, str):
-            suspend_str = str(suspend_value).lower()
-            is_true = suspend_str in ("true", "1", "yes", "on")
-            self._suspend = is_true
-        else:
-            self._suspend = False
-
-        # Handle schedule time fields with proper type conversion
-        last_schedule_value = cronjob_data["last_schedule_time"]
-        self._last_schedule_time = (
-            str(last_schedule_value) if last_schedule_value is not None else None
-        )
+        self._suspend = bool(cronjob_data["suspend"])
+        self._last_schedule_time = cronjob_data["last_schedule_time"]
 
         # Consider the CronJob "on" if it is not suspended (enabled)
         self._is_on = not self._suspend
