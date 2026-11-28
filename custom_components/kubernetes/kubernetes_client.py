@@ -718,7 +718,7 @@ class KubernetesClient:
                 # Get container statuses
                 container_statuses = status.get("containerStatuses", [])
                 ready_containers = 0
-                total_containers = len(container_statuses)
+                total_containers = len(spec.get("containers") or container_statuses)
 
                 for container_status in container_statuses:
                     if container_status.get("ready", False):

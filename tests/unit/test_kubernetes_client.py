@@ -6701,6 +6701,7 @@ class TestParsePodContainerState:
         conditions=None,
         init_container_statuses=None,
         init_containers=None,
+        containers=None,
     ):
         """Build a minimal raw pod dict for _parse_pods_data."""
         status: dict = {"phase": phase}
@@ -6718,7 +6719,11 @@ class TestParsePodContainerState:
                 "creationTimestamp": "2024-01-01T00:00:00Z",
                 "labels": {},
             },
-            "spec": {"nodeName": "node-1", "initContainers": init_containers or []},
+            "spec": {
+                "nodeName": "node-1",
+                "initContainers": init_containers or [],
+                **({"containers": containers} if containers is not None else {}),
+            },
             "status": status,
         }
 
@@ -7078,6 +7083,24 @@ class TestParsePodContainerState:
         assert pod["pending_reason"] == "Unschedulable"
         assert pod["problem"] is True
         assert pod["problem_reason"] == "Unschedulable"
+
+    def test_pending_pod_counts_containers_from_spec(self, mock_client):
+        """A Pending pod has no containerStatuses yet; the spec gives the total."""
+        raw = self._make_raw_pod(
+            phase="Pending",
+            containers=[{"name": "app"}, {"name": "sidecar"}],
+        )
+        pod = mock_client._parse_pods_data([raw])[0]
+        assert pod["total_containers"] == 2
+        assert pod["ready_containers"] == 0
+
+    def test_total_containers_falls_back_to_statuses(self, mock_client):
+        """Without spec.containers the total is the containerStatuses count."""
+        pod = self._parse(
+            mock_client,
+            container_statuses=[{"ready": True, "restartCount": 0, "state": {}}],
+        )
+        assert pod["total_containers"] == 1
 
     def test_scheduling_gated_pod_is_not_a_problem(self, mock_client):
         """A SchedulingGated pod waits by design: reported, but not a problem."""
