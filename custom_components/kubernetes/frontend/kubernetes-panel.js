@@ -270,7 +270,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
   .table-wrapper {
     overflow-x: auto;
   }
-`,ot={pods:`mdi:cube-outline`,nodes:`mdi:server`,deployments:`mdi:rocket-launch`,statefulsets:`mdi:database`,daemonsets:`mdi:lan`,cronjobs:`mdi:clock-outline`,jobs:`mdi:briefcase-check`,ingresses:`mdi:earth`,services:`mdi:swap-horizontal`},st={pods:`Pods`,nodes:`Nodes`,deployments:`Deployments`,statefulsets:`StatefulSets`,daemonsets:`DaemonSets`,cronjobs:`CronJobs`,jobs:`Jobs`,ingresses:`Ingresses`,services:`Services`},ct={pods:`/pods`,nodes:`/nodes`,deployments:`/workloads?category=deployments`,statefulsets:`/workloads?category=statefulsets`,daemonsets:`/workloads?category=daemonsets`,cronjobs:`/workloads?category=cronjobs`,jobs:`/workloads?category=jobs`,ingresses:`/network?type=Ingress`,services:`/network?type=Services`},q=(e,t,n=``)=>`${e}?${n}search=${encodeURIComponent(t)}`,lt=e=>q(`/workloads`,e.name,`category=jobs&`),ut=e=>q(`/network`,e.name,`type=Certificate&`),dt={Expired:`Expired`,RenewalOverdue:`Renewal overdue`},ft=class extends H{constructor(...e){super(...e),this._expandedNamespaces=/* @__PURE__ */ new Set,this.loadErrorFallback=`Failed to load cluster data`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/cluster/overview`});this._data=e}_toggleNamespaces(e){this._expandedNamespaces=L(this._expandedNamespaces,e)}_navigate(e){let t=ct[e];t&&this._go(t)}_go(e){nt(`${this.prefix}${e}`)}_goOnKey(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._go(t))}static{this.styles=[U,K,W,o`
+`,ot={pods:`mdi:cube-outline`,nodes:`mdi:server`,deployments:`mdi:rocket-launch`,statefulsets:`mdi:database`,daemonsets:`mdi:lan`,cronjobs:`mdi:clock-outline`,jobs:`mdi:briefcase-check`,ingresses:`mdi:earth`,services:`mdi:swap-horizontal`},st={pods:`Pods`,nodes:`Nodes`,deployments:`Deployments`,statefulsets:`StatefulSets`,daemonsets:`DaemonSets`,cronjobs:`CronJobs`,jobs:`Jobs`,ingresses:`Ingresses`,services:`Services`},ct={pods:`/pods`,nodes:`/nodes`,deployments:`/workloads?category=deployments`,statefulsets:`/workloads?category=statefulsets`,daemonsets:`/workloads?category=daemonsets`,cronjobs:`/workloads?category=cronjobs`,jobs:`/workloads?category=jobs`,ingresses:`/network?type=Ingress`,services:`/network?type=Services`},q=(e,t,n=``)=>`${e}?${n}search=${encodeURIComponent(t)}`,lt=e=>q(`/workloads`,e.name,`category=jobs&`),ut=e=>q(`/network`,e.name,`type=Certificate&`),dt={Expired:`Expired`,RenewalOverdue:`Renewal overdue`},ft=class extends H{constructor(...e){super(...e),this._expandedNamespaces=/* @__PURE__ */ new Set,this.loadErrorFallback=`Failed to load cluster data`}async fetchData(){let e=await this.hass.callWS({type:`kubernetes/cluster/overview`});this._data=e}_toggleNamespaces(e){this._expandedNamespaces=L(this._expandedNamespaces,e)}_navigate(e){let t=ct[e];t&&this._go(t)}_go(e){nt(`${this.prefix}${e}`)}_goOnKey(e,t){(e.key===`Enter`||e.key===` `)&&(e.preventDefault(),this._go(t))}static{this.styles=[U,K,W,at,o`
       .cluster-header {
         display: flex;
         align-items: center;
@@ -378,7 +378,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
       .ns-table {
         width: 100%;
         border-collapse: collapse;
-        margin: 8px 0 16px;
         font-size: 13px;
       }
 
@@ -397,6 +396,10 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
 
       .ns-table tr:last-child td {
         border-bottom: none;
+      }
+
+      ha-card:has(.ns-table) {
+        margin: 8px 0 16px;
       }
 
       .alerts-section {
@@ -606,23 +609,27 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         <span>Namespaces (${t.length})</span>
       </div>
       ${n?this._renderNamespaceTable(t):w}
-    `}_renderNamespaceTable(e){let t=[`pods`,`deployments`,`statefulsets`,`daemonsets`,`cronjobs`,`jobs`];return S`
-      <table class="ns-table">
-        <thead>
-          <tr>
-            <th>Namespace</th>
-            ${t.map(e=>S`<th>${st[e]||e}</th>`)}
-          </tr>
-        </thead>
-        <tbody>
-          ${e.sort(([e],[t])=>e.localeCompare(t)).map(([e,n])=>S`
-                <tr>
-                  <td>${e}</td>
-                  ${t.map(e=>S`<td>${n[e]||0}</td>`)}
-                </tr>
-              `)}
-        </tbody>
-      </table>
+    `}_renderNamespaceTable(e){let t=[`pods`,`deployments`,`statefulsets`,`daemonsets`,`cronjobs`,`jobs`,`ingresses`,`services`];return S`
+      <ha-card>
+        <div class="table-wrapper">
+          <table class="ns-table">
+            <thead>
+              <tr>
+                <th>Namespace</th>
+                ${t.map(e=>S`<th>${st[e]||e}</th>`)}
+              </tr>
+            </thead>
+            <tbody>
+              ${e.sort(([e],[t])=>e.localeCompare(t)).map(([e,n])=>S`
+                    <tr>
+                      <td>${e}</td>
+                      ${t.map(e=>S`<td>${n[e]||0}</td>`)}
+                    </tr>
+                  `)}
+            </tbody>
+          </table>
+        </div>
+      </ha-card>
     `}_renderAlerts(e){return S`
       ${e.nodes_with_pressure.map(e=>S`
           <div

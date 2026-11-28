@@ -1,7 +1,7 @@
 import { html, css, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { K8sDataView } from "./base-view";
-import { stateStyles, badgeStyles, clusterStyles } from "../styles/shared";
+import { stateStyles, badgeStyles, clusterStyles, tableStyles } from "../styles/shared";
 import { formatRelative, toggleInSet, CONDITION_LABELS } from "../utils/format";
 import { navigate } from "../utils/nav";
 
@@ -163,6 +163,7 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
     stateStyles,
     badgeStyles,
     clusterStyles,
+    tableStyles,
     css`
       .cluster-header {
         display: flex;
@@ -271,7 +272,6 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
       .ns-table {
         width: 100%;
         border-collapse: collapse;
-        margin: 8px 0 16px;
         font-size: 13px;
       }
 
@@ -290,6 +290,10 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
 
       .ns-table tr:last-child td {
         border-bottom: none;
+      }
+
+      ha-card:has(.ns-table) {
+        margin: 8px 0 16px;
       }
 
       .alerts-section {
@@ -568,29 +572,35 @@ export class K8sOverview extends K8sDataView<OverviewResponse> {
       "daemonsets",
       "cronjobs",
       "jobs",
+      "ingresses",
+      "services",
     ];
 
     return html`
-      <table class="ns-table">
-        <thead>
-          <tr>
-            <th>Namespace</th>
-            ${columns.map((col) => html`<th>${RESOURCE_LABELS[col] || col}</th>`)}
-          </tr>
-        </thead>
-        <tbody>
-          ${nsEntries
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(
-              ([ns, counts]) => html`
-                <tr>
-                  <td>${ns}</td>
-                  ${columns.map((col) => html`<td>${counts[col] || 0}</td>`)}
-                </tr>
-              `,
-            )}
-        </tbody>
-      </table>
+      <ha-card>
+        <div class="table-wrapper">
+          <table class="ns-table">
+            <thead>
+              <tr>
+                <th>Namespace</th>
+                ${columns.map((col) => html`<th>${RESOURCE_LABELS[col] || col}</th>`)}
+              </tr>
+            </thead>
+            <tbody>
+              ${nsEntries
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(
+                  ([ns, counts]) => html`
+                    <tr>
+                      <td>${ns}</td>
+                      ${columns.map((col) => html`<td>${counts[col] || 0}</td>`)}
+                    </tr>
+                  `,
+                )}
+            </tbody>
+          </table>
+        </div>
+      </ha-card>
     `;
   }
 

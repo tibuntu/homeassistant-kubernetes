@@ -1082,3 +1082,18 @@ test("two clusters share one filter bar", async ({ page }) => {
   await expect(page.locator(".node-card")).toHaveCount(0);
   await expect(page.locator(".empty")).toHaveCount(2);
 });
+
+test("overview namespace table includes ingresses and services", async ({ page }) => {
+  await page.goto(HARNESS);
+  await page.locator(".section-header", { hasText: "Namespaces" }).click();
+  const table = page.locator(".ns-table");
+  const headers = table.locator("thead th");
+  const services = headers.filter({ hasText: /^Services$/ });
+  await expect(headers.filter({ hasText: /^Ingresses$/ })).toHaveCount(1);
+  await expect(services).toHaveCount(1);
+  const col = await headers.evaluateAll((ths) =>
+    ths.findIndex((th) => th.textContent?.trim() === "Services"),
+  );
+  const row = table.locator("tbody tr", { hasText: "kube-system" });
+  await expect(row.locator("td").nth(col)).toHaveText("1");
+});
