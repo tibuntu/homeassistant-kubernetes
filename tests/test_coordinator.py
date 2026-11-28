@@ -5252,8 +5252,8 @@ class TestDisabledResources:
 
         mock_client.get_node_metrics.assert_not_called()
         mock_client.enrich_workloads_with_metrics.assert_not_awaited()
-        mock_client.get_deployments.assert_called_once_with(include_metrics=False)
-        mock_client.get_statefulsets.assert_called_once_with(include_metrics=False)
+        mock_client.get_deployments.assert_called_once_with()
+        mock_client.get_statefulsets.assert_called_once_with()
         # Nodes exist and metrics are empty, but the issue must not be raised
         # because metrics were deliberately disabled.
         assert coordinator._metrics_issue_active is False
@@ -5272,8 +5272,8 @@ class TestDisabledResources:
 
         await coordinator._async_update_data()
 
-        mock_client.get_deployments.assert_called_once_with(include_metrics=False)
-        mock_client.get_statefulsets.assert_called_once_with(include_metrics=False)
+        mock_client.get_deployments.assert_called_once_with()
+        mock_client.get_statefulsets.assert_called_once_with()
         mock_client.enrich_workloads_with_metrics.assert_awaited_once()
         workloads = mock_client.enrich_workloads_with_metrics.await_args.args[0]
         assert dep in workloads

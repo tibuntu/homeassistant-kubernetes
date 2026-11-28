@@ -425,12 +425,12 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             try:
                 _LOGGER.debug("Updating Kubernetes data for coordinator")
                 disabled = self._disabled
-                include_metrics = "metrics" not in disabled
+                metrics_enabled = "metrics" not in disabled
 
                 # Switch-bearing resources are always fetched — their switches
                 # read this data. Opting them out only suppresses their sensors.
-                deployments = await self.client.get_deployments(include_metrics=False)
-                statefulsets = await self.client.get_statefulsets(include_metrics=False)
+                deployments = await self.client.get_deployments()
+                statefulsets = await self.client.get_statefulsets()
                 cronjobs = await self.client.get_cronjobs()
 
                 # Fully-off resources skip their fetch entirely.
@@ -452,7 +452,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 # One pods list and one pod-metrics fetch per poll feed both
                 # the per-pod usage and every workload kind's enrichment.
                 pod_metrics: dict[str, dict[str, float]] = {}
-                if include_metrics:
+                if metrics_enabled:
                     pod_metrics = await self.client.get_pod_metrics()
                     for pod in pods:
                         usage = pod_metrics.get(f"{pod['namespace']}/{pod['name']}")
@@ -461,7 +461,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                             pod["memory_usage"] = usage["memory"]
 
                 workloads = [*deployments, *statefulsets, *daemonsets]
-                if include_metrics and workloads:
+                if metrics_enabled and workloads:
                     # With pods collection off the bucket is empty, so the
                     # client lists pods itself (pods=None).
                     await self.client.enrich_workloads_with_metrics(
@@ -529,7 +529,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                 # Fetch node metrics (CPU/memory usage) — best-effort. Skipped
                 # entirely (incl. the repair issue) when metrics are opted out.
                 node_metrics: dict[str, Any] = {}
-                if include_metrics:
+                if metrics_enabled:
                     node_metrics = await self.client.get_node_metrics()
                     if node_metrics:
                         _LOGGER.debug("Fetched metrics for %d nodes", len(node_metrics))

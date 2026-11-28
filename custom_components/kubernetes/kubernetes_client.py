@@ -1417,17 +1417,13 @@ class KubernetesClient:
             total += len(page.get("items") or []) + (remaining or 0)
         return total
 
-    async def get_deployments(
-        self, include_metrics: bool = True
-    ) -> list[dict[str, Any]]:
+    async def get_deployments(self) -> list[dict[str, Any]]:
         """Get all deployments in the namespace(s) with their details."""
         try:
             result = await self._fetch_resource_list(
                 "apis/apps/v1", "deployments", self._parse_replica_workload_item
             )
             if result:
-                if include_metrics:
-                    await self._enrich_workloads_with_metrics(result, "deployment")
                 self._log_success(
                     "get deployments", f"retrieved {len(result)} deployments"
                 )
@@ -1542,17 +1538,13 @@ class KubernetesClient:
         return await self.scale_deployment(deployment_name, replicas, namespace)
 
     # StatefulSet methods
-    async def get_statefulsets(
-        self, include_metrics: bool = True
-    ) -> list[dict[str, Any]]:
+    async def get_statefulsets(self) -> list[dict[str, Any]]:
         """Get all StatefulSets in the namespace(s) with their details."""
         try:
             result = await self._fetch_resource_list(
                 "apis/apps/v1", "statefulsets", self._parse_replica_workload_item
             )
             if result:
-                if include_metrics:
-                    await self._enrich_workloads_with_metrics(result, "statefulset")
                 self._log_success(
                     "get statefulsets", f"retrieved {len(result)} statefulsets"
                 )
@@ -2282,23 +2274,11 @@ class KubernetesClient:
     ) -> None:
         """Enrich a mixed list of workloads with CPU/memory usage.
 
-        ``pods`` and ``metrics`` let the caller (the coordinator) share the
-        pods list and pod-metrics fetch it already made; each is fetched here
-        only when ``None``.
+        Covers deployments, statefulsets and daemonsets. ``pods`` and
+        ``metrics`` let the caller (the coordinator) share the pods list and
+        pod-metrics fetch it already made; each is fetched here only when
+        ``None``.
         """
-        await self._enrich_workloads_with_metrics(
-            workloads, "workload", pods=pods, metrics=metrics
-        )
-
-    async def _enrich_workloads_with_metrics(
-        self,
-        workloads: list[dict[str, Any]],
-        workload_type_label: str,
-        *,
-        pods: list[dict[str, Any]] | None = None,
-        metrics: dict[str, dict[str, float]] | None = None,
-    ) -> None:
-        """Enrich workloads (deployments/statefulsets/daemonsets) with CPU and memory usage metrics."""
         # Initialize all workloads with 0.0 values first
         for workload in workloads:
             workload.setdefault("cpu_usage", 0.0)
@@ -2315,21 +2295,17 @@ class KubernetesClient:
                 metrics = await self._get_pod_metrics_aiohttp()
 
             if not pods:
-                _LOGGER.debug(
-                    "No pods found for %s metrics enrichment", workload_type_label
-                )
+                _LOGGER.debug("No pods found for workload metrics enrichment")
                 return
             if not metrics:
                 _LOGGER.debug(
-                    "No pod metrics available for %s metrics enrichment",
-                    workload_type_label,
+                    "No pod metrics available for workload metrics enrichment"
                 )
                 return
 
             _LOGGER.debug(
-                "Enriching %d %ss with metrics from %d pods and %d metric entries",
+                "Enriching %d workloads with metrics from %d pods and %d metric entries",
                 len(workloads),
-                workload_type_label,
                 len(pods),
                 len(metrics),
             )
@@ -2341,17 +2317,14 @@ class KubernetesClient:
                 workload["cpu_usage"] = cpu_usage
                 workload["memory_usage"] = memory_usage
                 _LOGGER.debug(
-                    "%s %s/%s: CPU=%.2f m, Memory=%.2f MiB",
-                    workload_type_label.capitalize(),
+                    "Workload %s/%s: CPU=%.2f m, Memory=%.2f MiB",
                     workload.get("namespace", "unknown"),
                     workload.get("name", "unknown"),
                     cpu_usage,
                     memory_usage,
                 )
         except Exception as ex:
-            _LOGGER.error(
-                "Error enriching %ss with metrics: %s", workload_type_label, ex
-            )
+            _LOGGER.error("Error enriching workloads with metrics: %s", ex)
 
     async def is_cluster_healthy(self) -> bool:
         """Check if the cluster is healthy."""
