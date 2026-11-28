@@ -10,7 +10,10 @@
  * `?empty=<ws type>` (repeatable) answers those list calls with no clusters.
  * `?metrics=0` reports `metrics_available: false` on every cluster (no
  * metrics-server). `?events_error=<code>` makes `kubernetes/pods/describe`
- * report that `events_error` with no events.
+ * report that `events_error` with no events. `?clusters=2` appends a copy of
+ * the first cluster (`entry_2`, `second-cluster`) to every `clusters` response,
+ * with its `default` namespace renamed to `staging` so the shared namespace
+ * filter must list the union of both clusters.
  *
  * Hooks on `window.__k8s`: `failCodes` maps a failing type to an error code
  * (a spec sets it via `page.evaluate`); that type then rejects with a plain
@@ -54,6 +57,7 @@ const services: ServiceCall[] = [];
 const fail = new Set(new URLSearchParams(location.search).getAll("fail"));
 const empty = new Set(new URLSearchParams(location.search).getAll("empty"));
 const noMetrics = new URLSearchParams(location.search).get("metrics") === "0";
+const twoClusters = new URLSearchParams(location.search).get("clusters") === "2";
 // Read at load: switching tabs drops the query string from the URL.
 const eventsError = new URLSearchParams(location.search).get("events_error");
 const subscribers: (() => void)[] = [];
@@ -94,7 +98,11 @@ const hass: HomeAssistant = {
     if (empty.has(type)) return { clusters: [] } as T;
     if (!(type in RESPONSES)) throw new Error(`harness: no fixture for ${type}`);
     const response = structuredClone(RESPONSES[type]) as {
-      clusters?: { metrics_available?: boolean }[];
+      clusters?: {
+        metrics_available?: boolean;
+        entry_id?: string;
+        cluster_name?: string;
+      }[];
       events?: unknown[];
       events_error?: string | null;
     };
@@ -107,6 +115,20 @@ const hass: HomeAssistant = {
       response.clusters?.forEach((c) => {
         if (c.metrics_available !== undefined) c.metrics_available = false;
       });
+    }
+    if (twoClusters && response.clusters?.length) {
+      const second = {
+        ...structuredClone(response.clusters[0]),
+        entry_id: "entry_2",
+        cluster_name: "second-cluster",
+      };
+      for (const value of Object.values(second)) {
+        if (!Array.isArray(value)) continue;
+        for (const item of value) {
+          if (item?.namespace === "default") item.namespace = "staging";
+        }
+      }
+      response.clusters.push(second);
     }
     return response as T;
   },

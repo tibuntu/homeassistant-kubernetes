@@ -1006,6 +1006,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 </button>
               </div>
             `:w}
+      ${this._renderFilters()}
       ${this._data.clusters.map(e=>this._renderCluster(e))}
       ${this._drainTarget?this._renderDrainDialog():w}
     `:e}_renderDrainDialog(){let e=this._drainTarget.node,t=this._drainResult,n=this._drainOptions;return S`
@@ -1104,28 +1105,28 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 ${t.skipped.map(e=>S`<li>${e.pod} (${mt[e.reason]??e.reason})</li>`)}
               </ul>
             </div>`:w}
+    `}_renderFilters(){return S`
+      <div class="filters">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Search nodes..."
+          .value=${this._searchQuery}
+          @input=${e=>{this._searchQuery=e.target.value}}
+        />
+        ${gt.map(e=>S`
+            <button
+              class="filter-chip"
+              ?active=${this._statusFilter===e}
+              @click=${()=>{this._statusFilter=e}}
+            >
+              ${e===`all`?`All`:e===`ready`?`Ready`:`Not Ready`}
+            </button>
+          `)}
+      </div>
     `}_renderCluster(e){let t=this._getFilteredNodes(e.nodes),n=e.nodes.filter(e=>e.status===`Ready`).length;return S`
       <div class="cluster-section">
         ${this._data.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
-
-        <div class="filters">
-          <input
-            class="search-input"
-            type="text"
-            placeholder="Search nodes..."
-            .value=${this._searchQuery}
-            @input=${e=>{this._searchQuery=e.target.value}}
-          />
-          ${gt.map(e=>S`
-              <button
-                class="filter-chip"
-                ?active=${this._statusFilter===e}
-                @click=${()=>{this._statusFilter=e}}
-              >
-                ${e===`all`?`All`:e===`ready`?`Ready`:`Not Ready`}
-              </button>
-            `)}
-        </div>
 
         <div class="node-count">
           ${n}/${e.nodes.length} nodes ready
@@ -1585,57 +1586,58 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 </button>
               </div>
             `:w}
+      ${this._renderFilters()}
       ${this._data.clusters.map(e=>this._renderCluster(e))}
       ${this._deleteConfirm?this._renderDeleteDialog():w}
       ${this._detailTarget?this._renderDetailDialog():w}
       ${this._logsTarget?this._renderLogsDialog():w}
-    `:e}_renderCluster(e){let t=this._getFilteredPods(e.pods),n=this._getNamespaces(e.pods),r=[...new Set(e.pods.map(e=>e.phase))].sort();return S`
+    `:e}_renderFilters(){let e=this._data.clusters.flatMap(e=>e.pods),t=this._getNamespaces(e),n=[...new Set(e.map(e=>e.phase))].sort();return S`
+      <div class="filters">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Search pods..."
+          .value=${this._searchQuery}
+          @input=${e=>{this._searchQuery=e.target.value}}
+        />
+
+        <select
+          class="filter-select"
+          .value=${this._namespaceFilter}
+          @change=${e=>{this._namespaceFilter=e.target.value}}
+        >
+          <option value="all">All namespaces</option>
+          ${t.map(e=>S`<option value=${e} ?selected=${e===this._namespaceFilter}>${e}</option>`)}
+        </select>
+
+        <button
+          class="filter-chip"
+          ?active=${this._phaseFilter===`all`}
+          @click=${()=>{this._phaseFilter=`all`}}
+        >
+          All
+        </button>
+        ${n.map(e=>S`
+            <button
+              class="filter-chip"
+              ?active=${this._phaseFilter===e}
+              @click=${()=>{this._phaseFilter=e}}
+            >
+              ${e}
+            </button>
+          `)}
+        <button
+          class="filter-chip"
+          ?active=${this._phaseFilter===Y}
+          @click=${()=>{this._phaseFilter=Y}}
+        >
+          Problems (${e.filter(_t).length})
+        </button>
+        ${this._renderColumnMenu()}
+      </div>
+    `}_renderCluster(e){let t=this._getFilteredPods(e.pods);return S`
       <div class="cluster-section">
         ${this._data.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
-
-        <div class="filters">
-          <input
-            class="search-input"
-            type="text"
-            placeholder="Search pods..."
-            .value=${this._searchQuery}
-            @input=${e=>{this._searchQuery=e.target.value}}
-          />
-
-          <select
-            class="filter-select"
-            .value=${this._namespaceFilter}
-            @change=${e=>{this._namespaceFilter=e.target.value}}
-          >
-            <option value="all">All namespaces</option>
-            ${n.map(e=>S`<option value=${e} ?selected=${e===this._namespaceFilter}>${e}</option>`)}
-          </select>
-
-          <button
-            class="filter-chip"
-            ?active=${this._phaseFilter===`all`}
-            @click=${()=>{this._phaseFilter=`all`}}
-          >
-            All
-          </button>
-          ${r.map(e=>S`
-              <button
-                class="filter-chip"
-                ?active=${this._phaseFilter===e}
-                @click=${()=>{this._phaseFilter=e}}
-              >
-                ${e}
-              </button>
-            `)}
-          <button
-            class="filter-chip"
-            ?active=${this._phaseFilter===Y}
-            @click=${()=>{this._phaseFilter=Y}}
-          >
-            Problems (${e.pods.filter(_t).length})
-          </button>
-          ${this._renderColumnMenu()}
-        </div>
 
         <div class="pod-count">${t.length}/${e.pods.length} pods</div>
 
@@ -2557,55 +2559,55 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                 </button>
               </div>
             `:w}
+      ${this._renderFilters()}
       ${this._data.clusters.map(e=>this._renderCluster(e))}
       ${this._jobDeleteConfirm?this._renderJobDeleteDialog():w}
       ${this._scaleTarget?this._renderScaleDialog():w}
-    `:e}_renderCluster(e){let t=this._getNamespaces(e);return S`
+    `:e}_renderFilters(){let e=[...new Set(this._data.clusters.flatMap(e=>this._getNamespaces(e)))].sort();return S`
+      <div class="filters">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Search workloads..."
+          .value=${this._searchQuery}
+          @input=${e=>{this._searchQuery=e.target.value}}
+        />
+
+        <select
+          class="filter-select"
+          .value=${this._namespaceFilter}
+          @change=${e=>{this._namespaceFilter=e.target.value}}
+        >
+          <option value="all">All namespaces</option>
+          ${e.map(e=>S`<option value=${e} ?selected=${e===this._namespaceFilter}>${e}</option>`)}
+        </select>
+
+        <select
+          class="filter-select"
+          .value=${this._categoryFilter}
+          @change=${e=>{this._categoryFilter=e.target.value}}
+        >
+          <option value="all">All types</option>
+          <option value="deployments">Deployments</option>
+          <option value="statefulsets">StatefulSets</option>
+          <option value="daemonsets">DaemonSets</option>
+          <option value="cronjobs">CronJobs</option>
+          <option value="jobs">Jobs</option>
+        </select>
+
+        ${Ut.map(e=>S`
+            <button
+              class="filter-chip"
+              ?active=${this._statusFilter===e}
+              @click=${()=>{this._statusFilter=e}}
+            >
+              ${e.charAt(0).toUpperCase()+e.slice(1)}
+            </button>
+          `)}
+      </div>
+    `}_renderCluster(e){return S`
       <div class="cluster-section">
         ${this._data.clusters.length>1?S`<div class="cluster-name">${e.cluster_name}</div>`:w}
-
-        <div class="filters">
-          <input
-            class="search-input"
-            type="text"
-            placeholder="Search workloads..."
-            .value=${this._searchQuery}
-            @input=${e=>{this._searchQuery=e.target.value}}
-          />
-
-          <select
-            class="filter-select"
-            .value=${this._namespaceFilter}
-            @change=${e=>{this._namespaceFilter=e.target.value}}
-          >
-            <option value="all">All namespaces</option>
-            ${t.map(e=>S`<option value=${e} ?selected=${e===this._namespaceFilter}>${e}</option>`)}
-          </select>
-
-          <select
-            class="filter-select"
-            .value=${this._categoryFilter}
-            @change=${e=>{this._categoryFilter=e.target.value}}
-          >
-            <option value="all">All types</option>
-            <option value="deployments">Deployments</option>
-            <option value="statefulsets">StatefulSets</option>
-            <option value="daemonsets">DaemonSets</option>
-            <option value="cronjobs">CronJobs</option>
-            <option value="jobs">Jobs</option>
-          </select>
-
-          ${Ut.map(e=>S`
-              <button
-                class="filter-chip"
-                ?active=${this._statusFilter===e}
-                @click=${()=>{this._statusFilter=e}}
-              >
-                ${e.charAt(0).toUpperCase()+e.slice(1)}
-              </button>
-            `)}
-        </div>
-
         ${this._shouldShowCategory(`deployments`)?this._renderReplicaCategory(`deployment`,e.deployments,e.entry_id,e.metrics_available):w}
         ${this._shouldShowCategory(`statefulsets`)?this._renderReplicaCategory(`statefulset`,e.statefulsets,e.entry_id,e.metrics_available):w}
         ${this._shouldShowCategory(`daemonsets`)?this._renderDaemonSets(e.daemonsets,e.entry_id,e.metrics_available):w}

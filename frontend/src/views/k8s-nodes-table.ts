@@ -433,6 +433,7 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
             `
           : nothing
       }
+      ${this._renderFilters()}
       ${this._data!.clusters.map((c) => this._renderCluster(c))}
       ${this._drainTarget ? this._renderDrainDialog() : nothing}
     `;
@@ -588,6 +589,35 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
     `;
   }
 
+  private _renderFilters() {
+    return html`
+      <div class="filters">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Search nodes..."
+          .value=${this._searchQuery}
+          @input=${(e: Event) => {
+            this._searchQuery = (e.target as HTMLInputElement).value;
+          }}
+        />
+        ${NODE_STATUS_FILTERS.map(
+          (f) => html`
+            <button
+              class="filter-chip"
+              ?active=${this._statusFilter === f}
+              @click=${() => {
+                this._statusFilter = f;
+              }}
+            >
+              ${f === "all" ? "All" : f === "ready" ? "Ready" : "Not Ready"}
+            </button>
+          `,
+        )}
+      </div>
+    `;
+  }
+
   private _renderCluster(cluster: ClusterNodes) {
     const filtered = this._getFilteredNodes(cluster.nodes);
     const readyCount = cluster.nodes.filter((n) => n.status === "Ready").length;
@@ -599,31 +629,6 @@ export class K8sNodesTable extends K8sDataView<NodesResponse> {
             ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
             : nothing
         }
-
-        <div class="filters">
-          <input
-            class="search-input"
-            type="text"
-            placeholder="Search nodes..."
-            .value=${this._searchQuery}
-            @input=${(e: Event) => {
-              this._searchQuery = (e.target as HTMLInputElement).value;
-            }}
-          />
-          ${NODE_STATUS_FILTERS.map(
-            (f) => html`
-              <button
-                class="filter-chip"
-                ?active=${this._statusFilter === f}
-                @click=${() => {
-                  this._statusFilter = f;
-                }}
-              >
-                ${f === "all" ? "All" : f === "ready" ? "Ready" : "Not Ready"}
-              </button>
-            `,
-          )}
-        </div>
 
         <div class="node-count">
           ${readyCount}/${cluster.nodes.length} nodes ready

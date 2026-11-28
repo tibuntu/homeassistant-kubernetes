@@ -925,6 +925,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
             `
           : nothing
       }
+      ${this._renderFilters()}
       ${this._data!.clusters.map((c) => this._renderCluster(c))}
       ${this._deleteConfirm ? this._renderDeleteDialog() : nothing}
       ${this._detailTarget ? this._renderDetailDialog() : nothing}
@@ -932,10 +933,72 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     `;
   }
 
+  private _renderFilters() {
+    const allPods = this._data!.clusters.flatMap((c) => c.pods);
+    const namespaces = this._getNamespaces(allPods);
+    const phases = [...new Set(allPods.map((p) => p.phase))].sort();
+
+    return html`
+      <div class="filters">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Search pods..."
+          .value=${this._searchQuery}
+          @input=${(e: Event) => {
+            this._searchQuery = (e.target as HTMLInputElement).value;
+          }}
+        />
+
+        <select
+          class="filter-select"
+          .value=${this._namespaceFilter}
+          @change=${(e: Event) => {
+            this._namespaceFilter = (e.target as HTMLSelectElement).value;
+          }}
+        >
+          <option value="all">All namespaces</option>
+          ${namespaces.map((ns) => html`<option value=${ns} ?selected=${ns === this._namespaceFilter}>${ns}</option>`)}
+        </select>
+
+        <button
+          class="filter-chip"
+          ?active=${this._phaseFilter === "all"}
+          @click=${() => {
+            this._phaseFilter = "all";
+          }}
+        >
+          All
+        </button>
+        ${phases.map(
+          (phase) => html`
+            <button
+              class="filter-chip"
+              ?active=${this._phaseFilter === phase}
+              @click=${() => {
+                this._phaseFilter = phase;
+              }}
+            >
+              ${phase}
+            </button>
+          `,
+        )}
+        <button
+          class="filter-chip"
+          ?active=${this._phaseFilter === PROBLEMS_FILTER}
+          @click=${() => {
+            this._phaseFilter = PROBLEMS_FILTER;
+          }}
+        >
+          Problems (${allPods.filter(isProblem).length})
+        </button>
+        ${this._renderColumnMenu()}
+      </div>
+    `;
+  }
+
   private _renderCluster(cluster: ClusterPods) {
     const filtered = this._getFilteredPods(cluster.pods);
-    const namespaces = this._getNamespaces(cluster.pods);
-    const phases = [...new Set(cluster.pods.map((p) => p.phase))].sort();
 
     return html`
       <div class="cluster-section">
@@ -944,62 +1007,6 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
             ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
             : nothing
         }
-
-        <div class="filters">
-          <input
-            class="search-input"
-            type="text"
-            placeholder="Search pods..."
-            .value=${this._searchQuery}
-            @input=${(e: Event) => {
-              this._searchQuery = (e.target as HTMLInputElement).value;
-            }}
-          />
-
-          <select
-            class="filter-select"
-            .value=${this._namespaceFilter}
-            @change=${(e: Event) => {
-              this._namespaceFilter = (e.target as HTMLSelectElement).value;
-            }}
-          >
-            <option value="all">All namespaces</option>
-            ${namespaces.map((ns) => html`<option value=${ns} ?selected=${ns === this._namespaceFilter}>${ns}</option>`)}
-          </select>
-
-          <button
-            class="filter-chip"
-            ?active=${this._phaseFilter === "all"}
-            @click=${() => {
-              this._phaseFilter = "all";
-            }}
-          >
-            All
-          </button>
-          ${phases.map(
-            (phase) => html`
-              <button
-                class="filter-chip"
-                ?active=${this._phaseFilter === phase}
-                @click=${() => {
-                  this._phaseFilter = phase;
-                }}
-              >
-                ${phase}
-              </button>
-            `,
-          )}
-          <button
-            class="filter-chip"
-            ?active=${this._phaseFilter === PROBLEMS_FILTER}
-            @click=${() => {
-              this._phaseFilter = PROBLEMS_FILTER;
-            }}
-          >
-            Problems (${cluster.pods.filter(isProblem).length})
-          </button>
-          ${this._renderColumnMenu()}
-        </div>
 
         <div class="pod-count">${filtered.length}/${cluster.pods.length} pods</div>
 

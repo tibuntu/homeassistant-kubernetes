@@ -1013,3 +1013,36 @@ test("back and forward within one tab restore its filters", async ({ page }) => 
   await page.goForward();
   await expect(page.locator(".search-input")).toHaveValue("web");
 });
+
+test("two clusters share one filter bar", async ({ page }) => {
+  await page.goto(`${HARNESS}/pods?clusters=2`);
+  await expect(page.locator(".cluster-name")).toHaveCount(2);
+  await expect(page.locator(".search-input")).toHaveCount(1);
+  await expect(page.locator(".column-toggle-btn")).toHaveCount(1);
+  const ns = page.locator("select.filter-select");
+  await expect(ns.locator('option[value="default"]')).toHaveCount(1);
+  await expect(ns.locator('option[value="staging"]')).toHaveCount(1);
+  const all = await page.locator("tbody tr").count();
+  await page.locator(".search-input").fill("db-0");
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  expect(all).toBeGreaterThan(2);
+
+  await page.goto(`${HARNESS}/workloads?clusters=2`);
+  await expect(page.locator(".cluster-name")).toHaveCount(2);
+  await expect(page.locator(".search-input")).toHaveCount(1);
+  const wns = page.locator("select.filter-select");
+  await expect(wns.locator('option[value="default"]')).toHaveCount(1);
+  await expect(wns.locator('option[value="staging"]')).toHaveCount(1);
+  await expect(page.locator(".workload-card", { hasText: "web" })).toHaveCount(2);
+  await page.locator(".search-input").fill("db");
+  await expect(page.locator(".workload-card", { hasText: "web" })).toHaveCount(0);
+  await expect(page.locator(".workload-card", { hasText: "db" })).toHaveCount(2);
+
+  await page.goto(`${HARNESS}/nodes?clusters=2`);
+  await expect(page.locator(".cluster-name")).toHaveCount(2);
+  await expect(page.locator(".search-input")).toHaveCount(1);
+  await expect(page.locator(".node-card")).toHaveCount(2);
+  await page.locator(".search-input").fill("no-such-node");
+  await expect(page.locator(".node-card")).toHaveCount(0);
+  await expect(page.locator(".empty")).toHaveCount(2);
+});
