@@ -194,6 +194,10 @@ Whenever changes are implemented to any integration code, always add or update t
 
 `tests/test_reload.py` is the one test that loads the real integration through HA (an `Integration` built from the component dir seeded into `loader.DATA_CUSTOM_COMPONENTS` — HA's own `custom_components` scan crashes on the editable install's path hook in CI, so never use `enable_custom_integrations`, and `tests/conftest.py` overrides pytest-homeassistant's `custom_integrations_enabled` fixture to `False` because the plugin turns that scan on by default — plus `KubernetesConfigFlow` put into `config_entries.HANDLERS`, `http`/`frontend` pre-marked in `hass.config.components`, mocked `KubernetesClient`, panel sync patched), reloads the entry, and asserts every registered entity of the entry has a live, non-`restored` state again. It catches any platform that deduplicates its setup against the entity registry (the 1.14.1 replica-number bug). When adding a platform or a resource type, extend its client mock so the new entities exist and are covered.
 
+### Plugin load order
+
+`addopts` starts with `-p pytest_homeassistant`, which loads Home Assistant's pytest plugin before every other entry-point plugin. pytest loads the others in filesystem order, which differs between CI runners: when `respx`'s plugin (installed with `pytest-homeassistant`) came first, it imported `httpx` before Home Assistant's `httpx2.alias_httpx()` ran, and pytest died at startup with "httpx was already imported" on some runs only. Keep that option first. The k8s-compat job passes `-o "addopts="`, so it never needs the plugin.
+
 ### HA deprecation guard
 
 The autouse `fail_on_ha_deprecations` fixture in `conftest.py` monitors the `homeassistant.helpers.frame` logger and fails any test that triggers an HA deprecation warning. This catches deprecated API usage (e.g. `via_device`, `async_get_device`) at CI time rather than in production logs. Tests that exercise code through real HA fixtures (platform setup, device creation, `async_add_entities`) will trigger these warnings — mock-only unit tests won't, since they bypass HA internals.

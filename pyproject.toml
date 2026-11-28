@@ -133,6 +133,11 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
+    # Load Home Assistant's plugin before every other one. Entry-point plugins
+    # load in filesystem order, which differs between CI runners; when respx's
+    # plugin came first it imported httpx before homeassistant could alias it
+    # to httpx2, and pytest died at startup ("httpx was already imported").
+    "-p", "pytest_homeassistant",
     "-v",
     "--tb=short",
     "--strict-config",
