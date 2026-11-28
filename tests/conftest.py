@@ -94,34 +94,6 @@ def entity_icon():
 
 
 @pytest.fixture
-def mock_hass():
-    """Mock Home Assistant instance."""
-    from homeassistant.core import HomeAssistant
-
-    hass = MagicMock(spec=HomeAssistant)
-    hass.config = MagicMock()
-    hass.config_entries = MagicMock()
-    hass.config_entries.async_forward_entry_setups = AsyncMock()
-    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
-    hass.services = MagicMock()
-    hass.services.async_register = AsyncMock()
-    hass.services.async_remove = AsyncMock()
-    hass.states = MagicMock()
-    hass.states.async_set = AsyncMock()
-    hass.states.async_remove = AsyncMock()
-    hass.data = {}
-    hass.bus = MagicMock()
-    hass.bus.async_fire = AsyncMock()
-    hass.async_add_executor_job = AsyncMock()
-    hass.async_create_task = AsyncMock()
-    hass.async_run_job = AsyncMock()
-    hass.state = MagicMock()
-    hass.http = MagicMock()
-    hass.http.async_register_static_paths = AsyncMock()
-    return hass
-
-
-@pytest.fixture
 def make_config_entry(hass):
     """Factory for a real ``MockConfigEntry`` with the common cluster shape.
 

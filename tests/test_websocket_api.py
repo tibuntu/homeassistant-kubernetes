@@ -152,13 +152,19 @@ def sample_coordinator_data():
     }
 
 
-def _make_coordinator(data, last_update_success=True, options=None):
+@pytest.fixture
+def mock_hass():
+    """Bare hass double: the unit tests below only stub ``config_entries``."""
+    hass = MagicMock(spec=HomeAssistant)
+    hass.config_entries = MagicMock()
+    return hass
+
+
+def _make_coordinator(data, last_update_success=True):
     """Create a mock coordinator with the given data."""
     coordinator = MagicMock()
     coordinator.data = data
     coordinator.last_update_success = last_update_success
-    coordinator.config_entry = MagicMock()
-    coordinator.config_entry.options = options or {}
     return coordinator
 
 
