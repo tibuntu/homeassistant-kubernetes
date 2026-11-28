@@ -214,8 +214,9 @@ async def websocket_pods_list(
             try:
                 cluster["pods"] = await entry.runtime_data.client.get_pods()
             except Exception:
-                # The client already logged it (deduplicated).
-                _LOGGER.debug("Live pod list failed for %s", entry.entry_id)
+                # The client logs the failure at DEBUG only; warn here (a user
+                # action, not a poll) so the empty tab is explained.
+                _LOGGER.warning("Live pod list failed for %s", entry.entry_id)
     connection.send_result(msg["id"], result)
 
 

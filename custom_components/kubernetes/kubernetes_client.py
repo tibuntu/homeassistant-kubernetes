@@ -362,6 +362,8 @@ class KubernetesClient:
         # Current Metrics API problem per kind ("pod"/"node"), as sorted
         # (scope, code) pairs; absent/empty = healthy (see _report_metrics).
         self._metrics_issues: dict[str, tuple[tuple[str, str], ...]] = {}
+        # Reason of the last failed connection probe, None after a 200.
+        self._probe_failure: str | None = None
 
         # In-flight background token-file refresh (see api_token / _ensure_refresh_task).
         self._token_refresh_task: asyncio.Task[None] | None = None
@@ -469,8 +471,15 @@ class KubernetesClient:
         """Force the next api_token read to re-fetch the projected SA token."""
         self._token_cache_time = 0.0
 
-    def _log_error(self, operation: str, error: Exception) -> None:
-        """Log errors with structured context and actionable information."""
+    def _log_error(
+        self, operation: str, error: Exception, *, level: int = logging.ERROR
+    ) -> None:
+        """Log errors with structured context and actionable information.
+
+        Callers that re-raise pass ``level=logging.DEBUG``: the coordinator
+        reports the outage once, so logging it here too would repeat on every
+        poll.
+        """
         cluster_info = f"cluster={self.cluster_name}, host={self.host}:{self.port}"
         namespace_info = (
             f"namespaces={','.join(self.namespaces)}"
@@ -480,7 +489,8 @@ class KubernetesClient:
 
         if isinstance(error, aiohttp.ClientError):
             # Handle network/HTTP errors
-            _LOGGER.error(
+            _LOGGER.log(
+                level,
                 "Network error during %s (%s, %s): %s",
                 operation,
                 cluster_info,
@@ -488,7 +498,8 @@ class KubernetesClient:
                 str(error),
             )
         elif isinstance(error, asyncio.TimeoutError):
-            _LOGGER.error(
+            _LOGGER.log(
+                level,
                 "Timeout during %s (%s, %s). Check network connectivity and API server response time.",
                 operation,
                 cluster_info,
@@ -496,7 +507,8 @@ class KubernetesClient:
             )
         else:
             # Handle other exceptions
-            _LOGGER.error(
+            _LOGGER.log(
+                level,
                 "Unexpected error during %s (%s, %s): %s",
                 operation,
                 cluster_info,
@@ -586,12 +598,15 @@ class KubernetesClient:
             if self.auth_failed:
                 self._last_auth_error_time = time.time()
             if status == 200:
+                self._probe_failure = None
                 self._log_success("connection test", "using aiohttp")
                 return True
-            _LOGGER.error("aiohttp connection test failed with status: %s", status)
+            self._probe_failure = f"status {status}"
+            _LOGGER.debug("aiohttp connection test failed with status: %s", status)
             return False
         except Exception as ex:
-            self._log_error("aiohttp connection test", ex)
+            self._probe_failure = str(ex) or type(ex).__name__
+            self._log_error("aiohttp connection test", ex, level=logging.DEBUG)
             return False
 
     async def get_pods_count(self) -> int:
@@ -599,7 +614,9 @@ class KubernetesClient:
         try:
             # Test connection first
             if not await self._test_connection():
-                raise KubernetesApiError("Cannot connect to Kubernetes API")
+                raise KubernetesApiError(
+                    f"Cannot connect to Kubernetes API: {self._probe_failure}"
+                )
 
             result = await self._fetch_resource_count("api/v1", "pods")
             if result is not None:
@@ -607,7 +624,7 @@ class KubernetesClient:
             return result
 
         except Exception as ex:
-            self._log_error("get pods count", ex)
+            self._log_error("get pods count", ex, level=logging.DEBUG)
             raise
 
     async def get_pods(self) -> list[dict[str, Any]]:
@@ -615,7 +632,9 @@ class KubernetesClient:
         try:
             # Test connection first
             if not await self._test_connection():
-                raise KubernetesApiError("Cannot connect to Kubernetes API")
+                raise KubernetesApiError(
+                    f"Cannot connect to Kubernetes API: {self._probe_failure}"
+                )
 
             if self.monitor_all_namespaces:
                 result = await self._get_pods_all_namespaces_aiohttp()
@@ -627,7 +646,7 @@ class KubernetesClient:
             return result
 
         except Exception as ex:
-            self._log_error("get pods", ex)
+            self._log_error("get pods", ex, level=logging.DEBUG)
             raise
 
     async def _get_pods_aiohttp(self) -> list[dict[str, Any]]:
@@ -675,7 +694,7 @@ class KubernetesClient:
                 data = await response.json()
                 return self._parse_pods_data(data.get("items", []))
         except Exception as ex:
-            self._log_error("aiohttp get all pods", ex)
+            self._log_error("aiohttp get all pods", ex, level=logging.DEBUG)
             raise
 
     @staticmethod
@@ -884,7 +903,7 @@ class KubernetesClient:
                 self._log_success("get nodes count", f"retrieved {result} nodes")
             return result
         except Exception as ex:
-            self._log_error("get nodes count", ex)
+            self._log_error("get nodes count", ex, level=logging.DEBUG)
             raise
 
     async def get_nodes(self) -> list[dict[str, Any]]:
@@ -894,7 +913,7 @@ class KubernetesClient:
             self._log_success("get nodes", f"retrieved {len(result)} nodes")
             return result
         except Exception as ex:
-            self._log_error("get nodes", ex)
+            self._log_error("get nodes", ex, level=logging.DEBUG)
             raise
 
     async def _get_nodes_aiohttp(self) -> list[dict[str, Any]]:
@@ -1461,7 +1480,7 @@ class KubernetesClient:
                 )
             return result
         except Exception as ex:
-            self._log_error("get deployments count", ex)
+            self._log_error("get deployments count", ex, level=logging.DEBUG)
             raise
 
     async def get_deployments(
@@ -1480,7 +1499,7 @@ class KubernetesClient:
                 )
             return result
         except Exception as ex:
-            self._log_error("get deployments", ex)
+            self._log_error("get deployments", ex, level=logging.DEBUG)
             raise
 
     async def scale_deployment(
@@ -1597,7 +1616,7 @@ class KubernetesClient:
                 self._log_success("get statefulsets count", f"count: {result}")
             return result or 0
         except Exception as ex:
-            self._log_error("get statefulsets count", ex)
+            self._log_error("get statefulsets count", ex, level=logging.DEBUG)
             raise
 
     async def get_statefulsets(
@@ -1616,7 +1635,7 @@ class KubernetesClient:
                 )
             return result
         except Exception as ex:
-            self._log_error("get statefulsets", ex)
+            self._log_error("get statefulsets", ex, level=logging.DEBUG)
             raise
 
     async def scale_statefulset(
@@ -2446,7 +2465,7 @@ class KubernetesClient:
                 self._log_success("get daemonsets count", f"count: {result}")
             return result or 0
         except Exception as ex:
-            self._log_error("get daemonsets count", ex)
+            self._log_error("get daemonsets count", ex, level=logging.DEBUG)
             raise
 
     async def get_daemonsets(self) -> list[dict[str, Any]]:
@@ -2461,7 +2480,7 @@ class KubernetesClient:
                 )
             return result
         except Exception as ex:
-            self._log_error("get daemonsets", ex)
+            self._log_error("get daemonsets", ex, level=logging.DEBUG)
             raise
 
     # Ingress methods
@@ -2475,7 +2494,7 @@ class KubernetesClient:
                 self._log_success("get ingresses count", f"count: {result}")
             return result or 0
         except Exception as ex:
-            self._log_error("get ingresses count", ex)
+            self._log_error("get ingresses count", ex, level=logging.DEBUG)
             raise
 
     async def get_ingresses(self) -> list[dict[str, Any]]:
@@ -2488,7 +2507,7 @@ class KubernetesClient:
                 self._log_success("get ingresses", f"retrieved {len(result)} ingresses")
             return result
         except Exception as ex:
-            self._log_error("get ingresses", ex)
+            self._log_error("get ingresses", ex, level=logging.DEBUG)
             raise
 
     async def get_services_count(self) -> int:
@@ -2499,7 +2518,7 @@ class KubernetesClient:
                 self._log_success("get services count", f"count: {result}")
             return result or 0
         except Exception as ex:
-            self._log_error("get services count", ex)
+            self._log_error("get services count", ex, level=logging.DEBUG)
             raise
 
     async def get_services(self) -> list[dict[str, Any]]:
@@ -2512,7 +2531,7 @@ class KubernetesClient:
                 self._log_success("get services", f"retrieved {len(result)} services")
             return result
         except Exception as ex:
-            self._log_error("get services", ex)
+            self._log_error("get services", ex, level=logging.DEBUG)
             raise
 
     async def get_hpas(self) -> list[dict[str, Any]]:
@@ -2528,7 +2547,7 @@ class KubernetesClient:
             # A 403 is reported once by the coordinator, which turns HPA
             # detection off — logging it here would repeat on every poll.
             if not (isinstance(ex, KubernetesApiError) and ex.status == 403):
-                self._log_error("get hpas", ex)
+                self._log_error("get hpas", ex, level=logging.DEBUG)
             raise
 
     async def get_httproutes(self) -> list[dict[str, Any]]:
@@ -2581,7 +2600,7 @@ class KubernetesClient:
                 self._log_success("get cronjobs count", f"count: {result}")
             return result
         except Exception as ex:
-            self._log_error("get_cronjobs_count", ex)
+            self._log_error("get_cronjobs_count", ex, level=logging.DEBUG)
             raise
 
     async def get_cronjobs(self) -> list[dict[str, Any]]:
@@ -2594,7 +2613,7 @@ class KubernetesClient:
                 self._log_success("get cronjobs", f"retrieved {len(result)} cronjobs")
             return result
         except Exception as ex:
-            self._log_error("get_cronjobs", ex)
+            self._log_error("get_cronjobs", ex, level=logging.DEBUG)
             raise
 
     async def _patch_cronjob_aiohttp(
@@ -2804,7 +2823,7 @@ class KubernetesClient:
                 self._log_success("get jobs count", f"count: {result}")
             return result
         except Exception as ex:
-            self._log_error("get_jobs_count", ex)
+            self._log_error("get_jobs_count", ex, level=logging.DEBUG)
             raise
 
     async def get_jobs(self) -> list[dict[str, Any]]:
@@ -2817,7 +2836,7 @@ class KubernetesClient:
                 self._log_success("get jobs", f"retrieved {len(result)} jobs")
             return result
         except Exception as ex:
-            self._log_error("get_jobs", ex)
+            self._log_error("get_jobs", ex, level=logging.DEBUG)
             raise
 
     def _format_job_from_dict(self, job_dict: dict[str, Any]) -> dict[str, Any]:

@@ -422,6 +422,41 @@ class TestKubernetesDataCoordinator:
         ):
             await coordinator._async_update_data()
 
+    async def test_bare_timeout_names_its_type(self, coordinator, mock_client):
+        """A bare TimeoutError (empty str) still leaves a readable message."""
+        mock_client.get_deployments.side_effect = TimeoutError()
+
+        with pytest.raises(UpdateFailed, match="TimeoutError"):
+            await coordinator._async_update_data()
+
+    async def test_outage_logs_once_and_recovery_logs_once(
+        self, coordinator, mock_client, caplog
+    ):
+        """An unreachable cluster is reported once per outage, then once on recovery.
+
+        Home Assistant's DataUpdateCoordinator logs the UpdateFailed on the
+        first failed refresh only; the integration adds no line of its own.
+        """
+        mock_client.auth_failed = False
+        mock_client.get_deployments.side_effect = aiohttp.ClientConnectionError("down")
+        caplog.set_level(logging.INFO)
+
+        await coordinator.async_refresh()
+        first = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len(first) == 1
+        assert "Error fetching" in first[0].getMessage()
+
+        caplog.clear()
+        await coordinator.async_refresh()
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+        mock_client.get_deployments.side_effect = None
+        mock_client.get_deployments.return_value = []
+        caplog.clear()
+        await coordinator.async_refresh()
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len([r for r in caplog.records if "recovered" in r.getMessage()]) == 1
+
     async def test_async_update_data_auth_failure_raises_config_entry_auth_failed(
         self, coordinator, mock_client
     ):

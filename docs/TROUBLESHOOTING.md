@@ -10,8 +10,10 @@ You see errors like:
 
 ```
 Failed to stop deployment longhorn-ui
-aiohttp connection test failed with status: 401
+Authentication failed while fetching kubernetes_<entry id> data: Kubernetes API rejected the configured token
 ```
+
+Home Assistant also shows a reauthentication prompt. The probe line `aiohttp connection test failed with status: 401` appears at DEBUG level only.
 
 ### Solution
 
