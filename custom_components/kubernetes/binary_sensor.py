@@ -169,22 +169,14 @@ async def async_setup_entry(
     )
 
 
-class KubernetesBaseBinarySensor(BinarySensorEntity):
-    """Base class for Kubernetes binary sensors."""
-
-    def __init__(self, client: KubernetesClient, config_entry: ConfigEntry) -> None:
-        """Initialize the binary sensor."""
-        self.client = client
-        self.config_entry = config_entry
-        self._attr_has_entity_name = True
-
-
-class KubernetesClusterHealthSensor(KubernetesBaseBinarySensor):
+class KubernetesClusterHealthSensor(BinarySensorEntity):
     """Binary sensor for Kubernetes cluster health."""
 
     def __init__(self, client: KubernetesClient, config_entry: ConfigEntry) -> None:
         """Initialize the cluster health sensor."""
-        super().__init__(client, config_entry)
+        self.client = client
+        self.config_entry = config_entry
+        self._attr_has_entity_name = True
         self._attr_translation_key = "cluster_health"
         self._attr_unique_id = f"{config_entry.entry_id}_cluster_health"
         self._attr_device_class = BinarySensorDeviceClass.CONNECTIVITY

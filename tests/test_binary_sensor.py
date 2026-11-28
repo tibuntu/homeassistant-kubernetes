@@ -9,7 +9,6 @@ from homeassistant.helpers import entity_registry as er
 import pytest
 
 from custom_components.kubernetes.binary_sensor import (
-    KubernetesBaseBinarySensor,
     KubernetesClusterHealthSensor,
     KubernetesNodeConditionBinarySensor,
     _async_discover_and_add_new_binary_sensors,
@@ -185,18 +184,6 @@ class TestKubernetesBinarySensorSetup:
         assert result == []
 
 
-class TestKubernetesBaseBinarySensor:
-    """Test base binary sensor class."""
-
-    def test_base_binary_sensor_initialization(self, mock_config_entry, mock_client):
-        """Test base binary sensor initialization."""
-        sensor = KubernetesBaseBinarySensor(mock_client, mock_config_entry)
-
-        assert sensor.client == mock_client
-        assert sensor.config_entry == mock_config_entry
-        assert sensor._attr_has_entity_name is True
-
-
 class TestKubernetesClusterHealthSensor:
     """Test Kubernetes cluster health binary sensor."""
 
@@ -204,6 +191,8 @@ class TestKubernetesClusterHealthSensor:
         """Test cluster health sensor initialization."""
         sensor = KubernetesClusterHealthSensor(mock_client, mock_config_entry)
 
+        assert sensor.client == mock_client
+        assert sensor.config_entry == mock_config_entry
         assert entity_name(sensor, "binary_sensor") == "Cluster Health"
         assert sensor.unique_id == "test_entry_id_cluster_health"
         assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
