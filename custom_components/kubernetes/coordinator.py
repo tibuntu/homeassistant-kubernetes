@@ -313,6 +313,9 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         # out again once its retry lists successfully (a list 403) or its watch
         # connects (a watch 403).
         self._forbidden_loops: dict[str, str] = {}
+        # Loop keys whose last attempt got HTTP 404 on an optional API (CRD not
+        # installed); like a forbidden loop they feed no live stream.
+        self._unserved_loops: set[str] = set()
         # Set while the HPA list gets HTTP 403, so the warning logs once.
         self._hpas_forbidden = False
         # Per optional bucket (_OPTIONAL_FETCHES): HTTP status (403/404) of the
@@ -1036,17 +1039,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         else:
             self._failing_watch_loops.discard(loop_key)
 
-        # While any watch loop is in sustained failure (e.g. the ServiceAccount
-        # lacks the `watch` verb), poll at the regular fast interval instead of
-        # the long watch fallback so data stays fresh; stretch back out once
-        # every stream recovers. Takes effect when the next refresh reschedules.
-        if self._watch_enabled:
-            seconds = (
-                self._poll_interval
-                if self._failing_watch_loops
-                else DEFAULT_FALLBACK_POLL_INTERVAL
-            )
-            self.update_interval = timedelta(seconds=seconds)
+        self._sync_poll_interval()
 
         should_be_active = bool(self._failing_watch_loops)
         if should_be_active and not self._watch_issue_active:
@@ -1066,6 +1059,31 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         elif not should_be_active and self._watch_issue_active:
             ir.async_delete_issue(self.hass, DOMAIN, self._watch_issue_id())
             self._watch_issue_active = False
+
+    @callback
+    def _sync_poll_interval(self) -> None:
+        """Own `update_interval`: fast while no live stream is left, else slow.
+
+        Fast when any watch loop is in sustained failure (e.g. the
+        ServiceAccount lacks the `watch` verb), or when every watch task is
+        forbidden (403) or unserved (404, optional CRD absent) - then no
+        stream feeds data and the long watch fallback would leave it stale.
+        Takes effect when the next refresh reschedules.
+        """
+        if not self._watch_enabled:
+            return
+        # `self._watch_tasks` must be non-empty: an empty list means no tasks
+        # are registered yet (e.g. called directly in a test), not that "all
+        # of them" are forbidden.
+        no_live_stream = bool(self._watch_tasks) and len(
+            set(self._forbidden_loops) | self._unserved_loops
+        ) >= len(self._watch_tasks)
+        seconds = (
+            self._poll_interval
+            if self._failing_watch_loops or no_live_stream
+            else DEFAULT_FALLBACK_POLL_INTERVAL
+        )
+        self.update_interval = timedelta(seconds=seconds)
 
     def _forbidden_issue_id(self) -> str:
         """Issue id for the per-entry missing-RBAC-permission repair issue."""
@@ -1098,17 +1116,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
             )
         self._sync_watch_repair_issue(loop_key, failing=False)
         self._forbidden_loops[loop_key] = resource_type
-        # With every stream forbidden there is no live data source left, so
-        # poll at the regular interval instead of the slow watch fallback.
-        # `self._watch_tasks` must be non-empty here too: an empty list means
-        # no tasks are registered yet (e.g. called directly in a test), not
-        # that "all of them" are forbidden.
-        if (
-            self._watch_enabled
-            and self._watch_tasks
-            and len(self._forbidden_loops) >= len(self._watch_tasks)
-        ):
-            self.update_interval = timedelta(seconds=self._poll_interval)
+        self._sync_poll_interval()
         self._raise_forbidden_issue()
 
     @callback
@@ -1122,6 +1130,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
         `_sync_watch_repair_issue`, which covers the all-forbidden case.
         """
         resource_type = self._forbidden_loops.pop(loop_key, None)
+        self._sync_poll_interval()
         if resource_type is None:
             return
         if resource_type not in self._forbidden_resources:
@@ -1387,6 +1396,8 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                         resource_version,
                     )
                     failure_streak = 0
+                    # A successful list proves the API is served again.
+                    self._unserved_loops.discard(loop_key)
                     # After a watch 403 the successful list proves nothing
                     # about the watch permission; the watch clears it.
                     if not watch_forbidden:
@@ -1464,6 +1475,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     # A 404 for any other resource stays a real failure.
                     _LOGGER.debug("Watch %s: API not served (404)", resource_type)
                     failure_streak = 0
+                    self._unserved_loops.add(loop_key)
                     self._sync_watch_repair_issue(loop_key, failing=False)
                     self._clear_watch_forbidden(loop_key)
                     watch_forbidden = False

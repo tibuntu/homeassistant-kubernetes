@@ -3418,6 +3418,61 @@ class TestRunWatchLoopExtended:
             seconds=DEFAULT_FALLBACK_POLL_INTERVAL
         )
 
+    def test_all_forbidden_or_unserved_polls_fast(self, coord):
+        """10 forbidden loops + 2 unserved optional loops: no live stream."""
+        coord._watch_tasks = [MagicMock() for _ in range(12)]
+        for i in range(10):
+            coord._forbidden_loops[f"r{i}:u"] = f"r{i}"
+        coord._unserved_loops = {"httproutes:u", "certificates:u"}
+
+        coord._sync_poll_interval()
+
+        assert coord.update_interval == timedelta(seconds=coord._poll_interval)
+
+    async def test_unserved_retry_keeps_fast_interval(self, coord, mock_client):
+        """A repeated 404 retry of an unserved loop keeps the fast interval."""
+        url = "https://host/apis/cert-manager.io/v1/certificates"
+        coord._watch_tasks = [MagicMock(), MagicMock()]
+        coord._forbidden_loops["pods:u"] = "pods"
+        mock_client.list_resource_with_version.side_effect = (
+            aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=404, message="Not Found"
+            )
+        )
+
+        with (
+            patch("asyncio.wait_for", side_effect=self._stop_on_wait(coord)),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+        ):
+            await coord._run_watch_loop("certificates", url, MagicMock())
+
+        assert coord._unserved_loops == {f"certificates:{url}"}
+        assert coord.update_interval == timedelta(seconds=coord._poll_interval)
+
+        # The loop retries after the sleep and gets another 404.
+        coord._watch_stop_event.clear()
+        with (
+            patch("asyncio.wait_for", side_effect=self._stop_on_wait(coord)),
+            patch("custom_components.kubernetes.coordinator.ir.async_create_issue"),
+        ):
+            await coord._run_watch_loop("certificates", url, MagicMock())
+
+        assert coord.update_interval == timedelta(seconds=coord._poll_interval)
+
+    def test_forbidden_recovery_restores_slow_interval(self, coord):
+        """One forbidden loop recovering ends the all-dark state."""
+        coord._watch_tasks = [MagicMock(), MagicMock()]
+        coord._forbidden_loops = {"pods:u": "pods"}
+        coord._unserved_loops = {"certificates:u"}
+        coord._sync_poll_interval()
+        assert coord.update_interval == timedelta(seconds=coord._poll_interval)
+
+        coord._clear_watch_forbidden("pods:u")
+
+        assert coord.update_interval == timedelta(
+            seconds=DEFAULT_FALLBACK_POLL_INTERVAL
+        )
+
     @pytest.mark.parametrize(
         ("resource_type", "url"),
         [
