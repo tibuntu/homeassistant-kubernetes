@@ -84,7 +84,11 @@ jobs:
             "--set rbac.writeNamespaces=null --set rbac.create=false" \
             "--set mode=minimal --set rbac.writeNamespaces={media}" \
             "--set rbac.writeNamespaces={*,media}" \
-            "--set rbac.writeNamespaces={Bad_Name}"; do
+            "--set rbac.writeNamespaces={Bad_Name}" \
+            "--set mode=null" \
+            "--set mode=null --set rbac.create=false" \
+            "--set rbac=null" \
+            "--set rbac.writeNamespace={media}"; do
             if helm template chart $args >/dev/null 2>&1; then
               echo "::error::chart accepted invalid values: $args"
               exit 1

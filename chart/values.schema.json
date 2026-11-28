@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "homeassistant-kubernetes-rbac values",
   "type": "object",
+  "required": ["mode", "rbac"],
   "if": {
     "properties": { "mode": { "const": "minimal" } },
     "required": ["mode"]
@@ -41,6 +42,7 @@
     "rbac": {
       "type": "object",
       "required": ["writeNamespaces"],
+      "additionalProperties": false,
       "properties": {
         "create": { "type": "boolean" },
         "writeNamespaces": {

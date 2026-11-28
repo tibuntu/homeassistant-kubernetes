@@ -6,7 +6,7 @@ type: application
 # hand in the pull request that changes anything under chart/ (CI fails
 # otherwise) and add an entry to chart/CHANGELOG.md. Merging to main publishes
 # it — see docs/DEVELOPMENT.md, "Releasing the chart".
-version: 2.0.0
+version: 2.0.1
 # Oldest integration release these permissions were written for. Raise it only
 # when a chart release stops working with older integration releases.
 appVersion: 1.18.0
