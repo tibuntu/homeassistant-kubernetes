@@ -2,15 +2,17 @@
 
 Extracted from the API client module so the conversion logic can be unit-tested
 in isolation. These functions never raise: malformed, empty, or missing input
-returns 0.0. Every Kubernetes quantity suffix is accepted for both resources
-(n/u/m, k/M/G/T/P/E and Ki..Ei). (CPU "cores" output is rounded to a whole
-number; everything else is rounded to 2 decimal places, preserving the
-original behavior.)
+returns 0.0. Every Kubernetes quantity suffix is accepted as input for both
+resources (n/u/m, k/M/G/T/P/E and Ki..Ei). Output units are the ones the
+client asks for: CPU in millicores ("m") or "cores", memory in "MiB" or "GiB".
+(CPU "cores" output is rounded to a whole number; everything else is rounded to
+2 decimal places.)
 """
 
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,12 +41,12 @@ _QUANTITY_SUFFIXES: dict[str, tuple[int, int]] = {
     "E": (1000**6, 1),
 }
 
-# CPU output type -> divisor from nanocores.
 _NANOCORES_PER_CORE = 1_000_000_000
-_CPU_OUTPUT_DIVISORS = {"n": 1, "u": 1000, "m": 1_000_000, "cores": 1_000_000_000}
+# CPU output type -> divisor from nanocores
+_CPU_OUTPUT_DIVISORS = {"m": 1_000_000, "cores": 1_000_000_000}
 
 # Memory output type -> divisor from bytes.
-_MEMORY_OUTPUT_MULTIPLIERS = {"KiB": 1024, "MiB": 1024**2, "GiB": 1024**3}
+_MEMORY_OUTPUT_DIVISORS = {"MiB": 1024**2, "GiB": 1024**3}
 
 
 def _quantity_to_base(quantity: str, base_scale: int = 1) -> float:
@@ -66,34 +68,26 @@ def _quantity_to_base(quantity: str, base_scale: int = 1) -> float:
     return float(quantity) * base_scale
 
 
-def parse_cpu_quantity(cpu_str: str, output_type: str = "cores") -> float:
-    """Parse a Kubernetes CPU quantity to the given unit (n, u, m, or cores)."""
+def parse_cpu_quantity(
+    cpu_str: str, output_type: Literal["m", "cores"] = "cores"
+) -> float:
+    """Parse a Kubernetes CPU quantity to millicores ("m") or cores."""
     try:
         nanocores = _quantity_to_base(cpu_str, _NANOCORES_PER_CORE)
-
-        divisor = _CPU_OUTPUT_DIVISORS.get(output_type, 1_000_000_000)
-        if output_type not in _CPU_OUTPUT_DIVISORS:
-            _LOGGER.warning(
-                "Invalid output type '%s', defaulting to cores", output_type
-            )
-        value = nanocores / divisor
-        if output_type == "cores" or output_type not in _CPU_OUTPUT_DIVISORS:
-            return round(value)
-        return round(value, 2)
-    except (ValueError, IndexError, TypeError, AttributeError, OverflowError):
+        value = nanocores / _CPU_OUTPUT_DIVISORS[output_type]
+        return round(value) if output_type == "cores" else round(value, 2)
+    except (ValueError, TypeError, AttributeError, OverflowError):
         _LOGGER.warning("Failed to parse CPU string: %s", cpu_str)
         return 0.0
 
 
-def parse_memory_quantity(memory_str: str, output_type: str = "MiB") -> float:
-    """Parse a Kubernetes memory quantity to the given unit (KiB, MiB, or GiB)."""
+def parse_memory_quantity(
+    memory_str: str, output_type: Literal["MiB", "GiB"] = "MiB"
+) -> float:
+    """Parse a Kubernetes memory quantity to MiB or GiB."""
     try:
         bytes_value = _quantity_to_base(memory_str)
-
-        multiplier = _MEMORY_OUTPUT_MULTIPLIERS.get(output_type, 1024**2)
-        if output_type not in _MEMORY_OUTPUT_MULTIPLIERS:
-            _LOGGER.warning("Invalid output type '%s', defaulting to MiB", output_type)
-        return round(bytes_value / multiplier, 2)
-    except (ValueError, IndexError, TypeError, AttributeError, OverflowError):
+        return round(bytes_value / _MEMORY_OUTPUT_DIVISORS[output_type], 2)
+    except (ValueError, TypeError, AttributeError, OverflowError):
         _LOGGER.warning("Failed to parse memory string: %s", memory_str)
         return 0.0
