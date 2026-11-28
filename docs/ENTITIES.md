@@ -161,6 +161,7 @@ Each pod sensor provides comprehensive information about the pod:
 | Attribute | Description | Example Value |
 |-----------|-------------|---------------|
 | **namespace** | Kubernetes namespace where the pod is located | `default` |
+| **workload_type** | Always `Pod`; tells pod sensors apart from the other sensors of a cluster in templates and card filters | `Pod` |
 | **phase** | Current phase of the pod (useful for filtering with auto-entities) | `Running` / `Pending` / `Failed` / `Succeeded` / `Unknown` |
 | **ready_containers** | Number of ready containers in the pod | `2` |
 | **total_containers** | Total number of containers in the pod | `2` |
@@ -565,10 +566,8 @@ card:
 filter:
   include:
     - entity_id: sensor.production_*
-      state:
-        - "Pending"
-        - "Failed"
-        - "Unknown"
+      attributes:
+        workload_type: Pod
   exclude:
     - state: "Running"
     - state: "Succeeded"
