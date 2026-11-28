@@ -359,6 +359,10 @@ class KubernetesClient:
         # ConfigEntryAuthFailed so Home Assistant starts the reauth flow.
         self.auth_failed = False
 
+        # Current Metrics API problem per kind ("pod"/"node"), as sorted
+        # (scope, code) pairs; absent/empty = healthy (see _report_metrics).
+        self._metrics_issues: dict[str, tuple[tuple[str, str], ...]] = {}
+
         # In-flight background token-file refresh (see api_token / _ensure_refresh_task).
         self._token_refresh_task: asyncio.Task[None] | None = None
 
@@ -2056,14 +2060,46 @@ class KubernetesClient:
         # Metrics API is usually accessed via /apis/metrics.k8s.io/v1beta1/pods
         return await self._get_pod_metrics_aiohttp()
 
+    def _report_metrics(self, kind: str, issues: dict[str, str]) -> None:
+        """Warn about a Metrics API problem once per episode; log the recovery once.
+
+        kind: "pod" or "node". issues maps scope -> code; empty means healthy.
+        scope: "cluster", or the namespace name in per-namespace mode.
+        code: "403 Forbidden", f"HTTP {status}", or "request failed".
+        """
+        key = tuple(sorted(issues.items()))
+        if key == self._metrics_issues.get(kind, ()):
+            return
+        self._metrics_issues[kind] = key
+        if not key:
+            _LOGGER.info("%s metrics are available again", kind.capitalize())
+            return
+        if any(code == "403 Forbidden" for _, code in key):
+            hint = (
+                "The service account does not have permission to access the "
+                "metrics API. To enable CPU and Memory usage metrics, add the "
+                "following to your ClusterRole: apiGroups: ['metrics.k8s.io'], "
+                "resources: ['pods', 'nodes'], verbs: ['get', 'list']"
+            )
+        else:
+            hint = "The Metrics API (metrics-server) might not be installed."
+        _LOGGER.warning(
+            "%s metrics unavailable (%s). %s",
+            kind.capitalize(),
+            ", ".join(f"{scope}: {code}" for scope, code in key),
+            hint,
+        )
+
     async def _get_pod_metrics_aiohttp(self) -> dict[str, dict[str, float]]:
         """Get pod metrics using aiohttp.
 
         Without monitor_all_namespaces, each configured namespace is fetched
         separately and concurrently. Metrics are best-effort: a namespace that
-        fails is skipped and the others are still returned, and every 403 of
-        one call is reported in a single warning.
+        fails is skipped and the others are still returned; all problems of one
+        call are reported through ``_report_metrics`` (once per episode).
         """
+        issues: dict[str, str] = {}
+        metrics: dict[str, dict[str, float]] = {}
         try:
             headers = {"Authorization": f"Bearer {self.api_token}"}
             ssl_param = await self._get_ssl_param()
@@ -2083,45 +2119,28 @@ class KubernetesClient:
                 return_exceptions=True,
             )
 
-            metrics: dict[str, dict[str, float]] = {}
-            forbidden: list[str] = []
             for (target_namespace, _), result in zip(targets, results, strict=True):
-                scope = (
-                    f" for namespace {target_namespace!r}"
-                    if target_namespace is not None
-                    else ""
-                )
+                scope = target_namespace if target_namespace is not None else "cluster"
                 if isinstance(result, BaseException):
-                    _LOGGER.warning(
-                        "Exception in _get_pod_metrics_aiohttp%s: %s", scope, result
+                    _LOGGER.debug(
+                        "Pod metrics request for %s failed: %s", scope, result
                     )
+                    issues[scope] = "request failed"
                     continue
                 status, items = result
                 if status == 200:
                     self._merge_pod_metrics_items(items, metrics)
                 elif status == 403:
-                    forbidden.append(repr(target_namespace))
+                    issues[scope] = "403 Forbidden"
                 else:
-                    _LOGGER.warning(
-                        "Failed to fetch pod metrics%s: %s. Metrics API might not be available.",
-                        scope,
-                        status,
-                    )
-            if forbidden:
-                _LOGGER.warning(
-                    "Failed to fetch pod metrics%s: 403 Forbidden. "
-                    "The service account does not have permission to access the metrics API. "
-                    "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
-                    "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']",
-                    f" for namespaces {', '.join(forbidden)}"
-                    if not self.monitor_all_namespaces
-                    else "",
-                )
+                    issues[scope] = f"HTTP {status}"
             _LOGGER.debug("Successfully fetched metrics for %d pods", len(metrics))
-            return metrics
         except Exception as ex:
-            _LOGGER.warning("Exception in _get_pod_metrics_aiohttp: %s", ex)
-            return {}
+            _LOGGER.debug("Pod metrics fetch failed: %s", ex)
+            issues = {"cluster": "request failed"}
+            metrics = {}
+        self._report_metrics("pod", issues)
+        return metrics
 
     async def _fetch_pod_metrics_items(
         self,
@@ -2182,6 +2201,8 @@ class KubernetesClient:
 
     async def _get_node_metrics_aiohttp(self) -> dict[str, dict[str, float]]:
         """Get node metrics using aiohttp."""
+        issues: dict[str, str] = {}
+        metrics: dict[str, dict[str, float]] = {}
         try:
             headers = {"Authorization": f"Bearer {self.api_token}"}
             url = f"https://{self.host}:{self.port}/apis/metrics.k8s.io/v1beta1/nodes"
@@ -2194,7 +2215,6 @@ class KubernetesClient:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    metrics: dict[str, dict[str, float]] = {}
                     for item in data.get("items", []):
                         name = item.get("metadata", {}).get("name")
                         if not name:
@@ -2210,24 +2230,16 @@ class KubernetesClient:
                     _LOGGER.debug(
                         "Successfully fetched metrics for %d nodes", len(metrics)
                     )
-                    return metrics
                 elif response.status == 403:
-                    _LOGGER.warning(
-                        "Failed to fetch node metrics: 403 Forbidden. "
-                        "The service account does not have permission to access the metrics API. "
-                        "To enable CPU and Memory usage metrics, add the following to your ClusterRole: "
-                        "apiGroups: ['metrics.k8s.io'], resources: ['pods', 'nodes'], verbs: ['get', 'list']"
-                    )
-                    return {}
+                    issues["cluster"] = "403 Forbidden"
                 else:
-                    _LOGGER.warning(
-                        "Failed to fetch node metrics: %s. Metrics API might not be available.",
-                        response.status,
-                    )
-                    return {}
+                    issues["cluster"] = f"HTTP {response.status}"
         except Exception as ex:
-            _LOGGER.warning("Exception in _get_node_metrics_aiohttp: %s", ex)
-            return {}
+            _LOGGER.debug("Node metrics fetch failed: %s", ex)
+            issues = {"cluster": "request failed"}
+            metrics = {}
+        self._report_metrics("node", issues)
+        return metrics
 
     @staticmethod
     def _expression_matches(pod_labels: dict[str, Any], expression: Any) -> bool:

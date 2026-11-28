@@ -1,6 +1,7 @@
 """Tests for the Kubernetes integration client."""
 
 import ipaddress
+import logging
 import ssl
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
@@ -5827,7 +5828,10 @@ class TestGetPodMetricsAiohttp:
         assert result == {}
         forbidden = [r for r in caplog.records if "403 Forbidden" in r.getMessage()]
         assert len(forbidden) == 1
-        assert "for namespaces 'default', 'production'" in forbidden[0].getMessage()
+        assert (
+            "default: 403 Forbidden, production: 403 Forbidden"
+            in forbidden[0].getMessage()
+        )
 
     async def test_all_namespaces_forbidden_warning_has_no_scope(
         self, mock_client, caplog
@@ -5843,6 +5847,7 @@ class TestGetPodMetricsAiohttp:
         assert result == {}
         forbidden = [r for r in caplog.records if "403 Forbidden" in r.getMessage()]
         assert len(forbidden) == 1
+        assert "cluster: 403 Forbidden" in forbidden[0].getMessage()
         assert "for namespace" not in forbidden[0].getMessage()
 
     async def test_session_failure_returns_empty(self, mock_client):
@@ -5851,6 +5856,124 @@ class TestGetPodMetricsAiohttp:
             result = await mock_client._get_pod_metrics_aiohttp()
 
         assert result == {}
+
+
+class TestMetricsLogEpisodes:
+    """The Metrics API's absence warns once per episode; recovery logs once."""
+
+    @staticmethod
+    def _warnings(caplog):
+        return [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    @staticmethod
+    def _node_ok():
+        return _mock_response(
+            200,
+            json_data={
+                "items": [
+                    {
+                        "metadata": {"name": "node1"},
+                        "usage": {"cpu": "250m", "memory": "128Mi"},
+                    }
+                ]
+            },
+        )
+
+    async def test_node_metrics_absence_warns_once_and_recovery_logs_once(
+        self, mock_client, caplog
+    ):
+        caplog.set_level(logging.INFO)
+        session = mock_aiohttp_session(get=[404, 404, self._node_ok()])
+
+        with patch.object(mock_client, "_session", session):
+            assert await mock_client._get_node_metrics_aiohttp() == {}
+            assert len(self._warnings(caplog)) == 1
+
+            caplog.clear()
+            assert await mock_client._get_node_metrics_aiohttp() == {}
+            assert self._warnings(caplog) == []
+
+            caplog.clear()
+            result = await mock_client._get_node_metrics_aiohttp()
+
+        assert result == {"node1": {"cpu": 250.0, "memory": 128.0}}
+        assert self._warnings(caplog) == []
+        assert sum("available again" in r.getMessage() for r in caplog.records) == 1
+
+    async def test_pod_metrics_absence_warns_once_per_episode(
+        self, mock_client, caplog
+    ):
+        caplog.set_level(logging.INFO)
+        mock_client.namespaces = ["default", "production"]
+        mock_client.monitor_all_namespaces = False
+        session = mock_aiohttp_session(
+            get=[
+                404,
+                404,
+                404,
+                404,
+                TestGetPodMetricsAiohttp._namespace_metrics(
+                    "default", "pod1", "250m", "128Mi"
+                ),
+                TestGetPodMetricsAiohttp._namespace_metrics(
+                    "production", "pod2", "500m", "256Mi"
+                ),
+            ]
+        )
+
+        with patch.object(mock_client, "_session", session):
+            await mock_client._get_pod_metrics_aiohttp()
+            warnings = self._warnings(caplog)
+            assert len(warnings) == 1
+            message = warnings[0].getMessage()
+            assert "default: HTTP 404" in message
+            assert "production: HTTP 404" in message
+
+            caplog.clear()
+            await mock_client._get_pod_metrics_aiohttp()
+            assert self._warnings(caplog) == []
+
+            caplog.clear()
+            result = await mock_client._get_pod_metrics_aiohttp()
+
+        assert len(result) == 2
+        assert self._warnings(caplog) == []
+        assert sum("available again" in r.getMessage() for r in caplog.records) == 1
+
+    async def test_metrics_problem_change_warns_again(self, mock_client, caplog):
+        caplog.set_level(logging.INFO)
+        session = mock_aiohttp_session(get=[404, 403])
+
+        with patch.object(mock_client, "_session", session):
+            await mock_client._get_node_metrics_aiohttp()
+            await mock_client._get_node_metrics_aiohttp()
+
+        warnings = self._warnings(caplog)
+        assert len(warnings) == 2
+        assert "403 Forbidden" in warnings[1].getMessage()
+
+    async def test_healthy_metrics_log_nothing(self, mock_client, caplog):
+        caplog.set_level(logging.INFO)
+        session = mock_aiohttp_session(get=self._node_ok())
+
+        with patch.object(mock_client, "_session", session):
+            result = await mock_client._get_node_metrics_aiohttp()
+
+        assert "node1" in result
+        assert self._warnings(caplog) == []
+        assert not any("available again" in r.getMessage() for r in caplog.records)
+
+    async def test_metrics_request_exception_warns_once(self, mock_client, caplog):
+        caplog.set_level(logging.INFO)
+        session = mock_aiohttp_session(get=[aiohttp.ClientConnectionError("down")] * 2)
+
+        with patch.object(mock_client, "_session", session):
+            first = await mock_client._get_node_metrics_aiohttp()
+            second = await mock_client._get_node_metrics_aiohttp()
+
+        assert first == {}
+        assert second == {}
+        assert len(self._warnings(caplog)) == 1
 
 
 class TestSuspendCronjobAiohttp:
