@@ -177,6 +177,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                     CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
                 )
 
+                # A duplicate cluster name aborts here, before the namespace step
+                await self.async_set_unique_id(f"{user_input[CONF_CLUSTER_NAME]}")
+                self._abort_if_unique_id_configured()
+
                 # Store connection data for potential namespace selection step
                 self._connection_data = user_input.copy()
 
@@ -189,10 +193,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                     # Monitoring all namespaces - create entry directly
                     # Remove namespace field when monitoring all namespaces
                     user_input.pop(CONF_NAMESPACE, None)
-
-                    # Create unique ID for the config entry
-                    await self.async_set_unique_id(f"{user_input[CONF_CLUSTER_NAME]}")
-                    self._abort_if_unique_id_configured()
 
                     return self.async_create_entry(
                         title=user_input[CONF_CLUSTER_NAME],

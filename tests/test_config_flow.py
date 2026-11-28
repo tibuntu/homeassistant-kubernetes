@@ -243,6 +243,48 @@ async def test_async_step_user_duplicate_entry(hass: HomeAssistant):
     assert result["reason"] == "already_configured"
 
 
+async def test_duplicate_cluster_name_aborts_before_namespace_step(
+    hass: HomeAssistant,
+):
+    """Test a duplicate cluster name aborts in the user step.
+
+    With selected namespaces the check used to run only after the namespace
+    form was submitted.
+    """
+    existing = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_CLUSTER_NAME: "test-cluster", CONF_HOST: "old-host"},
+        unique_id="test-cluster",
+    )
+    existing.add_to_hass(hass)
+
+    mock_integration = MagicMock()
+    mock_integration.single_config_entry = False
+
+    with (
+        patched_connection(),
+        patch(
+            "homeassistant.config_entries.loader.async_get_integration",
+            return_value=mock_integration,
+        ),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": config_entries.SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={
+                CONF_CLUSTER_NAME: "test-cluster",
+                CONF_HOST: "kubernetes.example.com",
+                CONF_API_TOKEN: "test-token",
+                CONF_MONITOR_ALL_NAMESPACES: False,
+            },
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+
+
 async def test_async_step_user_with_defaults(hass: HomeAssistant):
     """Test user step with default values."""
     with patched_connection():
