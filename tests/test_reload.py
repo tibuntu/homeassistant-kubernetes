@@ -48,7 +48,6 @@ def _client() -> MagicMock:
         return_value=[{"name": "web-tls", "namespace": "default", "ready": False}]
     )
     client.get_nodes = AsyncMock(return_value=[{"name": "node-1", "status": "Ready"}])
-    client.get_nodes_count = AsyncMock(return_value=1)
     client.get_node_metrics = AsyncMock(
         return_value={"node-1": {"cpu": 100, "memory": 512}}
     )

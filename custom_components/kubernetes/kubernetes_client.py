@@ -855,19 +855,6 @@ class KubernetesClient:
         result = self._parse_pods_data([item])
         return result[0] if result else None
 
-    async def get_nodes_count(self) -> int:
-        """Get the count of nodes in the cluster."""
-        try:
-            result = await self._fetch_resource_count(
-                "api/v1", "nodes", cluster_scoped=True
-            )
-            if result is not None:
-                self._log_success("get nodes count", f"retrieved {result} nodes")
-            return result
-        except Exception as ex:
-            self._log_error("get nodes count", ex, level=logging.DEBUG)
-            raise
-
     async def get_nodes(self) -> list[dict[str, Any]]:
         """Get detailed information about all nodes in the cluster."""
         try:
@@ -1408,14 +1395,11 @@ class KubernetesClient:
         self,
         api_path: str,
         resource_name: str,
-        *,
-        cluster_scoped: bool = False,
     ) -> int:
         """Count resources from a one-item list plus ``remainingItemCount``."""
         pages = await self._fetch_resource_pages(
             api_path,
             resource_name,
-            cluster_scoped=cluster_scoped,
             label="count request",
             params={"limit": "1"},
         )
@@ -1429,25 +1413,11 @@ class KubernetesClient:
                     await self._fetch_resource_items(
                         api_path,
                         resource_name,
-                        cluster_scoped=cluster_scoped,
                         label="count request",
                     )
                 )
             total += len(page.get("items") or []) + (remaining or 0)
         return total
-
-    async def get_deployments_count(self) -> int:
-        """Get the count of deployments in the namespace(s)."""
-        try:
-            result = await self._fetch_resource_count("apis/apps/v1", "deployments")
-            if result is not None:
-                self._log_success(
-                    "get deployments count", f"retrieved {result} deployments"
-                )
-            return result
-        except Exception as ex:
-            self._log_error("get deployments count", ex, level=logging.DEBUG)
-            raise
 
     async def get_deployments(
         self, include_metrics: bool = True
@@ -1574,17 +1544,6 @@ class KubernetesClient:
         return await self.scale_deployment(deployment_name, replicas, namespace)
 
     # StatefulSet methods
-    async def get_statefulsets_count(self) -> int:
-        """Get the count of StatefulSets in the namespace(s)."""
-        try:
-            result = await self._fetch_resource_count("apis/apps/v1", "statefulsets")
-            if result is not None:
-                self._log_success("get statefulsets count", f"count: {result}")
-            return result or 0
-        except Exception as ex:
-            self._log_error("get statefulsets count", ex, level=logging.DEBUG)
-            raise
-
     async def get_statefulsets(
         self, include_metrics: bool = True
     ) -> list[dict[str, Any]]:
@@ -2561,17 +2520,6 @@ class KubernetesClient:
             raise
 
     # CronJob methods
-    async def get_cronjobs_count(self) -> int:
-        """Get the count of CronJobs in the cluster."""
-        try:
-            result = await self._fetch_resource_count("apis/batch/v1", "cronjobs")
-            if result is not None:
-                self._log_success("get cronjobs count", f"count: {result}")
-            return result
-        except Exception as ex:
-            self._log_error("get_cronjobs_count", ex, level=logging.DEBUG)
-            raise
-
     async def get_cronjobs(self) -> list[dict[str, Any]]:
         """Get detailed information about CronJobs in the cluster."""
         try:
