@@ -190,21 +190,6 @@ def _find_raw_workloads(
     return found
 
 
-def _resolve_raw_workload_name(
-    hass: HomeAssistant,
-    name: str,
-    namespace: str | None,
-    entry_id: str | None = None,
-) -> tuple[str, str | None, str] | None:
-    """Resolve a raw workload name to (name, namespace, workload_type) via coordinator data.
-
-    Searches coordinator data for a matching workload by name and optional
-    namespace; when *entry_id* is given only that config entry is searched.
-    """
-    found = _find_raw_workloads(hass, name, namespace, entry_id)
-    return found[0][1] if found else None
-
-
 def _normalize_entity_id_list(entity_ids_raw: Any) -> list[str]:
     """Normalize entity_id from service call to a list of non-empty strings.
 
@@ -434,17 +419,6 @@ def _extract_workloads_with_owners(
 
     _LOGGER.debug("Extracted workloads: %s (owners: %s)", workloads, owners)
     return workloads, owners
-
-
-def _extract_workload_info(
-    call_data: dict[str, Any], hass: HomeAssistant
-) -> list[tuple[str, str | None, str]]:
-    """Extract workload information (name, namespace, workload_type) from service call data.
-
-    Returns:
-        List of tuples: [(workload_name, namespace, workload_type), ...]
-    """
-    return _extract_workloads_with_owners(call_data, hass)[0]
 
 
 def _no_workloads_error(

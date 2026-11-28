@@ -51,14 +51,13 @@ from custom_components.kubernetes.services import (
     _collect_node_names,
     _entity_entry_id,
     _extract_entity_ids_from_value,
-    _extract_workload_info,
     _extract_workloads_with_owners,
+    _find_raw_workloads,
     _get_entry_data,
     _get_workload_info_from_entity,
     _no_workloads_error,
     _normalize_entity_id_list,
     _own_pod,
-    _resolve_raw_workload_name,
     _token_pod_claims,
     _validate_job_schema,
     _validate_node_schema,
@@ -930,12 +929,14 @@ class TestGetWorkloadInfoFromEntity:
         assert wtype is None
 
 
-class TestExtractWorkloadInfo:
-    """Test the _extract_workload_info helper."""
+class TestExtractWorkloads:
+    """Test _extract_workloads_with_owners workload extraction."""
 
     async def test_workload_name_string_switch(self, hass: HomeAssistant):
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
-        result = _extract_workload_info({ATTR_WORKLOAD_NAME: "switch.nginx"}, hass)
+        result = _extract_workloads_with_owners(
+            {ATTR_WORKLOAD_NAME: "switch.nginx"}, hass
+        )[0]
         assert result == [("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_workload_name_dict_with_entity_id(self, hass: HomeAssistant):
@@ -946,21 +947,23 @@ class TestExtractWorkloadInfo:
             namespace="prod",
             statefulset_name="redis",
         )
-        result = _extract_workload_info(
+        result = _extract_workloads_with_owners(
             {ATTR_WORKLOAD_NAME: {"entity_id": "switch.redis"}}, hass
-        )
+        )[0]
         assert result == [("redis", "prod", WORKLOAD_TYPE_STATEFULSET)]
 
     async def test_workload_names_as_string(self, hass: HomeAssistant):
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
-        result = _extract_workload_info({ATTR_WORKLOAD_NAMES: "switch.nginx"}, hass)
+        result = _extract_workloads_with_owners(
+            {ATTR_WORKLOAD_NAMES: "switch.nginx"}, hass
+        )[0]
         assert result == [("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_workload_names_as_dict_entity_id(self, hass: HomeAssistant):
         _set_workload_state(hass, "switch.app", deployment_name="app")
-        result = _extract_workload_info(
+        result = _extract_workloads_with_owners(
             {ATTR_WORKLOAD_NAMES: {"entity_id": ["switch.app"]}}, hass
-        )
+        )[0]
         assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_workload_names_as_list_of_strings(self, hass: HomeAssistant):
@@ -972,41 +975,45 @@ class TestExtractWorkloadInfo:
             namespace="ns2",
             statefulset_name="b",
         )
-        result = _extract_workload_info(
+        result = _extract_workloads_with_owners(
             {ATTR_WORKLOAD_NAMES: ["switch.a", "switch.b"]}, hass
-        )
+        )[0]
         assert len(result) == 2
         assert ("a", "ns1", WORKLOAD_TYPE_DEPLOYMENT) in result
         assert ("b", "ns2", WORKLOAD_TYPE_STATEFULSET) in result
 
     async def test_workload_names_list_of_dicts(self, hass: HomeAssistant):
         _set_workload_state(hass, "switch.app", deployment_name="app")
-        result = _extract_workload_info(
+        result = _extract_workloads_with_owners(
             {ATTR_WORKLOAD_NAMES: [{"entity_id": ["switch.app"]}]}, hass
-        )
+        )[0]
         assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_target_fallback(self, hass: HomeAssistant):
         _set_workload_state(hass, "switch.app", deployment_name="app")
-        result = _extract_workload_info({"target": {"entity_id": ["switch.app"]}}, hass)
+        result = _extract_workloads_with_owners(
+            {"target": {"entity_id": ["switch.app"]}}, hass
+        )[0]
         assert result == [("app", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_provided_namespace_overrides(self, hass: HomeAssistant):
         _set_workload_state(
             hass, "switch.app", namespace="original", deployment_name="app"
         )
-        result = _extract_workload_info(
+        result = _extract_workloads_with_owners(
             {ATTR_WORKLOAD_NAME: "switch.app", ATTR_NAMESPACE: "override"},
             hass,
-        )
+        )[0]
         assert result == [("app", "override", WORKLOAD_TYPE_DEPLOYMENT)]
 
     async def test_entity_not_found_returns_empty(self, hass: HomeAssistant):
-        result = _extract_workload_info({ATTR_WORKLOAD_NAME: "switch.missing"}, hass)
+        result = _extract_workloads_with_owners(
+            {ATTR_WORKLOAD_NAME: "switch.missing"}, hass
+        )[0]
         assert result == []
 
     async def test_no_workload_keys_returns_empty(self, hass: HomeAssistant):
-        result = _extract_workload_info({}, hass)
+        result = _extract_workloads_with_owners({}, hass)[0]
         assert result == []
 
 
@@ -1466,8 +1473,8 @@ class TestServiceHandlerEdgeCases:
         mock_client.start_deployment.assert_not_called()
 
 
-class TestResolveRawWorkloadName:
-    """Tests for _resolve_raw_workload_name."""
+class TestFindRawWorkloads:
+    """Tests for _find_raw_workloads."""
 
     async def test_resolves_deployment(
         self, hass: HomeAssistant, add_loaded_entry, make_coordinator
@@ -1484,8 +1491,8 @@ class TestResolveRawWorkloadName:
         )
         add_loaded_entry("entry_1", coordinator=coordinator)
 
-        result = _resolve_raw_workload_name(hass, "nginx", None)
-        assert result == ("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)
+        result = _find_raw_workloads(hass, "nginx", None)
+        assert result[0][1] == ("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)
 
     async def test_resolves_statefulset(
         self, hass: HomeAssistant, add_loaded_entry, make_coordinator
@@ -1502,8 +1509,8 @@ class TestResolveRawWorkloadName:
         )
         add_loaded_entry("entry_1", coordinator=coordinator)
 
-        result = _resolve_raw_workload_name(hass, "redis", None)
-        assert result == ("redis", "cache", WORKLOAD_TYPE_STATEFULSET)
+        result = _find_raw_workloads(hass, "redis", None)
+        assert result[0][1] == ("redis", "cache", WORKLOAD_TYPE_STATEFULSET)
 
     async def test_resolves_cronjob(
         self, hass: HomeAssistant, add_loaded_entry, make_coordinator
@@ -1520,8 +1527,8 @@ class TestResolveRawWorkloadName:
         )
         add_loaded_entry("entry_1", coordinator=coordinator)
 
-        result = _resolve_raw_workload_name(hass, "backup", None)
-        assert result == ("backup", "default", WORKLOAD_TYPE_CRONJOB)
+        result = _find_raw_workloads(hass, "backup", None)
+        assert result[0][1] == ("backup", "default", WORKLOAD_TYPE_CRONJOB)
 
     async def test_resolves_daemonset(
         self, hass: HomeAssistant, add_loaded_entry, make_coordinator
@@ -1542,8 +1549,8 @@ class TestResolveRawWorkloadName:
         )
         add_loaded_entry("entry_1", coordinator=coordinator)
 
-        result = _resolve_raw_workload_name(hass, "fluentd", None)
-        assert result == ("fluentd", "kube-system", WORKLOAD_TYPE_DAEMONSET)
+        result = _find_raw_workloads(hass, "fluentd", None)
+        assert result[0][1] == ("fluentd", "kube-system", WORKLOAD_TYPE_DAEMONSET)
 
     async def test_filters_by_namespace(
         self, hass: HomeAssistant, add_loaded_entry, make_coordinator
@@ -1561,14 +1568,13 @@ class TestResolveRawWorkloadName:
         )
         add_loaded_entry("entry_1", coordinator=coordinator)
 
-        result = _resolve_raw_workload_name(hass, "nginx", "production")
-        assert result is not None
-        assert result[1] == "production"
+        result = _find_raw_workloads(hass, "nginx", "production")
+        assert result[0][1][1] == "production"
 
-    async def test_returns_none_when_not_found(
+    async def test_returns_empty_when_not_found(
         self, hass: HomeAssistant, add_loaded_entry, make_coordinator
     ):
-        """Test returns None when workload name doesn't match."""
+        """Test returns an empty list when workload name doesn't match."""
         coordinator = make_coordinator(
             data={
                 "deployments": {},
@@ -1578,13 +1584,13 @@ class TestResolveRawWorkloadName:
         )
         add_loaded_entry("entry_1", coordinator=coordinator)
 
-        result = _resolve_raw_workload_name(hass, "nonexistent", None)
-        assert result is None
+        result = _find_raw_workloads(hass, "nonexistent", None)
+        assert result == []
 
-    async def test_returns_none_when_no_entries(self, hass: HomeAssistant):
-        """Test returns None when no config entry is loaded."""
-        result = _resolve_raw_workload_name(hass, "nginx", None)
-        assert result is None
+    async def test_returns_empty_when_no_entries(self, hass: HomeAssistant):
+        """Test returns an empty list when no config entry is loaded."""
+        result = _find_raw_workloads(hass, "nginx", None)
+        assert result == []
 
     async def test_skips_coordinator_with_none_data(
         self, hass: HomeAssistant, add_loaded_entry, make_coordinator
@@ -1593,8 +1599,8 @@ class TestResolveRawWorkloadName:
         coordinator = make_coordinator(data=None)
         add_loaded_entry("entry_1", coordinator=coordinator)
 
-        result = _resolve_raw_workload_name(hass, "nginx", None)
-        assert result is None
+        result = _find_raw_workloads(hass, "nginx", None)
+        assert result == []
 
 
 @pytest.mark.usefixtures("load_translations")
@@ -2712,7 +2718,7 @@ class TestMultiEntryRouting:
         entry_a.runtime_data.client.scale_deployment.assert_not_called()
         entry_b.runtime_data.client.scale_deployment.assert_not_called()
 
-    async def test_extract_workload_info_resolves_raw_names(
+    async def test_extract_workloads_resolves_raw_names(
         self, hass: HomeAssistant, two_entries
     ):
         """workload_names accepts a bare workload name."""
@@ -2721,11 +2727,13 @@ class TestMultiEntryRouting:
             "deployments": {"default_nginx": {"name": "nginx", "namespace": "default"}}
         }
 
-        result = _extract_workload_info({ATTR_WORKLOAD_NAMES: ["nginx"]}, hass)
+        result = _extract_workloads_with_owners({ATTR_WORKLOAD_NAMES: ["nginx"]}, hass)[
+            0
+        ]
 
         assert result == [("nginx", "default", WORKLOAD_TYPE_DEPLOYMENT)]
 
-    async def test_extract_workload_info_mixed_switch_and_raw(
+    async def test_extract_workloads_mixed_switch_and_raw(
         self, hass: HomeAssistant, two_entries
     ):
         """A switch entity ID and a raw name in one list both resolve."""
@@ -2735,7 +2743,9 @@ class TestMultiEntryRouting:
             "deployments": {"default_b": {"name": "b", "namespace": "default"}}
         }
 
-        result = _extract_workload_info({ATTR_WORKLOAD_NAMES: [id_a, "b"]}, hass)
+        result = _extract_workloads_with_owners(
+            {ATTR_WORKLOAD_NAMES: [id_a, "b"]}, hass
+        )[0]
 
         assert result == [
             ("a", "default", WORKLOAD_TYPE_DEPLOYMENT),
@@ -3009,7 +3019,9 @@ class TestMultiEntryRouting:
             "deployments": {"default_web": {"name": "web", "namespace": "default"}}
         }
 
-        result = _extract_workload_info({"target": {"entity_id": ["web"]}}, hass)
+        result = _extract_workloads_with_owners(
+            {"target": {"entity_id": ["web"]}}, hass
+        )[0]
 
         assert result == []
 
@@ -3124,10 +3136,10 @@ class TestMultiEntryRouting:
         entry_b.runtime_data.client.scale_deployment.assert_awaited_once()
         entry_a.runtime_data.client.scale_deployment.assert_not_called()
 
-    async def test_resolve_raw_workload_name_restricts_to_entry(
+    async def test_find_raw_workloads_restricts_to_entry(
         self, hass: HomeAssistant, two_entries
     ):
-        """_resolve_raw_workload_name only searches the given entry."""
+        """_find_raw_workloads only searches the given entry."""
         entry_a, entry_b = two_entries
         entry_a.runtime_data.coordinator.data = {
             "deployments": {
@@ -3137,12 +3149,9 @@ class TestMultiEntryRouting:
         }
         entry_b.runtime_data.coordinator.data = {}
 
-        assert _resolve_raw_workload_name(hass, "web", None, "entry_b") is None
-        assert _resolve_raw_workload_name(hass, "web", None, "entry_a") == (
-            "web",
-            "default",
-            WORKLOAD_TYPE_DEPLOYMENT,
-        )
+        assert _find_raw_workloads(hass, "web", None, "entry_b") == []
+        found = _find_raw_workloads(hass, "web", None, "entry_a")
+        assert found[0][1] == ("web", "default", WORKLOAD_TYPE_DEPLOYMENT)
 
     async def test_entity_entry_id(self, hass: HomeAssistant, two_entries):
         """_entity_entry_id returns the owner only for this integration's entities."""
