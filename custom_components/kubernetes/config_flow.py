@@ -235,7 +235,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             vol.Optional(
                 CONF_PORT,
                 default=in_cluster["port"] if in_cluster else DEFAULT_PORT,
-            ): int,
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             # Default the checkbox to True only when in-cluster credentials
             # were actually detected — turning it on without an SA volume
             # mounted would have the client fall back to the static token.
@@ -245,7 +245,12 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             ): bool,
             # Optional: with in-cluster mode on, an empty token is filled from
             # the mounted ServiceAccount in _test_connection.
-            vol.Optional(CONF_API_TOKEN, description=_suggest("api_token")): str,
+            vol.Optional(
+                CONF_API_TOKEN,
+                description=_suggest("api_token"),
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
             vol.Optional(CONF_CA_CERT, description=_suggest("ca_cert")): str,
             vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
             vol.Optional(
@@ -270,8 +275,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             ),
             vol.Optional(
                 CONF_SWITCH_UPDATE_INTERVAL, default=DEFAULT_SWITCH_UPDATE_INTERVAL
-            ): int,
-            vol.Optional(CONF_SCALE_COOLDOWN, default=DEFAULT_SCALE_COOLDOWN): int,
+            ): vol.All(vol.Coerce(int), vol.Range(min=1)),
+            vol.Optional(CONF_SCALE_COOLDOWN, default=DEFAULT_SCALE_COOLDOWN): vol.All(
+                vol.Coerce(int), vol.Range(min=0)
+            ),
         }
 
         return self.async_show_form(
@@ -344,7 +351,15 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema({vol.Required(CONF_API_TOKEN): str}),
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_API_TOKEN): selector.TextSelector(
+                        selector.TextSelectorConfig(
+                            type=selector.TextSelectorType.PASSWORD
+                        )
+                    ),
+                }
+            ),
             description_placeholders={
                 "cluster_name": entry.data.get(CONF_CLUSTER_NAME, entry.title),
                 "host": entry.data.get(CONF_HOST, ""),
@@ -413,7 +428,10 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         current = entry.data
         schema = {
             vol.Required(CONF_HOST, default=current.get(CONF_HOST, "")): str,
-            vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): int,
+            vol.Optional(
+                CONF_PORT,
+                default=current.get(CONF_PORT, DEFAULT_PORT),
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=65535)),
             # Above the token field: while enabled, the token below is only a
             # fallback (issue #360).
             vol.Optional(
@@ -425,7 +443,9 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             vol.Optional(
                 CONF_API_TOKEN,
                 description={"suggested_value": current.get(CONF_API_TOKEN, "")},
-            ): str,
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+            ),
             vol.Optional(
                 CONF_CA_CERT,
                 description={
@@ -467,11 +487,11 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 default=current.get(
                     CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
                 ),
-            ): int,
+            ): vol.All(vol.Coerce(int), vol.Range(min=1)),
             vol.Optional(
                 CONF_SCALE_COOLDOWN,
                 default=current.get(CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN),
-            ): int,
+            ): vol.All(vol.Coerce(int), vol.Range(min=0)),
         }
 
         return self.async_show_form(

@@ -91,14 +91,14 @@ If you create a new deployment called `web-server` in your cluster:
 
 ### Polling Interval
 
-The cleanup and discovery frequency is controlled by the **Switch Update Interval** setting (default: 60 seconds). While the Watch API is enabled (the default), polling runs as a 5-minute fallback instead, and new resources are discovered from watch events as they happen.
+The cleanup and discovery frequency is controlled by the **Poll Interval Without Watch API** setting (default: 60 seconds). While the Watch API is enabled (the default), polling runs as a 5-minute fallback instead, and new resources are discovered from watch events as they happen.
 
 To adjust the interval:
 
 1. Go to **Settings → Devices & Services**
 2. Find your Kubernetes integration
 3. Open the three-dot menu (**⋮**) and select **Reconfigure**
-4. Adjust the **Switch Update Interval** value
+4. Adjust the **Poll Interval Without Watch API** value
 
 ### Considerations
 
