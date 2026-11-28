@@ -93,7 +93,7 @@ def mock_client():
 
 
 @pytest.fixture
-def setup_domain_data(add_loaded_entry, mock_client) -> MockConfigEntry:
+def loaded_entry(add_loaded_entry, mock_client) -> MockConfigEntry:
     """Add a loaded Kubernetes config entry with runtime data."""
     mock_coordinator = MagicMock()
     mock_coordinator.client = mock_client
@@ -147,9 +147,17 @@ class TestServiceRegistration:
         """Test that all services are registered."""
         await async_setup_services(hass)
 
-        assert hass.services.has_service(DOMAIN, SERVICE_SCALE_WORKLOAD)
-        assert hass.services.has_service(DOMAIN, SERVICE_START_WORKLOAD)
-        assert hass.services.has_service(DOMAIN, SERVICE_STOP_WORKLOAD)
+        for service in (
+            SERVICE_SCALE_WORKLOAD,
+            SERVICE_START_WORKLOAD,
+            SERVICE_STOP_WORKLOAD,
+            SERVICE_RESTART_WORKLOAD,
+            SERVICE_DELETE_JOB,
+            SERVICE_CORDON_NODE,
+            SERVICE_UNCORDON_NODE,
+            SERVICE_DRAIN_NODE,
+        ):
+            assert hass.services.has_service(DOMAIN, service), service
 
 
 @pytest.mark.usefixtures("load_translations")
@@ -157,7 +165,7 @@ class TestGenericWorkloadServices:
     """Test generic workload services (scale_workload, start_workload, stop_workload)."""
 
     async def test_scale_workload_deployment(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test scaling a deployment using the generic scale_workload service."""
         _set_workload_state(
@@ -180,7 +188,7 @@ class TestGenericWorkloadServices:
         )
 
     async def test_start_workload_cronjob(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test starting a CronJob using the generic start_workload service."""
         mock_client.trigger_cronjob.return_value = {
@@ -207,7 +215,7 @@ class TestGenericWorkloadServices:
         mock_client.trigger_cronjob.assert_called_once_with("test-cronjob", "default")
 
     async def test_stop_workload_statefulset(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test stopping a StatefulSet using the generic stop_workload service."""
         _set_workload_state(
@@ -232,7 +240,7 @@ class TestGenericWorkloadServices:
         )
 
     async def test_stop_workload_cronjob_rejected(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test that stop_workload rejects CronJobs with a validation error."""
         _set_workload_state(
@@ -257,7 +265,7 @@ class TestGenericWorkloadServices:
         mock_client.stop_statefulset.assert_not_called()
 
     async def test_stop_workload_with_workload_names_entity_id_list(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test stop_workload with workload_names as list of {entity_id: [switch.…, …]} (UI format)."""
         _set_workload_state(
@@ -299,7 +307,7 @@ class TestRestartWorkloadService:
     """Tests for the restart_workload service."""
 
     async def test_restart_deployment(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test restarting a deployment via entity reference."""
         _set_workload_state(
@@ -321,7 +329,7 @@ class TestRestartWorkloadService:
         )
 
     async def test_restart_statefulset(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test restarting a StatefulSet via entity reference."""
         _set_workload_state(
@@ -346,10 +354,10 @@ class TestRestartWorkloadService:
         )
 
     async def test_restart_daemonset_by_raw_name(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test restarting a DaemonSet using raw workload name resolution."""
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.data = {
             "daemonsets": {
                 "kube-system_fluentd": {
@@ -374,7 +382,7 @@ class TestRestartWorkloadService:
         )
 
     async def test_restart_unsupported_type_raises(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test that restarting an unsupported workload type raises a validation error."""
         _set_workload_state(
@@ -400,7 +408,7 @@ class TestRestartWorkloadService:
         mock_client.rollout_restart_daemonset.assert_not_called()
 
     async def test_restart_deployment_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test restart deployment raises on failure."""
         mock_client.rollout_restart_deployment = AsyncMock(return_value=False)
@@ -424,7 +432,7 @@ class TestRestartWorkloadService:
         )
 
     async def test_restart_statefulset_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test restart statefulset raises on failure."""
         mock_client.rollout_restart_statefulset = AsyncMock(return_value=False)
@@ -451,11 +459,11 @@ class TestRestartWorkloadService:
         )
 
     async def test_restart_daemonset_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test restart daemonset raises on failure."""
         mock_client.rollout_restart_daemonset = AsyncMock(return_value=False)
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.data = {
             "daemonsets": {
                 "kube-system_fluentd": {
@@ -481,7 +489,7 @@ class TestRestartWorkloadService:
         )
 
     async def test_restart_multiple_workloads(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test restarting multiple workloads in a single service call."""
         _set_workload_state(hass, "switch.test_deploy_a", deployment_name="deploy-a")
@@ -506,7 +514,7 @@ class TestRestartWorkloadService:
         assert mock_client.rollout_restart_deployment.call_count == 2
 
     async def test_restart_multiple_workloads_partial_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test that every target is attempted and only the failed one is reported."""
         mock_client.rollout_restart_deployment = AsyncMock(side_effect=[False, True])
@@ -528,7 +536,7 @@ class TestRestartWorkloadService:
         assert "deploy-b" not in str(err.value)
 
     async def test_restart_workload_client_exception_reported(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test that an exception raised by the client surfaces as HomeAssistantError."""
         mock_client.rollout_restart_deployment = AsyncMock(
@@ -547,7 +555,7 @@ class TestRestartWorkloadService:
             )
 
     async def test_restart_workload_no_workloads(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test restart_workload raises when no valid workloads are found."""
         await async_setup_services(hass)
@@ -568,14 +576,14 @@ class TestRestartWorkloadService:
         mock_client.rollout_restart_daemonset.assert_not_called()
 
     async def test_restart_workload_no_kubernetes_data(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
-        """Test restart_workload raises when domain data is cleared."""
+        """Test restart_workload raises when the entry is not loaded."""
         _set_workload_state(
             hass, "switch.test_deployment", deployment_name="test-deployment"
         )
         await async_setup_services(hass)
-        setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
+        loaded_entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -589,7 +597,7 @@ class TestRestartWorkloadService:
         mock_client.rollout_restart_deployment.assert_not_called()
 
     async def test_restart_workload_unknown_entry_id(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test an entry_id that matches no loaded entry raises a validation error."""
         _set_workload_state(
@@ -631,7 +639,7 @@ class TestServicesRefreshCoordinator:
         self,
         hass: HomeAssistant,
         mock_client,
-        setup_domain_data,
+        loaded_entry,
         service,
         extra,
         method,
@@ -644,7 +652,7 @@ class TestServicesRefreshCoordinator:
             DOMAIN, service, {**data, **extra}, blocking=True
         )
 
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_awaited_once()
 
     @pytest.mark.parametrize(("service", "extra", "method"), _REFRESH_CASES)
@@ -652,7 +660,7 @@ class TestServicesRefreshCoordinator:
         self,
         hass: HomeAssistant,
         mock_client,
-        setup_domain_data,
+        loaded_entry,
         service,
         extra,
         method,
@@ -667,7 +675,7 @@ class TestServicesRefreshCoordinator:
                 DOMAIN, service, {**data, **extra}, blocking=True
             )
 
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_awaited_once()
 
     @pytest.mark.parametrize(("service", "extra", "method"), _REFRESH_CASES)
@@ -675,7 +683,7 @@ class TestServicesRefreshCoordinator:
         self,
         hass: HomeAssistant,
         mock_client,
-        setup_domain_data,
+        loaded_entry,
         service,
         extra,
         method,
@@ -690,11 +698,11 @@ class TestServicesRefreshCoordinator:
                 DOMAIN, service, {**data, **extra}, blocking=True
             )
 
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_not_called()
 
     async def test_start_cronjob_refreshes(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Triggering a CronJob through start_workload refreshes too."""
         _set_workload_state(
@@ -712,11 +720,11 @@ class TestServicesRefreshCoordinator:
             blocking=True,
         )
 
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_awaited_once()
 
     async def test_delete_job_refresh(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """delete_job refreshes after a success, also when another job fails."""
         mock_client.delete_job.side_effect = [True, False]
@@ -730,11 +738,11 @@ class TestServicesRefreshCoordinator:
                 blocking=True,
             )
 
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_awaited_once()
 
     async def test_delete_job_no_refresh_on_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """delete_job does not refresh when nothing was deleted."""
         mock_client.delete_job.return_value = False
@@ -748,7 +756,7 @@ class TestServicesRefreshCoordinator:
                 blocking=True,
             )
 
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_not_called()
 
 
@@ -1053,7 +1061,7 @@ class TestServiceHandlerEdgeCases:
     """Test edge cases in the service handler functions."""
 
     async def test_scale_workload_no_workloads_found(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test scale_workload raises when no workloads found."""
         await async_setup_services(hass)
@@ -1067,7 +1075,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.scale_deployment.assert_not_called()
 
     async def test_scale_workload_statefulset(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test scale_workload scales a StatefulSet."""
         _set_workload_state(
@@ -1090,7 +1098,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.scale_statefulset.assert_called_once_with("redis", 2, "default")
 
     async def test_scale_workload_unsupported_type(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test scale_workload rejects CronJob type."""
         _set_workload_state(
@@ -1111,10 +1119,10 @@ class TestServiceHandlerEdgeCases:
         mock_client.scale_statefulset.assert_not_called()
 
     async def test_scale_workload_rejects_hpa_managed(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """A non-zero count on an HPA-managed target rejects the whole call."""
-        setup_domain_data.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
+        loaded_entry.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         _set_workload_state(hass, "switch.other", deployment_name="other")
         await async_setup_services(hass)
@@ -1133,10 +1141,10 @@ class TestServiceHandlerEdgeCases:
         mock_client.scale_deployment.assert_not_called()
 
     async def test_scale_workload_hpa_managed_to_zero(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Scaling an HPA-managed workload to 0 sticks, so it is allowed."""
-        setup_domain_data.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
+        loaded_entry.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         await hass.services.async_call(
@@ -1148,10 +1156,10 @@ class TestServiceHandlerEdgeCases:
         mock_client.scale_deployment.assert_called_once_with("nginx", 0, "default")
 
     async def test_start_workload_hpa_managed_logs(
-        self, hass: HomeAssistant, mock_client, setup_domain_data, caplog
+        self, hass: HomeAssistant, mock_client, loaded_entry, caplog
     ):
         """Starting an HPA-managed workload works and says the HPA takes over."""
-        setup_domain_data.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
+        loaded_entry.runtime_data.coordinator.data = {"hpas": _NGINX_HPAS}
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
         with caplog.at_level(logging.INFO):
@@ -1165,7 +1173,7 @@ class TestServiceHandlerEdgeCases:
         assert "managed by HPA nginx-hpa" in caplog.text
 
     async def test_scale_workload_failure_raises(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test scale_workload raises when scale returns False."""
         mock_client.scale_deployment.return_value = False
@@ -1185,12 +1193,12 @@ class TestServiceHandlerEdgeCases:
         mock_client.scale_deployment.assert_called_once()
 
     async def test_scale_workload_no_kubernetes_data(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test scale_workload raises when no kubernetes data in hass."""
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
-        setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
+        loaded_entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -1201,7 +1209,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.scale_deployment.assert_not_called()
 
     async def test_scale_multiple_workloads_logs_completion(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test scale_workload logs completion when multiple workloads scaled."""
         _set_workload_state(hass, "switch.a", deployment_name="a")
@@ -1219,7 +1227,7 @@ class TestServiceHandlerEdgeCases:
         assert mock_client.scale_deployment.call_count == 2
 
     async def test_start_workload_deployment(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test start_workload starts a Deployment."""
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
@@ -1237,7 +1245,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.start_deployment.assert_called_once_with("nginx", 2, "default")
 
     async def test_start_workload_statefulset(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test start_workload starts a StatefulSet."""
         _set_workload_state(
@@ -1260,7 +1268,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.start_statefulset.assert_called_once_with("redis", 1, "default")
 
     async def test_start_workload_cronjob_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test start_workload raises when the CronJob trigger fails."""
         mock_client.trigger_cronjob.return_value = {
@@ -1287,7 +1295,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.trigger_cronjob.assert_called_once_with("backup", "default")
 
     async def test_start_workload_deployment_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test start_workload raises when the deployment start returns False."""
         mock_client.start_deployment.return_value = False
@@ -1306,7 +1314,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.start_deployment.assert_called_once()
 
     async def test_start_workload_unsupported_type(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test start_workload rejects an unsupported type."""
         _set_workload_state(
@@ -1327,7 +1335,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.start_statefulset.assert_not_called()
 
     async def test_start_workload_no_workloads(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test start_workload raises when no workloads found."""
         await async_setup_services(hass)
@@ -1341,7 +1349,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.start_deployment.assert_not_called()
 
     async def test_stop_workload_deployment(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test stop_workload stops a Deployment."""
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
@@ -1358,7 +1366,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.stop_deployment.assert_called_once_with("nginx", "default")
 
     async def test_stop_workload_deployment_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test stop_workload raises when stop returns False."""
         mock_client.stop_deployment.return_value = False
@@ -1377,7 +1385,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.stop_deployment.assert_called_once()
 
     async def test_stop_workload_statefulset_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test stop_workload raises when StatefulSet stop returns False."""
         mock_client.stop_statefulset.return_value = False
@@ -1401,7 +1409,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.stop_statefulset.assert_called_once_with("redis", "default")
 
     async def test_stop_workload_unsupported_type(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test stop_workload rejects unsupported types."""
         _set_workload_state(
@@ -1421,7 +1429,7 @@ class TestServiceHandlerEdgeCases:
         mock_client.stop_deployment.assert_not_called()
 
     async def test_stop_workload_no_workloads(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test stop_workload raises when no workloads found."""
         await async_setup_services(hass)
@@ -1435,12 +1443,12 @@ class TestServiceHandlerEdgeCases:
         mock_client.stop_deployment.assert_not_called()
 
     async def test_stop_workload_no_kubernetes_data(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test stop_workload raises when no kubernetes data."""
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
-        setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
+        loaded_entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -1451,12 +1459,12 @@ class TestServiceHandlerEdgeCases:
         mock_client.stop_deployment.assert_not_called()
 
     async def test_start_workload_no_kubernetes_data(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test start_workload raises when no kubernetes data."""
         _set_workload_state(hass, "switch.nginx", deployment_name="nginx")
         await async_setup_services(hass)
-        setup_domain_data.mock_state(hass, ConfigEntryState.NOT_LOADED)
+        loaded_entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -1889,7 +1897,7 @@ class TestDeleteJobService:
     """Tests for the delete_job service."""
 
     async def test_delete_single_job_explicit_namespace(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test deleting a single job with an explicit namespace."""
         await async_setup_services(hass)
@@ -1903,7 +1911,7 @@ class TestDeleteJobService:
         mock_client.delete_job.assert_called_once_with("my-job", "prod")
 
     async def test_delete_multiple_jobs_via_job_names(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test deleting multiple jobs via job_names list."""
         await async_setup_services(hass)
@@ -1919,10 +1927,10 @@ class TestDeleteJobService:
         mock_client.delete_job.assert_any_call("job-b", "ns")
 
     async def test_namespace_resolved_from_coordinator(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test that namespace is resolved by scanning coordinator.data['jobs'] when not provided."""
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.data = {
             "jobs": {
                 "resolved-ns_my-job": {"name": "my-job", "namespace": "resolved-ns"},
@@ -1940,7 +1948,7 @@ class TestDeleteJobService:
         mock_client.delete_job.assert_called_once_with("my-job", "resolved-ns")
 
     async def test_namespace_resolved_by_name_when_two_namespaces_share_it(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test resolution scans by name across namespaces when no namespace is given.
 
@@ -1948,7 +1956,7 @@ class TestDeleteJobService:
         namespace the code takes the first match from coordinator.data["jobs"].values().
         This only asserts that *a* valid match is used, not which one wins.
         """
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.data = {
             "jobs": {
                 "ns-a_my-job": {"name": "my-job", "namespace": "ns-a"},
@@ -1970,10 +1978,10 @@ class TestDeleteJobService:
         assert called_ns in ("ns-a", "ns-b")
 
     async def test_explicit_namespace_disambiguates_same_named_jobs(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test an explicit namespace picks the matching job when two namespaces share a name."""
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.data = {
             "jobs": {
                 "ns-a_my-job": {"name": "my-job", "namespace": "ns-a"},
@@ -1992,10 +2000,10 @@ class TestDeleteJobService:
         mock_client.delete_job.assert_called_once_with("my-job", "ns-b")
 
     async def test_namespace_falls_back_to_config_when_job_not_in_coordinator(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test namespace falls back to config data when job not found in coordinator."""
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.data = {"jobs": {}}
 
         await async_setup_services(hass)
@@ -2073,7 +2081,7 @@ class TestDeleteJobService:
         mock_client.delete_job.assert_not_called()
 
     async def test_no_job_names_raises(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test calling delete_job with an empty job_names list raises."""
         await async_setup_services(hass)
@@ -2091,7 +2099,7 @@ class TestDeleteJobService:
         mock_client.delete_job.assert_not_called()
 
     async def test_delete_job_requires_a_name(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test that the schema rejects a call with neither job_name nor job_names."""
         import voluptuous as vol
@@ -2106,7 +2114,7 @@ class TestDeleteJobService:
             )
 
     async def test_delete_job_raises_on_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test that a failed delete raises HomeAssistantError."""
         mock_client.delete_job = AsyncMock(return_value=False)
@@ -2123,7 +2131,7 @@ class TestDeleteJobService:
         mock_client.delete_job.assert_awaited_once_with("j1", "default")
 
     async def test_delete_multiple_jobs_partial_failure(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test that all jobs are attempted and only the failed one is reported."""
         mock_client.delete_job = AsyncMock(side_effect=[False, True])
@@ -2204,7 +2212,7 @@ class TestNodeCordonServices:
         assert hass.services.has_service(DOMAIN, SERVICE_UNCORDON_NODE)
 
     async def test_cordon_single_node(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test cordoning a single node."""
         await async_setup_services(hass)
@@ -2219,7 +2227,7 @@ class TestNodeCordonServices:
         mock_client.uncordon_node.assert_not_called()
 
     async def test_uncordon_single_node(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test uncordoning a single node."""
         await async_setup_services(hass)
@@ -2234,7 +2242,7 @@ class TestNodeCordonServices:
         mock_client.cordon_node.assert_not_called()
 
     async def test_cordon_multiple_nodes(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test cordoning multiple nodes via node_names."""
         await async_setup_services(hass)
@@ -2249,9 +2257,7 @@ class TestNodeCordonServices:
         mock_client.cordon_node.assert_any_call("node-1")
         mock_client.cordon_node.assert_any_call("node-2")
 
-    async def test_cordon_requires_node_name(
-        self, hass: HomeAssistant, setup_domain_data
-    ):
+    async def test_cordon_requires_node_name(self, hass: HomeAssistant, loaded_entry):
         """Test the schema rejects a call without node_name/node_names."""
         import voluptuous as vol
 
@@ -2265,7 +2271,7 @@ class TestNodeCordonServices:
             )
 
     async def test_cordon_blank_node_name_raises(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test a whitespace-only node_name collects to nothing and raises."""
         await async_setup_services(hass)
@@ -2279,10 +2285,10 @@ class TestNodeCordonServices:
 
         mock_client.cordon_node.assert_not_called()
 
-    async def test_cordon_without_domain_data_raises(self, hass: HomeAssistant):
+    async def test_cordon_without_loaded_entry_raises(self, hass: HomeAssistant):
         """Test the service raises when no cluster is configured."""
         await async_setup_services(hass)
-        # No setup_domain_data fixture -> _get_entry_data finds nothing
+        # No loaded_entry fixture -> _get_entry_data finds nothing
         with pytest.raises(ServiceValidationError, match="No Kubernetes integration"):
             await hass.services.async_call(
                 DOMAIN,
@@ -2292,7 +2298,7 @@ class TestNodeCordonServices:
             )
 
     async def test_cordon_failure_raises(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test a failed cordon raises HomeAssistantError."""
         mock_client.cordon_node = AsyncMock(return_value=False)
@@ -2307,11 +2313,11 @@ class TestNodeCordonServices:
 
         mock_client.cordon_node.assert_called_once_with("node-1")
         # Nothing changed, so there is nothing to refresh
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_not_called()
 
     async def test_cordon_client_exception_raises(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test an exception from the client surfaces as HomeAssistantError."""
         mock_client.cordon_node = AsyncMock(side_effect=Exception("boom"))
@@ -2325,7 +2331,7 @@ class TestNodeCordonServices:
             )
 
     async def test_cordon_partial_failure_still_refreshes(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Test one successful cordon among failures still triggers a refresh."""
         mock_client.cordon_node = AsyncMock(side_effect=[False, True])
@@ -2344,7 +2350,7 @@ class TestNodeCordonServices:
         assert "node-1" in str(err.value)
         assert "node-2" not in str(err.value)
 
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_called_once()
 
 
@@ -3297,7 +3303,7 @@ class TestDrainNodeService:
         assert hass.services.has_service(DOMAIN, SERVICE_DRAIN_NODE)
 
     async def test_cordons_then_evicts_and_reports(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Evictable pods are evicted, the rest skipped with a reason."""
         mock_client.get_pods_on_node.return_value = [
@@ -3321,11 +3327,11 @@ class TestDrainNodeService:
                 "blocked": [],
             }
         }
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_called_once()
 
     async def test_unmanaged_pod_skipped_unless_forced(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """A pod without a controller is skipped by default, evicted with force."""
         bare = _raw_pod("debug", metadata={"ownerReferences": []})
@@ -3347,7 +3353,7 @@ class TestDrainNodeService:
         assert response["node-1"]["skipped"] == []
 
     async def test_node_without_pods(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """An empty node is just cordoned, not a failure."""
         response = await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
@@ -3356,7 +3362,7 @@ class TestDrainNodeService:
         mock_client.evict_pod.assert_not_called()
 
     async def test_works_without_return_response(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """The response is optional for callers that do not want it."""
         await async_setup_services(hass)
@@ -3369,7 +3375,7 @@ class TestDrainNodeService:
         mock_client.cordon_node.assert_called_once_with("node-1")
 
     async def test_all_nodes_cordoned_before_first_eviction(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Evicted pods cannot land on another node of the same call."""
         calls: list[str] = []
@@ -3396,7 +3402,7 @@ class TestDrainNodeService:
         assert response["b"]["evicted"] == ["default/pod-b"]
 
     async def test_pdb_blocked_pod_is_retried(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """A 429 is retried until the eviction goes through."""
         mock_client.get_pods_on_node.return_value = [_raw_pod("db-0")]
@@ -3409,7 +3415,7 @@ class TestDrainNodeService:
         assert response["node-1"]["blocked"] == []
 
     async def test_still_blocked_after_timeout_is_reported_not_raised(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """timeout 0 tries once; a blocked pod lands in the response."""
         mock_client.get_pods_on_node.return_value = [
@@ -3427,7 +3433,7 @@ class TestDrainNodeService:
         assert response["node-1"]["blocked"] == ["default/db-0"]
 
     async def test_eviction_error_raises_after_all_pods(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """A hard eviction error fails the call once every pod was attempted."""
         mock_client.get_pods_on_node.return_value = [
@@ -3440,11 +3446,11 @@ class TestDrainNodeService:
             await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
 
         assert mock_client.evict_pod.call_count == 2
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_called_once()
 
     async def test_cordon_failure_skips_node(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """A node that cannot be cordoned is not drained."""
         mock_client.cordon_node.return_value = False
@@ -3453,11 +3459,11 @@ class TestDrainNodeService:
             await self._drain(hass, **{ATTR_NODE_NAME: "node-1"})
 
         mock_client.get_pods_on_node.assert_not_called()
-        coordinator = setup_domain_data.runtime_data.coordinator
+        coordinator = loaded_entry.runtime_data.coordinator
         coordinator.async_request_refresh.assert_not_called()
 
     async def test_list_failure_raises(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """A failed pod list is a failure for that node, not an empty node."""
         mock_client.get_pods_on_node.side_effect = Exception("list failed")
@@ -3468,7 +3474,7 @@ class TestDrainNodeService:
         mock_client.evict_pod.assert_not_called()
 
     async def test_daemonset_pods_refuse_drain_when_not_ignored(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """ignore_daemonsets=false refuses the node like kubectl does."""
         mock_client.get_pods_on_node.return_value = [_raw_pod("web"), _DAEMONSET_POD]
@@ -3481,7 +3487,7 @@ class TestDrainNodeService:
         mock_client.evict_pod.assert_not_called()
 
     async def test_daemonset_free_node_drains_when_not_ignored(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """Without DaemonSet pods ignore_daemonsets=false changes nothing."""
         mock_client.get_pods_on_node.return_value = [_raw_pod("web")]
@@ -3493,7 +3499,7 @@ class TestDrainNodeService:
         assert response["node-1"]["evicted"] == ["default/web"]
 
     async def test_emptydir_option_and_own_pod(
-        self, hass: HomeAssistant, mock_client, setup_domain_data, monkeypatch
+        self, hass: HomeAssistant, mock_client, loaded_entry, monkeypatch
     ):
         """delete_emptydir_data is passed on; HA's own pod is never evicted."""
         monkeypatch.setattr(
@@ -3515,7 +3521,7 @@ class TestDrainNodeService:
         ]
 
     async def test_same_named_pod_in_other_namespace_is_evicted(
-        self, hass: HomeAssistant, mock_client, setup_domain_data, monkeypatch
+        self, hass: HomeAssistant, mock_client, loaded_entry, monkeypatch
     ):
         """Only HA's own pod (name and namespace) is skipped, not a namesake."""
         monkeypatch.setattr(
@@ -3536,7 +3542,7 @@ class TestDrainNodeService:
         ]
 
     async def test_blank_node_name_raises(
-        self, hass: HomeAssistant, mock_client, setup_domain_data
+        self, hass: HomeAssistant, mock_client, loaded_entry
     ):
         """A whitespace-only node_name is rejected before any change."""
         with pytest.raises(ServiceValidationError, match="drain_node requires"):
@@ -3546,7 +3552,7 @@ class TestDrainNodeService:
 
     @pytest.mark.parametrize("timeout", [-1, 3601])
     async def test_timeout_out_of_range_is_rejected(
-        self, hass: HomeAssistant, setup_domain_data, timeout
+        self, hass: HomeAssistant, loaded_entry, timeout
     ):
         """The schema bounds the timeout."""
         import voluptuous as vol
