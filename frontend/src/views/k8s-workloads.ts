@@ -535,15 +535,75 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             `
           : nothing
       }
+      ${this._renderFilters()}
       ${this._data!.clusters.map((c) => this._renderCluster(c))}
       ${this._jobDeleteConfirm ? this._renderJobDeleteDialog() : nothing}
       ${this._scaleTarget ? this._renderScaleDialog() : nothing}
     `;
   }
 
-  private _renderCluster(cluster: ClusterWorkloads) {
-    const namespaces = this._getNamespaces(cluster);
+  private _renderFilters() {
+    const namespaces = [
+      ...new Set(this._data!.clusters.flatMap((c) => this._getNamespaces(c))),
+    ].sort();
 
+    return html`
+      <div class="filters">
+        <input
+          class="search-input"
+          type="text"
+          placeholder="Search workloads..."
+          .value=${this._searchQuery}
+          @input=${(e: Event) => {
+            this._searchQuery = (e.target as HTMLInputElement).value;
+          }}
+        />
+
+        <select
+          class="filter-select"
+          .value=${this._namespaceFilter}
+          @change=${(e: Event) => {
+            this._namespaceFilter = (e.target as HTMLSelectElement).value;
+          }}
+        >
+          <option value="all">All namespaces</option>
+          ${namespaces.map((ns) => html`<option value=${ns} ?selected=${ns === this._namespaceFilter}>${ns}</option>`)}
+        </select>
+
+        <select
+          class="filter-select"
+          .value=${this._categoryFilter}
+          @change=${(e: Event) => {
+            this._categoryFilter = (e.target as HTMLSelectElement)
+              .value as WorkloadCategory;
+          }}
+        >
+          <option value="all">All types</option>
+          <option value="deployments">Deployments</option>
+          <option value="statefulsets">StatefulSets</option>
+          <option value="daemonsets">DaemonSets</option>
+          <option value="cronjobs">CronJobs</option>
+          <option value="jobs">Jobs</option>
+        </select>
+
+        ${STATUS_FILTERS.map(
+          (f) => html`
+            <button
+              class="filter-chip"
+              ?active=${this._statusFilter === f}
+              @click=${() => {
+                this._statusFilter = f;
+              }}
+            >
+              ${f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          `,
+        )}
+      </div>
+    `;
+  }
+
+  private _renderCluster(cluster: ClusterWorkloads) {
     return html`
       <div class="cluster-section">
         ${
@@ -551,60 +611,6 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
             ? html`<div class="cluster-name">${cluster.cluster_name}</div>`
             : nothing
         }
-
-        <div class="filters">
-          <input
-            class="search-input"
-            type="text"
-            placeholder="Search workloads..."
-            .value=${this._searchQuery}
-            @input=${(e: Event) => {
-              this._searchQuery = (e.target as HTMLInputElement).value;
-            }}
-          />
-
-          <select
-            class="filter-select"
-            .value=${this._namespaceFilter}
-            @change=${(e: Event) => {
-              this._namespaceFilter = (e.target as HTMLSelectElement).value;
-            }}
-          >
-            <option value="all">All namespaces</option>
-            ${namespaces.map((ns) => html`<option value=${ns} ?selected=${ns === this._namespaceFilter}>${ns}</option>`)}
-          </select>
-
-          <select
-            class="filter-select"
-            .value=${this._categoryFilter}
-            @change=${(e: Event) => {
-              this._categoryFilter = (e.target as HTMLSelectElement)
-                .value as WorkloadCategory;
-            }}
-          >
-            <option value="all">All types</option>
-            <option value="deployments">Deployments</option>
-            <option value="statefulsets">StatefulSets</option>
-            <option value="daemonsets">DaemonSets</option>
-            <option value="cronjobs">CronJobs</option>
-            <option value="jobs">Jobs</option>
-          </select>
-
-          ${STATUS_FILTERS.map(
-            (f) => html`
-              <button
-                class="filter-chip"
-                ?active=${this._statusFilter === f}
-                @click=${() => {
-                  this._statusFilter = f;
-                }}
-              >
-                ${f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            `,
-          )}
-        </div>
-
         ${
           this._shouldShowCategory("deployments")
             ? this._renderReplicaCategory(
