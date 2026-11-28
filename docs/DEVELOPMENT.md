@@ -144,7 +144,7 @@ When a new feature needs a new verb or resource:
 
 Adding a new value? Add it to `chart/values.schema.json` too — Helm validates values against that schema on every `install`/`upgrade`/`lint`/`template`, which is why `mode` is an `enum` there rather than a template-level `fail` (a `fail` inside `if rbac.create` would be skipped when `rbac.create=false`).
 
-`.github/workflows/helm.yaml` lints every variant (both modes, with and without `rbac.writeNamespaces`), asserts the schema rejections (invalid `mode`, a missing `writeNamespaces`, `minimal` with named namespaces, `"*"` mixed with names, an invalid namespace name), pins that namespace names such as `null` and `123` render as quoted strings and that `rbac.writeNamespaces=[]` renders no RoleBinding or write rule, and fails if `manifests/` does not match a fresh render — the same drift guard used for the committed frontend bundle. It compares with `git status --porcelain` rather than `git diff`, so a new template rendering a new (untracked) manifest is caught too. Never edit files under `manifests/` directly; the next render will overwrite them.
+`.github/workflows/helm.yaml` lints every variant (both modes, with and without `rbac.writeNamespaces`), asserts the schema rejections (an invalid, missing or `null` `mode`, an unknown `rbac` key, a missing `writeNamespaces`, `minimal` with named namespaces, `"*"` mixed with names, an invalid namespace name), pins that namespace names such as `null` and `123` render as quoted strings and that `rbac.writeNamespaces=[]` renders no RoleBinding or write rule, and fails if `manifests/` does not match a fresh render — the same drift guard used for the committed frontend bundle. It compares with `git status --porcelain` rather than `git diff`, so a new template rendering a new (untracked) manifest is caught too. Never edit files under `manifests/` directly; the next render will overwrite them.
 
 The workflow pins the Helm version (`azure/setup-helm`) so the rendered output is byte-stable; use the same version locally if the drift check disagrees with you.
 
@@ -248,7 +248,7 @@ pytest --cov=custom_components/kubernetes
 
 CI runs the `tests/k8s_compat/` suite against real kind clusters (Kubernetes N, N-1, N-2 — see `.github/workflows/k8s-compat.yaml`). These tests exercise every `KubernetesClient` method against a live API server with the chart's actual RBAC deployed. They are marked `k8s_compat` and auto-skip locally when `K8S_SERVER`/`K8S_TOKEN` are not set.
 
-The latest supported Kubernetes version is pinned as `K8S_LATEST` in the workflow and tracked by Renovate (`kubernetes/kubernetes` github-releases). When a new release is tagged, Renovate opens a PR that bumps the pin and auto-updates the supported-version range in README.md and docs/SETUP.md via `scripts/update-k8s-support-range.sh`.
+The latest supported Kubernetes version is pinned as `K8S_LATEST` in the workflow and tracked by Renovate (`kubernetes/kubernetes` github-releases). When a new release is tagged, Renovate opens a PR that bumps the pin and auto-updates the supported-version range in README.md and docs/SETUP.md via `scripts/update-k8s-support-range.sh`. If kind has no image for the new minor yet, the compat job fails on that PR: wait for a kind release and bump `KIND_VERSION` in the same PR.
 
 ### Python Requirements
 
@@ -287,38 +287,17 @@ kubectl run nginx --image=nginx -n test-namespace
 
 ### Creating Test ServiceAccount
 
-```yaml
-# serviceaccount.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: homeassistant-test
-  namespace: default
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: homeassistant-test
-subjects:
-- kind: ServiceAccount
-  name: homeassistant-test
-  namespace: default
-roleRef:
-  kind: ClusterRole
-  name: view
-  apiGroup: rbac.authorization.k8s.io
-```
-
-Apply the configuration:
+Install the chart, which creates the ServiceAccount, the `full` ClusterRole and the token Secret:
 
 ```bash
-kubectl apply -f serviceaccount.yaml
+helm install ha-k8s ./chart --namespace default --set mode=full
 ```
 
 Get the token:
 
 ```bash
-kubectl create token homeassistant-test --duration=24h
+kubectl get secret homeassistant-kubernetes-integration-token -n default \
+  -o jsonpath='{.data.token}' | base64 -d
 ```
 
 ## Code Quality

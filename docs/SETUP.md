@@ -155,61 +155,21 @@ For the complete matrix — every API group, resource, and verb, with the featur
 
 ## Namespace-Specific Setup
 
-If only write access should be limited, use the chart value `rbac.writeNamespaces` instead — see [Limiting write access to namespaces](RBAC.md#limiting-write-access-to-namespaces). If you prefer to limit permissions to specific namespaces for enhanced security:
+If only write access should be limited, use the chart value `rbac.writeNamespaces` instead — see [Limiting write access to namespaces](RBAC.md#limiting-write-access-to-namespaces). To scope reads to namespaces as well, you write the RBAC yourself. A `Role` alone is not enough:
 
-### 1. Create Service Account in Target Namespace
+- Every poll lists **nodes cluster-wide**, even when `nodes` is in *Disable data collection* (the switches read them). A 403 on any list fails the whole poll, so every entity goes unavailable.
+- You therefore always need a small `ClusterRole` with `list`, `watch` on `nodes` (`patch` only for cordon/uncordon) and `list` on `namespaces` (the config flow's namespace picker).
+- Metrics need their own rules: `metrics.k8s.io` `pods` `list` in each namespace `Role` and `metrics.k8s.io` `nodes` `list` in the `ClusterRole`. Without them the integration raises the *metrics server unavailable* repair issue and shows no CPU or memory.
+- Several namespaces work. Turn off *Monitor All Namespaces* (it makes every list cluster-wide, which the `Role`s do not allow), select each namespace that has a `Role` in the config flow, and create one `Role` + `RoleBinding` per namespace.
 
-```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: homeassistant-kubernetes-integration
-  namespace: your-target-namespace
-```
-
-### 2. Create Role (instead of ClusterRole)
-
-For the full `Role` definition with the correct verb set for every resource (matching `full`-mode permissions), see the [Namespace-Scoped Example](RBAC.md#namespace-scoped-example) in the RBAC Reference Guide — it also covers the small cluster-scoped `ClusterRole` still needed for `nodes` and `namespaces`.
-
-### 3. Create RoleBinding (instead of ClusterRoleBinding)
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: homeassistant-kubernetes-integration
-  namespace: your-target-namespace
-subjects:
-- kind: ServiceAccount
-  name: homeassistant-kubernetes-integration
-  namespace: your-target-namespace
-roleRef:
-  kind: Role
-  name: homeassistant-kubernetes-integration
-  apiGroup: rbac.authorization.k8s.io
-```
-
-### 4. Create Token Secret
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: homeassistant-kubernetes-integration-token
-  namespace: your-target-namespace
-  annotations:
-    kubernetes.io/service-account.name: homeassistant-kubernetes-integration
-type: kubernetes.io/service-account-token
-```
+Create a ServiceAccount, the token Secret (as in [Step-by-Step Setup](#step-by-step-setup), in the ServiceAccount's namespace) and the roles from the [Namespace-Scoped Example](RBAC.md#namespace-scoped-example) in the RBAC Reference Guide.
 
 ### Limitations of Namespace-Specific Setup
 
-- **No cluster-wide metrics**: Cannot see total nodes count or cluster health
-- **No cross-namespace monitoring**: Cannot monitor multiple namespaces simultaneously
-- **Limited visibility**: Reduced overall cluster insight
-- **Still need namespace permissions**: To list namespaces, you'll need at least cluster-level `list` on `namespaces`
+- **`drain_node` does not work**: it lists pods across all namespaces, which needs the cluster-wide `ClusterRole`.
+- **A `ClusterRole` is still needed** for nodes, namespaces and node metrics (see above).
 
-### Hybrid Approach: Namespace-Scoped with Minimal Cluster Permissions
+### Alternative: Limit Only Write Access
 
 For a balanced approach, keep the cluster-wide read rules and limit control to the namespaces you list with `rbac.writeNamespaces`:
 
