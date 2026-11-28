@@ -36,6 +36,11 @@ jobs:
   build-matrix:
     name: Build version matrix
     runs-on: ubuntu-latest
+    # The release PR changes only version strings, in files the path filter
+    # above also matches (manifest.json, pyproject.toml). This workflow is not
+    # a required check, so skipping is safe; `k8s-compat` needs this job and is
+    # skipped with it. head_ref is empty for schedule and workflow_dispatch.
+    if: github.head_ref != 'release-please--branches--main'
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
