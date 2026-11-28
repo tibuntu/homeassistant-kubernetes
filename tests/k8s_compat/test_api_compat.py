@@ -235,7 +235,7 @@ class TestHPAs:
         assert isinstance(hpa["conditions"], dict)
 
         # The reverse lookup key (kind, namespace, name) matches a real workload
-        deployments = await k8s_client.get_deployments(include_metrics=False)
+        deployments = await k8s_client.get_deployments()
         assert any(
             d["namespace"] == hpa["namespace"] and d["name"] == hpa["target_name"]
             for d in deployments

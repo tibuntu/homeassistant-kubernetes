@@ -380,7 +380,6 @@ async def test_get_deployments_success(mock_client):
         }
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_deployments)
-    mock_client._enrich_workloads_with_metrics = AsyncMock()
 
     deployments = await mock_client.get_deployments()
 
@@ -405,7 +404,6 @@ async def test_get_deployments_not_running(mock_client):
         }
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_deployments)
-    mock_client._enrich_workloads_with_metrics = AsyncMock()
 
     deployments = await mock_client.get_deployments()
 
@@ -420,45 +418,6 @@ async def test_get_deployments_empty(mock_client):
     deployments = await mock_client.get_deployments()
 
     assert deployments == []
-
-
-async def test_get_deployments_enriches_metrics_by_default(mock_client):
-    """Without arguments, get_deployments enriches workloads with metrics."""
-    result = [{"name": "web", "namespace": "default"}]
-    mock_client._fetch_resource_list = AsyncMock(return_value=result)
-    mock_client._enrich_workloads_with_metrics = AsyncMock()
-
-    await mock_client.get_deployments()
-
-    mock_client._enrich_workloads_with_metrics.assert_called_once_with(
-        result, "deployment"
-    )
-
-
-async def test_get_deployments_skips_metrics_enrichment(mock_client):
-    """include_metrics=False must not call the Metrics API enrichment."""
-    mock_client._fetch_resource_list = AsyncMock(
-        return_value=[{"name": "web", "namespace": "default"}]
-    )
-    mock_client._enrich_workloads_with_metrics = AsyncMock()
-
-    deployments = await mock_client.get_deployments(include_metrics=False)
-
-    assert len(deployments) == 1
-    mock_client._enrich_workloads_with_metrics.assert_not_called()
-
-
-async def test_get_statefulsets_skips_metrics_enrichment(mock_client):
-    """include_metrics=False must not call the Metrics API enrichment."""
-    mock_client._fetch_resource_list = AsyncMock(
-        return_value=[{"name": "db", "namespace": "default"}]
-    )
-    mock_client._enrich_workloads_with_metrics = AsyncMock()
-
-    statefulsets = await mock_client.get_statefulsets(include_metrics=False)
-
-    assert len(statefulsets) == 1
-    mock_client._enrich_workloads_with_metrics.assert_not_called()
 
 
 async def test_get_deployments_api_exception(mock_client):
@@ -482,7 +441,6 @@ async def test_get_statefulsets_success(mock_client):
         }
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_statefulsets)
-    mock_client._enrich_workloads_with_metrics = AsyncMock()
 
     statefulsets = await mock_client.get_statefulsets()
 
@@ -507,7 +465,6 @@ async def test_get_statefulsets_not_running(mock_client):
         }
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_statefulsets)
-    mock_client._enrich_workloads_with_metrics = AsyncMock()
 
     statefulsets = await mock_client.get_statefulsets()
 
@@ -2293,8 +2250,11 @@ async def test_enrich_workloads_with_metrics_deployments(mock_client):
         return_value={"default/test-pod": {"cpu": 0.5, "memory": 128.0}}
     )
 
-    await mock_client._enrich_workloads_with_metrics(deployments, "deployment")
+    await mock_client.enrich_workloads_with_metrics(deployments)
 
+    # pods=None / metrics=None: the method fetches both itself.
+    mock_client._get_pods_aiohttp.assert_awaited_once()
+    mock_client._get_pod_metrics_aiohttp.assert_awaited_once()
     assert deployments[0]["cpu_usage"] == 0.5
     assert deployments[0]["memory_usage"] == 128.0
 
@@ -2360,7 +2320,7 @@ async def test_enrich_workloads_with_metrics_statefulsets(mock_client):
         return_value={"default/test-pod": {"cpu": 0.5, "memory": 128.0}}
     )
 
-    await mock_client._enrich_workloads_with_metrics(statefulsets, "statefulset")
+    await mock_client.enrich_workloads_with_metrics(statefulsets)
 
     assert statefulsets[0]["cpu_usage"] == 0.5
     assert statefulsets[0]["memory_usage"] == 128.0
@@ -4624,10 +4584,10 @@ class TestScaleStatefulsetExtended:
 
 
 class TestEnrichWorkloadsWithMetricsExtended:
-    """Extended tests for _enrich_workloads_with_metrics."""
+    """Extended tests for enrich_workloads_with_metrics."""
 
     async def test_no_pods_available(self, mock_client):
-        """_enrich_workloads_with_metrics does nothing when no pods found."""
+        """enrich_workloads_with_metrics does nothing when no pods found."""
         workloads = [
             {
                 "name": "deploy1",
@@ -4638,13 +4598,13 @@ class TestEnrichWorkloadsWithMetricsExtended:
         mock_client._get_pods_aiohttp = AsyncMock(return_value=[])
         mock_client._get_pod_metrics_aiohttp = AsyncMock(return_value={})
 
-        await mock_client._enrich_workloads_with_metrics(workloads, "deployment")
+        await mock_client.enrich_workloads_with_metrics(workloads)
 
         assert workloads[0]["cpu_usage"] == 0.0
         assert workloads[0]["memory_usage"] == 0.0
 
     async def test_no_metrics_available(self, mock_client):
-        """_enrich_workloads_with_metrics does nothing when no metrics available."""
+        """enrich_workloads_with_metrics does nothing when no metrics available."""
         workloads = [
             {
                 "name": "deploy1",
@@ -4659,13 +4619,13 @@ class TestEnrichWorkloadsWithMetricsExtended:
         )
         mock_client._get_pod_metrics_aiohttp = AsyncMock(return_value={})
 
-        await mock_client._enrich_workloads_with_metrics(workloads, "deployment")
+        await mock_client.enrich_workloads_with_metrics(workloads)
 
         assert workloads[0]["cpu_usage"] == 0.0
         assert workloads[0]["memory_usage"] == 0.0
 
     async def test_exception_during_enrichment(self, mock_client):
-        """_enrich_workloads_with_metrics handles exceptions gracefully."""
+        """enrich_workloads_with_metrics handles exceptions gracefully."""
         workloads = [
             {
                 "name": "deploy1",
@@ -4677,14 +4637,14 @@ class TestEnrichWorkloadsWithMetricsExtended:
             side_effect=Exception("Metrics API down")
         )
 
-        await mock_client._enrich_workloads_with_metrics(workloads, "deployment")
+        await mock_client.enrich_workloads_with_metrics(workloads)
 
         # Default values should remain
         assert workloads[0]["cpu_usage"] == 0.0
         assert workloads[0]["memory_usage"] == 0.0
 
     async def test_multiple_pods_for_workload(self, mock_client):
-        """_enrich_workloads_with_metrics sums metrics across multiple pods."""
+        """enrich_workloads_with_metrics sums metrics across multiple pods."""
         workloads = [
             {
                 "name": "deploy1",
@@ -4707,13 +4667,13 @@ class TestEnrichWorkloadsWithMetricsExtended:
             }
         )
 
-        await mock_client._enrich_workloads_with_metrics(workloads, "deployment")
+        await mock_client.enrich_workloads_with_metrics(workloads)
 
         assert workloads[0]["cpu_usage"] == 300.0
         assert workloads[0]["memory_usage"] == 768.0
 
     async def test_pod_without_metrics(self, mock_client):
-        """_enrich_workloads_with_metrics handles pods that have no metrics entry."""
+        """enrich_workloads_with_metrics handles pods that have no metrics entry."""
         workloads = [
             {
                 "name": "deploy1",
@@ -4734,14 +4694,14 @@ class TestEnrichWorkloadsWithMetricsExtended:
             }
         )
 
-        await mock_client._enrich_workloads_with_metrics(workloads, "deployment")
+        await mock_client.enrich_workloads_with_metrics(workloads)
 
         # Only web-pod-1 contributes
         assert workloads[0]["cpu_usage"] == 100.0
         assert workloads[0]["memory_usage"] == 256.0
 
     async def test_all_namespaces_mode(self, mock_client):
-        """_enrich_workloads_with_metrics uses all-namespaces fetch when configured."""
+        """enrich_workloads_with_metrics uses all-namespaces fetch when configured."""
         mock_client.monitor_all_namespaces = True
         workloads = [
             {
@@ -4761,14 +4721,14 @@ class TestEnrichWorkloadsWithMetricsExtended:
             }
         )
 
-        await mock_client._enrich_workloads_with_metrics(workloads, "deployment")
+        await mock_client.enrich_workloads_with_metrics(workloads)
 
         assert workloads[0]["cpu_usage"] == 50.0
         assert workloads[0]["memory_usage"] == 128.0
         mock_client._get_pods_all_namespaces_aiohttp.assert_called_once()
 
     async def test_empty_selector_matches_nothing(self, mock_client):
-        """_enrich_workloads_with_metrics with empty selector matches no pods."""
+        """enrich_workloads_with_metrics with empty selector matches no pods."""
         workloads = [
             {
                 "name": "deploy1",
@@ -4787,7 +4747,7 @@ class TestEnrichWorkloadsWithMetricsExtended:
             }
         )
 
-        await mock_client._enrich_workloads_with_metrics(workloads, "deployment")
+        await mock_client.enrich_workloads_with_metrics(workloads)
 
         # Empty selector should not match
         assert workloads[0]["cpu_usage"] == 0.0
@@ -5282,15 +5242,6 @@ class TestParseReplicaWorkloadItem:
             15.0,
             26.0,
         )
-
-    async def test_public_enrich_delegates(self, mock_client):
-        """enrich_workloads_with_metrics delegates to the private enricher."""
-        workloads = [{"name": "a", "namespace": "b"}]
-        with patch.object(
-            mock_client, "_enrich_workloads_with_metrics", new=AsyncMock()
-        ) as private:
-            await mock_client.enrich_workloads_with_metrics(workloads)
-        private.assert_awaited_once_with(workloads, "workload", pods=None, metrics=None)
 
     def test_missing_selector(self, mock_client):
         """_parse_replica_workload_item handles missing selector gracefully."""
