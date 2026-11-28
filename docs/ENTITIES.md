@@ -164,7 +164,7 @@ Each pod sensor provides comprehensive information about the pod:
 | **workload_type** | Always `Pod`; tells pod sensors apart from the other sensors of a cluster in templates and card filters | `Pod` |
 | **phase** | Current phase of the pod (useful for filtering with auto-entities) | `Running` / `Pending` / `Failed` / `Succeeded` / `Unknown` |
 | **ready_containers** | Number of ready containers in the pod | `2` |
-| **total_containers** | Total number of containers in the pod | `2` |
+| **total_containers** | Total number of containers in the pod (from the pod spec, so a Pending pod already reports its real total) | `2` |
 | **restart_count** | Total number of container restarts | `0` |
 | **node_name** | Name of the node where the pod is running | `worker-node-1` |
 | **pod_ip** | IP address of the pod | `10.244.1.5` |
