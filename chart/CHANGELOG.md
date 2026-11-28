@@ -2,6 +2,12 @@
 
 Changes to the `homeassistant-kubernetes-rbac` Helm chart. The chart is versioned independently of the integration; `appVersion` in `Chart.yaml` names the oldest integration release it supports.
 
+## 2.0.2
+
+### Fixed
+
+- **Renovate shows this changelog in chart update pull requests.** The chart's `sources` URL now points at the `chart/` directory, so the OCI annotation `org.opencontainers.image.source` leads Renovate to `chart/CHANGELOG.md` instead of the integration's changelog in the repository root.
+
 ## 2.0.1
 
 ### Fixed
