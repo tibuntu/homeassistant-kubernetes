@@ -27,7 +27,6 @@ from .const import (
     CONF_PANEL_ADMIN_ONLY,
     CONF_PORT,
     CONF_SCALE_COOLDOWN,
-    CONF_SCALE_VERIFICATION_TIMEOUT,
     CONF_SWITCH_UPDATE_INTERVAL,
     CONF_VERIFY_SSL,
     DEFAULT_CLUSTER_NAME,
@@ -39,7 +38,6 @@ from .const import (
     DEFAULT_PANEL_ADMIN_ONLY,
     DEFAULT_PORT,
     DEFAULT_SCALE_COOLDOWN,
-    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
     POD_LOGS_MAX_TAIL_LINES,
@@ -705,10 +703,6 @@ def _get_config_list_data(hass: HomeAssistant) -> dict[str, Any]:
                 ),
                 "switch_update_interval": config.get(
                     CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
-                ),
-                "scale_verification_timeout": config.get(
-                    CONF_SCALE_VERIFICATION_TIMEOUT,
-                    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
                 ),
                 "scale_cooldown": config.get(
                     CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import Any
@@ -18,9 +17,7 @@ from homeassistant.helpers.entity_registry import async_get as async_get_entity_
 from .const import (
     ATTR_WORKLOAD_TYPE,
     CONF_SCALE_COOLDOWN,
-    CONF_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SCALE_COOLDOWN,
-    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DOMAIN,
     WORKLOAD_TYPE_CRONJOB,
     WORKLOAD_TYPE_DEPLOYMENT,
@@ -261,6 +258,8 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
 
     # Coordinator-driven: state is synced in _handle_coordinator_update.
     _attr_should_poll = False
+    # Changes on every refresh; HA merges this in __init_subclass__.
+    _unrecorded_attributes = frozenset({"cpu_usage_(millicores)", "memory_usage_(MiB)"})
 
     def __init__(
         self,
@@ -301,9 +300,6 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
         self._last_scale_time = 0.0
         self._scale_cooldown = config_entry.data.get(
             CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN
-        )
-        self._scale_verification_timeout = config_entry.data.get(
-            CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
         )
         self._last_scale_attempt_failed = False
         self._cpu_usage = 0.0
@@ -436,9 +432,7 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
                     self.workload_name,
                     hpa["name"],
                 )
-                await self.coordinator.async_request_refresh()
-            else:
-                await self._verify_scaling(1)
+            await self.coordinator.async_request_refresh()
         else:
             self._last_scale_attempt_failed = True
             self.async_write_ha_state()
@@ -472,7 +466,7 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
                 self._log_label,
                 self.workload_name,
             )
-            await self._verify_scaling(0)
+            await self.coordinator.async_request_refresh()
         else:
             self._last_scale_attempt_failed = True
             self.async_write_ha_state()
@@ -486,56 +480,6 @@ class KubernetesReplicaWorkloadSwitch(SwitchEntity):
                     "replicas": "0",
                 },
             )
-
-    async def _verify_scaling(self, target_replicas: int) -> None:
-        """Verify that scaling actually took effect."""
-        max_attempts = self._scale_verification_timeout // 5
-        for attempt in range(max_attempts):
-            await asyncio.sleep(5)
-
-            try:
-                await self.coordinator.async_request_refresh()
-
-                workload_data = self._get_workload_data()
-                if workload_data is None:
-                    _LOGGER.warning(
-                        "%s %s not found during scaling verification",
-                        self._log_label,
-                        self.workload_name,
-                    )
-                    continue
-
-                current_replicas = workload_data["replicas"]
-                if current_replicas == target_replicas:
-                    _LOGGER.info(
-                        "%s %s scaling verified: %d replicas",
-                        self._log_label,
-                        self.workload_name,
-                        current_replicas,
-                    )
-                    return
-                else:
-                    _LOGGER.debug(
-                        "%s %s still scaling: %d replicas (target: %d)",
-                        self._log_label,
-                        self.workload_name,
-                        current_replicas,
-                        target_replicas,
-                    )
-            except Exception as ex:
-                _LOGGER.warning(
-                    "Failed to verify scaling for %s (attempt %d): %s",
-                    self.workload_name,
-                    attempt + 1,
-                    ex,
-                )
-
-        _LOGGER.warning(
-            "%s %s scaling verification timed out after %d attempts",
-            self._log_label,
-            self.workload_name,
-            max_attempts,
-        )
 
 
 class KubernetesDeploymentSwitch(KubernetesReplicaWorkloadSwitch):

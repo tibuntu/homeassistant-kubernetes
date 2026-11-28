@@ -877,7 +877,6 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Successful scale calls start the cooldown window."""
         deployment_switch.async_write_ha_state = MagicMock()
-        deployment_switch._verify_scaling = AsyncMock()
         with patch("custom_components.kubernetes.switch.time.time") as mock_time:
             mock_time.return_value = 1_000.0
             await deployment_switch.async_turn_on()
@@ -891,7 +890,6 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Test turn on success path."""
         deployment_switch.async_write_ha_state = MagicMock()
-        deployment_switch._verify_scaling = AsyncMock()
         deployment_coordinator.client.start_deployment = AsyncMock(return_value=True)
 
         await deployment_switch.async_turn_on()
@@ -903,18 +901,16 @@ class TestKubernetesDeploymentSwitch:
         assert deployment_switch._replicas == 1
         assert deployment_switch._last_scale_attempt_failed is False
 
-    async def test_async_turn_on_hpa_skips_verification(
+    async def test_async_turn_on_hpa_refreshes_once(
         self, deployment_switch, deployment_coordinator
     ):
-        """With an HPA the count is the HPA's choice, so don't wait for 1."""
+        """With an HPA the count is the HPA's choice; still one refresh."""
         deployment_coordinator.data["hpas"] = {"default_nginx-hpa": _NGINX_HPA}
         deployment_switch.async_write_ha_state = MagicMock()
-        deployment_switch._verify_scaling = AsyncMock()
 
         await deployment_switch.async_turn_on()
 
         deployment_coordinator.client.start_deployment.assert_called_once()
-        deployment_switch._verify_scaling.assert_not_called()
         deployment_coordinator.async_request_refresh.assert_awaited_once()
         assert deployment_switch._is_on is True
 
@@ -943,7 +939,6 @@ class TestKubernetesDeploymentSwitch:
     ):
         """Test turn off success path."""
         deployment_switch.async_write_ha_state = MagicMock()
-        deployment_switch._verify_scaling = AsyncMock()
         deployment_coordinator.client.stop_deployment = AsyncMock(return_value=True)
 
         await deployment_switch.async_turn_off()
@@ -953,6 +948,32 @@ class TestKubernetesDeploymentSwitch:
         )
         assert deployment_switch._is_on is False
         assert deployment_switch._replicas == 0
+
+    async def test_turn_on_refreshes_once(
+        self, deployment_switch, deployment_coordinator
+    ):
+        """A successful turn on requests one refresh and never sleeps."""
+        deployment_switch.async_write_ha_state = MagicMock()
+        with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+            await deployment_switch.async_turn_on()
+        deployment_coordinator.async_request_refresh.assert_awaited_once()
+        sleep.assert_not_awaited()
+
+    async def test_turn_off_refreshes_once(
+        self, deployment_switch, deployment_coordinator
+    ):
+        """A successful turn off requests one refresh and never sleeps."""
+        deployment_switch.async_write_ha_state = MagicMock()
+        with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+            await deployment_switch.async_turn_off()
+        deployment_coordinator.async_request_refresh.assert_awaited_once()
+        sleep.assert_not_awaited()
+
+    def test_metrics_attributes_unrecorded(self, deployment_switch):
+        """CPU/memory attributes churn every refresh; keep them out of the recorder."""
+        keys = {"cpu_usage_(millicores)", "memory_usage_(MiB)"}
+        assert keys <= deployment_switch._unrecorded_attributes
+        assert keys <= set(deployment_switch.extra_state_attributes)
 
     async def test_async_turn_off_failure(
         self, deployment_switch, deployment_coordinator
@@ -973,65 +994,6 @@ class TestKubernetesDeploymentSwitch:
         assert deployment_switch._last_scale_attempt_failed is True
         deployment_switch.async_write_ha_state.assert_called_once()
         deployment_coordinator.async_request_refresh.assert_called_once()
-
-    async def test_verify_scaling_success(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test _verify_scaling succeeds when target replicas reached."""
-        deployment_switch._scale_verification_timeout = 10
-        deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.data["deployments"]["default_nginx"] = {
-            "replicas": 1,
-        }
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await deployment_switch._verify_scaling(1)
-        deployment_coordinator.async_request_refresh.assert_called()
-
-    async def test_verify_scaling_not_found(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test _verify_scaling when deployment not found during verification."""
-        deployment_switch._scale_verification_timeout = 10
-        deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.data = {"deployments": {}}
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await deployment_switch._verify_scaling(1)
-
-    async def test_verify_scaling_still_scaling(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test _verify_scaling logs debug when still scaling."""
-        deployment_switch._scale_verification_timeout = 10
-        deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.data["deployments"]["default_nginx"] = {
-            "replicas": 0,
-        }
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await deployment_switch._verify_scaling(1)
-
-    async def test_verify_scaling_exception(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test _verify_scaling handles exceptions gracefully."""
-        deployment_switch._scale_verification_timeout = 10
-        deployment_coordinator.async_request_refresh = AsyncMock(
-            side_effect=Exception("Refresh failed")
-        )
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await deployment_switch._verify_scaling(1)
-
-    async def test_verify_scaling_timeout(
-        self, deployment_switch, deployment_coordinator
-    ):
-        """Test _verify_scaling times out when target never reached."""
-        deployment_switch._scale_verification_timeout = 15
-        deployment_coordinator.async_request_refresh = AsyncMock()
-        deployment_coordinator.data["deployments"]["default_nginx"] = {
-            "replicas": 0,
-        }
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await deployment_switch._verify_scaling(1)
-        # Should complete without error even after timeout
 
 
 # ---------------------------------------------------------------------------
@@ -1196,7 +1158,6 @@ class TestKubernetesStatefulSetSwitch:
     ):
         """Test turn on success path."""
         statefulset_switch.async_write_ha_state = MagicMock()
-        statefulset_switch._verify_scaling = AsyncMock()
         statefulset_coordinator.client.start_statefulset = AsyncMock(return_value=True)
 
         await statefulset_switch.async_turn_on()
@@ -1233,7 +1194,6 @@ class TestKubernetesStatefulSetSwitch:
     ):
         """Test turn off success path."""
         statefulset_switch.async_write_ha_state = MagicMock()
-        statefulset_switch._verify_scaling = AsyncMock()
         statefulset_coordinator.client.stop_statefulset = AsyncMock(return_value=True)
 
         await statefulset_switch.async_turn_off()
@@ -1243,6 +1203,26 @@ class TestKubernetesStatefulSetSwitch:
         )
         assert statefulset_switch._is_on is False
         assert statefulset_switch._replicas == 0
+
+    async def test_turn_on_refreshes_once(
+        self, statefulset_switch, statefulset_coordinator
+    ):
+        """A successful turn on requests one refresh and never sleeps."""
+        statefulset_switch.async_write_ha_state = MagicMock()
+        with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+            await statefulset_switch.async_turn_on()
+        statefulset_coordinator.async_request_refresh.assert_awaited_once()
+        sleep.assert_not_awaited()
+
+    async def test_turn_off_refreshes_once(
+        self, statefulset_switch, statefulset_coordinator
+    ):
+        """A successful turn off requests one refresh and never sleeps."""
+        statefulset_switch.async_write_ha_state = MagicMock()
+        with patch("asyncio.sleep", new_callable=AsyncMock) as sleep:
+            await statefulset_switch.async_turn_off()
+        statefulset_coordinator.async_request_refresh.assert_awaited_once()
+        sleep.assert_not_awaited()
 
     async def test_async_turn_off_failure(
         self, statefulset_switch, statefulset_coordinator
@@ -1263,64 +1243,6 @@ class TestKubernetesStatefulSetSwitch:
         assert statefulset_switch._last_scale_attempt_failed is True
         statefulset_switch.async_write_ha_state.assert_called_once()
         statefulset_coordinator.async_request_refresh.assert_called_once()
-
-    async def test_verify_scaling_success(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test _verify_scaling succeeds when target replicas reached."""
-        statefulset_switch._scale_verification_timeout = 10
-        statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
-            "replicas": 1,
-        }
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await statefulset_switch._verify_scaling(1)
-        statefulset_coordinator.async_request_refresh.assert_called()
-
-    async def test_verify_scaling_not_found(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test _verify_scaling when statefulset not found during verification."""
-        statefulset_switch._scale_verification_timeout = 10
-        statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.data = {"statefulsets": {}}
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await statefulset_switch._verify_scaling(1)
-
-    async def test_verify_scaling_still_scaling(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test _verify_scaling logs debug when still scaling."""
-        statefulset_switch._scale_verification_timeout = 10
-        statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
-            "replicas": 0,
-        }
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await statefulset_switch._verify_scaling(1)
-
-    async def test_verify_scaling_exception(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test _verify_scaling handles exceptions gracefully."""
-        statefulset_switch._scale_verification_timeout = 10
-        statefulset_coordinator.async_request_refresh = AsyncMock(
-            side_effect=Exception("Refresh failed")
-        )
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await statefulset_switch._verify_scaling(1)
-
-    async def test_verify_scaling_timeout(
-        self, statefulset_switch, statefulset_coordinator
-    ):
-        """Test _verify_scaling times out gracefully."""
-        statefulset_switch._scale_verification_timeout = 15
-        statefulset_coordinator.async_request_refresh = AsyncMock()
-        statefulset_coordinator.data["statefulsets"]["default_redis"] = {
-            "replicas": 0,
-        }
-        with patch("asyncio.sleep", new_callable=AsyncMock):
-            await statefulset_switch._verify_scaling(1)
 
 
 # ---------------------------------------------------------------------------

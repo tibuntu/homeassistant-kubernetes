@@ -1547,7 +1547,6 @@ class TestWebsocketConfigList:
                     "namespace": ["default", "production"],
                     "device_grouping_mode": "namespace",
                     "switch_update_interval": 60,
-                    "scale_verification_timeout": 30,
                     "scale_cooldown": 10,
                 },
             ),
@@ -1566,7 +1565,6 @@ class TestWebsocketConfigList:
         assert entry["namespaces"] == ["default", "production"]
         assert entry["device_grouping_mode"] == "namespace"
         assert entry["switch_update_interval"] == 60
-        assert entry["scale_verification_timeout"] == 30
         assert entry["scale_cooldown"] == 10
         assert entry["watch_enabled"] is True
         assert entry["pod_logs_enabled"] is False
@@ -1627,7 +1625,6 @@ class TestWebsocketConfigList:
         assert entry["namespaces"] == []
         assert entry["device_grouping_mode"] == "namespace"
         assert entry["switch_update_interval"] == 60
-        assert entry["scale_verification_timeout"] == 30
         assert entry["scale_cooldown"] == 10
 
 

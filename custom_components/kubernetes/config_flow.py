@@ -35,7 +35,6 @@ from .const import (
     CONF_NAMESPACE,
     CONF_PANEL_ADMIN_ONLY,
     CONF_SCALE_COOLDOWN,
-    CONF_SCALE_VERIFICATION_TIMEOUT,
     CONF_SWITCH_UPDATE_INTERVAL,
     CONF_USE_IN_CLUSTER,
     CONF_VERIFY_SSL,
@@ -52,7 +51,6 @@ from .const import (
     DEFAULT_PANEL_ADMIN_ONLY,
     DEFAULT_PORT,
     DEFAULT_SCALE_COOLDOWN,
-    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_USE_IN_CLUSTER,
     DEFAULT_VERIFY_SSL,
@@ -174,9 +172,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 user_input.setdefault(
                     CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
                 )
-                user_input.setdefault(
-                    CONF_SCALE_VERIFICATION_TIMEOUT, DEFAULT_SCALE_VERIFICATION_TIMEOUT
-                )
                 user_input.setdefault(CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN)
                 user_input.setdefault(
                     CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
@@ -231,7 +226,7 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
         # Order: Cluster Name, Host, Port, Use In-Cluster, API Token,
         # CA Certificate, Verify SSL, Monitor All Namespaces,
         # Device Grouping Mode, Switch Update Interval,
-        # Scale Verification Timeout, Scale Cooldown.
+        # Scale Cooldown.
         # The in-cluster checkbox sits above the token field because, while
         # enabled, the token below is only a fallback (issue #360).
         schema = {
@@ -275,10 +270,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
             ),
             vol.Optional(
                 CONF_SWITCH_UPDATE_INTERVAL, default=DEFAULT_SWITCH_UPDATE_INTERVAL
-            ): int,
-            vol.Optional(
-                CONF_SCALE_VERIFICATION_TIMEOUT,
-                default=DEFAULT_SCALE_VERIFICATION_TIMEOUT,
             ): int,
             vol.Optional(CONF_SCALE_COOLDOWN, default=DEFAULT_SCALE_COOLDOWN): int,
         }
@@ -383,10 +374,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 user_input.setdefault(
                     CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
                 )
-                user_input.setdefault(
-                    CONF_SCALE_VERIFICATION_TIMEOUT,
-                    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
-                )
                 user_input.setdefault(CONF_SCALE_COOLDOWN, DEFAULT_SCALE_COOLDOWN)
                 user_input.setdefault(
                     CONF_DEVICE_GROUPING_MODE, DEFAULT_DEVICE_GROUPING_MODE
@@ -479,13 +466,6 @@ class KubernetesConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: i
                 CONF_SWITCH_UPDATE_INTERVAL,
                 default=current.get(
                     CONF_SWITCH_UPDATE_INTERVAL, DEFAULT_SWITCH_UPDATE_INTERVAL
-                ),
-            ): int,
-            vol.Optional(
-                CONF_SCALE_VERIFICATION_TIMEOUT,
-                default=current.get(
-                    CONF_SCALE_VERIFICATION_TIMEOUT,
-                    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
                 ),
             ): int,
             vol.Optional(

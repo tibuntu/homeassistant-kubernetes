@@ -31,7 +31,6 @@ from custom_components.kubernetes.const import (
     CONF_NAMESPACE,
     CONF_PANEL_ADMIN_ONLY,
     CONF_SCALE_COOLDOWN,
-    CONF_SCALE_VERIFICATION_TIMEOUT,
     CONF_SWITCH_UPDATE_INTERVAL,
     CONF_USE_IN_CLUSTER,
     CONF_VERIFY_SSL,
@@ -43,7 +42,6 @@ from custom_components.kubernetes.const import (
     DEFAULT_EXCLUDE_JOB_PODS,
     DEFAULT_PORT,
     DEFAULT_SCALE_COOLDOWN,
-    DEFAULT_SCALE_VERIFICATION_TIMEOUT,
     DEFAULT_SWITCH_UPDATE_INTERVAL,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
@@ -1106,7 +1104,6 @@ class TestReconfigureFlow:
             CONF_MONITOR_ALL_NAMESPACES: True,
             CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
             CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
-            CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
             CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
         }
 
@@ -1308,7 +1305,6 @@ class TestReconfigureFlow:
                 CONF_NAMESPACE: ["production", "staging"],
                 CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
                 CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
-                CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
                 CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
             },
             unique_id="test-cluster",
@@ -1371,7 +1367,6 @@ class TestReconfigureNamespacesFlow:
             CONF_NAMESPACE: ["production", "staging"],
             CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
             CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
-            CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
             CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
         }
 
@@ -1977,7 +1972,6 @@ class TestReconfigureAdditionalCoverage:
                 CONF_MONITOR_ALL_NAMESPACES: True,
                 CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
                 CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
-                CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
                 CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
             },
             unique_id="test-cluster",
@@ -2041,15 +2035,37 @@ class TestReconfigureAdditionalCoverage:
             mock_config_entry.data[CONF_SWITCH_UPDATE_INTERVAL]
             == DEFAULT_SWITCH_UPDATE_INTERVAL
         )
-        assert (
-            mock_config_entry.data[CONF_SCALE_VERIFICATION_TIMEOUT]
-            == DEFAULT_SCALE_VERIFICATION_TIMEOUT
-        )
         assert mock_config_entry.data[CONF_SCALE_COOLDOWN] == DEFAULT_SCALE_COOLDOWN
         assert (
             mock_config_entry.data[CONF_DEVICE_GROUPING_MODE]
             == DEFAULT_DEVICE_GROUPING_MODE
         )
+
+    async def test_reconfigure_with_legacy_scale_verification_timeout(
+        self, hass: HomeAssistant, mock_config_entry: MockConfigEntry
+    ):
+        """An entry that still stores the removed option reconfigures fine."""
+        legacy_key = "scale_verification_timeout"
+        hass.config_entries.async_update_entry(
+            mock_config_entry,
+            data={**mock_config_entry.data, legacy_key: 30},
+        )
+        with patched_connection():
+            result = await self._init_reconfigure(hass, mock_config_entry)
+            assert result["type"] is FlowResultType.FORM
+            assert legacy_key not in [str(k) for k in result["data_schema"].schema]
+
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"],
+                user_input={
+                    CONF_HOST: "host.example.com",
+                    CONF_API_TOKEN: "test-token",
+                    CONF_MONITOR_ALL_NAMESPACES: True,
+                },
+            )
+
+        assert result["type"] is FlowResultType.ABORT
+        assert result["reason"] == "reconfigure_successful"
 
 
 # ---------------------------------------------------------------------------
@@ -2075,7 +2091,6 @@ class TestReconfigureNamespacesStringEntry:
                 CONF_NAMESPACE: "production",
                 CONF_DEVICE_GROUPING_MODE: DEFAULT_DEVICE_GROUPING_MODE,
                 CONF_SWITCH_UPDATE_INTERVAL: DEFAULT_SWITCH_UPDATE_INTERVAL,
-                CONF_SCALE_VERIFICATION_TIMEOUT: DEFAULT_SCALE_VERIFICATION_TIMEOUT,
                 CONF_SCALE_COOLDOWN: DEFAULT_SCALE_COOLDOWN,
             },
             unique_id="test-cluster",
@@ -2227,7 +2242,6 @@ async def test_async_step_user_sets_all_defaults(hass: HomeAssistant):
     assert data[CONF_PORT] == DEFAULT_PORT
     assert data[CONF_VERIFY_SSL] == DEFAULT_VERIFY_SSL
     assert data[CONF_SWITCH_UPDATE_INTERVAL] == DEFAULT_SWITCH_UPDATE_INTERVAL
-    assert data[CONF_SCALE_VERIFICATION_TIMEOUT] == DEFAULT_SCALE_VERIFICATION_TIMEOUT
     assert data[CONF_SCALE_COOLDOWN] == DEFAULT_SCALE_COOLDOWN
     assert data[CONF_DEVICE_GROUPING_MODE] == DEFAULT_DEVICE_GROUPING_MODE
 
