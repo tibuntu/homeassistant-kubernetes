@@ -1103,3 +1103,15 @@ test("workloads say when no workload matches", async ({ page }) => {
   await page.locator(".search-input").fill("zzz");
   await expect(page.getByText("No workloads match your filters.")).toBeVisible();
 });
+
+test("stopped filter shows only suspended jobs", async ({ page }) => {
+  await page.goto(`${HARNESS}/workloads?category=jobs`);
+  await page.getByRole("button", { name: "Stopped" }).click();
+  await expect(
+    page.locator(".workload-card", { hasText: "paused-import" }),
+  ).toBeVisible();
+  await expect(page.locator(".workload-card", { hasText: "migrate" })).toHaveCount(0);
+  await expect(
+    page.locator(".workload-card", { hasText: "nightly-report" }),
+  ).toHaveCount(0);
+});
