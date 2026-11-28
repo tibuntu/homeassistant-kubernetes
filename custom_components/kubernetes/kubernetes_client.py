@@ -1333,15 +1333,16 @@ class KubernetesClient:
             _LOGGER.warning("Failed to parse Certificate item: %s", ex)
             return None
 
-    async def _fetch_resource_items(
+    async def _fetch_resource_pages(
         self,
         api_path: str,
         resource_name: str,
         *,
         cluster_scoped: bool = False,
         label: str = "request",
+        params: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Fetch the raw ``items`` of a Kubernetes resource list.
+        """Fetch the decoded list body of a Kubernetes resource, one per target.
 
         If cluster_scoped or monitor_all_namespaces: single GET to the cluster-wide URL.
         Otherwise: loop over configured namespaces. Raises KubernetesApiError on
@@ -1360,12 +1361,13 @@ class KubernetesClient:
             "Accept": "application/json",
         }
         timeout = aiohttp.ClientTimeout(total=10)
-        items: list[dict[str, Any]] = []
+        pages: list[dict[str, Any]] = []
 
         for namespace, url in targets:
             async with self._session.get(
                 url,
                 headers=headers,
+                params=params,
                 ssl=await self._get_ssl_param(),
                 timeout=timeout,
             ) as response:
@@ -1378,9 +1380,22 @@ class KubernetesClient:
                         f"with status {response.status}",
                         response.status,
                     )
-                data = await response.json()
-                items.extend(data.get("items", []))
-        return items
+                pages.append(await response.json())
+        return pages
+
+    async def _fetch_resource_items(
+        self,
+        api_path: str,
+        resource_name: str,
+        *,
+        cluster_scoped: bool = False,
+        label: str = "request",
+    ) -> list[dict[str, Any]]:
+        """Fetch the raw ``items`` of a Kubernetes resource list."""
+        pages = await self._fetch_resource_pages(
+            api_path, resource_name, cluster_scoped=cluster_scoped, label=label
+        )
+        return [item for page in pages for item in page.get("items", [])]
 
     async def _fetch_resource_list(
         self,
@@ -1407,15 +1422,30 @@ class KubernetesClient:
         *,
         cluster_scoped: bool = False,
     ) -> int:
-        """Count Kubernetes resources across the configured scope."""
-        return len(
-            await self._fetch_resource_items(
-                api_path,
-                resource_name,
-                cluster_scoped=cluster_scoped,
-                label="count request",
-            )
+        """Count resources from a one-item list plus ``remainingItemCount``."""
+        pages = await self._fetch_resource_pages(
+            api_path,
+            resource_name,
+            cluster_scoped=cluster_scoped,
+            label="count request",
+            params={"limit": "1"},
         )
+        total = 0
+        for page in pages:
+            metadata = page.get("metadata") or {}
+            remaining = metadata.get("remainingItemCount")
+            if remaining is None and metadata.get("continue"):
+                # The server omits the count for selector/legacy lists.
+                return len(
+                    await self._fetch_resource_items(
+                        api_path,
+                        resource_name,
+                        cluster_scoped=cluster_scoped,
+                        label="count request",
+                    )
+                )
+            total += len(page.get("items", [])) + (remaining or 0)
+        return total
 
     async def get_deployments_count(self) -> int:
         """Get the count of deployments in the namespace(s)."""

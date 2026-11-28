@@ -4463,6 +4463,115 @@ class TestFetchResourceCountExtended:
             await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
 
 
+class TestFetchResourceCountRemaining:
+    """_fetch_resource_count reads remainingItemCount from a one-item list."""
+
+    async def test_count_uses_remaining_item_count(self, mock_client):
+        mock_client.monitor_all_namespaces = True
+        mock_session = mock_aiohttp_session(
+            get=_mock_response(
+                200,
+                json_data={
+                    "items": [{"metadata": {"name": "r1"}}],
+                    "metadata": {"continue": "c", "remainingItemCount": 41},
+                },
+            )
+        )
+
+        with patch.object(mock_client, "_session", mock_session):
+            count = await mock_client._fetch_resource_count(
+                "apis/apps/v1", "deployments"
+            )
+
+        assert count == 42
+        assert mock_session.get.call_args.kwargs["params"] == {"limit": "1"}
+
+    async def test_count_last_page_without_remaining(self, mock_client):
+        mock_client.monitor_all_namespaces = True
+        mock_session = mock_aiohttp_session(
+            get=[
+                _mock_response(
+                    200,
+                    json_data={"items": [{"metadata": {"name": "r1"}}], "metadata": {}},
+                ),
+                _mock_response(200, json_data={"items": []}),
+            ]
+        )
+
+        with patch.object(mock_client, "_session", mock_session):
+            one = await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
+            zero = await mock_client._fetch_resource_count(
+                "apis/apps/v1", "deployments"
+            )
+
+        assert (one, zero) == (1, 0)
+
+    async def test_count_falls_back_without_remaining_item_count(self, mock_client):
+        mock_client.monitor_all_namespaces = True
+        mock_session = mock_aiohttp_session(
+            get=[
+                _mock_response(
+                    200,
+                    json_data={
+                        "items": [{"metadata": {"name": "r1"}}],
+                        "metadata": {"continue": "c"},
+                    },
+                ),
+                _mock_response(
+                    200,
+                    json_data={"items": [{"metadata": {"name": n}} for n in "abc"]},
+                ),
+            ]
+        )
+
+        with patch.object(mock_client, "_session", mock_session):
+            count = await mock_client._fetch_resource_count(
+                "apis/apps/v1", "deployments"
+            )
+
+        assert count == 3
+        assert mock_session.get.call_count == 2
+        assert mock_session.get.call_args_list[1].kwargs["params"] is None
+
+    async def test_count_sums_namespaces(self, mock_client):
+        mock_client.namespaces = ["a", "b"]
+        mock_client.monitor_all_namespaces = False
+        mock_session = mock_aiohttp_session(
+            get=[
+                _mock_response(
+                    200,
+                    json_data={
+                        "items": [{"metadata": {"name": "r1"}}],
+                        "metadata": {"continue": "c", "remainingItemCount": 4},
+                    },
+                ),
+                _mock_response(
+                    200,
+                    json_data={"items": [{"metadata": {"name": "r2"}}]},
+                ),
+            ]
+        )
+
+        with patch.object(mock_client, "_session", mock_session):
+            count = await mock_client._fetch_resource_count(
+                "apis/apps/v1", "deployments"
+            )
+
+        assert count == 6
+
+    async def test_count_non_200_carries_status(self, mock_client):
+        mock_client.monitor_all_namespaces = True
+        mock_session = mock_aiohttp_session(get=500)
+
+        with (
+            patch.object(mock_client, "_session", mock_session),
+            pytest.raises(KubernetesApiError) as exc_info,
+        ):
+            await mock_client._fetch_resource_count("apis/apps/v1", "deployments")
+
+        assert exc_info.value.status == 500
+
+
 class TestFetchResourceListExtended:
     """Extended tests for _fetch_resource_list edge cases."""
 
