@@ -136,8 +136,8 @@ class TestDeployments:
 
     async def test_get_deployments_count(self, k8s_client):
         count = await k8s_client.get_deployments_count()
-        assert isinstance(count, int)
-        assert count >= 1
+        assert count >= 2
+        assert count == len(await k8s_client.get_deployments())
 
 
 class TestStatefulSets:
