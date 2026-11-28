@@ -286,7 +286,7 @@ If the Home Assistant pod runs inside the same cluster it monitors, the integrat
 - **No token extraction step.** The pod already has the projected token mounted at `/var/run/secrets/kubernetes.io/serviceaccount/token`.
 - **Automatic rotation.** Kubernetes 1.21+ rotates projected ServiceAccount tokens (commonly hourly). With **Prefer in-cluster ServiceAccount token** enabled in the config flow, the integration re-reads the token file on each request and follows the rotation seamlessly. With this setting off, the captured-at-config-time token will eventually expire and auth-fail.
 - **Nothing to keep alive.** The integration authenticates with the token currently mounted in the pod. The pre-filled token stored in the entry is only a fallback, and since projected tokens are bound to their pod it stops working once the pod is replaced.
-- **Same RBAC rules apply.** The permission matrix above is unchanged — bind the existing `ClusterRole` (or namespace-scoped `Role`) to the ServiceAccount that the HA pod uses.
+- **Same RBAC rules apply.** The permission matrix above is unchanged — bind the existing `ClusterRole` to the ServiceAccount that the HA pod uses. For a namespace-scoped setup, bind the per-namespace `Role`s together with their small `ClusterRole` (a `Role` alone is not enough, see the [Namespace-Scoped Example](#namespace-scoped-example)).
 
 ### Pod spec
 
@@ -342,7 +342,13 @@ curl -sS \
 
 To limit only write access, use the chart value [`rbac.writeNamespaces`](#limiting-write-access-to-namespaces); it is the supported way. The hand-written variant below is for when reads should be scoped as well.
 
-If you want to restrict access to specific namespaces instead of cluster-wide, use a `Role` + `RoleBinding` per namespace and a minimal `ClusterRole` for cluster-scoped resources (nodes, namespaces):
+To restrict access to specific namespaces instead of cluster-wide, use a `Role` + `RoleBinding` per namespace **and** the `ClusterRole` below. The `ClusterRole` is required, not optional:
+
+- Every poll lists nodes cluster-wide, even when `nodes` is in *Disable data collection* (the switches read them). A 403 on any list fails the whole poll and every entity goes unavailable.
+- The config flow lists namespaces for its namespace picker.
+- Without the `metrics.k8s.io` rules the integration raises the *metrics server unavailable* repair issue and shows no CPU or memory.
+
+Several namespaces work: turn off *Monitor All Namespaces* (it makes every list cluster-wide, which the `Role`s do not allow), select each namespace that has a `Role` in the config flow, and create one `Role` + `RoleBinding` per namespace. Bind the `ClusterRole` once with a `ClusterRoleBinding`.
 
 ```yaml
 # Cluster-scoped access for nodes and namespace discovery.
@@ -361,6 +367,23 @@ rules:
 - apiGroups: [""]
   resources: ["namespaces"]
   verbs: ["list"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["nodes"]
+  verbs: ["list"]
+---
+# Bind the ClusterRole once
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homeassistant-kubernetes-integration-cluster
+subjects:
+- kind: ServiceAccount
+  name: homeassistant-kubernetes-integration
+  namespace: homeassistant
+roleRef:
+  kind: ClusterRole
+  name: homeassistant-kubernetes-integration-cluster
+  apiGroup: rbac.authorization.k8s.io
 ---
 # Namespace-scoped role (repeat per monitored namespace)
 apiVersion: rbac.authorization.k8s.io/v1
@@ -402,6 +425,24 @@ rules:
 - apiGroups: ["autoscaling"]
   resources: ["horizontalpodautoscalers"]
   verbs: ["list", "watch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods"]
+  verbs: ["list"]
+---
+# Bind the Role in each monitored namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: target-namespace
+  name: homeassistant-kubernetes-integration
+subjects:
+- kind: ServiceAccount
+  name: homeassistant-kubernetes-integration
+  namespace: homeassistant
+roleRef:
+  kind: Role
+  name: homeassistant-kubernetes-integration
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## Troubleshooting RBAC Issues
