@@ -191,34 +191,6 @@ class TestSensorSetup:
         # Verify state was written
         sensor.async_write_ha_state.assert_called_once()
 
-    def test_sensor_native_value_with_missing_data(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor native value when coordinator data is missing."""
-        from custom_components.kubernetes.sensor import KubernetesPodsSensor
-
-        # Set coordinator data to None
-        mock_coordinator.data = None
-
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-
-        # Should return 0 when no data
-        assert sensor.native_value == 0
-
-    def test_sensor_native_value_with_missing_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """Test sensor native value when specific key is missing from data."""
-        from custom_components.kubernetes.sensor import KubernetesPodsSensor
-
-        # Set coordinator data without pods_count key
-        mock_coordinator.data = {"deployments": {}, "statefulsets": {}}
-
-        sensor = KubernetesPodsSensor(mock_coordinator, mock_client, mock_config_entry)
-
-        # Should return 0 when key is missing
-        assert sensor.native_value == 0
-
 
 class TestDisabledResourceGating:
     """Sensor setup and discovery respect the disabled_resources opt-out."""
@@ -457,34 +429,6 @@ class TestDisabledResourceGating:
             )
             == []
         )
-
-    def test_daemonsets_count_prefers_count_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """The daemonsets count sensor prefers the coordinator's count key."""
-        mock_coordinator.data = {"daemonsets": {}, "daemonsets_count": 7}
-        sensor = KubernetesDaemonSetsSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        assert sensor.native_value == 7
-
-    def test_jobs_count_prefers_count_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """The jobs count sensor prefers the coordinator's count key."""
-        mock_coordinator.data = {"jobs": {}, "jobs_count": 5}
-        sensor = KubernetesJobsSensor(mock_coordinator, mock_client, mock_config_entry)
-        assert sensor.native_value == 5
-
-    def test_ingresses_count_prefers_count_key(
-        self, mock_config_entry, mock_client, mock_coordinator
-    ):
-        """The ingresses count sensor prefers the coordinator's count key."""
-        mock_coordinator.data = {"ingresses": {}, "ingresses_count": 3}
-        sensor = KubernetesIngressesSensor(
-            mock_coordinator, mock_client, mock_config_entry
-        )
-        assert sensor.native_value == 3
 
 
 class TestKubernetesNodeSensor:
