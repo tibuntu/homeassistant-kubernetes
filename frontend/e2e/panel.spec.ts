@@ -36,6 +36,15 @@ test("overview count card opens the workloads tab with its category preset", asy
   await expect(page.locator(".workload-card", { hasText: "db" })).toHaveCount(0);
 });
 
+test("nodes show CPU and memory usage bars when metrics exist", async ({ page }) => {
+  await page.goto(`${HARNESS}/nodes`);
+  const node = page.locator(".node-card", { hasText: "node-1" });
+  await expect(node.locator(".resource-bar-fill").first()).toBeVisible();
+  await expect(
+    node.locator(".resource-bar-container", { hasText: "30%" }).first(),
+  ).toBeVisible();
+});
+
 test("overview lists restarting pods with their last termination", async ({ page }) => {
   await page.goto(HARNESS);
   const card = page.locator(".alert-card", { hasText: "default/worker-abc" });
