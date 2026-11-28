@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from homeassistant.core import HomeAssistant
@@ -12,6 +14,16 @@ from custom_components.kubernetes.const import DOMAIN
 from custom_components.kubernetes.system_health import (
     async_register,
     system_health_info,
+)
+
+STRINGS = json.loads(
+    (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "kubernetes"
+        / "translations"
+        / "en.json"
+    ).read_text()
 )
 
 # `add_loaded_entry` (LOADED-state entry + KubernetesEntryData runtime_data)
@@ -156,3 +168,21 @@ async def test_info_tolerates_missing_data_payload(
     assert info["cluster_health"] == "ok"
     assert info["total_pods"] == 0
     assert info["total_nodes"] == 0
+
+
+async def test_info_keys_are_translated(
+    hass: HomeAssistant, add_loaded_entry, make_coordinator
+):
+    """Every key of both result shapes has a label under system_health.info."""
+    labels = set(STRINGS["system_health"]["info"])
+
+    assert set(await system_health_info(hass)) <= labels
+
+    add_loaded_entry(
+        "a",
+        coordinator=make_coordinator(
+            data={"pods_count": 1, "nodes_count": 1}, last_update_success=True
+        ),
+    )
+
+    assert set(await system_health_info(hass)) <= labels
