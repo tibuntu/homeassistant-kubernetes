@@ -12,6 +12,7 @@ from homeassistant.components import websocket_api
 from homeassistant.components.websocket_api.const import WebSocketCommandHandler
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import Unauthorized
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 import voluptuous as vol
 
 from .alerts import build_alerts, job_state
@@ -42,6 +43,7 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     POD_LOGS_MAX_TAIL_LINES,
     POD_LOGS_MIN_TAIL_LINES,
+    SIGNAL_COORDINATOR_UPDATED,
     WORKLOAD_TYPE_DEPLOYMENT,
     WORKLOAD_TYPE_STATEFULSET,
 )
@@ -785,15 +787,9 @@ def websocket_subscribe_updates(
             websocket_api.event_message(msg["id"], {"event": "updated"})
         )
 
-    unsubs: list[Callable[[], None]] = [
-        entry.runtime_data.coordinator.async_add_listener(_push_update)
-        for entry in get_loaded_entries(hass)
-    ]
-
-    @callback
-    def _unsubscribe() -> None:
-        for unsub in unsubs:
-            unsub()
-
-    connection.subscriptions[msg["id"]] = _unsubscribe
+    # One integration-wide signal (fired by every entry's coordinator) instead
+    # of per-coordinator listeners, which went dead when an entry reloaded.
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(
+        hass, SIGNAL_COORDINATOR_UPDATED, _push_update
+    )
     connection.send_result(msg["id"])

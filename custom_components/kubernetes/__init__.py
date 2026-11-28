@@ -12,8 +12,9 @@ from homeassistant.components.frontend import (
 )
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.const import EVENT_HOMEASSISTANT_CLOSE, Platform
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 from .config_flow import KubernetesConfigFlow
@@ -31,6 +32,7 @@ from .const import (
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL,
+    SIGNAL_COORDINATOR_UPDATED,
 )
 from .coordinator import (
     KubernetesConfigEntry,
@@ -93,6 +95,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: KubernetesConfigEntry) -
         client=client,
         coordinator=coordinator,
     )
+
+    # Relay every update on the integration-wide signal the panel subscribes
+    # to, so its push keeps working across entry reloads.
+    @callback
+    def _relay_update() -> None:
+        async_dispatcher_send(hass, SIGNAL_COORDINATOR_UPDATED)
+
+    entry.async_on_unload(coordinator.async_add_listener(_relay_update))
 
     # Remove repair issues left over from a previous setup when the feature
     # that would clear them (watch/events/metrics) is disabled — nothing else

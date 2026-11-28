@@ -2,6 +2,10 @@
 
 DOMAIN = "kubernetes"
 
+# Integration-wide dispatcher signal fired on every coordinator update; the
+# panel subscription listens to it so it survives entry reloads.
+SIGNAL_COORDINATOR_UPDATED = f"{DOMAIN}_coordinator_updated"
+
 # Configuration keys
 CONF_HOST = "host"
 CONF_PORT = "port"
