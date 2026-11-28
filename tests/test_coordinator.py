@@ -4123,6 +4123,24 @@ class TestEventWatchLoop:
     # _run_event_watch_loop behavioural tests
     # ------------------------------------------------------------------
 
+    async def test_event_watch_loop_anchors_with_limit_one(
+        self, coord_warning, mock_client
+    ):
+        """The events anchor list must ask the server for at most one item."""
+        mock_client.list_resource_with_version.return_value = ([], "100")
+
+        async def _stop_stream(url, rv):
+            coord_warning._watch_stop_event.set()
+            return
+            yield
+
+        mock_client.watch_stream = _stop_stream
+        url = "https://test-cluster.example.com:6443/api/v1/events"
+
+        await coord_warning._run_event_watch_loop(url)
+
+        mock_client.list_resource_with_version.assert_awaited_with(url, limit=1)
+
     async def test_event_watch_loop_anchors_without_firing_backlog(
         self, coord_warning, mock_client
     ):
@@ -4217,7 +4235,7 @@ class TestEventWatchLoop:
     async def test_event_watch_loop_handles_cancel(self, coord_warning, mock_client):
         """CancelledError during the initial list should exit the loop cleanly."""
 
-        async def _raise_cancel(url):
+        async def _raise_cancel(url, **_kwargs):
             raise asyncio.CancelledError
 
         mock_client.list_resource_with_version.side_effect = _raise_cancel
@@ -4237,7 +4255,7 @@ class TestEventWatchLoop:
         """
         call_count = 0
 
-        async def _list_side_effect(url):
+        async def _list_side_effect(url, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count >= 2:
@@ -4271,7 +4289,7 @@ class TestEventWatchLoop:
         """Non-cancelled exceptions should trigger a backoff reconnect."""
         call_count = 0
 
-        async def _list_side_effect(url):
+        async def _list_side_effect(url, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -4298,7 +4316,7 @@ class TestEventWatchLoop:
         attempts = 0
         seen = []
 
-        async def _list(url):
+        async def _list(url, **_kwargs):
             nonlocal attempts
             attempts += 1
             if attempts == 1:
@@ -4340,7 +4358,7 @@ class TestEventWatchLoop:
         seen = []
         intervals = []
 
-        async def _list(url):
+        async def _list(url, **_kwargs):
             nonlocal calls
             calls += 1
             if calls > 1:
@@ -4397,7 +4415,7 @@ class TestEventWatchLoop:
                 request_info=MagicMock(), history=(), status=403, message="Forbidden"
             )
 
-        async def _list(url):
+        async def _list(url, **_kwargs):
             nonlocal calls
             calls += 1
             if calls == 4:
@@ -4440,7 +4458,7 @@ class TestEventWatchLoop:
         calls = 0
         at_watch = []
 
-        async def _list(url):
+        async def _list(url, **_kwargs):
             nonlocal calls
             calls += 1
             if calls == 1:
@@ -4486,7 +4504,7 @@ class TestEventWatchLoop:
         coord = coord_warning
         calls = 0
 
-        async def _list(url):
+        async def _list(url, **_kwargs):
             nonlocal calls
             calls += 1
             if calls == 2:
@@ -4629,7 +4647,7 @@ class TestEventWatchLoop:
         """After WATCH_MAX_FAILURE_STREAK consecutive failures the repair issue is raised."""
         call_count = 0
 
-        async def _list_side_effect(url):
+        async def _list_side_effect(url, **_kwargs):
             nonlocal call_count
             call_count += 1
             if call_count <= WATCH_MAX_FAILURE_STREAK:
@@ -4662,7 +4680,7 @@ class TestEventWatchLoop:
     ):
         """If stop event fires during backoff wait, the event loop exits cleanly."""
 
-        async def _list_raises(url):
+        async def _list_raises(url, **_kwargs):
             raise ConnectionError("fail")
 
         mock_client.list_resource_with_version.side_effect = _list_raises

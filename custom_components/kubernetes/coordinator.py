@@ -1599,7 +1599,7 @@ class KubernetesDataCoordinator(DataUpdateCoordinator):
                     (
                         _,
                         resource_version,
-                    ) = await self.client.list_resource_with_version(url)
+                    ) = await self.client.list_resource_with_version(url, limit=1)
                     failure_streak = 0
                     if not watch_forbidden:
                         self._sync_watch_repair_issue(rt, failing=False)
