@@ -192,7 +192,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
     /** Set when an HPA manages the workload — only 0 sticks then. */
     hpa: string | null;
   } | null = null;
-  @state() private _scaleValue: number = 0;
+  @state() private _scaleValue: number | null = 0;
   @state() private _scaling = false;
 
   protected loadErrorFallback = "Failed to load workloads data";
@@ -1197,7 +1197,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
   }
 
   private async _confirmScale(): Promise<void> {
-    if (!this._scaleTarget) return;
+    if (!this._scaleTarget || this._scaleValue === null) return;
     this._scaling = true;
     try {
       await this.hass.callService("kubernetes", "scale_workload", {
@@ -1244,8 +1244,8 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
           <div class="scale-controls">
             <button
               class="scale-btn"
-              ?disabled=${this._scaleValue <= 0 || this._scaling}
-              @click=${() => this._scaleValue--}
+              ?disabled=${this._scaleValue === null || this._scaleValue <= 0 || this._scaling}
+              @click=${() => this._scaleValue !== null && this._scaleValue--}
             >
               <ha-icon icon="mdi:minus"></ha-icon>
             </button>
@@ -1253,17 +1253,17 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
               class="scale-input"
               type="number"
               min="0"
-              .value=${String(this._scaleValue)}
+              .value=${this._scaleValue === null ? "" : String(this._scaleValue)}
               ?disabled=${this._scaling}
               @input=${(e: InputEvent) => {
                 const v = parseInt((e.target as HTMLInputElement).value, 10);
-                if (!isNaN(v) && v >= 0) this._scaleValue = v;
+                this._scaleValue = !isNaN(v) && v >= 0 ? v : null;
               }}
             />
             <button
               class="scale-btn"
-              ?disabled=${this._scaling}
-              @click=${() => this._scaleValue++}
+              ?disabled=${this._scaleValue === null || this._scaling}
+              @click=${() => this._scaleValue !== null && this._scaleValue++}
             >
               <ha-icon icon="mdi:plus"></ha-icon>
             </button>
@@ -1277,6 +1277,7 @@ export class K8sWorkloads extends K8sDataView<WorkloadsResponse> {
               @click=${this._confirmScale}
               ?disabled=${
                 this._scaling ||
+                this._scaleValue === null ||
                 this._scaleValue === target.current ||
                 (target.hpa !== null && this._scaleValue !== 0)
               }
