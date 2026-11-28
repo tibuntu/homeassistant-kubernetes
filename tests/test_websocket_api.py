@@ -951,9 +951,6 @@ class TestWebsocketWorkloadsList:
             "suspend": False,
             "last_schedule_time": "2024-01-01T02:00:00Z",
             "active_jobs_count": 0,
-            "successful_jobs_history_limit": 3,
-            "failed_jobs_history_limit": 1,
-            "concurrency_policy": "Forbid",
             "uid": "cj-uid",
             "creation_timestamp": "2023-01-01T00:00:00Z",
         }
@@ -981,7 +978,6 @@ class TestWebsocketWorkloadsList:
         assert cj["schedule"] == "0 2 * * *"
         assert cj["suspend"] is False
         assert cj["active_jobs_count"] == 0
-        assert cj["concurrency_policy"] == "Forbid"
 
 
 class TestWebsocketIngressesList:

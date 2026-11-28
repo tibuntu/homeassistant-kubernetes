@@ -684,7 +684,7 @@ async def test_parse_ingress_item_tls_url(mock_client):
     assert result["ingress_class"] == "nginx"
     assert result["urls"] == ["https://example.com/"]
     assert result["tls_hosts"] == ["example.com"]
-    assert result["load_balancer"] == "10.0.0.1"
+    assert "load_balancer" not in result
     assert result["rules"][0]["service_name"] == "web-svc"
     assert result["rules"][0]["service_port"] == 80
     assert result["creation_timestamp"] == "2026-01-01T00:00:00Z"
@@ -753,16 +753,6 @@ async def test_parse_ingress_item_named_service_port(mock_client):
     result = mock_client._parse_ingress_item(item)
 
     assert result["rules"][0]["service_port"] == "http"
-
-
-async def test_parse_ingress_item_load_balancer_hostname(mock_client):
-    """Load balancer hostname is used when no IP is present."""
-    item = _ingress_item()
-    item["status"]["loadBalancer"]["ingress"] = [{"hostname": "lb.example.com"}]
-
-    result = mock_client._parse_ingress_item(item)
-
-    assert result["load_balancer"] == "lb.example.com"
 
 
 async def test_parse_ingress_item_malformed_returns_none(mock_client):
@@ -905,7 +895,7 @@ def _hpa_item():
 
 
 async def test_parse_hpa_item(mock_client):
-    """A full HPA is parsed into target, bounds, status and boolean conditions."""
+    """A full HPA is parsed into its target and replica bounds only."""
     assert mock_client._parse_hpa_item(_hpa_item()) == {
         "name": "web-hpa",
         "namespace": "default",
@@ -913,19 +903,11 @@ async def test_parse_hpa_item(mock_client):
         "target_name": "web",
         "min_replicas": 2,
         "max_replicas": 10,
-        "current_replicas": 3,
-        "desired_replicas": 4,
-        "conditions": {
-            "AbleToScale": True,
-            "ScalingActive": True,
-            "ScalingLimited": False,
-        },
-        "creation_timestamp": "2026-01-01T00:00:00Z",
     }
 
 
 async def test_parse_hpa_item_defaults(mock_client):
-    """minReplicas defaults to 1; a fresh HPA without status parses to zeros."""
+    """minReplicas defaults to 1; an HPA without status still parses."""
     item = _hpa_item()
     del item["spec"]["minReplicas"]
     del item["status"]
@@ -933,9 +915,8 @@ async def test_parse_hpa_item_defaults(mock_client):
     result = mock_client._parse_hpa_item(item)
 
     assert result["min_replicas"] == 1
-    assert result["current_replicas"] == 0
-    assert result["desired_replicas"] == 0
-    assert result["conditions"] == {}
+    for key in ("current_replicas", "desired_replicas", "conditions"):
+        assert key not in result
 
 
 async def test_parse_hpa_item_malformed(mock_client):
@@ -1629,9 +1610,6 @@ async def test_get_cronjobs_success(mock_client):
             "suspend": False,
             "active_jobs_count": 2,
             "last_schedule_time": "2023-01-01T02:00:00Z",
-            "successful_jobs_history_limit": 3,
-            "failed_jobs_history_limit": 1,
-            "concurrency_policy": "Allow",
         },
         {
             "name": "cleanup-job",
@@ -1641,9 +1619,6 @@ async def test_get_cronjobs_success(mock_client):
             "suspend": True,
             "active_jobs_count": 0,
             "last_schedule_time": None,
-            "successful_jobs_history_limit": 5,
-            "failed_jobs_history_limit": 2,
-            "concurrency_policy": "Forbid",
         },
     ]
     mock_client._fetch_resource_list = AsyncMock(return_value=mock_cronjobs)
@@ -1656,18 +1631,12 @@ async def test_get_cronjobs_success(mock_client):
     assert cronjobs[0]["suspend"] is False
     assert cronjobs[0]["active_jobs_count"] == 2
     assert cronjobs[0]["last_schedule_time"] == "2023-01-01T02:00:00Z"
-    assert cronjobs[0]["successful_jobs_history_limit"] == 3
-    assert cronjobs[0]["failed_jobs_history_limit"] == 1
-    assert cronjobs[0]["concurrency_policy"] == "Allow"
 
     assert cronjobs[1]["name"] == "cleanup-job"
     assert cronjobs[1]["schedule"] == "0 3 * * *"
     assert cronjobs[1]["suspend"] is True
     assert cronjobs[1]["active_jobs_count"] == 0
     assert cronjobs[1]["last_schedule_time"] is None
-    assert cronjobs[1]["successful_jobs_history_limit"] == 5
-    assert cronjobs[1]["failed_jobs_history_limit"] == 2
-    assert cronjobs[1]["concurrency_policy"] == "Forbid"
 
 
 async def test_get_cronjobs_all_namespaces(mock_client):
@@ -3932,9 +3901,12 @@ class TestFormatCronjobFromDict:
         assert result["last_successful_time"] == "2024-06-01T02:03:00Z"
         assert "next_schedule_time" not in result
         assert result["active_jobs_count"] == 2
-        assert result["successful_jobs_history_limit"] == 5
-        assert result["failed_jobs_history_limit"] == 2
-        assert result["concurrency_policy"] == "Forbid"
+        for key in (
+            "successful_jobs_history_limit",
+            "failed_jobs_history_limit",
+            "concurrency_policy",
+        ):
+            assert key not in result
         assert result["uid"] == "cj-uid-1"
         assert result["creation_timestamp"] == "2024-01-15T10:00:00Z"
 
@@ -3949,9 +3921,6 @@ class TestFormatCronjobFromDict:
         assert result["last_successful_time"] is None
         assert "next_schedule_time" not in result
         assert result["active_jobs_count"] == 0
-        assert result["successful_jobs_history_limit"] == 3
-        assert result["failed_jobs_history_limit"] == 1
-        assert result["concurrency_policy"] == "Allow"
         assert result["uid"] == ""
         assert result["creation_timestamp"] is None
 
