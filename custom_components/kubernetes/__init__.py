@@ -17,7 +17,6 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
-from .config_flow import KubernetesConfigFlow
 from .const import (
     CONF_ENABLE_EVENTS,
     CONF_ENABLE_PANEL,
