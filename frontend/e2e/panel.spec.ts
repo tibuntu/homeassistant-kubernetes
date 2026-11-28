@@ -334,7 +334,7 @@ async function countMutationControls(page: Page): Promise<number[]> {
 
   await openTab(page, "Pods");
   await expect(page.locator("tbody tr").first()).toBeVisible();
-  const pods = await page.locator(".delete-btn").count();
+  const pods = await page.locator('button[title="Delete pod"]').count();
 
   await openTab(page, "Nodes");
   await expect(page.locator(".node-card").first()).toBeVisible();
@@ -435,7 +435,10 @@ test("pod logs dialog shows logs, refetches per container and closes on Escape",
 }) => {
   await page.goto(HARNESS);
   await openTab(page, "Pods");
-  await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+  await page
+    .locator("tr", { hasText: "db-0" })
+    .locator('button[title="Show logs"]')
+    .click();
 
   await expect(page.locator(".logs-output")).toContainText("listening on :8080");
   await page
@@ -467,7 +470,10 @@ test("pod logs wrap by default, the choice persists and can be turned off", asyn
   await page.goto(HARNESS);
   await openTab(page, "Pods");
   const open = async () => {
-    await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+    await page
+      .locator("tr", { hasText: "db-0" })
+      .locator('button[title="Show logs"]')
+      .click();
     await expect(page.locator(".logs-output")).toBeVisible();
   };
   const metrics = () =>
@@ -496,7 +502,10 @@ test("pod logs auto-refresh polls every 5 s and stops on close", async ({ page }
   await page.clock.install();
   await page.goto(HARNESS);
   await openTab(page, "Pods");
-  await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+  await page
+    .locator("tr", { hasText: "db-0" })
+    .locator('button[title="Show logs"]')
+    .click();
   await expect(page.locator(".logs-output")).toBeVisible();
   const count = () =>
     page.evaluate(
@@ -528,7 +537,10 @@ test("pod logs keep the scroll position unless the view was at the bottom", asyn
   await page.clock.install();
   await page.goto(HARNESS);
   await openTab(page, "Pods");
-  await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+  await page
+    .locator("tr", { hasText: "db-0" })
+    .locator('button[title="Show logs"]')
+    .click();
   const pre = page.locator(".logs-output");
   await expect(pre).toBeVisible();
   await page.locator(".logs-wrap-toggle").uncheck();
@@ -564,7 +576,7 @@ test("pod logs failure shows an inline error in the dialog", async ({ page }) =>
   await openTab(page, "Pods");
   await page
     .locator("tr", { hasText: "web-7d9f8b-abc12" })
-    .locator(".logs-btn")
+    .locator('button[title="Show logs"]')
     .click();
 
   await expect(page.locator(".logs-dialog .inline-error")).toContainText(
@@ -643,7 +655,10 @@ test("pod logs forbidden error links the RBAC docs", async ({ page }) => {
     window.__k8s.fail.add("kubernetes/pods/logs");
   });
   await openTab(page, "Pods");
-  await page.locator("tr", { hasText: "db-0" }).locator(".logs-btn").click();
+  await page
+    .locator("tr", { hasText: "db-0" })
+    .locator('button[title="Show logs"]')
+    .click();
 
   const error = page.locator(".logs-dialog .inline-error");
   await expect(error).toContainText("kubernetes/pods/logs failed");

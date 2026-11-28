@@ -1443,32 +1443,6 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         min-width: 40px;
       }
 
-      .delete-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        padding: 4px;
-        border-radius: 50%;
-        color: var(--secondary-text-color);
-        --mdc-icon-size: 18px;
-        transition:
-          color 0.2s,
-          background 0.2s;
-      }
-
-      .delete-btn:hover {
-        color: var(--error-color, #f44336);
-        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      }
-
-      .delete-btn.logs-btn:hover {
-        color: var(--primary-color);
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
-      }
-
       .row-actions {
         display: flex;
         align-items: center;
@@ -1735,14 +1709,14 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         <td>
           ${F(this.hass)?S`<div class="row-actions">
                   ${e.pod_logs_enabled?S`<button
-                          class="delete-btn logs-btn"
+                          class="action-btn logs"
                           title="Show logs"
                           @click=${()=>this._openLogs(n,t)}
                         >
                           <ha-icon icon="mdi:text-box-outline"></ha-icon>
                         </button>`:w}
                   <button
-                    class="delete-btn"
+                    class="action-btn delete"
                     title="Delete pod"
                     @click=${()=>this._requestDelete(n,t)}
                   >
@@ -2996,7 +2970,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         flex-wrap: wrap;
       }
 
-      .action-btn {
+      .settings-link-btn {
         display: inline-flex;
         align-items: center;
         gap: 6px;
@@ -3013,7 +2987,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         --mdc-icon-size: 18px;
       }
 
-      .action-btn:hover {
+      .settings-link-btn:hover {
         background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
         border-color: var(--primary-color);
         color: var(--primary-color);
@@ -3031,7 +3005,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
         </div>
 
         <div class="actions-bar">
-          <button class="action-btn" @click=${this._navigateToIntegration}>
+          <button class="settings-link-btn" @click=${this._navigateToIntegration}>
             <ha-icon icon="mdi:cog"></ha-icon>
             Configure Integration
           </button>

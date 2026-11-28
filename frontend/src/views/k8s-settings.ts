@@ -154,7 +154,7 @@ export class K8sSettings extends K8sDataView<ConfigResponse> {
         flex-wrap: wrap;
       }
 
-      .action-btn {
+      .settings-link-btn {
         display: inline-flex;
         align-items: center;
         gap: 6px;
@@ -171,7 +171,7 @@ export class K8sSettings extends K8sDataView<ConfigResponse> {
         --mdc-icon-size: 18px;
       }
 
-      .action-btn:hover {
+      .settings-link-btn:hover {
         background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.08);
         border-color: var(--primary-color);
         color: var(--primary-color);
@@ -200,7 +200,7 @@ export class K8sSettings extends K8sDataView<ConfigResponse> {
         </div>
 
         <div class="actions-bar">
-          <button class="action-btn" @click=${this._navigateToIntegration}>
+          <button class="settings-link-btn" @click=${this._navigateToIntegration}>
             <ha-icon icon="mdi:cog"></ha-icon>
             Configure Integration
           </button>

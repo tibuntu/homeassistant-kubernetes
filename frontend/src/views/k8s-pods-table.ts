@@ -777,32 +777,6 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         min-width: 40px;
       }
 
-      .delete-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: none;
-        cursor: pointer;
-        padding: 4px;
-        border-radius: 50%;
-        color: var(--secondary-text-color);
-        --mdc-icon-size: 18px;
-        transition:
-          color 0.2s,
-          background 0.2s;
-      }
-
-      .delete-btn:hover {
-        color: var(--error-color, #f44336);
-        background: rgba(var(--rgb-error-color, 244, 67, 54), 0.1);
-      }
-
-      .delete-btn.logs-btn:hover {
-        color: var(--primary-color);
-        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.1);
-      }
-
       .row-actions {
         display: flex;
         align-items: center;
@@ -1165,7 +1139,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
                   ${
                     cluster.pod_logs_enabled
                       ? html`<button
-                          class="delete-btn logs-btn"
+                          class="action-btn logs"
                           title="Show logs"
                           @click=${() => this._openLogs(entryId, pod)}
                         >
@@ -1174,7 +1148,7 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
                       : nothing
                   }
                   <button
-                    class="delete-btn"
+                    class="action-btn delete"
                     title="Delete pod"
                     @click=${() => this._requestDelete(entryId, pod)}
                   >
