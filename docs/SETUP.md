@@ -4,7 +4,7 @@ This guide walks you through setting up the required Kubernetes service account 
 
 ## Kubernetes Version
 
-The integration supports **Kubernetes 1.35 – 1.37** (the three most recent stable releases). Only stable GA APIs are used, so older clusters may work but are not CI-tested. The supported range is tracked in [`.github/workflows/k8s-compat.yaml`](https://github.com/tibuntu/homeassistant-kubernetes/blob/main/.github/workflows/k8s-compat.yaml) and updates automatically via Renovate when a new Kubernetes release is published.
+The integration supports **Kubernetes 1.35 – 1.37** (the three most recent stable releases). The core features use only stable (GA) Kubernetes APIs, so older clusters may work but are not CI-tested; CPU and memory usage (Metrics API), HTTPRoutes (Gateway API) and Certificates (cert-manager) read optional APIs outside that set. The supported range is tracked in [`.github/workflows/k8s-compat.yaml`](https://github.com/tibuntu/homeassistant-kubernetes/blob/main/.github/workflows/k8s-compat.yaml) and updates automatically via Renovate when a new Kubernetes release is published.
 
 ## Picking the right path
 
