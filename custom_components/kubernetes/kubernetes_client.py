@@ -1489,9 +1489,9 @@ class KubernetesClient:
     ) -> str | None:
         """Return an error message if name/namespace must not reach an API path."""
         if not is_valid_k8s_name(name):
-            msg = f"Refusing to modify {kind}: invalid name {name!r}"
+            msg = f"Rejected {kind}: invalid name {name!r}"
         elif namespaced and not is_valid_k8s_namespace(namespace or self.namespace):
-            msg = f"Refusing to modify {kind} {name!r}: invalid namespace {namespace or self.namespace!r}"
+            msg = f"Rejected {kind} {name!r}: invalid namespace {namespace or self.namespace!r}"
         else:
             return None
         _LOGGER.error(msg)
@@ -1686,8 +1686,11 @@ class KubernetesClient:
         aiohttp only. The result is capped at ``POD_LOGS_LIMIT_BYTES`` so a chatty
         pod cannot blow up the WebSocket frame; ``truncated`` is True when the
         cap was hit. Raises KubernetesApiError on any non-200 so a 403/404
-        reaches the caller as an error, not as empty logs.
+        reaches the caller as an error, not as empty logs. An invalid
+        name/namespace raises before any request.
         """
+        if msg := self._invalid_target("pod", pod_name, namespace):
+            raise KubernetesApiError(msg)
         # The API server applies limitBytes *after* tailLines, i.e. it cuts off
         # the newest lines. So the server limit is only a memory guard (if it
         # is ever hit, the newest lines are missing, but `truncated` is still
