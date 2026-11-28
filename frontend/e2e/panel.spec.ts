@@ -118,6 +118,27 @@ test("pods column visibility survives a reload", async ({ page }) => {
   await expect(page.locator("th", { hasText: "Node" })).toHaveCount(0);
 });
 
+test("pods sort headers expose aria-sort and work from the keyboard", async ({
+  page,
+}) => {
+  await page.goto(HARNESS);
+  await openTab(page, "Pods");
+  const th = (name: string) =>
+    page.locator("th", { has: page.getByRole("button", { name, exact: true }) });
+
+  await page.getByRole("button", { name: "Restarts" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(th("Restarts")).toHaveAttribute("aria-sort", "ascending");
+  await page.keyboard.press("Enter");
+  await expect(th("Restarts")).toHaveAttribute("aria-sort", "descending");
+  for (const name of ["Name", "Namespace", "Status", "CPU", "Memory", "Node", "Age"]) {
+    await expect(th(name)).toHaveAttribute("aria-sort", "none");
+  }
+  expect(await pathAndQuery(page)).toBe(
+    "/e2e/harness.html/pods?sort=restarts&dir=desc",
+  );
+});
+
 test("pods table shows usage and sorts by CPU and memory", async ({ page }) => {
   await page.goto(HARNESS);
   await openTab(page, "Pods");
@@ -130,14 +151,14 @@ test("pods table shows usage and sorts by CPU and memory", async ({ page }) => {
     "256 Mi",
   );
 
-  await page.locator("th", { hasText: "CPU" }).click();
+  await page.getByRole("button", { name: "CPU" }).click();
   await expect(firstName()).toHaveText("db-0");
-  await page.locator("th", { hasText: "CPU" }).click();
+  await page.getByRole("button", { name: "CPU" }).click();
   await expect(firstName()).toHaveText("web-7d9f8b-abc12");
 
-  await page.locator("th", { hasText: "Memory" }).click();
+  await page.getByRole("button", { name: "Memory" }).click();
   await expect(firstName()).toHaveText("web-7d9f8b-abc12");
-  await page.locator("th", { hasText: "Memory" }).click();
+  await page.getByRole("button", { name: "Memory" }).click();
   await expect(firstName()).toHaveText("db-0");
 });
 
@@ -893,8 +914,8 @@ test("reload restores the tab and its filters from the URL", async ({ page }) =>
   await openTab(page, "Pods");
   await page.locator(".search-input").fill("db");
   await page.locator(".filter-chip", { hasText: "Running" }).click();
-  await page.locator("th", { hasText: "Restarts" }).click();
-  await page.locator("th", { hasText: "Restarts" }).click();
+  await page.getByRole("button", { name: "Restarts" }).click();
+  await page.getByRole("button", { name: "Restarts" }).click();
   expect(await pathAndQuery(page)).toBe(
     "/e2e/harness.html/pods?search=db&phase=Running&sort=restarts&dir=desc",
   );

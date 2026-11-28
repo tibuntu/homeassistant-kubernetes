@@ -369,13 +369,6 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     }
   }
 
-  private _handleSortKeydown(e: KeyboardEvent, field: SortField): void {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      this._handleSort(field);
-    }
-  }
-
   private _requestDelete(entryId: string, pod: PodData): void {
     this._deleteConfirm = {
       entry_id: entryId,
@@ -606,6 +599,17 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
     }
   }
 
+  private _sortHeader(field: SortField, label: string) {
+    const icon = this._sortIcon(field);
+    const dir =
+      this._sortField !== field ? "none" : this._sortAsc ? "ascending" : "descending";
+    return html`<th aria-sort=${dir}>
+      <button class="sort-btn" @click=${() => this._handleSort(field)}>
+        ${label} ${icon ? html`<ha-icon icon=${icon}></ha-icon>` : nothing}
+      </button>
+    </th>`;
+  }
+
   private _sortIcon(field: string): string {
     if (this._sortField !== field) return "";
     return this._sortAsc ? "mdi:arrow-up" : "mdi:arrow-down";
@@ -643,12 +647,24 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
         --mdc-icon-size: 14px;
       }
 
-      .pods-table th[role="button"] {
+      .sort-btn {
+        font: inherit;
+        color: inherit;
+        background: none;
+        border: none;
+        padding: 0;
+        width: 100%;
+        text-align: left;
         cursor: pointer;
       }
 
-      .pods-table th[role="button"]:hover {
+      .sort-btn:hover {
         color: var(--primary-color);
+      }
+
+      .sort-btn:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
       }
 
       .pods-table th ha-icon {
@@ -1027,127 +1043,17 @@ export class K8sPodsTable extends K8sDataView<PodsResponse> {
                     <table class="pods-table">
                       <thead>
                         <tr>
-                          <th
-                            role="button"
-                            tabindex="0"
-                            @click=${() => this._handleSort("namespace")}
-                            @keydown=${(e: KeyboardEvent) =>
-                              this._handleSortKeydown(e, "namespace")}
-                          >
-                            Namespace
-                            ${
-                              this._sortIcon("namespace")
-                                ? html`<ha-icon
-                                    icon=${this._sortIcon("namespace")}
-                                  ></ha-icon>`
-                                : nothing
-                            }
-                          </th>
-                          <th
-                            role="button"
-                            tabindex="0"
-                            @click=${() => this._handleSort("name")}
-                            @keydown=${(e: KeyboardEvent) =>
-                              this._handleSortKeydown(e, "name")}
-                          >
-                            Name
-                            ${
-                              this._sortIcon("name")
-                                ? html`<ha-icon
-                                    icon=${this._sortIcon("name")}
-                                  ></ha-icon>`
-                                : nothing
-                            }
-                          </th>
-                          <th
-                            role="button"
-                            tabindex="0"
-                            @click=${() => this._handleSort("phase")}
-                            @keydown=${(e: KeyboardEvent) =>
-                              this._handleSortKeydown(e, "phase")}
-                          >
-                            Status
-                            ${
-                              this._sortIcon("phase")
-                                ? html`<ha-icon
-                                    icon=${this._sortIcon("phase")}
-                                  ></ha-icon>`
-                                : nothing
-                            }
-                          </th>
+                          ${this._sortHeader("namespace", "Namespace")}
+                          ${this._sortHeader("name", "Name")}
+                          ${this._sortHeader("phase", "Status")}
                           ${this._colVisible("ready") ? html`<th>Ready</th>` : nothing}
-                          ${
-                            this._colVisible("restarts")
-                              ? html`<th
-                                  role="button"
-                                  tabindex="0"
-                                  @click=${() => this._handleSort("restarts")}
-                                  @keydown=${(e: KeyboardEvent) =>
-                                    this._handleSortKeydown(e, "restarts")}
-                                >
-                                  Restarts
-                                  ${this._sortIcon("restarts") ? html`<ha-icon icon=${this._sortIcon("restarts")}></ha-icon>` : nothing}
-                                </th>`
-                              : nothing
-                          }
-                          ${
-                            this._colVisible("cpu")
-                              ? html`<th
-                                  role="button"
-                                  tabindex="0"
-                                  @click=${() => this._handleSort("cpu")}
-                                  @keydown=${(e: KeyboardEvent) =>
-                                    this._handleSortKeydown(e, "cpu")}
-                                >
-                                  CPU
-                                  ${this._sortIcon("cpu") ? html`<ha-icon icon=${this._sortIcon("cpu")}></ha-icon>` : nothing}
-                                </th>`
-                              : nothing
-                          }
-                          ${
-                            this._colVisible("memory")
-                              ? html`<th
-                                  role="button"
-                                  tabindex="0"
-                                  @click=${() => this._handleSort("memory")}
-                                  @keydown=${(e: KeyboardEvent) =>
-                                    this._handleSortKeydown(e, "memory")}
-                                >
-                                  Memory
-                                  ${this._sortIcon("memory") ? html`<ha-icon icon=${this._sortIcon("memory")}></ha-icon>` : nothing}
-                                </th>`
-                              : nothing
-                          }
-                          ${
-                            this._colVisible("node")
-                              ? html`<th
-                                  role="button"
-                                  tabindex="0"
-                                  @click=${() => this._handleSort("node_name")}
-                                  @keydown=${(e: KeyboardEvent) =>
-                                    this._handleSortKeydown(e, "node_name")}
-                                >
-                                  Node
-                                  ${this._sortIcon("node_name") ? html`<ha-icon icon=${this._sortIcon("node_name")}></ha-icon>` : nothing}
-                                </th>`
-                              : nothing
-                          }
+                          ${this._colVisible("restarts") ? this._sortHeader("restarts", "Restarts") : nothing}
+                          ${this._colVisible("cpu") ? this._sortHeader("cpu", "CPU") : nothing}
+                          ${this._colVisible("memory") ? this._sortHeader("memory", "Memory") : nothing}
+                          ${this._colVisible("node") ? this._sortHeader("node_name", "Node") : nothing}
                           ${this._colVisible("ip") ? html`<th>IP</th>` : nothing}
                           ${this._colVisible("owner") ? html`<th>Owner</th>` : nothing}
-                          ${
-                            this._colVisible("age")
-                              ? html`<th
-                                  role="button"
-                                  tabindex="0"
-                                  @click=${() => this._handleSort("age")}
-                                  @keydown=${(e: KeyboardEvent) =>
-                                    this._handleSortKeydown(e, "age")}
-                                >
-                                  Age
-                                  ${this._sortIcon("age") ? html`<ha-icon icon=${this._sortIcon("age")}></ha-icon>` : nothing}
-                                </th>`
-                              : nothing
-                          }
+                          ${this._colVisible("age") ? this._sortHeader("age", "Age") : nothing}
                           <th class="col-actions"></th>
                         </tr>
                       </thead>
