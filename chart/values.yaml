@@ -1,7 +1,7 @@
 # Permission set to grant.
 #   full    — every integration feature: sensors, switches (scaling, CronJob
 #             suspension, node cordon/uncordon), rollout restart, pod/job
-#             deletion, Cluster Events, and the experimental Watch API.
+#             deletion, Cluster Events, and the Watch API.
 #   minimal — read-only sensors and binary sensors. No switches, no Watch API.
 # See docs/RBAC.md for the complete permission matrix.
 mode: full
