@@ -147,7 +147,7 @@ Changing this option reloads the integration automatically.
 | Option | Description | Default |
 |--------|-------------|---------|
 | **Enable Cluster Events** | Create a "Cluster events" event entity that fires Home Assistant events for Kubernetes cluster activity | `false` |
-| **Event Types** | Which Kubernetes event types to surface — `warning` (Warning-type events only) or `all` (Warning and Normal) | `warning` |
+| **Event Types** | Which Kubernetes event types to surface — **Warning only** (Warning-type events) or **All events** (Warning and Normal) | Warning only |
 
 When **Enable Cluster Events** is on, the integration creates one `event` entity per cluster named **Cluster events**. It tails the Kubernetes Events API using the same hardened watch infrastructure as the Watch API feature and dispatches matching events to Home Assistant.
 

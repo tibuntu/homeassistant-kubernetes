@@ -418,7 +418,7 @@ Each fired event carries the following attributes:
 
 ### Filtering
 
-By default only **Warning**-type Kubernetes events are dispatched. To also receive `Normal`-type events, set **Event Types** to `all` in **Configure → Event Types**.
+By default only **Warning**-type Kubernetes events are dispatched. To also receive `Normal`-type events, set **Event Types** to **All events** under **Configure**.
 
 > **Note:** The watch loop anchors to the current resource version on startup so that existing events in the cluster are not replayed. Only events that occur after the integration starts are fired.
 
